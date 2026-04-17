@@ -176,6 +176,21 @@ namespace CPlatform.LPPI
                 ? "(none)"
                 : HttpUtility.HtmlEncode(string.Join("\r\n", res.FailedRows));
 
+            // Surface any auto-created CM groups so the operator knows to
+            // add email addresses for them before issuing send-outs.
+            if (res.NewPrograms.Count > 0)
+            {
+                var msg = new StringBuilder();
+                msg.Append("<strong>")
+                   .Append(res.NewPrograms.Count)
+                   .Append(" new Capability Manager group")
+                   .Append(res.NewPrograms.Count == 1 ? "" : "s")
+                   .Append("</strong> were automatically created from this file: ")
+                   .Append(HttpUtility.HtmlEncode(string.Join(", ", res.NewPrograms)))
+                   .Append(". Please <a href=\"LPPI_CapabilityManagers.aspx\">configure their email recipients</a> before sending out review packages.");
+                ShowMessage(msg.ToString(), "warn");
+            }
+
             // Clear the parked upload — the commit is one-shot.
             ClearSession();
 

@@ -19,6 +19,9 @@ namespace CPlatform.LPPI
         /// <summary>
         /// Render the standard LPPI page header. Pass the active nav key:
         /// "dashboard","load","batches","cm","reasons","sendouts","export".
+        ///
+        /// TO-DO #5 — the brand now renders a subtitle line beneath "LPPI Review"
+        /// so every page in the module carries a consistent, context-setting blurb.
         /// </summary>
         public string RenderHeader(string active)
         {
@@ -34,9 +37,14 @@ namespace CPlatform.LPPI
 
             var sb = new StringBuilder();
             sb.Append("<header class=\"lppi-header\">");
+
+            // Brand block — title + subtitle (TO-DO #5).
             sb.Append("<a href=\"LPPI_Admin.aspx\" class=\"lppi-brand\">");
             sb.Append("<span class=\"mark\"><svg viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/><circle cx=\"12\" cy=\"15\" r=\"3\"/><path d=\"M12 13v2l1 1\"/></svg></span>");
-            sb.Append("<span>LPPI Review</span>");
+            sb.Append("<span class=\"lppi-brand-text\">");
+            sb.Append("<span class=\"lppi-brand-title\">LPPI Review</span>");
+            sb.Append("<span class=\"lppi-brand-subtitle\">Review LPPI lines and record pay\u00a0/\u00a0no-pay decisions</span>");
+            sb.Append("</span>");
             sb.Append("</a>");
 
             sb.Append("<nav class=\"lppi-nav\">");

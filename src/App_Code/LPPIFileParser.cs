@@ -108,6 +108,7 @@ namespace CPlatform.LPPI
         // -------------------------------------------------------------------
         // Commit parsed rows into tblLPPI_Documents and create a load batch.
         // Skip-and-warn duplicates by DOC_NO_ACCOUNTING.
+        // Auto-creates any CM groups seen in the file that do not yet exist.
         // -------------------------------------------------------------------
 
         public class CommitResult
@@ -119,6 +120,8 @@ namespace CPlatform.LPPI
             public int RowsFailed;
             public List<string> SkippedDocNumbers = new List<string>();
             public List<string> FailedRows = new List<string>();
+            // Programs that were created automatically during this commit.
+            public List<string> NewPrograms = new List<string>();
         }
 
         public static CommitResult Commit(ParseResult parsed, string fileName, string sourcePath,
@@ -127,6 +130,17 @@ namespace CPlatform.LPPI
             var res = new CommitResult { RowsInFile = parsed.Rows.Count };
             var loadedBy = LPPIHelper.CurrentUserId();
             var loadedByName = LPPIHelper.CurrentUserDisplayName();
+
+            // ------------------------------------------------------------------
+            // TO-DO #1: Auto-create CM groups for any program codes in the file
+            // that do not yet exist in tblLPPI_CapabilityManagers.
+            // UpsertCapabilityManager uses MERGE so it is safe to call for every
+            // distinct program — existing rows are simply updated (no-op on name/
+            // active since we do not overwrite those for pre-existing groups).
+            // We track which programs are brand-new so the commit result can report
+            // them back to the UI.
+            // ------------------------------------------------------------------
+            AutoCreateCapabilityManagers(parsed, res);
 
             // Create batch row and capture identity via OUTPUT inserted.
             object newId = LPPIHelper.ExecuteScalar(@"
@@ -188,6 +202,43 @@ UPDATE dbo.tblLPPI_LoadBatches
                 LPPIHelper.P("@B", res.BatchID));
 
             return res;
+        }
+
+        /// <summary>
+        /// Collects every distinct non-empty CAPABILITY_MANAGER_PROGRAM value
+        /// from the parsed rows, then upserts each one via UpsertCapabilityManager.
+        /// Programs that did not already exist are recorded in res.NewPrograms.
+        /// </summary>
+        private static void AutoCreateCapabilityManagers(ParseResult parsed, CommitResult res)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in parsed.Rows)
+            {
+                string prog = LPPIHelper.CleanString(
+                    row.Fields.ContainsKey("CAPABILITY_MANAGER_PROGRAM")
+                        ? row.Fields["CAPABILITY_MANAGER_PROGRAM"] : null);
+                if (string.IsNullOrEmpty(prog) || seen.Contains(prog)) continue;
+                seen.Add(prog);
+
+                // Check whether this program already exists (any active state).
+                object existing = LPPIHelper.ExecuteScalar(
+                    "SELECT CmID FROM dbo.tblLPPI_CapabilityManagers WHERE Program = @P",
+                    LPPIHelper.P("@P", prog));
+
+                if (existing == null || existing == DBNull.Value)
+                {
+                    // Brand-new — derive a display name from the program code if
+                    // CAPABILITY_MANAGER_NAME is present in the same row.
+                    string displayName = LPPIHelper.CleanString(
+                        row.Fields.ContainsKey("CAPABILITY_MANAGER_NAME")
+                            ? row.Fields["CAPABILITY_MANAGER_NAME"] : null) ?? "";
+
+                    LPPIHelper.UpsertCapabilityManager(prog, displayName, true);
+                    res.NewPrograms.Add(prog);
+                }
+                // If it already exists, leave it alone — do not overwrite the
+                // admin-maintained display name or active flag.
+            }
         }
 
         private static void InsertDocument(int batchId, string docNo, ParsedRow row)

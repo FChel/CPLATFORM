@@ -88,7 +88,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 
 .lppi-brand {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
     font-weight: 600;
     color: var(--ink);
@@ -102,6 +102,26 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     color: #fff;
 }
 .lppi-brand .mark svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 2; }
+
+.lppi-brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+}
+
+.lppi-brand-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: inherit;
+}
+
+.lppi-brand-subtitle {
+    font-size: 0.75rem;
+    font-weight: 400;
+    opacity: 0.75;
+    color: inherit;
+    white-space: nowrap;
+}
 
 .lppi-nav {
     display: flex; gap: 4px;

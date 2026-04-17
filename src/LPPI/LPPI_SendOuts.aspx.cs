@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.OleDb;
 using System.Text;
 using System.Web.UI;
 using System.Web.UI.WebControls;
@@ -20,45 +19,73 @@ namespace CPlatform.LPPI
             }
         }
 
+        // -------------------------------------------------------------------
+        // Data binding — column names must match every Eval() in the .aspx
+        // -------------------------------------------------------------------
+
         private void BindGroups()
         {
+            // Columns required by rptGroups in LPPI_SendOuts.aspx:
+            //   CmID, Program, ToCount, ToList, UnreviewedDocs, OpenPackageID
             const string sql = @"
-                SELECT cm.CmID, cm.Program,
-                       (SELECT COUNT(*) FROM tblLPPI_CapabilityManagerEmails e
-                        WHERE e.CmID = cm.CmID AND e.IsActive = 1 AND e.IsCC = 0) AS ToCount,
+                SELECT cm.CmID,
+                       cm.Program,
+                       (SELECT COUNT(*)
+                          FROM tblLPPI_CapabilityManagerEmails e
+                         WHERE e.CmID = cm.CmID AND e.IsActive = 1 AND e.IsCC = 0) AS ToCount,
                        ISNULL(STUFF((SELECT ', ' + e.Email
-                                     FROM tblLPPI_CapabilityManagerEmails e
-                                     WHERE e.CmID = cm.CmID AND e.IsActive = 1
-                                     FOR XML PATH('')), 1, 2, ''), '') AS ToList,
-                       (SELECT COUNT(*) FROM tblLPPI_Documents d
-                        LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
-                        WHERE d.CapabilityManagerProgram = cm.Program
-                          AND r.ReasonCodeID IS NULL) AS UnreviewedDocs,
-                       (SELECT TOP 1 p.PackageID FROM tblLPPI_ReviewPackages p
-                        WHERE p.CmID = cm.CmID AND p.Status = 'Open'
-                        ORDER BY p.CreatedDate DESC) AS OpenPackageID
-                FROM tblLPPI_CapabilityManagers cm
-                WHERE cm.IsActive = 1
-                ORDER BY cm.Program";
+                                       FROM tblLPPI_CapabilityManagerEmails e
+                                      WHERE e.CmID = cm.CmID AND e.IsActive = 1 AND e.IsCC = 0
+                                        FOR XML PATH('')), 1, 2, ''), '') AS ToList,
+                       (SELECT COUNT(*)
+                          FROM tblLPPI_Documents d
+                          LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
+                         WHERE d.CapabilityManagerProgram = cm.Program
+                           AND r.ReasonCodeID IS NULL) AS UnreviewedDocs,
+                       (SELECT TOP 1 p.PackageID
+                          FROM tblLPPI_ReviewPackages p
+                         WHERE p.CmID = cm.CmID AND p.Status = 'Open'
+                         ORDER BY p.CreatedDate DESC) AS OpenPackageID
+                  FROM tblLPPI_CapabilityManagers cm
+                 WHERE cm.IsActive = 1
+                 ORDER BY cm.Program";
             rptGroups.DataSource = LPPIHelper.ExecuteTable(sql);
             rptGroups.DataBind();
         }
 
         private void BindRecent()
         {
+            // Columns required by rptRecent in LPPI_SendOuts.aspx:
+            //   PackageID, Program, CreatedDate, DueDate,
+            //   TotalDocs, ReviewedDocs, Status, LastEmailDate
             const string sql = @"
-                SELECT TOP (50) p.PackageID, cm.Program, p.CreatedDate, p.DueDate, p.Status,
-                       (SELECT COUNT(*) FROM tblLPPI_ReviewPackageDocuments pd WHERE pd.PackageID = p.PackageID) AS TotalDocs,
-                       (SELECT COUNT(*) FROM tblLPPI_ReviewPackageDocuments pd
-                            INNER JOIN tblLPPI_Reviews r ON r.DocumentID = pd.DocumentID
-                        WHERE pd.PackageID = p.PackageID AND r.ReasonCodeID IS NOT NULL) AS ReviewedDocs,
-                       (SELECT MAX(el.SentDate) FROM tblLPPI_EmailLog el WHERE el.PackageID = p.PackageID) AS LastEmailDate
-                FROM tblLPPI_ReviewPackages p
-                INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
-                ORDER BY p.CreatedDate DESC";
+                SELECT TOP 50
+                       p.PackageID,
+                       cm.Program,
+                       p.CreatedDate,
+                       p.DueDate,
+                       p.Status,
+                       (SELECT COUNT(*)
+                          FROM tblLPPI_ReviewPackageDocuments pd
+                         WHERE pd.PackageID = p.PackageID) AS TotalDocs,
+                       (SELECT COUNT(*)
+                          FROM tblLPPI_ReviewPackageDocuments pd
+                         INNER JOIN tblLPPI_Reviews r ON r.DocumentID = pd.DocumentID
+                         WHERE pd.PackageID = p.PackageID
+                           AND r.ReasonCodeID IS NOT NULL) AS ReviewedDocs,
+                       (SELECT MAX(el.SentDate)
+                          FROM tblLPPI_EmailLog el
+                         WHERE el.PackageID = p.PackageID) AS LastEmailDate
+                  FROM tblLPPI_ReviewPackages p
+                 INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
+                 ORDER BY p.CreatedDate DESC";
             rptRecent.DataSource = LPPIHelper.ExecuteTable(sql);
             rptRecent.DataBind();
         }
+
+        // -------------------------------------------------------------------
+        // Send selected groups
+        // -------------------------------------------------------------------
 
         protected void btnSend_Click(object sender, EventArgs e)
         {
@@ -73,11 +100,11 @@ namespace CPlatform.LPPI
             foreach (RepeaterItem item in rptGroups.Items)
             {
                 var chk = item.FindControl("chkPick") as CheckBox;
-                var hf = item.FindControl("hfCmId") as HiddenField;
+                var hf  = item.FindControl("hfCmId") as HiddenField;
                 if (chk != null && hf != null && chk.Checked)
                 {
                     int id;
-                    if (int.TryParse(hf.Value, out id)) { selectedCmIds.Add(id); }
+                    if (int.TryParse(hf.Value, out id)) selectedCmIds.Add(id);
                 }
             }
 
@@ -87,7 +114,8 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            var sb = new StringBuilder();
+            var failNotes   = new StringBuilder();
+            var mailtoLinks = new List<string>();
             int created = 0, emailed = 0, failed = 0;
 
             foreach (int cmId in selectedCmIds)
@@ -95,52 +123,86 @@ namespace CPlatform.LPPI
                 int packageId = CreatePackage(cmId, due);
                 if (packageId == 0)
                 {
-                    sb.Append("<li>CmID ").Append(cmId).Append(": no outstanding documents, skipped.</li>");
+                    failNotes.Append("<li>CmID ").Append(cmId)
+                             .Append(": no outstanding documents — skipped.</li>");
                     continue;
                 }
                 created++;
+
                 var result = LPPIEmail.SendInitial(packageId);
-                if (result.Success) { emailed++; }
+                if (result.Success)
+                {
+                    emailed++;
+                    if (result.UseClientEmail && !string.IsNullOrEmpty(result.MailtoLink))
+                        mailtoLinks.Add(result.MailtoLink);
+                }
                 else
                 {
                     failed++;
-                    sb.Append("<li>Package #").Append(packageId).Append(": ")
-                      .Append(LPPIHelper.Enc(result.ErrorMessage)).Append("</li>");
+                    failNotes.Append("<li>Package #").Append(packageId).Append(": ")
+                             .Append(LPPIHelper.Enc(result.ErrorMessage)).Append("</li>");
                 }
             }
 
+            // Build status message.
             string kind = failed == 0 ? "ok" : "warn";
             var msg = new StringBuilder();
-            msg.Append(created).Append(" package(s) created, ").Append(emailed).Append(" email(s) sent.");
-            if (failed > 0) { msg.Append(" ").Append(failed).Append(" failure(s)."); }
-            if (sb.Length > 0) { msg.Append("<ul class=\"bare\">").Append(sb).Append("</ul>"); }
-            ShowMessageRaw(msg.ToString(), kind);
+            msg.Append(created).Append(" package(s) created, ")
+               .Append(emailed).Append(" email(s) queued.");
+            if (failed > 0)
+                msg.Append(" ").Append(failed).Append(" failure(s).");
+            if (failNotes.Length > 0)
+                msg.Append("<ul class=\"bare\">").Append(failNotes).Append("</ul>");
 
+            // Client email mode — open each mailto: in a new tab.
+            if (mailtoLinks.Count > 0)
+            {
+                msg.Append("<p class=\"muted\" style=\"margin-top:8px;\">")
+                   .Append("<strong>Client email mode is active.</strong> ")
+                   .Append("Your email client will open with ")
+                   .Append(mailtoLinks.Count == 1 ? "a pre-filled message"
+                                                  : mailtoLinks.Count + " pre-filled messages")
+                   .Append(" — please review and send each one manually.</p>");
+
+                var js = new StringBuilder();
+                foreach (var link in mailtoLinks)
+                    js.Append("window.open('")
+                      .Append(link.Replace("\\", "\\\\").Replace("'", "\\'"))
+                      .Append("', '_blank');");
+                ScriptManager.RegisterStartupScript(this, GetType(), "lppiMailto",
+                    js.ToString(), true);
+            }
+
+            ShowMessageRaw(msg.ToString(), kind);
             BindGroups();
             BindRecent();
         }
 
+        // -------------------------------------------------------------------
+        // Package creation
+        // -------------------------------------------------------------------
+
         private int CreatePackage(int cmId, DateTime due)
         {
-            // Collect unreviewed docs for this CM's program.
             const string selectDocs = @"
                 SELECT d.DocumentID
-                FROM tblLPPI_Documents d
-                LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
-                WHERE d.CapabilityManagerProgram =
-                      (SELECT Program FROM tblLPPI_CapabilityManagers WHERE CmID = @cm)
-                  AND r.ReasonCodeID IS NULL";
+                  FROM tblLPPI_Documents d
+                  LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
+                 WHERE d.CapabilityManagerProgram =
+                       (SELECT Program FROM tblLPPI_CapabilityManagers WHERE CmID = @cm)
+                   AND r.ReasonCodeID IS NULL";
             DataTable dt = LPPIHelper.ExecuteTable(selectDocs, LPPIHelper.P("@cm", cmId));
-            if (dt.Rows.Count == 0) { return 0; }
+            if (dt.Rows.Count == 0) return 0;
 
             string token = LPPIHelper.GenerateToken();
             object idObj = LPPIHelper.ExecuteScalar(@"
-                INSERT INTO tblLPPI_ReviewPackages (CmID, Token, CreatedDate, CreatedBy, DueDate, Status)
+                INSERT INTO tblLPPI_ReviewPackages
+                    (CmID, Token, CreatedDate, CreatedBy, DueDate, Status)
                 OUTPUT inserted.PackageID
                 VALUES (@cm, @tok, SYSDATETIME(), @by, @due, 'Open')",
-                LPPIHelper.P("@cm", cmId),
+                LPPIHelper.P("@cm",  cmId),
                 LPPIHelper.P("@tok", token),
-                LPPIHelper.P("@by", LPPIHelper.CurrentUserDisplayName()),
+                LPPIHelper.P("@by",  LPPIHelper.CurrentUserDisplayName()),
                 LPPIHelper.P("@due", due));
             int packageId = Convert.ToInt32(idObj);
 
@@ -155,6 +217,10 @@ namespace CPlatform.LPPI
             return packageId;
         }
 
+        // -------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------
+
         private void ShowMessage(string msg, string kind)
         {
             ShowMessageRaw(LPPIHelper.Enc(msg), kind);
@@ -163,7 +229,8 @@ namespace CPlatform.LPPI
         private void ShowMessageRaw(string html, string kind)
         {
             var sb = new StringBuilder();
-            sb.Append("<div class=\"alert alert-").Append(kind).Append("\">").Append(html).Append("</div>");
+            sb.Append("<div class=\"alert alert-").Append(kind).Append("\">")
+              .Append(html).Append("</div>");
             phMessage.Controls.Add(new LiteralControl(sb.ToString()));
         }
     }

@@ -19,6 +19,7 @@
             <div>
                 <div class="crumb">LPPI Review</div>
                 <h1>Capability Managers</h1>
+                <p class="subtitle">Review LPPI lines and record pay / no-pay decisions</p>
                 <p class="lead">Maintain Capability Manager groups and the email recipients used for review send-outs.</p>
             </div>
         </div>
@@ -94,18 +95,25 @@
             </div>
         </div>
 
+        <%-- Email management panel — shown when the operator clicks "Manage emails" --%>
         <asp:Panel ID="pnlEmails" runat="server" Visible="false" CssClass="card">
             <h2>Recipients for <asp:Literal ID="litCmName" runat="server" /></h2>
+            <p class="muted">
+                Enter one or more addresses separated by commas. Each address will be added individually.
+                Tick <strong>CC</strong> to add all of them as CC recipients instead of TO.
+            </p>
             <div class="form-grid">
-                <div class="form-row">
-                    <label for="txtEmail">Email address</label>
-                    <asp:TextBox ID="txtEmail" runat="server" CssClass="input" MaxLength="320" placeholder="name@defence.gov.au" />
+                <div class="form-row form-row-wide">
+                    <label for="txtEmail">Email address(es)</label>
+                    <%-- TO-DO #2: single comma-separated field replaces the old single-address input --%>
+                    <asp:TextBox ID="txtEmail" runat="server" CssClass="input" MaxLength="2000"
+                        placeholder="name@defence.gov.au, other@defence.gov.au" />
                 </div>
                 <div class="form-row form-row-check">
                     <label><asp:CheckBox ID="chkCc" runat="server" /> CC (otherwise TO)</label>
                 </div>
                 <div class="form-row form-row-actions">
-                    <asp:Button ID="btnAddEmail" runat="server" CssClass="btn btn-primary" Text="Add recipient" OnClick="btnAddEmail_Click" />
+                    <asp:Button ID="btnAddEmail" runat="server" CssClass="btn btn-primary" Text="Add recipient(s)" OnClick="btnAddEmail_Click" />
                     <asp:HiddenField ID="hfCmId" runat="server" />
                 </div>
             </div>
@@ -137,6 +145,11 @@
                                 <asp:LinkButton runat="server" CssClass="btn btn-sm btn-ghost"
                                     Text='<%# (bool)Eval("IsActive") ? "Disable" : "Enable" %>'
                                     CommandName="Toggle" CommandArgument='<%# Eval("CmEmailID") %>' />
+                                <%-- TO-DO #3: delete button --%>
+                                <asp:LinkButton runat="server" CssClass="btn btn-sm btn-ghost btn-danger"
+                                    Text="Delete"
+                                    CommandName="Delete" CommandArgument='<%# Eval("CmEmailID") %>'
+                                    OnClientClick="return confirm('Delete this email address permanently?');" />
                             </td>
                         </tr>
                     </ItemTemplate>
@@ -147,11 +160,8 @@
                 </asp:Repeater>
             </div>
         </asp:Panel>
-    </main>
 
-    <footer class="lppi-footer">
-        <span>LPPI Review · <%= CurrentEnv %></span>
-    </footer>
+    </main>
 </div>
 </form>
 </body>

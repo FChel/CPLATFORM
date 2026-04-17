@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Configuration;
-using System.Data.OleDb;
 using System.Net;
 using System.Net.Mail;
 using System.Text;
@@ -12,6 +11,18 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Sends LPPI review emails (initial + reminder) and logs every send attempt
     /// to tblLPPI_EmailLog. SMTP settings are read from web.config appSettings.
+    ///
+    /// TO-DO #4 — UseClientEmail flag.
+    /// When LPPI.UseClientEmail = true in appSettings, Send* methods return a
+    /// SendResult with a MailtoLink populated instead of attempting SMTP delivery.
+    /// The caller (LPPI_SendOuts.aspx.cs) should check result.UseClientEmail and,
+    /// when true, emit a window.location / window.open to the mailto: URL so the
+    /// operator's local email client opens with the message pre-filled.
+    ///
+    /// This mirrors the existing EmailHelper / tblCC_SmtpConfig pattern used by
+    /// the forms app, but without touching the database — LPPI reads all config
+    /// from appSettings so this is just one more key. Set it to "true" in UAT's
+    /// web.config and "false" (or omit it) in PROD.
     /// </summary>
     public static class LPPIEmail
     {
@@ -19,9 +30,36 @@ namespace CPlatform.LPPI
 
         public class SendResult
         {
-            public bool Success;
+            public bool   Success;
             public string ErrorMessage;
+            /// <summary>
+            /// When UseClientEmail is active, Success is true and this contains
+            /// the mailto: URL. The caller should open it via JavaScript.
+            /// </summary>
+            public bool   UseClientEmail;
+            public string MailtoLink;
         }
+
+        // -------------------------------------------------------------------
+        // Configuration
+        // -------------------------------------------------------------------
+
+        /// <summary>
+        /// Returns true when LPPI.UseClientEmail = "true" in appSettings.
+        /// Defaults to false (i.e. SMTP) if the key is absent or any other value.
+        /// </summary>
+        public static bool IsClientEmailMode
+        {
+            get
+            {
+                return LPPIHelper.Setting("LPPI.UseClientEmail", "false")
+                    .Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Public entry points
+        // -------------------------------------------------------------------
 
         public static SendResult SendInitial(int packageId)
         {
@@ -33,9 +71,13 @@ namespace CPlatform.LPPI
             return SendForPackage(packageId, "Reminder");
         }
 
+        // -------------------------------------------------------------------
+        // Core send logic
+        // -------------------------------------------------------------------
+
         private static SendResult SendForPackage(int packageId, string type)
         {
-            // Load package + CM info + counts
+            // Load package + CM info + counts.
             var sql = @"
 SELECT p.PackageID, p.Token, p.DueDate, p.CreatedDate, p.Status,
        cm.CmID, cm.Program, cm.DisplayName,
@@ -50,14 +92,14 @@ WHERE p.PackageID = @P;";
             if (dt.Rows.Count == 0)
                 return new SendResult { Success = false, ErrorMessage = "Package not found" };
 
-            var row = dt.Rows[0];
-            var token = Convert.ToString(row["Token"]);
-            var dueDate = Convert.ToDateTime(row["DueDate"]);
-            var program = Convert.ToString(row["DisplayName"]);
+            var row          = dt.Rows[0];
+            var token        = Convert.ToString(row["Token"]);
+            var dueDate      = Convert.ToDateTime(row["DueDate"]);
+            var program      = Convert.ToString(row["DisplayName"]);
             if (string.IsNullOrWhiteSpace(program)) program = Convert.ToString(row["Program"]);
-            var docCount = Convert.ToInt32(row["DocCount"]);
-            var reviewedCount = Convert.ToInt32(row["ReviewedCount"]);
-            var cmId = Convert.ToInt32(row["CmID"]);
+            var docCount     = Convert.ToInt32(row["DocCount"]);
+            var reviewedCount= Convert.ToInt32(row["ReviewedCount"]);
+            var cmId         = Convert.ToInt32(row["CmID"]);
 
             List<string> ccList;
             var toList = LPPIHelper.GetActiveRecipients(cmId, out ccList);
@@ -65,22 +107,46 @@ WHERE p.PackageID = @P;";
                 return new SendResult { Success = false, ErrorMessage = "No active recipients configured for this Capability Manager group" };
 
             var subject = BuildSubject(type, program, dueDate);
-            var body = BuildBody(type, program, dueDate, token, docCount, reviewedCount);
+            var body    = BuildBody(type, program, dueDate, token, docCount, reviewedCount);
 
-            // Attempt send
+            // ------------------------------------------------------------------
+            // TO-DO #4 — client email (mailto:) fallback.
+            // When the flag is set we build a mailto: link from a plain-text
+            // version of the message and return it to the caller. We still log
+            // the attempt so the audit trail is consistent.
+            // ------------------------------------------------------------------
+            if (IsClientEmailMode)
+            {
+                var plainBody = HtmlToPlain(body);
+                var mailto    = BuildMailto(toList, ccList, subject, plainBody);
+
+                LogSend(packageId,
+                    string.Join(";", toList) + (ccList.Count > 0 ? " | CC: " + string.Join(";", ccList) : ""),
+                    type, subject, "[mailto — client email mode]", true, null);
+
+                return new SendResult
+                {
+                    Success         = true,
+                    UseClientEmail  = true,
+                    MailtoLink      = mailto
+                };
+            }
+
+            // SMTP path — original behaviour.
             string error = null;
-            bool ok = false;
+            bool   ok    = false;
             try
             {
                 using (var msg = new MailMessage())
                 {
-                    msg.From = new MailAddress(LPPIHelper.Setting("LPPI.MailFrom", "noreply@defence.gov.au"),
-                                               LPPIHelper.Setting("LPPI.MailFromName", "LPPI Review"));
+                    msg.From = new MailAddress(
+                        LPPIHelper.Setting("LPPI.MailFrom", "noreply@defence.gov.au"),
+                        LPPIHelper.Setting("LPPI.MailFromName", "LPPI Review"));
                     foreach (var to in toList) msg.To.Add(to);
                     foreach (var cc in ccList) msg.CC.Add(cc);
-                    msg.Subject = subject;
-                    msg.Body = body;
-                    msg.IsBodyHtml = true;
+                    msg.Subject      = subject;
+                    msg.Body         = body;
+                    msg.IsBodyHtml   = true;
                     msg.BodyEncoding = Encoding.UTF8;
 
                     using (var smtp = BuildSmtp())
@@ -93,12 +159,16 @@ WHERE p.PackageID = @P;";
                 error = ex.Message;
             }
 
-            // Log
-            LogSend(packageId, string.Join(";", toList) + (ccList.Count > 0 ? " | CC: " + string.Join(";", ccList) : ""),
-                    type, subject, body, ok, error);
+            LogSend(packageId,
+                string.Join(";", toList) + (ccList.Count > 0 ? " | CC: " + string.Join(";", ccList) : ""),
+                type, subject, body, ok, error);
 
             return new SendResult { Success = ok, ErrorMessage = error };
         }
+
+        // -------------------------------------------------------------------
+        // SMTP client
+        // -------------------------------------------------------------------
 
         private static SmtpClient BuildSmtp()
         {
@@ -114,7 +184,7 @@ WHERE p.PackageID = @P;";
             if (!string.IsNullOrEmpty(user))
             {
                 smtp.UseDefaultCredentials = false;
-                smtp.Credentials = new NetworkCredential(user, pass);
+                smtp.Credentials = new System.Net.NetworkCredential(user, pass);
             }
             else
             {
@@ -122,6 +192,26 @@ WHERE p.PackageID = @P;";
             }
             return smtp;
         }
+
+        // -------------------------------------------------------------------
+        // mailto: builder (client email mode)
+        // -------------------------------------------------------------------
+
+        private static string BuildMailto(List<string> toList, List<string> ccList,
+                                          string subject, string plainBody)
+        {
+            var sb = new StringBuilder("mailto:");
+            sb.Append(Uri.EscapeDataString(string.Join(",", toList)));
+            sb.Append("?subject=").Append(Uri.EscapeDataString(subject));
+            if (ccList.Count > 0)
+                sb.Append("&cc=").Append(Uri.EscapeDataString(string.Join(",", ccList)));
+            sb.Append("&body=").Append(Uri.EscapeDataString(plainBody));
+            return sb.ToString();
+        }
+
+        // -------------------------------------------------------------------
+        // Email content builders
+        // -------------------------------------------------------------------
 
         private static string BuildSubject(string type, string program, DateTime due)
         {
@@ -132,77 +222,47 @@ WHERE p.PackageID = @P;";
                 return string.Format("Reminder — LPPI Review for {0} due in {1} day{2}",
                     program, days, days == 1 ? "" : "s");
             }
-            return string.Format("LPPI Review for {0} — due {1:dd MMM yyyy}", program, due);
+            return string.Format("Action required — LPPI Review for {0} (due {1})",
+                program, due.ToString("d MMMM yyyy"));
         }
 
-        private static string BuildBody(string type, string program, DateTime due, string token,
-                                         int docCount, int reviewedCount)
+        private static string BuildBody(string type, string program, DateTime due,
+                                        string token, int docCount, int reviewedCount)
         {
-            var baseUrl = LPPIHelper.Setting("LPPI.BaseUrl", "");
-            if (string.IsNullOrEmpty(baseUrl))
-            {
-                // Best-effort from current request
-                try
-                {
-                    var req = HttpContext.Current.Request;
-                    baseUrl = req.Url.GetLeftPart(UriPartial.Authority) +
-                              VirtualPathUtility.ToAbsolute("~/");
-                }
-                catch { baseUrl = "/"; }
-            }
-            if (!baseUrl.EndsWith("/")) baseUrl += "/";
-            var link = baseUrl + "LPPI/LPPI_Review.aspx?t=" + Uri.EscapeDataString(token);
-
-            var contact = LPPIHelper.Setting("LPPI.SupportContact", "your finance support team");
-            var dueText = due.ToString("dddd, dd MMMM yyyy");
-            var heading = type == "Reminder"
-                ? "Reminder: LPPI review due soon"
-                : "LPPI review request";
+            var reviewUrl = BuildReviewUrl(token);
+            var contact   = LPPIHelper.Setting("LPPI.SupportContact", "DFG Finance Support");
 
             var sb = new StringBuilder();
-            sb.Append("<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#1a1a1a;\">");
-            sb.Append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f4f4f5;padding:32px 0;\"><tr><td align=\"center\">");
-            sb.Append("<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);\">");
-            sb.Append("<tr><td style=\"background:").Append(OrangeHex).Append(";padding:24px 32px;\">");
-            sb.Append("<div style=\"color:#ffffff;font-size:13px;letter-spacing:1px;text-transform:uppercase;opacity:0.85;\">Defence Finance Group</div>");
-            sb.Append("<div style=\"color:#ffffff;font-size:22px;font-weight:600;margin-top:4px;\">").Append(HttpUtility.HtmlEncode(heading)).Append("</div>");
-            sb.Append("</td></tr>");
-            sb.Append("<tr><td style=\"padding:32px;\">");
-            sb.Append("<p style=\"margin:0 0 16px;font-size:15px;line-height:1.55;\">Hello ").Append(HttpUtility.HtmlEncode(program)).Append(" team,</p>");
+            sb.Append("<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;\">");
+            sb.Append("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr><td align=\"center\" style=\"padding:24px 0;\">");
+            sb.Append("<table width=\"600\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#fff;border-radius:6px;overflow:hidden;\">");
+
+            // Header band
+            sb.AppendFormat(
+                "<tr><td style=\"background:{0};padding:20px 32px;\">", OrangeHex);
+            sb.Append("<span style=\"color:#fff;font-size:18px;font-weight:bold;\">LPPI Review</span></td></tr>");
+
+            // Body
+            sb.Append("<tr><td style=\"padding:28px 32px;color:#1a1a1a;font-size:14px;line-height:1.6;\">");
 
             if (type == "Reminder")
-            {
-                sb.Append("<p style=\"margin:0 0 16px;font-size:15px;line-height:1.55;\">This is a friendly reminder that your Late Payment Penalty Interest (LPPI) review is due on <strong>")
-                  .Append(HttpUtility.HtmlEncode(dueText)).Append("</strong>.</p>");
-            }
-            else
-            {
-                sb.Append("<p style=\"margin:0 0 16px;font-size:15px;line-height:1.55;\">A new Late Payment Penalty Interest (LPPI) review package has been prepared for your area. Please review each invoice and assign a reason code.</p>");
-            }
+                sb.Append("<p style=\"color:#b45309;font-weight:bold;\">This is a reminder — your review is due soon.</p>");
 
-            sb.Append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;margin:24px 0;border-collapse:collapse;\">");
-            sb.Append("<tr><td style=\"padding:12px 16px;background:#f8f8f9;border-radius:6px;\">");
-            sb.Append("<div style=\"font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px;\">Invoices to review</div>");
-            sb.Append("<div style=\"font-size:24px;font-weight:600;color:#1a1a1a;margin-top:4px;\">").Append(docCount).Append("</div>");
-            if (reviewedCount > 0)
-                sb.Append("<div style=\"font-size:13px;color:#666;margin-top:4px;\">").Append(reviewedCount).Append(" already reviewed</div>");
-            sb.Append("</td></tr>");
-            sb.Append("<tr><td style=\"padding-top:8px;\">");
-            sb.Append("<div style=\"padding:12px 16px;background:#f8f8f9;border-radius:6px;\">");
-            sb.Append("<div style=\"font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px;\">Due date</div>");
-            sb.Append("<div style=\"font-size:18px;font-weight:600;color:#1a1a1a;margin-top:4px;\">").Append(HttpUtility.HtmlEncode(dueText)).Append("</div>");
-            sb.Append("</div></td></tr>");
-            sb.Append("</table>");
+            sb.AppendFormat("<p>You have been sent an LPPI (Late Payment Penalty Interest) review package for <strong>{0}</strong>.</p>",
+                HttpUtility.HtmlEncode(program));
+            sb.AppendFormat("<p>Due date: <strong>{0}</strong></p>", due.ToString("dddd d MMMM yyyy"));
+            sb.AppendFormat("<p>Documents to review: <strong>{0}</strong> &nbsp;|&nbsp; Already reviewed: <strong>{1}</strong></p>",
+                docCount, reviewedCount);
 
-            sb.Append("<div style=\"text-align:center;margin:32px 0;\">");
-            sb.Append("<a href=\"").Append(HttpUtility.HtmlEncode(link)).Append("\" style=\"display:inline-block;background:").Append(OrangeHex).Append(";color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:15px;font-weight:600;\">Open review page</a>");
-            sb.Append("</div>");
+            sb.AppendFormat(
+                "<p style=\"margin:24px 0;\"><a href=\"{0}\" style=\"background:{1};color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;\">Open review</a></p>",
+                HttpUtility.HtmlAttributeEncode(reviewUrl), OrangeHex);
 
-            sb.Append("<p style=\"margin:0 0 8px;font-size:13px;line-height:1.55;color:#666;\">Or copy this link into your browser:</p>");
-            sb.Append("<p style=\"margin:0 0 24px;font-size:12px;line-height:1.4;color:#666;word-break:break-all;\">").Append(HttpUtility.HtmlEncode(link)).Append("</p>");
+            sb.Append("<p style=\"font-size:12px;color:#666;\">If the button does not work, copy and paste this link into your browser:<br/>");
+            sb.AppendFormat("<a href=\"{0}\" style=\"color:{1};\">{0}</a></p>",
+                HttpUtility.HtmlAttributeEncode(reviewUrl), OrangeHex);
 
-            sb.Append("<hr style=\"border:none;border-top:1px solid #eee;margin:24px 0;\"/>");
-            sb.Append("<p style=\"margin:0;font-size:13px;line-height:1.55;color:#666;\">Need help? Contact ").Append(HttpUtility.HtmlEncode(contact)).Append(".</p>");
+            sb.AppendFormat("<p style=\"font-size:12px;color:#888;\">Questions? Contact ").Append(HttpUtility.HtmlEncode(contact)).Append(".</p>");
 
             sb.Append("</td></tr>");
             sb.Append("<tr><td style=\"background:#1a1a1a;padding:16px 32px;\"><div style=\"color:#999;font-size:11px;\">Defence Finance Group · Late Payment Penalty Interest Review · ")
@@ -212,6 +272,39 @@ WHERE p.PackageID = @P;";
             return sb.ToString();
         }
 
+        private static string BuildReviewUrl(string token)
+        {
+            var baseUrl = LPPIHelper.Setting("LPPI.BaseUrl", "");
+            if (string.IsNullOrEmpty(baseUrl) && HttpContext.Current != null)
+            {
+                var req = HttpContext.Current.Request;
+                baseUrl = req.Url.GetLeftPart(UriPartial.Authority)
+                    + req.ApplicationPath.TrimEnd('/');
+            }
+            return baseUrl.TrimEnd('/') + "/LPPI/LPPI_Review.aspx?t=" + Uri.EscapeDataString(token);
+        }
+
+        // -------------------------------------------------------------------
+        // HTML → plain text (for mailto: body)
+        // -------------------------------------------------------------------
+
+        private static string HtmlToPlain(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return html;
+            html = System.Text.RegularExpressions.Regex.Replace(html, "<br\\s*/?>", "\n",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            html = System.Text.RegularExpressions.Regex.Replace(html, "</p>|</div>|</tr>", "\n",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            html = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", "");
+            html = WebUtility.HtmlDecode(html);
+            html = System.Text.RegularExpressions.Regex.Replace(html, @"\n{3,}", "\n\n");
+            return html.Trim();
+        }
+
+        // -------------------------------------------------------------------
+        // Audit log
+        // -------------------------------------------------------------------
+
         private static void LogSend(int packageId, string recipients, string type,
                                     string subject, string body, bool success, string error)
         {
@@ -220,14 +313,14 @@ INSERT INTO dbo.tblLPPI_EmailLog
    (PackageID, RecipientEmail, EmailType, Subject, Body, SentBy, Success, ErrorMessage)
 VALUES (@P, @R, @T, @S, @B, @U, @OK, @E);";
             LPPIHelper.ExecuteNonQuery(sql,
-                LPPIHelper.P("@P", packageId),
-                LPPIHelper.P("@R", recipients),
-                LPPIHelper.P("@T", type),
-                LPPIHelper.P("@S", subject),
-                LPPIHelper.P("@B", body),
-                LPPIHelper.P("@U", LPPIHelper.CurrentUserDisplayName()),
+                LPPIHelper.P("@P",  packageId),
+                LPPIHelper.P("@R",  recipients),
+                LPPIHelper.P("@T",  type),
+                LPPIHelper.P("@S",  subject),
+                LPPIHelper.P("@B",  body),
+                LPPIHelper.P("@U",  LPPIHelper.CurrentUserDisplayName()),
                 LPPIHelper.P("@OK", success ? 1 : 0),
-                LPPIHelper.P("@E", (object)error ?? DBNull.Value));
+                LPPIHelper.P("@E",  (object)error ?? DBNull.Value));
         }
     }
 }
