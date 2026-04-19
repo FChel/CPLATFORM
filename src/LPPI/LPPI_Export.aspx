@@ -18,8 +18,7 @@
         <div class="page-head">
             <div>
                 <div class="crumb">LPPI Review</div>
-                <h1>Export to BODS</h1>
-                <p class="lead">Produce a tab-delimited file of reviewed documents in the BODS upload format. A copy is saved to the configured export folder and streamed to your browser.</p>
+                <h1>Export to ERP Payment Request - bulk upload template</h1>
             </div>
         </div>
 
@@ -29,11 +28,11 @@
             <h2>Export parameters</h2>
             <div class="form-grid">
                 <div class="form-row">
-                    <label for="txtFrom">First seen from</label>
+                    <label for="txtFrom">Loaded into CPLATFORM from</label>
                     <asp:TextBox ID="txtFrom" runat="server" CssClass="input" TextMode="Date" />
                 </div>
                 <div class="form-row">
-                    <label for="txtTo">First seen to</label>
+                    <label for="txtTo">Loaded into CPLATFORM to</label>
                     <asp:TextBox ID="txtTo" runat="server" CssClass="input" TextMode="Date" />
                 </div>
                 <div class="form-row">
@@ -47,22 +46,13 @@
                     <label><asp:CheckBox ID="chkMark" runat="server" Checked="true" /> Mark documents as exported</label>
                 </div>
                 <div class="form-row form-row-actions">
-                    <asp:Button ID="btnPreview" runat="server" CssClass="btn btn-secondary" Text="Preview count" OnClick="btnPreview_Click" />
-                    <asp:Button ID="btnExport"  runat="server" CssClass="btn btn-primary"   Text="Export now"    OnClick="btnExport_Click"
-                                OnClientClick="return confirm('Generate the export file now?');" />
+                    <asp:Button ID="btnPreview" runat="server" CssClass="btn btn-secondary" Text="Preview count"        OnClick="btnPreview_Click" />
+                    <asp:Button ID="btnExport"  runat="server" CssClass="btn btn-primary"   Text="Generate payment file" OnClick="btnExport_Click"
+                                OnClientClick="return confirm('Generate the payment file now?');" />
                 </div>
             </div>
         </div>
 
-        <div class="card">
-            <h2>About the export</h2>
-            <ul class="bare">
-                <li>File name: <code>LATEPMT_INTEREST_INCLUDE_&lt;MMM&gt;_&lt;YYYY&gt;.txt</code></li>
-                <li>Format: tab-delimited, UTF-8, dates as <code>dd/MM/yyyy</code>.</li>
-                <li>Only documents with a reason code are included.</li>
-                <li>Saved copy: <code><%= LPPIHelper.Enc(LPPIHelper.ExportPath) %></code></li>
-            </ul>
-        </div>
     </main>
 
     <footer class="lppi-footer">

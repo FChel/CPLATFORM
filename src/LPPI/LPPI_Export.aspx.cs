@@ -7,6 +7,9 @@ namespace CPlatform.LPPI
 {
     public partial class LPPI_Export : LPPIBasePage
     {
+        private const string XlsxMimeType =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
         protected void Page_Load(object sender, EventArgs e)
         {
             if (!IsPostBack)
@@ -49,14 +52,18 @@ namespace CPlatform.LPPI
             DateTime from, to; int? batchId;
             if (!ReadInputs(out from, out to, out batchId)) { return; }
 
+            // Preview count must match the export filter — include only
+            // reviewed documents whose reason code has Outcome = 'Payable'.
             var sb = new StringBuilder();
             sb.Append(@"SELECT COUNT(*) FROM tblLPPI_Documents d
-                        INNER JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
+                        INNER JOIN tblLPPI_Reviews r      ON r.DocumentID = d.DocumentID
+                        INNER JOIN tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID
                         WHERE r.ReasonCodeID IS NOT NULL
+                          AND rc.Outcome = 'Payable'
                           AND d.FirstSeenDate >= @From
                           AND d.FirstSeenDate <  DATEADD(day, 1, @To)");
             if (!chkIncludeExported.Checked) { sb.Append(" AND d.ExportedDate IS NULL"); }
-            if (batchId.HasValue) { sb.Append(" AND d.BatchID = @B"); }
+            if (batchId.HasValue)            { sb.Append(" AND d.BatchID = @B"); }
 
             var parms = new System.Collections.Generic.List<System.Data.OleDb.OleDbParameter>
             {
@@ -66,7 +73,7 @@ namespace CPlatform.LPPI
             if (batchId.HasValue) { parms.Add(LPPIHelper.P("@B", batchId.Value)); }
 
             int n = Convert.ToInt32(LPPIHelper.ExecuteScalar(sb.ToString(), parms.ToArray()));
-            ShowMessage(n + " document(s) would be exported.", n > 0 ? "ok" : "warn");
+            ShowMessage(n + " payable document(s) would be exported.", n > 0 ? "ok" : "warn");
         }
 
         protected void btnExport_Click(object sender, EventArgs e)
@@ -79,12 +86,12 @@ namespace CPlatform.LPPI
                 var result = LPPIExport.BuildExport(from, to, chkIncludeExported.Checked, batchId, chkMark.Checked);
                 if (result.RowCount == 0)
                 {
-                    ShowMessage("No documents match those parameters — nothing was exported.", "warn");
+                    ShowMessage("No payable documents match those parameters — nothing was exported.", "warn");
                     return;
                 }
 
                 Response.Clear();
-                Response.ContentType = "text/tab-separated-values";
+                Response.ContentType = XlsxMimeType;
                 Response.AddHeader("Content-Disposition", "attachment; filename=\"" + result.FileName + "\"");
                 Response.AddHeader("Content-Length", result.Bytes.Length.ToString());
                 Response.BinaryWrite(result.Bytes);
