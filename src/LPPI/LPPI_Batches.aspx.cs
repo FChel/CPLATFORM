@@ -44,8 +44,14 @@ namespace CPlatform.LPPI
             pnlDocs.Visible = true;
             litBatchId.Text = batchId.ToString();
 
+            // Columns required by rptDocs in LPPI_Batches.aspx:
+            //   DocNoAccounting, VendorName, PoNumber, CapabilityManagerProgram,
+            //   InvoiceDate, PaymentRunDate, DaysVariance, InterestPayable,
+            //   ExportedDate (counted server-side only), ReasonCode,
+            //   CompanyCode, ClearingMonth      <-- new, feed SapFiLinkIcon
             const string sql = @"
                 SELECT d.DocNoAccounting, d.VendorName, d.PoNumber, d.CapabilityManagerProgram,
+                       d.CompanyCode, d.ClearingMonth,
                        d.InvoiceDate, d.PaymentRunDate, d.DaysVariance, d.InterestPayable,
                        d.ExportedDate,
                        rc.Code AS ReasonCode

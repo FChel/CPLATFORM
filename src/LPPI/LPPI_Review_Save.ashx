@@ -68,18 +68,55 @@ namespace CPlatform.LPPI
                 string comments = (ctx.Request.Form["comments"] ?? "").Trim();
                 string objref   = (ctx.Request.Form["objref"]   ?? "").Trim();
 
-                // Enforce RequiresComments server-side
+                // -----------------------------------------------------------
+                // Mandatory-field rules.
+                //   1. RequiresComments flag (RC07 / RC16): Comments must be present
+                //      regardless of outcome.
+                //   2. NEW — Outcome = 'NotPayable': BOTH Comments AND
+                //      ObjectiveReference are mandatory.
+                // Fetch both flag + outcome in a single round-trip.
+                // -----------------------------------------------------------
                 if (reasonId.HasValue)
                 {
-                    object req = LPPIHelper.ExecuteScalar(
-                        "SELECT RequiresComments FROM tblLPPI_ReasonCodes WHERE ReasonCodeID = @id",
+                    DataTable rc = LPPIHelper.ExecuteTable(
+                        "SELECT RequiresComments, Outcome FROM tblLPPI_ReasonCodes WHERE ReasonCodeID = @id",
                         LPPIHelper.P("@id", reasonId.Value));
-                    if (req == null) { Write(ctx, false, "Unknown reason code."); return; }
-                    bool requires = Convert.ToBoolean(req);
-                    if (requires && comments.Length == 0)
+                    if (rc.Rows.Count == 0) { Write(ctx, false, "Unknown reason code."); return; }
+
+                    bool requiresComments = Convert.ToBoolean(rc.Rows[0]["RequiresComments"]);
+                    string outcome = Convert.ToString(rc.Rows[0]["Outcome"]);
+                    bool isNotPayable = string.Equals(outcome, "NotPayable", StringComparison.OrdinalIgnoreCase);
+
+                    // Rule 1 — RequiresComments applies to any outcome
+                    if (requiresComments && comments.Length == 0)
                     {
                         Write(ctx, false, "Comments are required for this reason code.");
                         return;
+                    }
+
+                    // Rule 2 — NotPayable needs BOTH fields. We call out whichever
+                    // one (or both) is missing so the reviewer knows exactly what
+                    // to fill in.
+                    if (isNotPayable)
+                    {
+                        bool missingComments = comments.Length == 0;
+                        bool missingObjRef   = objref.Length == 0;
+                        if (missingComments && missingObjRef)
+                        {
+                            Write(ctx, false,
+                                "For a Not-Payable outcome both Comments and Objective Reference are required.");
+                            return;
+                        }
+                        if (missingComments)
+                        {
+                            Write(ctx, false, "Comments are required when the outcome is Not Payable.");
+                            return;
+                        }
+                        if (missingObjRef)
+                        {
+                            Write(ctx, false, "Objective Reference is required when the outcome is Not Payable.");
+                            return;
+                        }
                     }
                 }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Text;
 
@@ -19,6 +20,7 @@ namespace CPlatform.LPPI
         protected string DueCssClass;
 
         private DataTable _reasonCodes;
+        private DataTable _docTable;    // kept around so BuildFacetOptions can run after DataBind
 
         protected void Page_Load(object sender, EventArgs e)
         {
@@ -49,7 +51,8 @@ namespace CPlatform.LPPI
 
             int packageId = Convert.ToInt32(pr["PackageID"]);
             TokenForClient = token;
-            string displayName = pr["DisplayName"] == DBNull.Value ? "" : Convert.ToString(pr["DisplayName"]);
+            string displayName = pr["DisplayName"] == DBNull.Value ? ""
+                                                                  : Convert.ToString(pr["DisplayName"]);
             ProgramName = Convert.ToString(pr["Program"]);
             if (!string.IsNullOrEmpty(displayName)) { ProgramName = ProgramName + " — " + displayName; }
             DueDate = Convert.ToDateTime(pr["DueDate"]);
@@ -60,14 +63,28 @@ namespace CPlatform.LPPI
 
             _reasonCodes = LPPIHelper.GetReasonCodes(activeOnly: true);
 
-            if (!IsPostBack) { LoadDocuments(packageId); }
+            LoadDocuments(packageId);
         }
 
         private void LoadDocuments(int packageId)
         {
+            // Every column named below is bound by Eval() in LPPI_Review.aspx —
+            // do NOT remove any of these aliases without also updating the markup.
+            //   Card view:
+            //     DocumentID, VendorName, DocNoAccounting, PoNumber,
+            //     InterestPayable, InvoiceDate, PaymentRunDate, DaysVariance,
+            //     WbsElement, ProfitCentre, DeliveryManagerName, PocEmail,
+            //     SelectedReasonCodeID, Comments, ObjectiveReference,
+            //     CompanyCode, ClearingMonth         (for SAP FI deep link)
+            //     SearchBlob                          (added below)
+            //   Table view adds:
+            //     WbsDesc                             (tooltip on WBS column)
             DataTable dt = LPPIHelper.ExecuteTable(@"
-                SELECT d.DocumentID, d.DocNoAccounting, d.VendorName, d.PoNumber, d.WbsElement,
-                       d.ProfitCentre, d.DeliveryManagerName, d.InvoiceDate, d.PaymentRunDate,
+                SELECT d.DocumentID, d.DocNoAccounting, d.VendorName, d.PoNumber,
+                       d.WbsElement, d.WbsDesc, d.ProfitCentre,
+                       d.DeliveryManagerName, d.PocEmail,
+                       d.CompanyCode, d.ClearingMonth,
+                       d.InvoiceDate, d.PaymentRunDate,
                        d.DaysVariance, d.InterestPayable,
                        r.ReasonCodeID AS SelectedReasonCodeID,
                        r.Comments, r.ObjectiveReference
@@ -78,7 +95,8 @@ namespace CPlatform.LPPI
                 ORDER BY d.VendorName, d.DocNoAccounting",
                 LPPIHelper.P("@p", packageId));
 
-            // Add a SearchBlob column for the JS filter
+            // Build the SearchBlob — includes every field the user might type
+            // to find a row (including DM, POC, WBS, Profit Centre).
             if (!dt.Columns.Contains("SearchBlob"))
             {
                 dt.Columns.Add("SearchBlob", typeof(string));
@@ -91,7 +109,10 @@ namespace CPlatform.LPPI
                     Convert.ToString(r["DocNoAccounting"]),
                     Convert.ToString(r["PoNumber"]),
                     Convert.ToString(r["WbsElement"]),
-                    Convert.ToString(r["ProfitCentre"])
+                    Convert.ToString(r["WbsDesc"]),
+                    Convert.ToString(r["ProfitCentre"]),
+                    Convert.ToString(r["DeliveryManagerName"]),
+                    Convert.ToString(r["PocEmail"])
                 });
             }
 
@@ -102,6 +123,8 @@ namespace CPlatform.LPPI
                 if (r["SelectedReasonCodeID"] != DBNull.Value) { ReviewedCount++; }
             }
 
+            _docTable = dt;
+
             rptCards.DataSource = dt;
             rptCards.DataBind();
             rptTable.DataSource = dt;
@@ -109,69 +132,97 @@ namespace CPlatform.LPPI
             phEmpty.Visible = TotalCount == 0;
         }
 
+        /// <summary>
+        /// Reason-code &lt;option&gt; list with data-outcome and data-requires so
+        /// the client-side rules can read them without another round-trip.
+        /// </summary>
         protected string BuildReasonOptions(object selectedId)
         {
             int? sel = null;
             if (selectedId != null && selectedId != DBNull.Value)
             {
-                int v;
-                if (int.TryParse(Convert.ToString(selectedId), out v)) { sel = v; }
+                int n;
+                if (int.TryParse(Convert.ToString(selectedId), out n)) { sel = n; }
+            }
+            var sb = new StringBuilder();
+            if (_reasonCodes == null) return "";
+            foreach (DataRow r in _reasonCodes.Rows)
+            {
+                int id = Convert.ToInt32(r["ReasonCodeID"]);
+                string code = Convert.ToString(r["Code"]);
+                string desc = Convert.ToString(r["Description"]);
+                string outcome = Convert.ToString(r["Outcome"]);
+                bool requires = Convert.ToBoolean(r["RequiresComments"]);
+                sb.Append("<option value=\"").Append(id).Append("\"")
+                  .Append(" data-outcome=\"").Append(LPPIHelper.Enc(outcome)).Append("\"")
+                  .Append(" data-requires=\"").Append(requires ? "1" : "0").Append("\"");
+                if (sel.HasValue && sel.Value == id) { sb.Append(" selected"); }
+                sb.Append(">").Append(LPPIHelper.Enc(code));
+                if (!string.IsNullOrEmpty(desc))
+                {
+                    sb.Append(" — ").Append(LPPIHelper.Enc(desc));
+                }
+                sb.Append("</option>");
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Build the &lt;option&gt; list for ONE facet filter dropdown (DM, POC,
+        /// WBS or Profit Centre). Values are the raw string from the column
+        /// (no prefix) — each dropdown is dedicated so the JS knows which
+        /// data-* attribute to match against via the dropdown's element id.
+        ///
+        /// Usage in .aspx:
+        ///   &lt;%= BuildFacetOptions("dm")  %&gt;
+        ///   &lt;%= BuildFacetOptions("poc") %&gt;
+        ///   &lt;%= BuildFacetOptions("wbs") %&gt;
+        ///   &lt;%= BuildFacetOptions("pc")  %&gt;
+        /// </summary>
+        protected string BuildFacetOptions(string kind)
+        {
+            if (_docTable == null || _docTable.Rows.Count == 0) return "";
+
+            string column;
+            switch ((kind ?? "").ToLowerInvariant())
+            {
+                case "dm":  column = "DeliveryManagerName"; break;
+                case "poc": column = "PocEmail";            break;
+                case "wbs": column = "WbsElement";          break;
+                case "pc":  column = "ProfitCentre";        break;
+                default:    return "";
             }
 
-            if (_reasonCodes == null)
+            var values = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (DataRow r in _docTable.Rows)
             {
-                _reasonCodes = LPPIHelper.GetReasonCodes(activeOnly: true);
+                var v = r[column];
+                if (v == null || v == DBNull.Value) continue;
+                var s = Convert.ToString(v);
+                if (!string.IsNullOrWhiteSpace(s)) values.Add(s.Trim());
             }
 
             var sb = new StringBuilder();
-            sb.Append("<optgroup label=\"Interest Payable\">");
-            bool inPayable = true;
-            foreach (DataRow r in _reasonCodes.Rows)
+            foreach (var v in values)
             {
-                string outcome = Convert.ToString(r["Outcome"]);
-                bool isPayable = string.Equals(outcome, "Payable", StringComparison.OrdinalIgnoreCase);
-                if (!isPayable && inPayable)
-                {
-                    sb.Append("</optgroup><optgroup label=\"Interest Not Payable\">");
-                    inPayable = false;
-                }
-                int id = Convert.ToInt32(r["ReasonCodeID"]);
-                bool requires = Convert.ToBoolean(r["RequiresComments"]);
-                string label = Convert.ToString(r["Description"]);
-
-                sb.Append("<option value=\"").Append(id).Append("\"")
-                  .Append(" data-outcome=\"").Append(isPayable ? "Payable" : "NotPayable").Append("\"")
-                  .Append(" data-requires=\"").Append(requires ? "1" : "0").Append("\"");
-                if (sel.HasValue && sel.Value == id) { sb.Append(" selected"); }
-                sb.Append(">").Append(LPPIHelper.Enc(label)).Append("</option>");
+                sb.Append("<option value=\"")
+                  .Append(LPPIHelper.Enc(v))
+                  .Append("\">")
+                  .Append(LPPIHelper.Enc(v))
+                  .Append("</option>");
             }
-            sb.Append("</optgroup>");
             return sb.ToString();
         }
 
         private void SetDueCountdown()
         {
-            int days = (int)(DueDate.Date - DateTime.Today).TotalDays;
-            if (days < 0)
-            {
-                DueCountdownText = (-days) + " day(s) overdue";
-                DueCssClass = "meta-err";
-            }
-            else if (days == 0)
-            {
-                DueCountdownText = "Due today";
-                DueCssClass = "meta-warn";
-            }
+            TimeSpan diff = DueDate.Date - DateTime.Today;
+            int days = (int)diff.TotalDays;
+            if (days < 0)      { DueCountdownText = (-days) + " day(s) overdue"; DueCssClass = "err"; }
+            else if (days == 0){ DueCountdownText = "Due today";                 DueCssClass = "warn"; }
             else if (days <= LPPIHelper.ReminderWindowDays)
-            {
-                DueCountdownText = days + " day(s) remaining";
-                DueCssClass = "meta-warn";
-            }
-            else
-            {
-                DueCountdownText = days + " day(s) remaining";
-                DueCssClass = "meta-ok";
-            }
+                               { DueCountdownText = days + " day(s) remaining";  DueCssClass = "warn"; }
+            else               { DueCountdownText = days + " day(s) remaining";  DueCssClass = ""; }
         }
 
         private void ShowError()

@@ -1,6 +1,6 @@
 /* =============================================================================
    LPPI Review — stylesheet
-   DFG palette only: Defence orange / black / white. Built fresh.
+   DFG palette only: Defence orange / black / white.
    ========================================================================== */
 
 :root {
@@ -21,7 +21,7 @@
     --bg:            #f7f7f9;
     --white:         #ffffff;
 
-    /* --- Status colours (kept neutral; DFG palette retains semantic role) --- */
+    /* --- Status colours --- */
     --ok:            #1b7a3e;
     --ok-bg:         #e8f6ee;
     --warn:          #8a5a00;
@@ -407,7 +407,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 
 /* ---------- Reviewer page ---------- */
 .review-shell {
-    max-width: 1280px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 24px 32px 80px;
 }
@@ -476,7 +476,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     justify-content: space-between;
 }
 
-/* Toolbar */
+/* ---------- Toolbar ---------- */
 .toolbar {
     background: var(--white);
     border: 1px solid var(--line);
@@ -522,6 +522,36 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     fill: none;
     stroke-width: 2;
 }
+.toolbar .search-wrap {
+    flex: 1;
+    min-width: 260px;
+    position: relative;
+}
+.toolbar .search-wrap input {
+    width: 100%;
+    padding: 9px 12px 9px 36px;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    font-family: inherit;
+    font-size: 13px;
+    background: var(--bg);
+}
+.toolbar .search-wrap input:focus {
+    outline: none;
+    border-color: var(--orange);
+    background: var(--white);
+}
+.toolbar .search-wrap svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    stroke: var(--ink-3);
+    fill: none;
+    stroke-width: 2;
+}
 .toolbar select {
     padding: 9px 12px;
     border: 1px solid var(--line);
@@ -530,6 +560,27 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     font-size: 13px;
     background: var(--white);
 }
+.toolbar-left {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+}
+.toolbar-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* The four facet filter dropdowns: compact but readable. */
+.filter-facet {
+    max-width: 160px;
+    font-size: 12px;
+}
+
 .view-toggle {
     display: inline-flex;
     background: var(--bg);
@@ -558,6 +609,21 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 #saveIndicator.saving { color: var(--orange); }
 #saveIndicator.saved  { color: var(--ok); }
 #saveIndicator.error  { color: var(--err); }
+.save-indicator.saving { color: var(--orange); }
+.save-indicator.saved  { color: var(--ok); }
+.save-indicator.error  { color: var(--err); }
+
+/* The Save button lives on the toolbar-right and uses .btn-primary; this
+   just gives it a touch more presence so it reads as the primary action. */
+#saveAllBtn {
+    padding: 10px 18px;
+    font-size: 14px;
+    box-shadow: 0 2px 6px rgba(215,91,7,0.25);
+}
+#saveAllBtn svg {
+    stroke: currentColor;
+    flex: 0 0 auto;
+}
 
 /* ---------- Card view ---------- */
 .cards {
@@ -591,12 +657,14 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     gap: 12px;
     margin-bottom: 12px;
 }
-.doc-head .vendor {
+.doc-head .vendor,
+.doc-vendor {
     font-size: 16px;
     font-weight: 600;
     color: var(--ink);
 }
-.doc-head .docno {
+.doc-head .docno,
+.doc-sub {
     font-size: 12px;
     color: var(--ink-3);
     font-family: var(--font-mono);
@@ -605,25 +673,28 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 
 .doc-fields {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 12px 20px;
     margin-bottom: 16px;
     padding: 12px;
     background: var(--bg);
     border-radius: var(--r);
 }
-.doc-fields .f .lbl {
+.doc-fields .f .lbl,
+.doc-fields .fk {
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--ink-3);
 }
-.doc-fields .f .val {
+.doc-fields .f .val,
+.doc-fields .fv {
     font-size: 13px;
     font-weight: 600;
     color: var(--ink);
     margin-top: 2px;
     word-break: break-word;
+    display: block;
 }
 .doc-fields .f .val.amount { color: var(--orange-deep); }
 
@@ -666,7 +737,8 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     border-color: var(--orange);
     box-shadow: 0 0 0 3px rgba(215,91,7,0.15);
 }
-.doc-card.needs-comment textarea {
+.doc-card.needs-comment textarea,
+.doc-card.needs-comment .objref-input {
     border-color: var(--err);
     background: #fff7f7;
 }
@@ -676,6 +748,7 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     margin-top: 4px;
     display: none;
 }
+.doc-card .row-msg:empty { display: none; }
 .doc-card.needs-comment .row-msg { display: block; }
 
 .doc-card .row-status {
@@ -706,7 +779,8 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 .cards.hidden { display: none; }
 
 .review-table .tbl select,
-.review-table .tbl textarea {
+.review-table .tbl textarea,
+.review-table .tbl input[type=text] {
     width: 100%;
     padding: 6px 8px;
     border: 1px solid var(--line);
@@ -714,9 +788,92 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     font-family: inherit;
     font-size: 12px;
 }
-.review-table .tbl tr.needs-comment textarea {
+.review-table .tbl tr.needs-comment textarea,
+.review-table .tbl tr.needs-comment input[type=text] {
     border-color: var(--err);
     background: #fff7f7;
+}
+
+/* Dense, fixed-layout review table sized to fit inside 1600px without
+   horizontal scroll. Long values in WBS / Profit Centre / DM / POC / Vendor
+   truncate with an ellipsis and expose the full value via td[title]. */
+.review-table .tbl-wrap {
+    max-height: 72vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+.review-table .tbl-review {
+    table-layout: fixed;
+    font-size: 12px;
+}
+.review-table .tbl-review th,
+.review-table .tbl-review td {
+    padding: 6px 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.review-table .tbl-review td.col-comments,
+.review-table .tbl-review td.col-obj {
+    white-space: normal;
+}
+
+.review-table .tbl-review .col-sel      { width: 28px; }
+.review-table .tbl-review .col-doc      { width: 110px; }
+.review-table .tbl-review .col-vendor   { width: 170px; }
+.review-table .tbl-review .col-po       { width: 110px; }
+.review-table .tbl-review .col-wbs      { width: 130px; }
+.review-table .tbl-review .col-pc       { width: 110px; }
+.review-table .tbl-review .col-dm       { width: 140px; }
+.review-table .tbl-review .col-poc      { width: 170px; }
+.review-table .tbl-review .col-date     { width: 90px; }
+.review-table .tbl-review .col-days     { width: 52px; }
+.review-table .tbl-review .col-int      { width: 90px; }
+.review-table .tbl-review .col-reason   { width: 200px; }
+.review-table .tbl-review .col-comments { width: auto; min-width: 180px; }
+.review-table .tbl-review .col-obj      { width: 140px; }
+
+.review-table .tbl-review .col-reason select,
+.review-table .tbl-review .col-comments textarea,
+.review-table .tbl-review .col-obj input {
+    padding: 4px 6px;
+    font-size: 12px;
+    min-height: 28px;
+}
+.review-table .tbl-review .col-comments textarea {
+    resize: vertical;
+    min-height: 28px;
+    max-height: 80px;
+}
+
+.review-table .tbl-review tr.needs-comment td.col-comments textarea,
+.review-table .tbl-review tr.needs-comment td.col-obj input {
+    border-color: var(--err);
+    background: #fff7f7;
+}
+
+/* ---------- SAP deep-link anchors ----------
+   The PO/Doc number itself is the link. Styled like a regular anchor but
+   with a touch of emphasis so it is clearly clickable; still copy/pasteable
+   because it is just anchor text. */
+.sap-number-link {
+    color: var(--orange);
+    text-decoration: none;
+    font-weight: 600;
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.15s, color 0.15s;
+}
+.sap-number-link:hover,
+.sap-number-link:focus {
+    color: var(--orange-deep);
+    border-bottom-color: var(--orange);
+    text-decoration: none;
+    outline: none;
+}
+/* In the dense table view, drop the link to a size that matches the cells. */
+.review-table .tbl-review .sap-number-link {
+    font-weight: 500;
 }
 
 /* ---------- Empty / done states ---------- */
@@ -783,6 +940,8 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 /* ---------- Print ---------- */
 @media print {
     .lppi-header, .toolbar, .bulk-bar, .btn { display: none !important; }
+    .filter-facet, #saveAllBtn { display: none !important; }
+    .sap-number-link { color: inherit; border-bottom: none; font-weight: inherit; }
     body { background: #fff; }
     .doc-card { break-inside: avoid; box-shadow: none; border: 1px solid #999; }
     .review-shell { padding: 0; }

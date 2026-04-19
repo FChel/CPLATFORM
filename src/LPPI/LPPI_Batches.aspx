@@ -100,9 +100,9 @@
                     </HeaderTemplate>
                     <ItemTemplate>
                         <tr>
-                            <td><%# LPPIHelper.Enc(Eval("DocNoAccounting")) %></td>
+                            <td><%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %></td>
                             <td><%# LPPIHelper.Enc(Eval("VendorName")) %></td>
-                            <td><%# LPPIHelper.Enc(Eval("PoNumber")) %></td>
+                            <td><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
                             <td><%# LPPIHelper.Enc(Eval("CapabilityManagerProgram")) %></td>
                             <td><%# LPPIHelper.FormatDate(Eval("InvoiceDate")) %></td>
                             <td><%# LPPIHelper.FormatDate(Eval("PaymentRunDate")) %></td>
