@@ -160,7 +160,11 @@ BEGIN
 END
 GO
 
-/* ----------------------------- tblLPPI_CapabilityManagerEmails -------------- */
+/* ----------------------------- tblLPPI_CapabilityManagerEmails --------------
+   Note: the per-recipient IsActive flag was removed. The UI is now a simple
+   add/delete model — disabled recipients are deleted outright. The group-
+   level IsActive on tblLPPI_CapabilityManagers is unrelated and remains.
+   ---------------------------------------------------------------------- */
 IF OBJECT_ID(N'dbo.tblLPPI_CapabilityManagerEmails', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tblLPPI_CapabilityManagerEmails
@@ -170,13 +174,34 @@ BEGIN
         Email        NVARCHAR(200)  NOT NULL,
         DisplayName  NVARCHAR(200)  NULL,
         IsCC         BIT            NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagerEmails_IsCC DEFAULT (0),
-        IsActive     BIT            NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagerEmails_IsActive DEFAULT (1),
-        CreatedDate  DATETIME2(3)       NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagerEmails_CreatedDate DEFAULT (SYSDATETIME()),
+        CreatedDate  DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagerEmails_CreatedDate DEFAULT (SYSDATETIME()),
         CONSTRAINT FK_tblLPPI_CapabilityManagerEmails_Cm FOREIGN KEY (CmID) REFERENCES dbo.tblLPPI_CapabilityManagers(CmID)
     );
 
     CREATE NONCLUSTERED INDEX IX_tblLPPI_CapabilityManagerEmails_CmID
         ON dbo.tblLPPI_CapabilityManagerEmails(CmID);
+END
+GO
+
+/* Upgrade path for environments that already had the table with IsActive.
+   Drops the default constraint first, then the column. Guarded so running
+   this script on a fresh database (where the table was created clean above)
+   is a no-op. Safe to re-run. */
+IF EXISTS (
+    SELECT 1
+    FROM sys.default_constraints
+    WHERE name = 'DF_tblLPPI_CapabilityManagerEmails_IsActive'
+)
+BEGIN
+    ALTER TABLE dbo.tblLPPI_CapabilityManagerEmails
+        DROP CONSTRAINT DF_tblLPPI_CapabilityManagerEmails_IsActive;
+END
+GO
+
+IF COL_LENGTH('dbo.tblLPPI_CapabilityManagerEmails', 'IsActive') IS NOT NULL
+BEGIN
+    ALTER TABLE dbo.tblLPPI_CapabilityManagerEmails
+        DROP COLUMN IsActive;
 END
 GO
 
@@ -248,7 +273,7 @@ GO
 /* ============================================================================
    Seed data — reason codes (16 canonical codes from RMG 417 LPPI process)
    Re-runnable: only inserts codes that don't already exist.
-   ============================================================================ */
+============================================================================ */
 ;WITH Seed(Code, Description, Outcome, DisplayOrder, RequiresComments) AS
 (
     SELECT 'RC01', N'Interest Payable – ERP Technical/Migration/Access or other ERP related issues', 'Payable',     1, 0 UNION ALL
