@@ -25,6 +25,12 @@
 
         <asp:PlaceHolder ID="phMessage" runat="server" />
 
+        <%-- Unconfigured-CM warning. Relocated from the Dashboard so it
+             surfaces on the page where the operator can actually act on
+             it (i.e. just before picking groups to send). Rendered in
+             code-behind via BindUnconfigured(). --%>
+        <asp:PlaceHolder ID="phUnconfigured" runat="server" />
+
         <div class="card">
             <h2>Outstanding work by group</h2>
             <div class="form-grid">

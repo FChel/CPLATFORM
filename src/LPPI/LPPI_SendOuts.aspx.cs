@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Text;
 using System.Web.UI;
 using System.Web.UI.WebControls;
@@ -11,12 +12,38 @@ namespace CPlatform.LPPI
     {
         protected void Page_Load(object sender, EventArgs e)
         {
+            // The unconfigured-CM warning rebinds on every request so
+            // recipients added from the Capability Managers page are
+            // reflected immediately when the operator navigates back.
+            BindUnconfigured();
+
             if (!IsPostBack)
             {
                 txtDueDate.Text = DateTime.Today.AddDays(LPPIHelper.DefaultDueDays).ToString("yyyy-MM-dd");
                 BindGroups();
                 BindRecent();
             }
+        }
+
+        // -------------------------------------------------------------------
+        // Unconfigured-CM warning — relocated from LPPI_Admin.aspx so it
+        // surfaces on the page where the operator acts on it.
+        // -------------------------------------------------------------------
+
+        private void BindUnconfigured()
+        {
+            phUnconfigured.Controls.Clear();
+
+            var unconfigured = LPPIHelper.GetUnconfiguredPrograms();
+            if (unconfigured.Count == 0) return;
+
+            var msg = "<div class=\"alert warn\"><div><strong>" + unconfigured.Count +
+                      " Capability Manager program" + (unconfigured.Count == 1 ? "" : "s") +
+                      "</strong> in your loaded data have no recipient email configured. " +
+                      "You will not be able to send these out for review until they are added.<br/>" +
+                      "Missing: " + string.Join(", ", unconfigured.Select(p => "<code>" + System.Web.HttpUtility.HtmlEncode(p) + "</code>")) +
+                      " &nbsp; <a href=\"LPPI_CapabilityManagers.aspx\">Configure now &rarr;</a></div></div>";
+            phUnconfigured.Controls.Add(new LiteralControl(msg));
         }
 
         // -------------------------------------------------------------------
@@ -32,10 +59,10 @@ namespace CPlatform.LPPI
                        cm.Program,
                        (SELECT COUNT(*)
                           FROM tblLPPI_CapabilityManagerEmails e
-                         WHERE e.CmID = cm.CmID AND e.IsActive = 1 AND e.IsCC = 0) AS ToCount,
+                         WHERE e.CmID = cm.CmID AND e.IsCC = 0) AS ToCount,
                        ISNULL(STUFF((SELECT ', ' + e.Email
                                        FROM tblLPPI_CapabilityManagerEmails e
-                                      WHERE e.CmID = cm.CmID AND e.IsActive = 1 AND e.IsCC = 0
+                                      WHERE e.CmID = cm.CmID AND e.IsCC = 0
                                         FOR XML PATH('')), 1, 2, ''), '') AS ToList,
                        (SELECT COUNT(*)
                           FROM tblLPPI_Documents d

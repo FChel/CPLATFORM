@@ -587,15 +587,14 @@
 
         <!-- Hero -->
         <section class="hero">
-            <span class="kicker">DFG &middot; FSO &middot; Finance Utilities</span>
+            <span class="kicker">DFG &middot; Finance Utilities</span>
             <h1>FinHub<span class="accent"></span></h1>
             <p class="tagline">
-                FinHub is a collection of finance utilities &mdash; including chart of accounts search,
-                eJET journals, eJET Multi and DFG forms.
+                FinHub is a collection of finance utilities including LPPI Review Dashboard, eJET and Chart of Accounts (COA) Search.
             </p>
             <div class="hero-cta-row">
                 <a class="btn btn-primary" href="LPPI/LPPI_Admin.aspx" target="_blank" rel="noopener noreferrer">
-                    LPPI Review
+                    LPPI Review Dashboard
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                 </a>
                 <a class="btn btn-ghost" href="http://creditcarduat.dpesit.protectedsit.mil.au/COASearch.asp" target="_blank" rel="noopener noreferrer">COA Search</a>
@@ -614,8 +613,8 @@
                     <div class="icon">
                         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><circle cx="16" cy="16" r="3"/><path d="M16 14.5V16l1 1"/></svg>
                     </div>
-                    <h3>LPPI Review</h3>
-                    <p>Review and classify Late Payment Penalty Interest cases from BODS extracts.</p>
+                    <h3>LPPI Review Dashobard</h3>
+                    <p>Review and classify Late Payment Penalty Interest cases.</p>
                 </div>
                 <span class="arrow">Open &rarr;</span>
             </a>
@@ -671,21 +670,9 @@
         <section class="info">
             <h2>About this site</h2>
             <p>
-                FinHub is a collection of <strong>finance utilities</strong> hosted on the CAPS platform (<strong>CPLATFORM</strong>), it operate independently of CAPS while sharing the same trusted infrastructure.
-            </p>
-            <p>
-                The page you are currently viewing is the <strong><%= EnvironmentLabel %></strong> environment.
+                FinHub is a collection of <strong>finance utilities</strong> on the CAPS platform (<strong>CPLATFORM</strong>). The page you are currently viewing is the <strong><%= EnvironmentLabel %></strong> environment.
             </p>
         </section>
-
-        <!-- Diagnostic strip -->
-        <div class="meta">
-            <span>Environment: <b><%= EnvironmentLabel %></b></span>
-            <span>Site: <b><%= Server.HtmlEncode(string.IsNullOrEmpty(SiteName) ? "(unknown)" : SiteName) %></b></span>
-            <span>Host: <b><%= Server.HtmlEncode(string.IsNullOrEmpty(HostName) ? "(unknown)" : HostName) %></b></span>
-            <span>Server time: <b><%= DateTime.Now.ToString("dd MMM yyyy HH:mm") %></b></span>
-        </div>
-
     </div>
     </form>
 </body>

@@ -794,12 +794,14 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     background: #fff7f7;
 }
 
-/* Dense, fixed-layout review table sized to fit inside 1600px without
-   horizontal scroll. Long values in WBS / Profit Centre / DM / POC / Vendor
-   truncate with an ellipsis and expose the full value via td[title]. */
+/* Dense, fixed-layout review table. The column widths below add up to more
+   than 1600px, so on narrower viewports we let the user scroll horizontally
+   rather than clipping columns. Long values in WBS / Profit Centre / DM /
+   POC / Vendor still truncate with an ellipsis and expose the full value
+   via td[title]. */
 .review-table .tbl-wrap {
     max-height: 72vh;
-    overflow-x: hidden;
+    overflow-x: auto;
     overflow-y: auto;
 }
 .review-table .tbl-review {

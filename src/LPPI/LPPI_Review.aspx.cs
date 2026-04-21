@@ -157,12 +157,12 @@ namespace CPlatform.LPPI
                   .Append(" data-outcome=\"").Append(LPPIHelper.Enc(outcome)).Append("\"")
                   .Append(" data-requires=\"").Append(requires ? "1" : "0").Append("\"");
                 if (sel.HasValue && sel.Value == id) { sb.Append(" selected"); }
-                sb.Append(">").Append(LPPIHelper.Enc(code));
-                if (!string.IsNullOrEmpty(desc))
-                {
-                    sb.Append(" — ").Append(LPPIHelper.Enc(desc));
-                }
-                sb.Append("</option>");
+                // Display just the description (reviewers do not need to see
+                // the internal RC01/RC02 codes — those live on tblLPPI_ReasonCodes
+                // for admin/export purposes). Fall back to the code only when a
+                // description is missing.
+                string label = string.IsNullOrEmpty(desc) ? code : desc;
+                sb.Append(">").Append(LPPIHelper.Enc(label)).Append("</option>");
             }
             return sb.ToString();
         }

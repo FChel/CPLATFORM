@@ -29,18 +29,11 @@ namespace CPlatform.LPPI
                 litBatches.Text     = Convert.ToString(s["TotalBatches"]);
             }
 
-            // Warnings: programs in data with no email configured
-            var unconfigured = LPPIHelper.GetUnconfiguredPrograms();
-            if (unconfigured.Count > 0)
-            {
-                var msg = "<div class=\"alert warn\"><div><strong>" + unconfigured.Count +
-                          " Capability Manager program" + (unconfigured.Count == 1 ? "" : "s") +
-                          "</strong> in your loaded data have no recipient email configured. " +
-                          "You will not be able to send these out for review until they are added.<br/>" +
-                          "Missing: " + string.Join(", ", unconfigured.Select(p => "<code>" + System.Web.HttpUtility.HtmlEncode(p) + "</code>")) +
-                          " &nbsp; <a href=\"LPPI_CapabilityManagers.aspx\">Configure now &rarr;</a></div></div>";
-                phWarnings.Controls.Add(new LiteralControl(msg));
-            }
+            // Note: the "N Capability Manager programs have no recipient email
+            // configured" warning used to live here, but has been relocated to
+            // LPPI_SendOuts.aspx — that is where the operator acts on it. The
+            // phWarnings placeholder is intentionally retained so OnPackageCommand
+            // can still surface reminder success / failure alerts on this page.
 
             // Open packages
             var pkgSql = @"
