@@ -1,8 +1,8 @@
 /* =============================================================================
-   LPPI Review — schema, indexes and seed data
+   LPPI Review — production create script
    Database: CPlatform
    All objects prefixed tblLPPI_ to avoid colliding with existing tblCC_*.
-   This script is idempotent and safe to re-run.
+   Idempotent: safe to re-run. Each object is guarded by an existence check.
    ========================================================================== */
 
 SET NOCOUNT ON;
@@ -22,8 +22,8 @@ BEGIN
         FileName           NVARCHAR(260)  NOT NULL,
         SourcePath         NVARCHAR(500)  NULL,
         FileSizeBytes      BIGINT         NULL,
-        FileModifiedDate   DATETIME2(3)       NULL,
-        LoadedDate         DATETIME2(3)       NOT NULL CONSTRAINT DF_tblLPPI_LoadBatches_LoadedDate DEFAULT (SYSDATETIME()),
+        FileModifiedDate   DATETIME2(3)   NULL,
+        LoadedDate         DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_LoadBatches_LoadedDate DEFAULT (SYSDATETIME()),
         LoadedByUserId     NVARCHAR(100)  NULL,
         LoadedByName       NVARCHAR(200)  NULL,
         RowsInFile         INT            NOT NULL CONSTRAINT DF_tblLPPI_LoadBatches_RowsInFile DEFAULT (0),
@@ -42,6 +42,7 @@ BEGIN
     (
         DocumentID                  INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_Documents PRIMARY KEY CLUSTERED,
         DocNoAccounting             NVARCHAR(50)  NOT NULL,
+        ItemSequence                INT           NOT NULL,
         BatchID                     INT           NOT NULL,
         CompanyCode                 NVARCHAR(20)  NULL,
         PoNumber                    NVARCHAR(50)  NULL,
@@ -60,11 +61,12 @@ BEGIN
         DeliveryManagerProgram      NVARCHAR(200) NULL,
         PocEmail                    NVARCHAR(200) NULL,
         GlAccount                   NVARCHAR(50)  NULL,
+        TaxCode                     NVARCHAR(10)  NULL,
         ContractNo                  NVARCHAR(50)  NULL,
         VimDocumentId               NVARCHAR(50)  NULL,
-        InvoiceReceivedDate         DATETIME2(3)      NULL,
-        InvoiceDate                 DATETIME2(3)      NULL,
-        GrCreateDateLatest          DATETIME2(3)      NULL,
+        InvoiceReceivedDate         DATETIME2(3)  NULL,
+        InvoiceDate                 DATETIME2(3)  NULL,
+        GrCreateDateLatest          DATETIME2(3)  NULL,
         Currency                    NVARCHAR(10)  NULL,
         GlLineValueInclGst          DECIMAL(19,4) NULL,
         InvoiceValueInclGst         DECIMAL(19,4) NULL,
@@ -76,8 +78,8 @@ BEGIN
         PossiblePayment             NVARCHAR(20)  NULL,
         PossibleDuplicateClearing   NVARCHAR(20)  NULL,
         ContractValueLocExGst       DECIMAL(19,4) NULL,
-        PaymentRunDate              DATETIME2(3)      NULL,
-        BodsPaymtBaselineDate       DATETIME2(3)      NULL,
+        PaymentRunDate              DATETIME2(3)  NULL,
+        BodsPaymtBaselineDate       DATETIME2(3)  NULL,
         DaysVariance                INT           NULL,
         DailyRate                   DECIMAL(19,8) NULL,
         InvoiceInterestAmount       DECIMAL(19,4) NULL,
@@ -87,10 +89,11 @@ BEGIN
         DocumentType                NVARCHAR(20)  NULL,
         VendorInvoiceNo             NVARCHAR(100) NULL,
         ClearingMonth               NVARCHAR(20)  NULL,
-        FirstSeenDate               DATETIME2(3)      NOT NULL CONSTRAINT DF_tblLPPI_Documents_FirstSeenDate DEFAULT (SYSDATETIME()),
-        ExportedDate                DATETIME2(3)      NULL,
+        FiscalYear                  NVARCHAR(10)  NULL,
+        FirstSeenDate               DATETIME2(3)  NOT NULL CONSTRAINT DF_tblLPPI_Documents_FirstSeenDate DEFAULT (SYSDATETIME()),
+        ExportedDate                DATETIME2(3)  NULL,
         ExportedBy                  NVARCHAR(200) NULL,
-        CONSTRAINT UQ_tblLPPI_Documents_DocNoAccounting UNIQUE (DocNoAccounting),
+        CONSTRAINT UQ_tblLPPI_Documents_DocNoAccounting_ItemSequence UNIQUE (DocNoAccounting, ItemSequence),
         CONSTRAINT FK_tblLPPI_Documents_Batch FOREIGN KEY (BatchID) REFERENCES dbo.tblLPPI_LoadBatches(BatchID)
     );
 
@@ -135,7 +138,7 @@ BEGIN
         ObjectiveReference  NVARCHAR(200)   NULL,
         ReviewedByUserId    NVARCHAR(100)   NULL,
         ReviewedByName      NVARCHAR(200)   NULL,
-        ReviewedDate        DATETIME2(3)        NULL,
+        ReviewedDate        DATETIME2(3)    NULL,
         IsFinal             BIT             NOT NULL CONSTRAINT DF_tblLPPI_Reviews_IsFinal DEFAULT (0),
         CONSTRAINT UQ_tblLPPI_Reviews_DocumentID UNIQUE (DocumentID),
         CONSTRAINT FK_tblLPPI_Reviews_Document   FOREIGN KEY (DocumentID)   REFERENCES dbo.tblLPPI_Documents(DocumentID),
@@ -153,18 +156,14 @@ BEGIN
         Program       NVARCHAR(200)  NOT NULL,
         DisplayName   NVARCHAR(200)  NULL,
         IsActive      BIT            NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagers_IsActive DEFAULT (1),
-        CreatedDate   DATETIME2(3)       NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagers_CreatedDate DEFAULT (SYSDATETIME()),
-        ModifiedDate  DATETIME2(3)       NULL,
+        CreatedDate   DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagers_CreatedDate DEFAULT (SYSDATETIME()),
+        ModifiedDate  DATETIME2(3)   NULL,
         CONSTRAINT UQ_tblLPPI_CapabilityManagers_Program UNIQUE (Program)
     );
 END
 GO
 
-/* ----------------------------- tblLPPI_CapabilityManagerEmails --------------
-   Note: the per-recipient IsActive flag was removed. The UI is now a simple
-   add/delete model — disabled recipients are deleted outright. The group-
-   level IsActive on tblLPPI_CapabilityManagers is unrelated and remains.
-   ---------------------------------------------------------------------- */
+/* ----------------------------- tblLPPI_CapabilityManagerEmails -------------- */
 IF OBJECT_ID(N'dbo.tblLPPI_CapabilityManagerEmails', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tblLPPI_CapabilityManagerEmails
@@ -183,28 +182,6 @@ BEGIN
 END
 GO
 
-/* Upgrade path for environments that already had the table with IsActive.
-   Drops the default constraint first, then the column. Guarded so running
-   this script on a fresh database (where the table was created clean above)
-   is a no-op. Safe to re-run. */
-IF EXISTS (
-    SELECT 1
-    FROM sys.default_constraints
-    WHERE name = 'DF_tblLPPI_CapabilityManagerEmails_IsActive'
-)
-BEGIN
-    ALTER TABLE dbo.tblLPPI_CapabilityManagerEmails
-        DROP CONSTRAINT DF_tblLPPI_CapabilityManagerEmails_IsActive;
-END
-GO
-
-IF COL_LENGTH('dbo.tblLPPI_CapabilityManagerEmails', 'IsActive') IS NOT NULL
-BEGIN
-    ALTER TABLE dbo.tblLPPI_CapabilityManagerEmails
-        DROP COLUMN IsActive;
-END
-GO
-
 /* ----------------------------- tblLPPI_ReviewPackages ----------------------- */
 IF OBJECT_ID(N'dbo.tblLPPI_ReviewPackages', N'U') IS NULL
 BEGIN
@@ -213,10 +190,10 @@ BEGIN
         PackageID    INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_ReviewPackages PRIMARY KEY CLUSTERED,
         CmID         INT            NOT NULL,
         Token        NVARCHAR(100)  NOT NULL,
-        CreatedDate  DATETIME2(3)       NOT NULL CONSTRAINT DF_tblLPPI_ReviewPackages_CreatedDate DEFAULT (SYSDATETIME()),
+        CreatedDate  DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_ReviewPackages_CreatedDate DEFAULT (SYSDATETIME()),
         CreatedBy    NVARCHAR(200)  NULL,
-        DueDate      DATETIME2(3)       NOT NULL,
-        ClosedDate   DATETIME2(3)       NULL,
+        DueDate      DATETIME2(3)   NOT NULL,
+        ClosedDate   DATETIME2(3)   NULL,
         Status       NVARCHAR(20)   NOT NULL CONSTRAINT DF_tblLPPI_ReviewPackages_Status DEFAULT ('Open'),
         Notes        NVARCHAR(MAX)  NULL,
         CONSTRAINT UQ_tblLPPI_ReviewPackages_Token UNIQUE (Token),
@@ -258,7 +235,7 @@ BEGIN
         EmailType      NVARCHAR(20)   NOT NULL,  /* 'Initial' / 'Reminder' / 'Other' */
         Subject        NVARCHAR(500)  NULL,
         Body           NVARCHAR(MAX)  NULL,
-        SentDate       DATETIME2(3)       NOT NULL CONSTRAINT DF_tblLPPI_EmailLog_SentDate DEFAULT (SYSDATETIME()),
+        SentDate       DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_EmailLog_SentDate DEFAULT (SYSDATETIME()),
         SentBy         NVARCHAR(200)  NULL,
         Success        BIT            NOT NULL CONSTRAINT DF_tblLPPI_EmailLog_Success DEFAULT (0),
         ErrorMessage   NVARCHAR(MAX)  NULL,
@@ -299,5 +276,5 @@ FROM Seed s
 WHERE NOT EXISTS (SELECT 1 FROM dbo.tblLPPI_ReasonCodes rc WHERE rc.Code = s.Code);
 GO
 
-PRINT 'LPPI schema script complete.';
+PRINT 'LPPI create script complete.';
 GO
