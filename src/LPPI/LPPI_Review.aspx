@@ -59,6 +59,10 @@
                     <span class="meta-label">Save</span>
                     <span id="saveIndicator" class="save-indicator" role="status" aria-live="polite">All changes saved</span>
                 </div>
+                <div class="meta-item">
+                    <a href="https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417"
+                       target="_blank" rel="noopener" class="policy-link">Policy reference: RMG-417 (Supplier Pay On-Time or Pay Interest)</a>
+                </div>
             </div>
         </div>
 
@@ -68,7 +72,7 @@
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
                     </svg>
-                    <input type="text" id="searchBox" class="input" placeholder="Search vendor, doc no, PO, WBS, DM, POC, profit centre…" />
+                    <input type="text" id="searchBox" class="input" placeholder="Search vendor, doc no, PO, WBS, DM program, POC, profit centre…" />
                 </div>
                 <select id="statusFilter" class="input" title="Review status">
                     <option value="">All statuses</option>
@@ -78,8 +82,8 @@
                     <option value="notpayable">Not payable</option>
                     <option value="needs-comments">Needs attention</option>
                 </select>
-                <select id="filterDm" class="input filter-facet" title="Delivery Manager">
-                    <option value="">All DMs</option>
+                <select id="filterDm" class="input filter-facet" title="Delivery Manager Program">
+                    <option value="">All DM Programs</option>
                     <%= BuildFacetOptions("dm") %>
                 </select>
                 <select id="filterPoc" class="input filter-facet" title="POC">
@@ -97,8 +101,8 @@
             </div>
             <div class="toolbar-right">
                 <div class="view-toggle" role="tablist" aria-label="View">
-                    <button type="button" id="viewCards" role="tab" aria-selected="false">Cards</button>
-                    <button type="button" id="viewTable" class="active" role="tab" aria-selected="true">Table</button>
+                    <button type="button" id="viewMain" role="tab" aria-selected="true" class="active">Main</button>
+                    <button type="button" id="viewDetail" role="tab" aria-selected="false">Detail</button>
                 </div>
                 <button type="button" id="markFinalBtn" class="btn btn-secondary">Mark all as final</button>
                 <button type="button" id="saveAllBtn" class="btn btn-primary" title="Save every row that has been edited but not yet saved">
@@ -118,82 +122,12 @@
             <strong>All done.</strong> Every document in this package has a reason code. Thanks for your help.
         </div>
 
-        <!-- Card view -->
-        <section class="cards hidden" aria-label="Documents (card view)">
-            <asp:Repeater ID="rptCards" runat="server">
-                <ItemTemplate>
-                    <article class="doc-card"
-                             data-doc-id='<%# Eval("DocumentID") %>'
-                             data-search='<%# LPPIHelper.Enc((string)Eval("SearchBlob")) %>'
-                             data-dm='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'
-                             data-poc='<%# LPPIHelper.Enc(Eval("PocEmail")) %>'
-                             data-wbs='<%# LPPIHelper.Enc(Eval("WbsElement")) %>'
-                             data-pc='<%# LPPIHelper.Enc(Eval("ProfitCentre")) %>'>
-                        <header class="doc-head">
-                            <div>
-                                <div class="doc-vendor"><%# LPPIHelper.Enc(Eval("VendorName")) %></div>
-                                <div class="doc-sub">
-                                    <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %>
-                                    <span class="sep"> · PO </span>
-                                    <%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %>
-                                </div>
-                            </div>
-                            <div class="doc-interest">
-                                <span class="label">Interest</span>
-                                <span class="value"><%# LPPIHelper.FormatMoney(Eval("InterestPayable")) %></span>
-                            </div>
-                        </header>
-
-                        <div class="doc-fields">
-                            <div><span class="fk">Invoice date</span><span class="fv"><%# LPPIHelper.FormatDate(Eval("InvoiceDate")) %></span></div>
-                            <div><span class="fk">Payment date</span><span class="fv"><%# LPPIHelper.FormatDate(Eval("PaymentRunDate")) %></span></div>
-                            <div><span class="fk">Days late</span><span class="fv"><%# Eval("DaysVariance") %></span></div>
-                            <div><span class="fk">WBS</span><span class="fv"><%# LPPIHelper.Enc(Eval("WbsElement")) %></span></div>
-                            <div><span class="fk">Profit centre</span><span class="fv"><%# LPPIHelper.Enc(Eval("ProfitCentre")) %></span></div>
-                            <div><span class="fk">Delivery manager</span><span class="fv"><%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %></span></div>
-                            <div><span class="fk">POC email</span><span class="fv"><%# LPPIHelper.Enc(Eval("PocEmail")) %></span></div>
-                        </div>
-
-                        <div class="doc-controls">
-                            <label class="field">
-                                <span>Reason code</span>
-                                <select class="reason-select input">
-                                    <option value="" data-outcome="" data-requires="0">— select —</option>
-                                    <%# BuildReasonOptions(Eval("SelectedReasonCodeID")) %>
-                                </select>
-                            </label>
-                            <label class="field">
-                                <span>Comments</span>
-                                <textarea class="comments-input input" rows="2" placeholder="Required for the two 'Other' reason codes, and for any Not-Payable outcome."><%# LPPIHelper.Enc(Eval("Comments")) %></textarea>
-                            </label>
-                            <label class="field field-narrow">
-                                <span>Objective reference</span>
-                                <input type="text" class="objref-input input" value='<%# LPPIHelper.Enc(Eval("ObjectiveReference")) %>' maxlength="100" placeholder="Required for Not-Payable outcomes." />
-                            </label>
-                            <label class="field field-narrow checkbox-field">
-                                <input type="checkbox" class="rowselect" data-doc-id='<%# Eval("DocumentID") %>' />
-                                <span>Select</span>
-                            </label>
-                        </div>
-
-                        <div class="row-msg" role="alert"></div>
-                        <div class="row-saved" aria-hidden="true">Saved ✓</div>
-                    </article>
-                </ItemTemplate>
-            </asp:Repeater>
-
-            <asp:PlaceHolder ID="phEmpty" runat="server" Visible="false">
-                <div class="empty-state">
-                    <h2>Nothing to review</h2>
-                    <p>This package does not contain any outstanding documents.</p>
-                </div>
-            </asp:PlaceHolder>
-        </section>
-
-        <!-- Table view -->
-        <section class="review-table active" aria-label="Documents (table view)">
+        <!-- ================================================================
+             MAIN VIEW — one row per DocNoAccounting, editable
+             ================================================================ -->
+        <section class="mains active" aria-label="Documents (main view)">
             <div class="tbl-wrap">
-                <asp:Repeater ID="rptTable" runat="server">
+                <asp:Repeater ID="rptMain" runat="server">
                     <HeaderTemplate>
                         <table class="tbl tbl-review">
                             <thead>
@@ -202,9 +136,10 @@
                                     <th class="col-doc">Doc No</th>
                                     <th class="col-vendor">Vendor</th>
                                     <th class="col-po">PO</th>
+                                    <th class="col-lines num">Lines</th>
                                     <th class="col-wbs">WBS</th>
                                     <th class="col-pc">Profit centre</th>
-                                    <th class="col-dm">Delivery manager</th>
+                                    <th class="col-dm">Delivery Manager Program</th>
                                     <th class="col-poc">POC</th>
                                     <th class="col-date">Payment</th>
                                     <th class="col-days num">Days Late</th>
@@ -217,24 +152,33 @@
                             <tbody>
                     </HeaderTemplate>
                     <ItemTemplate>
-                        <tr class="doc-row"
-                            data-doc-id='<%# Eval("DocumentID") %>'
+                        <tr class="doc-main"
+                            data-doc-no='<%# LPPIHelper.Enc(Eval("DocNoAccounting")) %>'
+                            data-first-line-id='<%# Eval("FirstLineDocumentID") %>'
                             data-search='<%# LPPIHelper.Enc((string)Eval("SearchBlob")) %>'
-                            data-dm='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'
-                            data-poc='<%# LPPIHelper.Enc(Eval("PocEmail")) %>'
-                            data-wbs='<%# LPPIHelper.Enc(Eval("WbsElement")) %>'
-                            data-pc='<%# LPPIHelper.Enc(Eval("ProfitCentre")) %>'>
-                            <td class="col-sel"><input type="checkbox" class="rowselect" data-doc-id='<%# Eval("DocumentID") %>' /></td>
-                            <td class="col-doc"><%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %></td>
-                            <td class="col-vendor" title='<%# LPPIHelper.Enc(Eval("VendorName")) %>'><%# LPPIHelper.Enc(Eval("VendorName")) %></td>
+                            data-dm='<%# LPPIHelper.Enc(Eval("DeliveryManagerProgram") == DBNull.Value ? "(mixed)" : Eval("DeliveryManagerProgram")) %>'
+                            data-poc='<%# LPPIHelper.Enc(Eval("PocEmail") == DBNull.Value ? "(mixed)" : Eval("PocEmail")) %>'
+                            data-wbs='<%# LPPIHelper.Enc(Eval("WbsElement") == DBNull.Value ? "(mixed)" : Eval("WbsElement")) %>'
+                            data-pc='<%# LPPIHelper.Enc(Eval("ProfitCentre") == DBNull.Value ? "(mixed)" : Eval("ProfitCentre")) %>'>
+                            <td class="col-sel">
+                                <input type="checkbox" class="rowselect" data-doc-no='<%# LPPIHelper.Enc(Eval("DocNoAccounting")) %>' />
+                            </td>
+                            <td class="col-doc">
+                                <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %>
+                            </td>
+                            <td class="col-vendor"><%# LPPIHelper.Enc(Eval("VendorName")) %><br/><span class="muted small"><%# LPPIHelper.Enc(Eval("VendorNum")) %></span></td>
                             <td class="col-po"><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
-                            <td class="col-wbs" title='<%# LPPIHelper.WbsTooltip(Eval("WbsElement"), Eval("WbsDesc")) %>'><%# LPPIHelper.Enc(Eval("WbsElement")) %></td>
-                            <td class="col-pc" title='<%# LPPIHelper.Enc(Eval("ProfitCentre")) %>'><%# LPPIHelper.Enc(Eval("ProfitCentre")) %></td>
-                            <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'><%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %></td>
-                            <td class="col-poc" title='<%# LPPIHelper.Enc(Eval("PocEmail")) %>'><%# LPPIHelper.Enc(Eval("PocEmail")) %></td>
+                            <td class="col-lines num"><span class="lines-chip"><%# Eval("LineCount") %></span></td>
+                            <td class="col-wbs" title='<%# LPPIHelper.Enc(Eval("WbsDesc") == DBNull.Value ? "" : Eval("WbsDesc")) %>'><%# MixedOrEnc(Eval("WbsElement")) %></td>
+                            <td class="col-pc"><%# MixedOrEnc(Eval("ProfitCentre")) %></td>
+                            <td class="col-dm">
+                                <%# MixedOrEnc(Eval("DeliveryManagerProgram")) %>
+                                <%# Eval("DeliveryManagerName") != DBNull.Value ? "<br/><span class=\"muted small\">" + LPPIHelper.Enc(Eval("DeliveryManagerName")) + "</span>" : "" %>
+                            </td>
+                            <td class="col-poc"><%# MixedOrEnc(Eval("PocEmail")) %></td>
                             <td class="col-date"><%# LPPIHelper.FormatDate(Eval("PaymentRunDate")) %></td>
                             <td class="col-days num"><%# Eval("DaysVariance") %></td>
-                            <td class="col-int num"><%# LPPIHelper.FormatMoney(Eval("InterestPayable")) %></td>
+                            <td class="col-int num"><%# LPPIHelper.FormatMoney(Eval("TotalInterest")) %></td>
                             <td class="col-reason">
                                 <select class="reason-select input">
                                     <option value="" data-outcome="" data-requires="0">—</option>
@@ -243,6 +187,83 @@
                             </td>
                             <td class="col-comments"><textarea class="comments-input input" rows="1"><%# LPPIHelper.Enc(Eval("Comments")) %></textarea></td>
                             <td class="col-obj"><input type="text" class="objref-input input" value='<%# LPPIHelper.Enc(Eval("ObjectiveReference")) %>' maxlength="100" /></td>
+                        </tr>
+                        <tr class="doc-main-msg" data-doc-no='<%# LPPIHelper.Enc(Eval("DocNoAccounting")) %>'>
+                            <td colspan="15"><div class="row-msg" role="alert"></div></td>
+                        </tr>
+                    </ItemTemplate>
+                    <FooterTemplate>
+                            </tbody>
+                        </table>
+                    </FooterTemplate>
+                </asp:Repeater>
+            </div>
+
+            <asp:PlaceHolder ID="phEmpty" runat="server" Visible="false">
+                <div class="empty-state">
+                    <h2>Nothing to review</h2>
+                    <p>This package does not contain any outstanding documents.</p>
+                </div>
+            </asp:PlaceHolder>
+        </section>
+
+        <!-- ================================================================
+             DETAIL VIEW — one row per line, read-only review fields
+             ================================================================ -->
+        <section class="review-detail" aria-label="Documents (detail view)">
+            <div class="tbl-wrap">
+                <asp:Repeater ID="rptDetail" runat="server">
+                    <HeaderTemplate>
+                        <table class="tbl tbl-review tbl-detail">
+                            <thead>
+                                <tr>
+                                    <th class="col-doc">Doc No</th>
+                                    <th class="col-seq num">Line</th>
+                                    <th class="col-vendor">Vendor</th>
+                                    <th class="col-po">PO</th>
+                                    <th class="col-wbs">WBS</th>
+                                    <th class="col-gl">GL Account</th>
+                                    <th class="col-pc">Profit centre</th>
+                                    <th class="col-tax">Tax code</th>
+                                    <th class="col-dm">DM Program</th>
+                                    <th class="col-poc">POC</th>
+                                    <th class="col-date">Payment</th>
+                                    <th class="col-days num">Days Late</th>
+                                    <th class="col-int num">Interest</th>
+                                    <th class="col-reason">Reason code <span class="readonly-note">(from document)</span></th>
+                                    <th class="col-comments">Comments <span class="readonly-note">(from document)</span></th>
+                                    <th class="col-obj">Obj ref <span class="readonly-note">(from document)</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    </HeaderTemplate>
+                    <ItemTemplate>
+                        <tr class="doc-row detail-row"
+                            data-doc-no='<%# LPPIHelper.Enc(Eval("DocNoAccounting")) %>'
+                            data-first-line-id='<%# Eval("FirstLineDocumentID") %>'
+                            data-search='<%# LPPIHelper.Enc((string)Eval("SearchBlob")) %>'
+                            data-dm='<%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %>'
+                            data-poc='<%# LPPIHelper.Enc(Eval("PocEmail")) %>'
+                            data-wbs='<%# LPPIHelper.Enc(Eval("WbsElement")) %>'
+                            data-pc='<%# LPPIHelper.Enc(Eval("ProfitCentre")) %>'>
+                            <td class="col-doc">
+                                <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %>
+                            </td>
+                            <td class="col-seq num"><span class="seq-chip"><%# string.Format("{0:000}", Eval("ItemSequence")) %></span></td>
+                            <td class="col-vendor"><%# LPPIHelper.Enc(Eval("VendorName")) %></td>
+                            <td class="col-po"><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
+                            <td class="col-wbs" title='<%# LPPIHelper.Enc(Eval("WbsDesc")) %>'><%# LPPIHelper.Enc(Eval("WbsElement")) %></td>
+                            <td class="col-gl"><%# LPPIHelper.Enc(Eval("GlAccount")) %></td>
+                            <td class="col-pc"><%# LPPIHelper.Enc(Eval("ProfitCentre")) %></td>
+                            <td class="col-tax"><%# LPPIHelper.Enc(Eval("TaxCode")) %></td>
+                            <td class="col-dm"><%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %></td>
+                            <td class="col-poc"><%# LPPIHelper.Enc(Eval("PocEmail")) %></td>
+                            <td class="col-date"><%# LPPIHelper.FormatDate(Eval("PaymentRunDate")) %></td>
+                            <td class="col-days num"><%# Eval("DaysVariance") %></td>
+                            <td class="col-int num"><%# LPPIHelper.FormatMoney(Eval("InterestPayable")) %></td>
+                            <td class="col-reason readonly-field" title="Edit in Main view"><%# LPPIHelper.Enc(Eval("ReasonCode")) %></td>
+                            <td class="col-comments readonly-field" title="Edit in Main view"><%# LPPIHelper.Enc(Eval("Comments")) %></td>
+                            <td class="col-obj readonly-field" title="Edit in Main view"><%# LPPIHelper.Enc(Eval("ObjectiveReference")) %></td>
                         </tr>
                     </ItemTemplate>
                     <FooterTemplate>

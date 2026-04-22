@@ -29,35 +29,37 @@ namespace CPlatform.LPPI
                 litBatches.Text     = Convert.ToString(s["TotalBatches"]);
             }
 
-            // Note: the "N Capability Manager programs have no recipient email
-            // configured" warning used to live here, but has been relocated to
-            // LPPI_SendOuts.aspx — that is where the operator acts on it. The
-            // phWarnings placeholder is intentionally retained so OnPackageCommand
-            // can still surface reminder success / failure alerts on this page.
-
-            // Open packages
+            // Open packages.
+            // DocCount and ReviewedCount are now true document counts because
+            // tblLPPI_ReviewPackageDocuments stores one row per document
+            // (the first-line DocumentID). The review join is a direct equality
+            // on pd.DocumentID — no correlated sub-query needed.
             var pkgSql = @"
 SELECT p.PackageID, p.CreatedDate, p.DueDate, p.Status,
        ISNULL(NULLIF(cm.DisplayName,''), cm.Program) AS CmDisplay,
-       (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments d WHERE d.PackageID = p.PackageID) AS DocCount,
-       (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments d
-          INNER JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
-          WHERE d.PackageID = p.PackageID AND r.ReasonCodeID IS NOT NULL) AS ReviewedCount
-FROM dbo.tblLPPI_ReviewPackages p
-INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
-WHERE p.Status = 'Open'
-ORDER BY p.DueDate ASC;";
+       (SELECT COUNT(*)
+          FROM dbo.tblLPPI_ReviewPackageDocuments d
+         WHERE d.PackageID = p.PackageID) AS DocCount,
+       (SELECT COUNT(*)
+          FROM dbo.tblLPPI_ReviewPackageDocuments d
+         INNER JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
+         WHERE d.PackageID = p.PackageID
+           AND r.ReasonCodeID IS NOT NULL) AS ReviewedCount
+  FROM dbo.tblLPPI_ReviewPackages p
+ INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
+ WHERE p.Status = 'Open'
+ ORDER BY p.DueDate ASC;";
+
             var pkgs = LPPIHelper.ExecuteTable(pkgSql);
-            // augment with CanRemind flag
             pkgs.Columns.Add("CanRemind", typeof(bool));
             int warn = LPPIHelper.ReminderWindowDays;
             foreach (DataRow r in pkgs.Rows)
             {
-                var due = Convert.ToDateTime(r["DueDate"]);
+                var due      = Convert.ToDateTime(r["DueDate"]);
                 var docCount = Convert.ToInt32(r["DocCount"]);
-                var rev = Convert.ToInt32(r["ReviewedCount"]);
-                var pctComplete = docCount == 0 ? 100 : (rev * 100 / docCount);
-                r["CanRemind"] = (due <= DateTime.Today.AddDays(warn)) && pctComplete < 100;
+                var rev      = Convert.ToInt32(r["ReviewedCount"]);
+                var pct      = docCount == 0 ? 100 : (rev * 100 / docCount);
+                r["CanRemind"] = (due <= DateTime.Today.AddDays(warn)) && pct < 100;
             }
             rptPackages.DataSource = pkgs;
             rptPackages.DataBind();
@@ -75,13 +77,14 @@ ORDER BY LoadedDate DESC;";
 
         protected string RenderStatusPill(object dataItem)
         {
-            var row = (DataRowView)dataItem;
-            var due = Convert.ToDateTime(row["DueDate"]);
+            var row      = (DataRowView)dataItem;
+            var due      = Convert.ToDateTime(row["DueDate"]);
             var docCount = Convert.ToInt32(row["DocCount"]);
-            var rev = Convert.ToInt32(row["ReviewedCount"]);
+            var rev      = Convert.ToInt32(row["ReviewedCount"]);
             if (docCount > 0 && rev >= docCount) return "<span class=\"pill reviewed\">Complete</span>";
-            if (due < DateTime.Today) return "<span class=\"pill overdue\">Overdue</span>";
-            if (due <= DateTime.Today.AddDays(LPPIHelper.ReminderWindowDays)) return "<span class=\"pill pending\">Due soon</span>";
+            if (due < DateTime.Today)             return "<span class=\"pill overdue\">Overdue</span>";
+            if (due <= DateTime.Today.AddDays(LPPIHelper.ReminderWindowDays))
+                                                  return "<span class=\"pill pending\">Due soon</span>";
             return "<span class=\"pill open\">Open</span>";
         }
 

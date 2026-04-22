@@ -12,9 +12,6 @@ namespace CPlatform.LPPI
     {
         protected void Page_Load(object sender, EventArgs e)
         {
-            // The unconfigured-CM warning rebinds on every request so
-            // recipients added from the Capability Managers page are
-            // reflected immediately when the operator navigates back.
             BindUnconfigured();
 
             if (!IsPostBack)
@@ -26,8 +23,7 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // Unconfigured-CM warning — relocated from LPPI_Admin.aspx so it
-        // surfaces on the page where the operator acts on it.
+        // Unconfigured-CM warning
         // -------------------------------------------------------------------
 
         private void BindUnconfigured()
@@ -47,20 +43,13 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // Data binding — column names must match every Eval() in the .aspx
+        // Data binding
         // -------------------------------------------------------------------
 
         private void BindGroups()
         {
-            // Columns required by rptGroups in LPPI_SendOuts.aspx:
+            // Columns required by rptGroups Eval():
             //   CmID, Program, ToCount, ToList, UnreviewedDocs, OpenPackageID
-            //
-            // "UnreviewedDocs" counts DISTINCT DocNoAccounting where the
-            // document has no review on its first line (option-1 first-line-
-            // review). This is the correct document-level count for what the
-            // CM group still owes us. The earlier query counted lines and
-            // joined reviews per-line, which under ItemSequence miscounted
-            // lines 2..N of reviewed documents as "unreviewed".
             const string sql = @"
                 SELECT cm.CmID,
                        cm.Program,
@@ -92,16 +81,12 @@ namespace CPlatform.LPPI
 
         private void BindRecent()
         {
-            // Columns required by rptRecent in LPPI_SendOuts.aspx:
+            // Columns required by rptRecent Eval():
             //   PackageID, Program, CreatedDate, DueDate,
             //   TotalDocs, ReviewedDocs, Status, LastEmailDate
             //
-            // NOTE: TotalDocs and ReviewedDocs remain per-line counts — the
-            // package-scope question (is a package scoped to the line or the
-            // document?) belongs to the reviewer-page rework and is out of
-            // scope here. Numbers may look slightly off for multi-line
-            // documents until that rework lands; they are not incorrect for
-            // the line-level package model we currently have.
+            // TotalDocs and ReviewedDocs are document counts — each row in
+            // tblLPPI_ReviewPackageDocuments is one document (first-line id).
             const string sql = @"
                 SELECT TOP 50
                        p.PackageID,
@@ -188,7 +173,6 @@ namespace CPlatform.LPPI
                 }
             }
 
-            // Build status message.
             string kind = failed == 0 ? "ok" : "warn";
             var msg = new StringBuilder();
             msg.Append(created).Append(" package(s) created, ")
@@ -198,7 +182,6 @@ namespace CPlatform.LPPI
             if (failNotes.Length > 0)
                 msg.Append("<ul class=\"bare\">").Append(failNotes).Append("</ul>");
 
-            // Client email mode — open each mailto: in a new tab.
             if (mailtoLinks.Count > 0)
             {
                 msg.Append("<p class=\"muted\" style=\"margin-top:8px;\">")
@@ -224,28 +207,31 @@ namespace CPlatform.LPPI
 
         // -------------------------------------------------------------------
         // Package creation
+        //
+        // One row per unreviewed document (the first-line DocumentID) is
+        // written to tblLPPI_ReviewPackageDocuments via a single INSERT…SELECT.
         // -------------------------------------------------------------------
 
         private int CreatePackage(int cmId, DateTime due)
         {
-            // NOTE: selectDocs below picks every LINE that has no own-line
-            // review, which under option-1 first-line-review includes lines
-            // 2..N of reviewed documents. That is a pre-existing package-
-            // scope bug that belongs to the reviewer-page rework — do not
-            // "fix" it here, it needs a design decision about whether a
-            // package contains the document (all lines) or a line.
-            //
-            // Flagged in project notes; will be addressed in the reviewer
-            // prompt. This file is deliberately unchanged in this area.
-            const string selectDocs = @"
-                SELECT d.DocumentID
-                  FROM tblLPPI_Documents d
-                  LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
-                 WHERE d.CapabilityManagerProgram =
-                       (SELECT Program FROM tblLPPI_CapabilityManagers WHERE CmID = @cm)
-                   AND r.ReasonCodeID IS NULL";
-            DataTable dt = LPPIHelper.ExecuteTable(selectDocs, LPPIHelper.P("@cm", cmId));
-            if (dt.Rows.Count == 0) return 0;
+            // Check there is anything to send before creating the package row
+            object count = LPPIHelper.ExecuteScalar(@"
+                SELECT COUNT(*)
+                  FROM (
+                      SELECT MIN(d.DocumentID) as FirstLineDocumentID
+                        FROM tblLPPI_Documents d
+                        LEFT JOIN tblLPPI_Reviews r
+                               ON r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                                    FROM tblLPPI_Documents d2
+                                                   WHERE d2.DocNoAccounting = d.DocNoAccounting)
+                       WHERE d.CapabilityManagerProgram =
+                             (SELECT Program FROM tblLPPI_CapabilityManagers WHERE CmID = @cm)
+                         AND r.ReasonCodeID IS NULL
+                       GROUP BY d.DocNoAccounting
+                  ) x",
+                LPPIHelper.P("@cm", cmId));
+
+            if (count == null || Convert.ToInt32(count) == 0) return 0;
 
             string token = LPPIHelper.GenerateToken();
             object idObj = LPPIHelper.ExecuteScalar(@"
@@ -259,14 +245,22 @@ namespace CPlatform.LPPI
                 LPPIHelper.P("@due", due));
             int packageId = Convert.ToInt32(idObj);
 
-            foreach (DataRow r in dt.Rows)
-            {
-                LPPIHelper.ExecuteNonQuery(@"
-                    INSERT INTO tblLPPI_ReviewPackageDocuments (PackageID, DocumentID)
-                    VALUES (@p, @d)",
-                    LPPIHelper.P("@p", packageId),
-                    LPPIHelper.P("@d", r["DocumentID"]));
-            }
+            // Single INSERT…SELECT — one row per unreviewed document
+            LPPIHelper.ExecuteNonQuery(@"
+                INSERT INTO tblLPPI_ReviewPackageDocuments (PackageID, DocumentID)
+                SELECT @p, MIN(d.DocumentID)
+                  FROM tblLPPI_Documents d
+                  LEFT JOIN tblLPPI_Reviews r
+                         ON r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                              FROM tblLPPI_Documents d2
+                                             WHERE d2.DocNoAccounting = d.DocNoAccounting)
+                 WHERE d.CapabilityManagerProgram =
+                       (SELECT Program FROM tblLPPI_CapabilityManagers WHERE CmID = @cm)
+                   AND r.ReasonCodeID IS NULL
+                 GROUP BY d.DocNoAccounting",
+                LPPIHelper.P("@p",  packageId),
+                LPPIHelper.P("@cm", cmId));
+
             return packageId;
         }
 
