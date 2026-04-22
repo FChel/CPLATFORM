@@ -52,16 +52,27 @@ namespace CPlatform.LPPI
             DateTime from, to; int? batchId;
             if (!ReadInputs(out from, out to, out batchId)) { return; }
 
-            // Preview count must match the export filter — include only
-            // reviewed documents whose reason code has Outcome = 'Payable'.
+            // Preview must match the export filter. Under the per-line export
+            // model we report BOTH:
+            //   - distinct payable documents  (what the operator thinks in)
+            //   - total payable lines         (what the file will actually contain)
+            // The reason code lives at document level, so the review is joined
+            // to the first-line DocumentID and every line of the same document
+            // inherits its outcome — same join shape as LPPIExport.BuildExport.
             var sb = new StringBuilder();
-            sb.Append(@"SELECT COUNT(*) FROM tblLPPI_Documents d
-                        INNER JOIN tblLPPI_Reviews r      ON r.DocumentID = d.DocumentID
-                        INNER JOIN tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID
-                        WHERE r.ReasonCodeID IS NOT NULL
-                          AND rc.Outcome = 'Payable'
-                          AND d.FirstSeenDate >= @From
-                          AND d.FirstSeenDate <  DATEADD(day, 1, @To)");
+            sb.Append(@"
+                SELECT COUNT(DISTINCT d.DocNoAccounting) AS DocCount,
+                       COUNT(*)                          AS LineCount
+                  FROM tblLPPI_Documents d
+                  INNER JOIN tblLPPI_Reviews r
+                     ON r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                          FROM tblLPPI_Documents d2
+                                         WHERE d2.DocNoAccounting = d.DocNoAccounting)
+                  INNER JOIN tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID
+                 WHERE r.ReasonCodeID IS NOT NULL
+                   AND rc.Outcome = 'Payable'
+                   AND d.FirstSeenDate >= @From
+                   AND d.FirstSeenDate <  DATEADD(day, 1, @To)");
             if (!chkIncludeExported.Checked) { sb.Append(" AND d.ExportedDate IS NULL"); }
             if (batchId.HasValue)            { sb.Append(" AND d.BatchID = @B"); }
 
@@ -72,8 +83,32 @@ namespace CPlatform.LPPI
             };
             if (batchId.HasValue) { parms.Add(LPPIHelper.P("@B", batchId.Value)); }
 
-            int n = Convert.ToInt32(LPPIHelper.ExecuteScalar(sb.ToString(), parms.ToArray()));
-            ShowMessage(n + " payable document(s) would be exported.", n > 0 ? "ok" : "warn");
+            DataTable dt = LPPIHelper.ExecuteTable(sb.ToString(), parms.ToArray());
+            int docCount  = 0;
+            int lineCount = 0;
+            if (dt.Rows.Count > 0)
+            {
+                if (dt.Rows[0]["DocCount"]  != DBNull.Value) docCount  = Convert.ToInt32(dt.Rows[0]["DocCount"]);
+                if (dt.Rows[0]["LineCount"] != DBNull.Value) lineCount = Convert.ToInt32(dt.Rows[0]["LineCount"]);
+            }
+
+            string kind = docCount > 0 ? "ok" : "warn";
+            string msg;
+            if (docCount == 0)
+            {
+                msg = "No payable documents match those parameters.";
+            }
+            else if (lineCount == docCount)
+            {
+                msg = string.Format("{0} payable document(s) would be exported ({1} row{2} in the file).",
+                    docCount, lineCount, lineCount == 1 ? "" : "s");
+            }
+            else
+            {
+                msg = string.Format("{0} payable document(s) would be exported across {1} line(s) — the file will contain {1} row(s).",
+                    docCount, lineCount);
+            }
+            ShowMessage(msg, kind);
         }
 
         protected void btnExport_Click(object sender, EventArgs e)

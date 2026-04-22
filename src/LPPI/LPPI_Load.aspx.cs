@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -111,12 +112,44 @@ namespace CPlatform.LPPI
 
         private string BuildPreviewTable(LPPIFileParser.ParseResult p)
         {
+            // Count distinct documents (DOC_NO_ACCOUNTING) to give the operator
+            // a sense of what they are about to load. BODS v2 may put multiple
+            // lines per document in the file (one per ITEM_SEQUENCE), so
+            // line-count and document-count can now differ.
+            var distinctDocs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in p.Rows)
+            {
+                string v;
+                if (row.Fields.TryGetValue("DOC_NO_ACCOUNTING", out v))
+                {
+                    string cleaned = LPPIHelper.CleanString(v);
+                    if (!string.IsNullOrEmpty(cleaned)) distinctDocs.Add(cleaned);
+                }
+            }
+            int docCount  = distinctDocs.Count;
+            int lineCount = p.Rows.Count;
+
             var sb = new StringBuilder();
             sb.Append("<p class=\"muted\" style=\"font-size:13px;\">")
-              .Append(p.Rows.Count).Append(" data rows in file.</p>");
+              .Append("File contains ")
+              .Append(p.Headers.Count).Append(" columns, ")
+              .Append(lineCount).Append(" data line").Append(lineCount == 1 ? "" : "s");
+            if (docCount != lineCount)
+            {
+                sb.Append(" across ").Append(docCount).Append(" distinct document")
+                  .Append(docCount == 1 ? "" : "s")
+                  .Append(" (a document may have multiple ITEM_SEQUENCE lines)");
+            }
+            sb.Append(". Showing first 20 lines.</p>");
+
             sb.Append("<table class=\"tbl\"><thead><tr>");
-            var cols = new[] { "DOC_NO_ACCOUNTING", "VENDOR_NAME", "PO_NUMBER", "INVOICE_DATE",
-                               "PAYMENT_RUN_DATE", "DAYS_VARIANCE", "INTEREST_PAYABLE",
+            // Preview columns chosen for review at a glance — include
+            // ITEM_SEQUENCE and FISCAL_YEAR (new in the 48-column format) so
+            // the operator can spot obvious parse problems without opening
+            // the file in Excel.
+            var cols = new[] { "DOC_NO_ACCOUNTING", "ITEM_SEQUENCE", "VENDOR_NAME", "PO_NUMBER",
+                               "INVOICE_DATE", "PAYMENT_RUN_DATE", "DAYS_VARIANCE",
+                               "INTEREST_PAYABLE", "FISCAL_YEAR",
                                "CAPABILITY_MANAGER_PROGRAM" };
             foreach (var c in cols) sb.Append("<th>").Append(c).Append("</th>");
             sb.Append("</tr></thead><tbody>");

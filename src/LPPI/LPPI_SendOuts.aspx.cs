@@ -54,6 +54,13 @@ namespace CPlatform.LPPI
         {
             // Columns required by rptGroups in LPPI_SendOuts.aspx:
             //   CmID, Program, ToCount, ToList, UnreviewedDocs, OpenPackageID
+            //
+            // "UnreviewedDocs" counts DISTINCT DocNoAccounting where the
+            // document has no review on its first line (option-1 first-line-
+            // review). This is the correct document-level count for what the
+            // CM group still owes us. The earlier query counted lines and
+            // joined reviews per-line, which under ItemSequence miscounted
+            // lines 2..N of reviewed documents as "unreviewed".
             const string sql = @"
                 SELECT cm.CmID,
                        cm.Program,
@@ -63,10 +70,13 @@ namespace CPlatform.LPPI
                        ISNULL(STUFF((SELECT ', ' + e.Email
                                        FROM tblLPPI_CapabilityManagerEmails e
                                       WHERE e.CmID = cm.CmID AND e.IsCC = 0
-                                        FOR XML PATH('')), 1, 2, ''), '') AS ToList,
-                       (SELECT COUNT(*)
+                                      FOR XML PATH('')), 1, 2, ''), '') AS ToList,
+                       (SELECT COUNT(DISTINCT d.DocNoAccounting)
                           FROM tblLPPI_Documents d
-                          LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
+                          LEFT JOIN tblLPPI_Reviews r
+                                 ON r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                                      FROM tblLPPI_Documents d2
+                                                     WHERE d2.DocNoAccounting = d.DocNoAccounting)
                          WHERE d.CapabilityManagerProgram = cm.Program
                            AND r.ReasonCodeID IS NULL) AS UnreviewedDocs,
                        (SELECT TOP 1 p.PackageID
@@ -85,6 +95,13 @@ namespace CPlatform.LPPI
             // Columns required by rptRecent in LPPI_SendOuts.aspx:
             //   PackageID, Program, CreatedDate, DueDate,
             //   TotalDocs, ReviewedDocs, Status, LastEmailDate
+            //
+            // NOTE: TotalDocs and ReviewedDocs remain per-line counts — the
+            // package-scope question (is a package scoped to the line or the
+            // document?) belongs to the reviewer-page rework and is out of
+            // scope here. Numbers may look slightly off for multi-line
+            // documents until that rework lands; they are not incorrect for
+            // the line-level package model we currently have.
             const string sql = @"
                 SELECT TOP 50
                        p.PackageID,
@@ -211,6 +228,15 @@ namespace CPlatform.LPPI
 
         private int CreatePackage(int cmId, DateTime due)
         {
+            // NOTE: selectDocs below picks every LINE that has no own-line
+            // review, which under option-1 first-line-review includes lines
+            // 2..N of reviewed documents. That is a pre-existing package-
+            // scope bug that belongs to the reviewer-page rework — do not
+            // "fix" it here, it needs a design decision about whether a
+            // package contains the document (all lines) or a line.
+            //
+            // Flagged in project notes; will be addressed in the reviewer
+            // prompt. This file is deliberately unchanged in this area.
             const string selectDocs = @"
                 SELECT d.DocumentID
                   FROM tblLPPI_Documents d

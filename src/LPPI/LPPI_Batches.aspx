@@ -72,9 +72,9 @@
         </div>
 
         <asp:Panel ID="pnlDocs" runat="server" Visible="false" CssClass="card">
-            <h2>Documents in batch #<asp:Literal ID="litBatchId" runat="server" /></h2>
+            <h2>Lines in batch #<asp:Literal ID="litBatchId" runat="server" /></h2>
             <div class="stat-grid">
-                <div class="stat"><span class="stat-label">Total</span><span class="stat-value"><asp:Literal ID="litTotal" runat="server" /></span></div>
+                <div class="stat"><span class="stat-label">Total lines</span><span class="stat-value"><asp:Literal ID="litTotal" runat="server" /></span></div>
                 <div class="stat stat-ok"><span class="stat-label">Reviewed</span><span class="stat-value"><asp:Literal ID="litReviewed" runat="server" /></span></div>
                 <div class="stat stat-warn"><span class="stat-label">Outstanding</span><span class="stat-value"><asp:Literal ID="litOutstanding" runat="server" /></span></div>
                 <div class="stat"><span class="stat-label">Exported</span><span class="stat-value"><asp:Literal ID="litExported" runat="server" /></span></div>
@@ -86,6 +86,7 @@
                             <thead>
                                 <tr>
                                     <th>Doc No</th>
+                                    <th class="num">Item seq</th>
                                     <th>Vendor</th>
                                     <th>PO</th>
                                     <th>CM Program</th>
@@ -101,6 +102,7 @@
                     <ItemTemplate>
                         <tr>
                             <td><%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %></td>
+                            <td class="num"><%# string.Format("{0:000}", Eval("ItemSequence")) %></td>
                             <td><%# LPPIHelper.Enc(Eval("VendorName")) %></td>
                             <td><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
                             <td><%# LPPIHelper.Enc(Eval("CapabilityManagerProgram")) %></td>

@@ -45,25 +45,46 @@ namespace CPlatform.LPPI
             litBatchId.Text = batchId.ToString();
 
             // Columns required by rptDocs in LPPI_Batches.aspx:
-            //   DocNoAccounting, VendorName, PoNumber, CapabilityManagerProgram,
-            //   InvoiceDate, PaymentRunDate, DaysVariance, InterestPayable,
-            //   ExportedDate (counted server-side only), ReasonCode,
-            //   CompanyCode, ClearingMonth      <-- new, feed SapFiLinkIcon
+            //   DocNoAccounting, ItemSequence, VendorName, PoNumber,
+            //   CapabilityManagerProgram, InvoiceDate, PaymentRunDate,
+            //   DaysVariance, InterestPayable, ExportedDate, ReasonCode,
+            //   CompanyCode, ClearingMonth
+            //
+            // ItemSequence model: tblLPPI_Documents now holds one row per
+            // LINE. The reviewer codes each DOCUMENT once, with the review
+            // stored against the smallest DocumentID for that DocNoAccounting
+            // (option-1 first-line-review). The LEFT JOIN below uses a
+            // correlated subquery to find that first-line DocumentID for each
+            // row, so every line of a reviewed document inherits the document's
+            // reason code — otherwise lines 2..N would show blank and be
+            // miscounted as outstanding.
+            //
+            // The batch detail intentionally keeps one row per LINE (admin
+            // visibility — the whole file is shown as it arrived), with
+            // ORDER BY ItemSequence so multi-line documents group together.
             const string sql = @"
-                SELECT d.DocNoAccounting, d.VendorName, d.PoNumber, d.CapabilityManagerProgram,
+                SELECT d.DocNoAccounting, d.ItemSequence,
+                       d.VendorName, d.PoNumber, d.CapabilityManagerProgram,
                        d.CompanyCode, d.ClearingMonth,
                        d.InvoiceDate, d.PaymentRunDate, d.DaysVariance, d.InterestPayable,
                        d.ExportedDate,
                        rc.Code AS ReasonCode
                 FROM tblLPPI_Documents d
-                LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
+                LEFT JOIN tblLPPI_Reviews r
+                       ON r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                            FROM tblLPPI_Documents d2
+                                           WHERE d2.DocNoAccounting = d.DocNoAccounting)
                 LEFT JOIN tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID
                 WHERE d.BatchID = @b
-                ORDER BY d.CapabilityManagerProgram, d.DocNoAccounting";
+                ORDER BY d.CapabilityManagerProgram, d.DocNoAccounting, d.ItemSequence";
             DataTable dt = LPPIHelper.ExecuteTable(sql, LPPIHelper.P("@b", batchId));
             rptDocs.DataSource = dt;
             rptDocs.DataBind();
 
+            // Headline stats shown above the lines grid. Line counts are what
+            // matches the table below. Reviewed/Outstanding are derived per-row
+            // from the inherited ReasonCode (via first-line review), so a
+            // three-line document with a code counts as 3 reviewed lines.
             int total = dt.Rows.Count;
             int reviewed = 0, exported = 0;
             foreach (DataRow r in dt.Rows)

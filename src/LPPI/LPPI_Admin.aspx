@@ -31,7 +31,7 @@
 
         <div class="stat-grid">
             <div class="stat">
-                <div class="lbl">Total invoices</div>
+                <div class="lbl">Total documents</div>
                 <div class="val"><asp:Literal ID="litTotal" runat="server" Text="0"/></div>
                 <div class="sub">across <asp:Literal ID="litBatches" runat="server" Text="0"/> batches</div>
             </div>

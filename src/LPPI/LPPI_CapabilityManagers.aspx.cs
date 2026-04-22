@@ -39,6 +39,12 @@ namespace CPlatform.LPPI
             // Note: the per-recipient IsActive flag on the emails table was
             // dropped — every recipient row is now considered active until
             // deleted.
+            //
+            // "OpenDocs" counts DISTINCT DocNoAccounting where the document
+            // has no review on its first line (option-1 first-line-review).
+            // The previous LEFT JOIN per DocumentID miscounted lines 2..N of
+            // reviewed multi-line documents as "open" because only the first
+            // line carries the review.
             const string sql = @"
                 SELECT cm.CmID, cm.Program, cm.DisplayName, cm.IsActive,
                        ISNULL(STUFF((SELECT ', ' + e.Email
@@ -49,10 +55,14 @@ namespace CPlatform.LPPI
                                      FROM tblLPPI_CapabilityManagerEmails e
                                      WHERE e.CmID = cm.CmID AND e.IsCC = 1
                                      FOR XML PATH('')), 1, 2, ''), '') AS CcList,
-                       (SELECT COUNT(*) FROM tblLPPI_Documents d
-                        LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
-                        WHERE d.CapabilityManagerProgram = cm.Program
-                          AND r.ReasonCodeID IS NULL) AS OpenDocs
+                       (SELECT COUNT(DISTINCT d.DocNoAccounting)
+                          FROM tblLPPI_Documents d
+                          LEFT JOIN tblLPPI_Reviews r
+                                 ON r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                                      FROM tblLPPI_Documents d2
+                                                     WHERE d2.DocNoAccounting = d.DocNoAccounting)
+                         WHERE d.CapabilityManagerProgram = cm.Program
+                           AND r.ReasonCodeID IS NULL) AS OpenDocs
                 FROM tblLPPI_CapabilityManagers cm
                 ORDER BY cm.Program";
             rptCms.DataSource = LPPIHelper.ExecuteTable(sql);
