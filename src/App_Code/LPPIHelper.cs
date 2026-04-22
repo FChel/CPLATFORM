@@ -440,24 +440,37 @@ WHERE d.CapabilityManagerProgram IS NOT NULL
 
         // -------------------------------------------------------------------
         // Dashboard summary
+        //
+        // Under the ItemSequence schema, tblLPPI_Documents stores one row
+        // per LINE. Document-level counts must operate on
+        // COUNT(DISTINCT DocNoAccounting). Under the option-1 first-line-
+        // review model, the number of Payable+NotPayable reviews equals the
+        // number of reviewed DOCUMENTS (each document has one review, stored
+        // against the first line's DocumentID), so TotalReviewed stays as
+        // COUNT(*) on tblLPPI_Reviews — numerically it is still a document
+        // count.
+        //
+        // TotalOutstanding is derived as TotalDocs - TotalReviewed so the
+        // three numbers reconcile cleanly even if some documents briefly
+        // have no Reviews row at all (reason-code cleared to NULL, for
+        // example).
         // -------------------------------------------------------------------
 
         public static DataRow GetDashboardSummary()
         {
             var sql = @"
 SELECT
-   (SELECT COUNT(*) FROM dbo.tblLPPI_Documents)                                   AS TotalDocs,
-   (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL)      AS TotalReviewed,
-   (SELECT COUNT(*) FROM dbo.tblLPPI_Documents d
-       LEFT JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
-       WHERE r.ReasonCodeID IS NULL)                                              AS TotalOutstanding,
-   (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages WHERE Status='Open')          AS OpenPackages,
+   (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents)           AS TotalDocs,
+   (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL)     AS TotalReviewed,
+   (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents)
+     - (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL) AS TotalOutstanding,
+   (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages WHERE Status='Open')         AS OpenPackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
-       WHERE Status='Open' AND DueDate < SYSDATETIME())                           AS OverduePackages,
+       WHERE Status='Open' AND DueDate < SYSDATETIME())                          AS OverduePackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
        WHERE Status='Open' AND DueDate BETWEEN SYSDATETIME() AND DATEADD(day, @WarnDays, SYSDATETIME()))
-                                                                                  AS NearDeadlinePackages,
-   (SELECT COUNT(*) FROM dbo.tblLPPI_LoadBatches)                                 AS TotalBatches;";
+                                                                                 AS NearDeadlinePackages,
+   (SELECT COUNT(*) FROM dbo.tblLPPI_LoadBatches)                                AS TotalBatches;";
             var dt = ExecuteTable(sql, P("@WarnDays", ReminderWindowDays));
             return dt.Rows.Count > 0 ? dt.Rows[0] : null;
         }
@@ -490,177 +503,181 @@ SELECT
             return "";
         }
 
-/// <summary>
-/// Returns the configured SAP base URL with trailing slashes trimmed, or ""
-/// if the LPPI.SapBaseUrl app setting is missing / empty.
-/// </summary>
-public static string SapBaseUrl
-{
-    get
-    {
-        var raw = Setting("LPPI.SapBaseUrl", "");
-        if (string.IsNullOrWhiteSpace(raw)) return "";
-        return raw.TrimEnd('/');
-    }
-}
+        // -------------------------------------------------------------------
+        // SAP Fiori deep-link helpers
+        // -------------------------------------------------------------------
 
-/// <summary>
-/// Build an SAP Fiori deep link for a Purchase Order. Returns "" if the
-/// base URL or the PO value is missing.
-///
-///   {base}/sap/bc/ui2/flp?sap-language=EN#PurchaseOrder-display?PurchaseOrder={PO}&amp;sap-app-origin-hint=&amp;uitype=advanced
-///
-/// Note the '?' before PurchaseOrder= — that is the Fiori intent-parameter
-/// separator, NOT an '&amp;'. Subsequent params are '&amp;' as usual.
-/// </summary>
-public static string SapPoLink(object poNumber)
-{
-    string po = (poNumber == null || poNumber == DBNull.Value) ? "" : Convert.ToString(poNumber).Trim();
-    if (po.Length == 0) return "";
-    var baseUrl = SapBaseUrl;
-    if (baseUrl.Length == 0) return "";
+        /// <summary>
+        /// Returns the configured SAP base URL with trailing slashes trimmed, or ""
+        /// if the LPPI.SapBaseUrl app setting is missing / empty.
+        /// </summary>
+        public static string SapBaseUrl
+        {
+            get
+            {
+                var raw = Setting("LPPI.SapBaseUrl", "");
+                if (string.IsNullOrWhiteSpace(raw)) return "";
+                return raw.TrimEnd('/');
+            }
+        }
 
-    return baseUrl
-         + "/sap/bc/ui2/flp?sap-language=EN#PurchaseOrder-display"
-         + "?PurchaseOrder=" + System.Uri.EscapeDataString(po)
-         + "&sap-app-origin-hint="
-         + "&uitype=advanced";
-}
+        /// <summary>
+        /// Build an SAP Fiori deep link for a Purchase Order. Returns "" if the
+        /// base URL or the PO value is missing.
+        ///
+        ///   {base}/sap/bc/ui2/flp?sap-language=EN#PurchaseOrder-display?PurchaseOrder={PO}&amp;sap-app-origin-hint=&amp;uitype=advanced
+        ///
+        /// Note the '?' before PurchaseOrder= — that is the Fiori intent-parameter
+        /// separator, NOT an '&amp;'. Subsequent params are '&amp;' as usual.
+        /// </summary>
+        public static string SapPoLink(object poNumber)
+        {
+            string po = (poNumber == null || poNumber == DBNull.Value) ? "" : Convert.ToString(poNumber).Trim();
+            if (po.Length == 0) return "";
+            var baseUrl = SapBaseUrl;
+            if (baseUrl.Length == 0) return "";
 
-/// <summary>
-/// Build an SAP Fiori deep link for an FI accounting document.
-/// ClearingMonth is a "M.YYYY" string as produced by BODS (e.g. "7.2025");
-/// the AU fiscal year rolls forward for Jul-Dec. If ClearingMonth cannot be
-/// parsed, FiscalYear is OMITTED from the URL entirely (SAP will then
-/// prompt the user, which is preferable to sending a bogus FY).
-///
-///   {base}/sap/bc/ui2/flp?sap-language=EN#AccountingDocument-displayDocument?AccountingDocument={DOC}&amp;CompanyCode={CC}[&amp;FiscalYear={FY}]&amp;sap-app-origin-hint=&amp;uitype=advanced
-/// </summary>
-public static string SapFiLink(object docNoAccounting, object companyCode, object clearingMonth)
-{
-    string doc = (docNoAccounting == null || docNoAccounting == DBNull.Value) ? "" : Convert.ToString(docNoAccounting).Trim();
-    string cc  = (companyCode     == null || companyCode     == DBNull.Value) ? "" : Convert.ToString(companyCode).Trim();
-    string cm  = (clearingMonth   == null || clearingMonth   == DBNull.Value) ? "" : Convert.ToString(clearingMonth).Trim();
+            return baseUrl
+                 + "/sap/bc/ui2/flp?sap-language=EN#PurchaseOrder-display"
+                 + "?PurchaseOrder=" + System.Uri.EscapeDataString(po)
+                 + "&sap-app-origin-hint="
+                 + "&uitype=advanced";
+        }
 
-    if (doc.Length == 0) return "";
-    var baseUrl = SapBaseUrl;
-    if (baseUrl.Length == 0) return "";
+        /// <summary>
+        /// Build an SAP Fiori deep link for an FI accounting document.
+        /// ClearingMonth is a "M.YYYY" string as produced by BODS (e.g. "7.2025");
+        /// the AU fiscal year rolls forward for Jul-Dec. If ClearingMonth cannot be
+        /// parsed, FiscalYear is OMITTED from the URL entirely (SAP will then
+        /// prompt the user, which is preferable to sending a bogus FY).
+        ///
+        ///   {base}/sap/bc/ui2/flp?sap-language=EN#AccountingDocument-displayDocument?AccountingDocument={DOC}&amp;CompanyCode={CC}[&amp;FiscalYear={FY}]&amp;sap-app-origin-hint=&amp;uitype=advanced
+        /// </summary>
+        public static string SapFiLink(object docNoAccounting, object companyCode, object clearingMonth)
+        {
+            string doc = (docNoAccounting == null || docNoAccounting == DBNull.Value) ? "" : Convert.ToString(docNoAccounting).Trim();
+            string cc  = (companyCode     == null || companyCode     == DBNull.Value) ? "" : Convert.ToString(companyCode).Trim();
+            string cm  = (clearingMonth   == null || clearingMonth   == DBNull.Value) ? "" : Convert.ToString(clearingMonth).Trim();
 
-    var sb = new System.Text.StringBuilder();
-    sb.Append(baseUrl)
-      .Append("/sap/bc/ui2/flp?sap-language=EN#AccountingDocument-displayDocument")
-      .Append("?AccountingDocument=").Append(System.Uri.EscapeDataString(doc));
+            if (doc.Length == 0) return "";
+            var baseUrl = SapBaseUrl;
+            if (baseUrl.Length == 0) return "";
 
-    if (cc.Length > 0)
-    {
-        sb.Append("&CompanyCode=").Append(System.Uri.EscapeDataString(cc));
-    }
+            var sb = new System.Text.StringBuilder();
+            sb.Append(baseUrl)
+              .Append("/sap/bc/ui2/flp?sap-language=EN#AccountingDocument-displayDocument")
+              .Append("?AccountingDocument=").Append(System.Uri.EscapeDataString(doc));
 
-    int fy;
-    if (TryDeriveAuFiscalYear(cm, out fy))
-    {
-        sb.Append("&FiscalYear=").Append(fy.ToString(CultureInfo.InvariantCulture));
-    }
-    // If we could not derive FY, deliberately omit the parameter rather than
-    // guess — the task spec is explicit about this.
+            if (cc.Length > 0)
+            {
+                sb.Append("&CompanyCode=").Append(System.Uri.EscapeDataString(cc));
+            }
 
-    sb.Append("&sap-app-origin-hint=")
-      .Append("&uitype=advanced");
-    return sb.ToString();
-}
+            int fy;
+            if (TryDeriveAuFiscalYear(cm, out fy))
+            {
+                sb.Append("&FiscalYear=").Append(fy.ToString(CultureInfo.InvariantCulture));
+            }
+            // If we could not derive FY, deliberately omit the parameter rather than
+            // guess — the task spec is explicit about this.
 
-/// <summary>
-/// Render a PO number as an anchor to its SAP Fiori PO display page, or as
-/// plain HTML-encoded text when the URL cannot be built (no base URL
-/// configured, or no PO value).
-///
-/// Callers use this inline in .aspx:
-///   &lt;%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %&gt;
-/// </summary>
-public static string SapPoNumberHtml(object poNumber)
-{
-    string po = (poNumber == null || poNumber == DBNull.Value) ? "" : Convert.ToString(poNumber).Trim();
-    if (po.Length == 0) return "";
+            sb.Append("&sap-app-origin-hint=")
+              .Append("&uitype=advanced");
+            return sb.ToString();
+        }
 
-    var href = SapPoLink(poNumber);
-    if (href.Length == 0) return Enc(po);
+        /// <summary>
+        /// Render a PO number as an anchor to its SAP Fiori PO display page, or as
+        /// plain HTML-encoded text when the URL cannot be built (no base URL
+        /// configured, or no PO value).
+        ///
+        /// Callers use this inline in .aspx:
+        ///   &lt;%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %&gt;
+        /// </summary>
+        public static string SapPoNumberHtml(object poNumber)
+        {
+            string po = (poNumber == null || poNumber == DBNull.Value) ? "" : Convert.ToString(poNumber).Trim();
+            if (po.Length == 0) return "";
 
-    return BuildNumberAnchor(href, po, "Open PO " + po + " in SAP");
-}
+            var href = SapPoLink(poNumber);
+            if (href.Length == 0) return Enc(po);
 
-/// <summary>
-/// Render an FI document number as an anchor to its SAP Fiori
-/// Accounting-Document display page, or plain HTML-encoded text when the
-/// URL cannot be built.
-/// </summary>
-public static string SapFiNumberHtml(object docNoAccounting, object companyCode, object clearingMonth)
-{
-    string doc = (docNoAccounting == null || docNoAccounting == DBNull.Value) ? "" : Convert.ToString(docNoAccounting).Trim();
-    if (doc.Length == 0) return "";
+            return BuildNumberAnchor(href, po, "Open PO " + po + " in SAP");
+        }
 
-    var href = SapFiLink(docNoAccounting, companyCode, clearingMonth);
-    if (href.Length == 0) return Enc(doc);
+        /// <summary>
+        /// Render an FI document number as an anchor to its SAP Fiori
+        /// Accounting-Document display page, or plain HTML-encoded text when the
+        /// URL cannot be built.
+        /// </summary>
+        public static string SapFiNumberHtml(object docNoAccounting, object companyCode, object clearingMonth)
+        {
+            string doc = (docNoAccounting == null || docNoAccounting == DBNull.Value) ? "" : Convert.ToString(docNoAccounting).Trim();
+            if (doc.Length == 0) return "";
 
-    return BuildNumberAnchor(href, doc, "Open document " + doc + " in SAP");
-}
+            var href = SapFiLink(docNoAccounting, companyCode, clearingMonth);
+            if (href.Length == 0) return Enc(doc);
 
-private static string BuildNumberAnchor(string href, string visibleText, string title)
-{
-    return
-        "<a class=\"sap-number-link\" href=\"" + HttpUtility.HtmlAttributeEncode(href) + "\""
-      + " target=\"_blank\" rel=\"noopener\""
-      + " title=\"" + HttpUtility.HtmlAttributeEncode(title) + "\">"
-      + HttpUtility.HtmlEncode(visibleText)
-      + "</a>";
-}
+            return BuildNumberAnchor(href, doc, "Open document " + doc + " in SAP");
+        }
 
-/// <summary>
-/// Build a WBS tooltip combining the element and its description, safe to
-/// embed in an HTML attribute. Handles DBNull/empty values gracefully so
-/// the .aspx does not need a ternary inline.
-/// </summary>
-public static string WbsTooltip(object wbsElement, object wbsDesc)
-{
-    string we = (wbsElement == null || wbsElement == DBNull.Value) ? "" : Convert.ToString(wbsElement);
-    string wd = (wbsDesc    == null || wbsDesc    == DBNull.Value) ? "" : Convert.ToString(wbsDesc);
+        private static string BuildNumberAnchor(string href, string visibleText, string title)
+        {
+            return
+                "<a class=\"sap-number-link\" href=\"" + HttpUtility.HtmlAttributeEncode(href) + "\""
+              + " target=\"_blank\" rel=\"noopener\""
+              + " title=\"" + HttpUtility.HtmlAttributeEncode(title) + "\">"
+              + HttpUtility.HtmlEncode(visibleText)
+              + "</a>";
+        }
 
-    string combined;
-    if (we.Length == 0)      combined = wd;
-    else if (wd.Length == 0) combined = we;
-    else                     combined = we + " — " + wd;
+        /// <summary>
+        /// Build a WBS tooltip combining the element and its description, safe to
+        /// embed in an HTML attribute. Handles DBNull/empty values gracefully so
+        /// the .aspx does not need a ternary inline.
+        /// </summary>
+        public static string WbsTooltip(object wbsElement, object wbsDesc)
+        {
+            string we = (wbsElement == null || wbsElement == DBNull.Value) ? "" : Convert.ToString(wbsElement);
+            string wd = (wbsDesc    == null || wbsDesc    == DBNull.Value) ? "" : Convert.ToString(wbsDesc);
 
-    return HttpUtility.HtmlAttributeEncode(combined);
-}
+            string combined;
+            if (we.Length == 0)      combined = wd;
+            else if (wd.Length == 0) combined = we;
+            else                     combined = we + " — " + wd;
 
-/// <summary>
-/// Derive the Australian fiscal year from a ClearingMonth string of the
-/// form "M.YYYY" (e.g. "7.2025" -&gt; FY 2026, "4.2025" -&gt; FY 2025).
-/// Returns false when the input is null, blank or malformed — in which case
-/// the out parameter is left at 0 and the caller should omit FY entirely.
-///
-/// This logic is duplicated (with a fallback-to-today) in LPPIExport.cs for
-/// the export file build. The two derivations agree for well-formed input;
-/// the difference is only in the fallback behaviour (export falls back to
-/// today, deep links omit the parameter).
-/// </summary>
-public static bool TryDeriveAuFiscalYear(string clearingMonth, out int fiscalYear)
-{
-    fiscalYear = 0;
-    if (string.IsNullOrWhiteSpace(clearingMonth)) return false;
+            return HttpUtility.HtmlAttributeEncode(combined);
+        }
 
-    var parts = clearingMonth.Trim().Split('.');
-    if (parts.Length != 2) return false;
+        /// <summary>
+        /// Derive the Australian fiscal year from a ClearingMonth string of the
+        /// form "M.YYYY" (e.g. "7.2025" -&gt; FY 2026, "4.2025" -&gt; FY 2025).
+        /// Returns false when the input is null, blank or malformed — in which case
+        /// the out parameter is left at 0 and the caller should omit FY entirely.
+        ///
+        /// This logic is duplicated (with a fallback-to-today) in LPPIExport.cs for
+        /// the export file build. The two derivations agree for well-formed input;
+        /// the difference is only in the fallback behaviour (export falls back to
+        /// today, deep links omit the parameter).
+        /// </summary>
+        public static bool TryDeriveAuFiscalYear(string clearingMonth, out int fiscalYear)
+        {
+            fiscalYear = 0;
+            if (string.IsNullOrWhiteSpace(clearingMonth)) return false;
 
-    int month, year;
-    if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out month)) return false;
-    if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out year))  return false;
+            var parts = clearingMonth.Trim().Split('.');
+            if (parts.Length != 2) return false;
 
-    if (month < 1 || month > 12) return false;
-    if (year  < 1900 || year > 2999) return false;
+            int month, year;
+            if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out month)) return false;
+            if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out year))  return false;
 
-    fiscalYear = (month >= 7) ? year + 1 : year;
-    return true;
-}
+            if (month < 1 || month > 12) return false;
+            if (year  < 1900 || year > 2999) return false;
+
+            fiscalYear = (month >= 7) ? year + 1 : year;
+            return true;
+        }
 
     }
 }

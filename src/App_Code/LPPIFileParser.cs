@@ -11,6 +11,11 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Parses a BODS LATEPMT_INTEREST_REVIEW_*.xls extract.
     /// Despite the .xls extension, these files are tab-delimited UTF-8 text.
+    ///
+    /// File format v2 (April 2026): 48 columns. TAX_CODE, ITEM_SEQUENCE and
+    /// FISCAL_YEAR were added by BODS so one DOC_NO_ACCOUNTING may now have
+    /// multiple rows (one per item/line). The unique key on tblLPPI_Documents
+    /// is (DocNoAccounting, ItemSequence).
     /// </summary>
     public static class LPPIFileParser
     {
@@ -20,7 +25,8 @@ namespace CPlatform.LPPI
             "WBS_ELEMENT","WBS_DESC","CAPEX","PROFIT_CENTRE",
             "CAPABILITY_MANAGER","CAPABILITY_MANAGER_NAME","CAPABILITY_MANAGER_PROGRAM",
             "DELIVERY_MANAGER","DELIVERY_MANAGER_NAME","DELIVERY_MANAGER_PROGRAM",
-            "POC_EMAIL","GL_ACCOUNT","CONTRACT_NO","VIM_DOCUMENT_ID","DOC_NO_ACCOUNTING",
+            "POC_EMAIL","GL_ACCOUNT","TAX_CODE","CONTRACT_NO","VIM_DOCUMENT_ID",
+            "DOC_NO_ACCOUNTING","ITEM_SEQUENCE","FISCAL_YEAR",
             "INVOICE_RECEIVED_DATE","INVOICE_DATE","GR_CREATE_DATE_LATEST","CURRENCY",
             "GL_LINE_VALUE_INCL_GST","INVOICE_VALUE_INCL_GST","PAYMENT_TERMS","MATERIAL_PO",
             "EXCLUSION_FLAG","EXCLUSION_TEST","EXCLUSION_DESCRIPTOR","POSSIBLE_PAYMENT",
@@ -107,7 +113,7 @@ namespace CPlatform.LPPI
 
         // -------------------------------------------------------------------
         // Commit parsed rows into tblLPPI_Documents and create a load batch.
-        // Skip-and-warn duplicates by DOC_NO_ACCOUNTING.
+        // Skip-and-warn duplicates by (DOC_NO_ACCOUNTING, ITEM_SEQUENCE).
         // Auto-creates any CM groups seen in the file that do not yet exist.
         // -------------------------------------------------------------------
 
@@ -118,6 +124,7 @@ namespace CPlatform.LPPI
             public int RowsInserted;
             public int RowsSkipped;
             public int RowsFailed;
+            // Skipped identifiers now include item sequence, e.g. "5100366318 / 002"
             public List<string> SkippedDocNumbers = new List<string>();
             public List<string> FailedRows = new List<string>();
             // Programs that were created automatically during this commit.
@@ -132,13 +139,8 @@ namespace CPlatform.LPPI
             var loadedByName = LPPIHelper.CurrentUserDisplayName();
 
             // ------------------------------------------------------------------
-            // TO-DO #1: Auto-create CM groups for any program codes in the file
-            // that do not yet exist in tblLPPI_CapabilityManagers.
-            // UpsertCapabilityManager uses MERGE so it is safe to call for every
-            // distinct program — existing rows are simply updated (no-op on name/
-            // active since we do not overwrite those for pre-existing groups).
-            // We track which programs are brand-new so the commit result can report
-            // them back to the UI.
+            // Auto-create CM groups for any program codes in the file that do
+            // not yet exist in tblLPPI_CapabilityManagers.
             // ------------------------------------------------------------------
             AutoCreateCapabilityManagers(parsed, res);
 
@@ -157,7 +159,8 @@ VALUES (@FileName, @SourcePath, @FileSize, @Modified, @UserId, @UserName, @RowsI
                 LPPIHelper.P("@RowsInFile", parsed.Rows.Count));
             res.BatchID = Convert.ToInt32(newId);
 
-            // Insert each row, skipping duplicates.
+            // Insert each row, skipping duplicates by the (DocNoAccounting, ItemSequence)
+            // composite key.
             foreach (var row in parsed.Rows)
             {
                 var docNo = LPPIHelper.CleanString(row.DocNoAccounting);
@@ -168,26 +171,45 @@ VALUES (@FileName, @SourcePath, @FileSize, @Modified, @UserId, @UserName, @RowsI
                     continue;
                 }
 
+                // ITEM_SEQUENCE is NOT NULL in tblLPPI_Documents and now forms
+                // part of the composite key. If it is blank or non-numeric the
+                // row cannot be inserted — fail it up-front with a clear message
+                // rather than letting the INSERT crash downstream.
+                string rawSeq = null;
+                if (row.Fields.ContainsKey("ITEM_SEQUENCE"))
+                    rawSeq = LPPIHelper.CleanString(row.Fields["ITEM_SEQUENCE"]);
+
+                int? seq = LPPIHelper.ParseInt(rawSeq);
+                if (!seq.HasValue)
+                {
+                    res.RowsFailed++;
+                    res.FailedRows.Add(string.Format(
+                        "Line {0} (doc {1}): ITEM_SEQUENCE is blank or not numeric",
+                        row.LineNumber, docNo));
+                    continue;
+                }
+
                 object exists = LPPIHelper.ExecuteScalar(
-                    "SELECT 1 FROM dbo.tblLPPI_Documents WHERE DocNoAccounting = @D",
-                    LPPIHelper.P("@D", docNo));
+                    "SELECT 1 FROM dbo.tblLPPI_Documents WHERE DocNoAccounting = @D AND ItemSequence = @Seq",
+                    LPPIHelper.P("@D",   docNo),
+                    LPPIHelper.P("@Seq", seq.Value));
                 if (exists != null)
                 {
                     res.RowsSkipped++;
-                    res.SkippedDocNumbers.Add(docNo);
+                    res.SkippedDocNumbers.Add(string.Format("{0} / {1:000}", docNo, seq.Value));
                     continue;
                 }
 
                 try
                 {
-                    InsertDocument(res.BatchID, docNo, row);
+                    InsertDocument(res.BatchID, docNo, seq.Value, row);
                     res.RowsInserted++;
                 }
                 catch (Exception ex)
                 {
                     res.RowsFailed++;
-                    res.FailedRows.Add(string.Format("Line {0} (doc {1}): {2}",
-                        row.LineNumber, docNo, ex.Message));
+                    res.FailedRows.Add(string.Format("Line {0} (doc {1} / {2:000}): {3}",
+                        row.LineNumber, docNo, seq.Value, ex.Message));
                 }
             }
 
@@ -241,35 +263,35 @@ UPDATE dbo.tblLPPI_LoadBatches
             }
         }
 
-        private static void InsertDocument(int batchId, string docNo, ParsedRow row)
+        private static void InsertDocument(int batchId, string docNo, int itemSequence, ParsedRow row)
         {
             const string sql = @"
 INSERT INTO dbo.tblLPPI_Documents
-( DocNoAccounting, BatchID, CompanyCode, PoNumber, VendorNum, VendorName, VendorAcct,
+( DocNoAccounting, ItemSequence, BatchID, CompanyCode, PoNumber, VendorNum, VendorName, VendorAcct,
   WbsElement, WbsDesc, Capex, ProfitCentre,
   CapabilityManager, CapabilityManagerName, CapabilityManagerProgram,
   DeliveryManager, DeliveryManagerName, DeliveryManagerProgram,
-  PocEmail, GlAccount, ContractNo, VimDocumentId,
+  PocEmail, GlAccount, TaxCode, ContractNo, VimDocumentId,
   InvoiceReceivedDate, InvoiceDate, GrCreateDateLatest, Currency,
   GlLineValueInclGst, InvoiceValueInclGst, PaymentTerms, MaterialPo,
   ExclusionFlag, ExclusionTest, ExclusionDescriptor,
   PossiblePayment, PossibleDuplicateClearing, ContractValueLocExGst,
   PaymentRunDate, BodsPaymtBaselineDate, DaysVariance, DailyRate,
   InvoiceInterestAmount, InterestPayable, SourceSystem, PaymentChannel,
-  DocumentType, VendorInvoiceNo, ClearingMonth )
+  DocumentType, VendorInvoiceNo, ClearingMonth, FiscalYear )
 VALUES
-( @DocNo, @BatchID, @CompanyCode, @PoNumber, @VendorNum, @VendorName, @VendorAcct,
+( @DocNo, @ItemSequence, @BatchID, @CompanyCode, @PoNumber, @VendorNum, @VendorName, @VendorAcct,
   @WbsElement, @WbsDesc, @Capex, @ProfitCentre,
   @CapabilityManager, @CapabilityManagerName, @CapabilityManagerProgram,
   @DeliveryManager, @DeliveryManagerName, @DeliveryManagerProgram,
-  @PocEmail, @GlAccount, @ContractNo, @VimDocumentId,
+  @PocEmail, @GlAccount, @TaxCode, @ContractNo, @VimDocumentId,
   @InvoiceReceivedDate, @InvoiceDate, @GrCreateDateLatest, @Currency,
   @GlLineValueInclGst, @InvoiceValueInclGst, @PaymentTerms, @MaterialPo,
   @ExclusionFlag, @ExclusionTest, @ExclusionDescriptor,
   @PossiblePayment, @PossibleDuplicateClearing, @ContractValueLocExGst,
   @PaymentRunDate, @BodsPaymtBaselineDate, @DaysVariance, @DailyRate,
   @InvoiceInterestAmount, @InterestPayable, @SourceSystem, @PaymentChannel,
-  @DocumentType, @VendorInvoiceNo, @ClearingMonth );";
+  @DocumentType, @VendorInvoiceNo, @ClearingMonth, @FiscalYear );";
 
             Func<string, string>    S = k => LPPIHelper.CleanString(row.Fields.ContainsKey(k) ? row.Fields[k] : null);
             Func<string, DateTime?> D = k => LPPIHelper.ParseDate(S(k));
@@ -278,6 +300,7 @@ VALUES
 
             LPPIHelper.ExecuteNonQuery(sql,
                 LPPIHelper.P("@DocNo",                     docNo),
+                LPPIHelper.P("@ItemSequence",              itemSequence),
                 LPPIHelper.P("@BatchID",                   batchId),
                 LPPIHelper.P("@CompanyCode",               (object)S("COMPANY_CODE")                 ?? DBNull.Value),
                 LPPIHelper.P("@PoNumber",                  (object)S("PO_NUMBER")                    ?? DBNull.Value),
@@ -296,6 +319,7 @@ VALUES
                 LPPIHelper.P("@DeliveryManagerProgram",    (object)S("DELIVERY_MANAGER_PROGRAM")     ?? DBNull.Value),
                 LPPIHelper.P("@PocEmail",                  (object)S("POC_EMAIL")                    ?? DBNull.Value),
                 LPPIHelper.P("@GlAccount",                 (object)S("GL_ACCOUNT")                   ?? DBNull.Value),
+                LPPIHelper.P("@TaxCode",                   (object)S("TAX_CODE")                     ?? DBNull.Value),
                 LPPIHelper.P("@ContractNo",                (object)S("CONTRACT_NO")                  ?? DBNull.Value),
                 LPPIHelper.P("@VimDocumentId",             (object)S("VIM_DOCUMENT_ID")              ?? DBNull.Value),
                 LPPIHelper.P("@InvoiceReceivedDate",       (object)D("INVOICE_RECEIVED_DATE")        ?? DBNull.Value),
@@ -322,7 +346,8 @@ VALUES
                 LPPIHelper.P("@PaymentChannel",            (object)S("PAYMENT_CHANNEL")              ?? DBNull.Value),
                 LPPIHelper.P("@DocumentType",              (object)S("DOCUMENT_TYPE")                ?? DBNull.Value),
                 LPPIHelper.P("@VendorInvoiceNo",           (object)S("VENDOR_INVOICE_NO")            ?? DBNull.Value),
-                LPPIHelper.P("@ClearingMonth",             (object)S("CLEARING_MONTH")               ?? DBNull.Value));
+                LPPIHelper.P("@ClearingMonth",             (object)S("CLEARING_MONTH")               ?? DBNull.Value),
+                LPPIHelper.P("@FiscalYear",                (object)S("FISCAL_YEAR")                  ?? DBNull.Value));
         }
     }
 }

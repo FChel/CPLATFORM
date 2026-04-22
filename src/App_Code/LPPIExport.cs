@@ -10,9 +10,24 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Builds the ERP Payment Request bulk-upload workbook (.xlsx) for reviewed,
     /// payable LPPI documents. Layout matches Payment_Request_Bulk_Upload_Template.xlsx
-    /// exactly: 27 columns, Sheet1, plain headers (General format, no bold), one
-    /// row per payable document. Bytes are returned to the caller to stream
-    /// straight to the browser.
+    /// exactly: 27 columns, Sheet1, plain headers (General format, no bold).
+    ///
+    /// Row model (April 2026): ONE ROW PER LINE in tblLPPI_Documents. BODS now
+    /// supplies an ITEM_SEQUENCE so a single DocNoAccounting may have many lines
+    /// and Finance wants each line paid separately against its own GL / WBS /
+    /// Profit Centre. The reason code lives at DOCUMENT level (the reviewer
+    /// codes only the first/dominant line, via the smallest-ItemSequence row),
+    /// and every line of the same document inherits that code — this is done
+    /// via a correlated sub-query that maps each document row to its first-line
+    /// DocumentID and joins the review there.
+    ///
+    /// Payment reference is made unique per line with a -NNN suffix so the bulk
+    /// upload cannot collide on duplicate references when a document has
+    /// multiple lines.
+    ///
+    /// Tax code: always "P5". After TAX_CODE landed in the BODS extract Finance
+    /// confirmed interest payments are not tax-input or tax-output relevant, so
+    /// the DB value is informational only and not propagated to the output.
     ///
     /// Uses EPPlus 4.5.3.3 (LGPL). Do NOT swap this out for ClosedXML — it has
     /// caused dependency problems on the CPLATFORM server in the past.
@@ -64,27 +79,39 @@ namespace CPlatform.LPPI
         /// <summary>
         /// Build the Excel bulk-upload file covering reviewed documents whose
         /// reason code has Outcome = 'Payable'. Signature unchanged from the
-        /// legacy tab-delimited version so the aspx.cs caller does not need
-        /// to change.
+        /// legacy version so the aspx.cs caller does not need to change.
         /// </summary>
         public static ExportResult BuildExport(DateTime fromDate, DateTime toDate, bool includeAlreadyExported,
                                                 int? batchId, bool markExported)
         {
             // -----------------------------------------------------------------
-            // 1. Pull the source rows.
-            //    We only select the columns we actually need for the 27-column
-            //    output, plus DocumentID for the MarkExported pass.
+            // 1. Pull the source rows — one row per tblLPPI_Documents row (i.e.
+            //    per LINE, not per DocNoAccounting). The review is joined via
+            //    the DOCUMENT's first-line DocumentID so that every line of the
+            //    same document inherits the single reason code assigned by the
+            //    CM reviewer. Only lines whose owning document has a review and
+            //    whose reason code is Payable are included.
             // -----------------------------------------------------------------
             const string selectCols =
                 " d.DocumentID, d.CompanyCode, d.VendorNum, d.GlAccount, d.ProfitCentre, " +
-                " d.WbsElement, d.InterestPayable, d.DocNoAccounting, d.VendorInvoiceNo, " +
-                " d.ClearingMonth ";
+                " d.WbsElement, d.InterestPayable, d.DocNoAccounting, d.ItemSequence, " +
+                " d.VendorInvoiceNo, d.ClearingMonth, d.FiscalYear ";
+
+            // Correlated sub-query: "the DocumentID of the first line of this doc".
+            // Join the review to THAT id. Any line whose document's first line
+            // has a Payable review will be included.
+            const string joinFirstLineReview =
+                " INNER JOIN dbo.tblLPPI_Reviews r " +
+                "   ON r.DocumentID = (" +
+                "        SELECT MIN(d2.DocumentID) " +
+                "          FROM dbo.tblLPPI_Documents d2 " +
+                "         WHERE d2.DocNoAccounting = d.DocNoAccounting) " +
+                " INNER JOIN dbo.tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID ";
 
             var sql =
                 "SELECT " + selectCols +
                 " FROM dbo.tblLPPI_Documents d" +
-                " INNER JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = d.DocumentID" +
-                " INNER JOIN dbo.tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID" +
+                joinFirstLineReview +
                 " WHERE r.ReasonCodeID IS NOT NULL" +
                 "   AND rc.Outcome = 'Payable'" +
                 "   AND d.FirstSeenDate >= @From" +
@@ -92,7 +119,7 @@ namespace CPlatform.LPPI
 
             if (!includeAlreadyExported) sql += " AND d.ExportedDate IS NULL";
             if (batchId.HasValue)        sql += " AND d.BatchID = @Batch";
-            sql += " ORDER BY d.DocNoAccounting;";
+            sql += " ORDER BY d.DocNoAccounting, d.ItemSequence;";
 
             var parms = new List<OleDbParameter>
             {
@@ -120,7 +147,7 @@ namespace CPlatform.LPPI
                     ws.Cells[1, c + 1].Value = OutputHeaders[c];
                 }
 
-                // Row 2+: one row per payable document.
+                // Row 2+: one row per LINE.
                 int excelRow = 2;
                 foreach (DataRow row in dt.Rows)
                 {
@@ -131,13 +158,30 @@ namespace CPlatform.LPPI
                     string wbsElement     = AsString(row["WbsElement"]);
                     decimal? interestPay  = AsDecimal(row["InterestPayable"]);
                     string docNoAcct      = AsString(row["DocNoAccounting"]);
+                    int    itemSeq        = AsInt(row["ItemSequence"]);
                     string vendorInvoice  = AsString(row["VendorInvoiceNo"]);
                     string clearingMonth  = AsString(row["ClearingMonth"]);
+                    string fiscalYearRaw  = AsString(row["FiscalYear"]);
 
-                    // TODO: FY currently derived from ClearingMonth; switch to
-                    // the dedicated FISC_YEAR column once BODS adds it to the extract.
-                    int fy = DeriveAuFiscalYear(clearingMonth);
-                    string paymentRef = companyCode + fy.ToString(CultureInfo.InvariantCulture) + docNoAcct;
+                    // FY: prefer the dedicated FISCAL_YEAR column from BODS,
+                    // fall back to deriving from ClearingMonth for any legacy
+                    // rows where the column is empty.
+                    int fy;
+                    if (!int.TryParse(fiscalYearRaw, NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out fy) || fy <= 0)
+                    {
+                        fy = DeriveAuFiscalYear(clearingMonth);
+                    }
+
+                    // Payment reference must be unique per LINE so the bulk
+                    // upload does not reject duplicates when a document has
+                    // multiple lines. Format: {CC}{FY}{DOC}-{SEQ:000}.
+                    string paymentRef = string.Format(CultureInfo.InvariantCulture,
+                        "{0}{1}{2}-{3:000}",
+                        companyCode,
+                        fy,
+                        docNoAcct,
+                        itemSeq);
 
                     string itemText = "Late Payment Interest for " + vendorInvoice;
 
@@ -153,13 +197,13 @@ namespace CPlatform.LPPI
                     ws.Cells[excelRow, 9].Value  = wbsElement;      // WBS Element
                     // Col 10 Internal Order — blank
 
-                    // Col 11 Amount Paid (GST Incl) — as-is from InterestPayable
+                    // Col 11 Amount Paid (GST Incl) — per-line InterestPayable
                     if (interestPay.HasValue)
                         ws.Cells[excelRow, 11].Value = interestPay.Value;
-                    // (leave blank if null — same behaviour as the old TSV, which wrote "")
+                    // (leave blank if null — same behaviour as the old TSV)
 
                     ws.Cells[excelRow, 12].Value = "AUD";           // Currency
-                    ws.Cells[excelRow, 13].Value = "P5";            // Tax code (placeholder)
+                    ws.Cells[excelRow, 13].Value = "P5";            // Tax code — interest is not tax-relevant
                     ws.Cells[excelRow, 14].Value = paymentRef;      // Payment reference
                     ws.Cells[excelRow, 15].Value = docNoAcct;       // Header text
                     ws.Cells[excelRow, 16].Value = itemText;        // Item text
@@ -190,7 +234,8 @@ namespace CPlatform.LPPI
             };
 
             // -----------------------------------------------------------------
-            // 4. Flip ExportedDate/ExportedBy for the docs actually included.
+            // 4. Flip ExportedDate/ExportedBy on the lines actually included.
+            //    One UPDATE per line — correct under the per-line row model.
             // -----------------------------------------------------------------
             if (markExported && docIds.Count > 0)
                 MarkExported(docIds);
@@ -220,6 +265,8 @@ namespace CPlatform.LPPI
         /// form "M.YYYY" (e.g. "7.2025" -> FY 2026, "4.2025" -> FY 2025).
         /// Jul–Dec roll forward; Jan–Jun stay on the calendar year.
         /// Falls back to today's FY if the value is missing or malformed.
+        /// Retained only for legacy rows where the FISCAL_YEAR column is empty —
+        /// fresh BODS extracts supply FY directly.
         /// </summary>
         internal static int DeriveAuFiscalYear(string clearingMonth)
         {
@@ -250,19 +297,25 @@ namespace CPlatform.LPPI
             return true;
         }
 
-        private static string AsString(object o)
+        private static string AsString(object v)
         {
-            if (o == null || o == DBNull.Value) return "";
-            return Convert.ToString(o, CultureInfo.InvariantCulture) ?? "";
+            if (v == null || v == DBNull.Value) return "";
+            return Convert.ToString(v, CultureInfo.InvariantCulture);
         }
 
-        private static decimal? AsDecimal(object o)
+        private static int AsInt(object v)
         {
-            if (o == null || o == DBNull.Value) return null;
-            if (o is decimal) return (decimal)o;
+            if (v == null || v == DBNull.Value) return 0;
+            return Convert.ToInt32(v, CultureInfo.InvariantCulture);
+        }
+
+        private static decimal? AsDecimal(object v)
+        {
+            if (v == null || v == DBNull.Value) return null;
+            if (v is decimal) return (decimal)v;
             decimal d;
-            if (decimal.TryParse(Convert.ToString(o, CultureInfo.InvariantCulture),
-                                 NumberStyles.Any, CultureInfo.InvariantCulture, out d))
+            if (decimal.TryParse(Convert.ToString(v, CultureInfo.InvariantCulture),
+                NumberStyles.Any, CultureInfo.InvariantCulture, out d))
                 return d;
             return null;
         }
