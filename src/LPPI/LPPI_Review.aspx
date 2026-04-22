@@ -207,11 +207,11 @@
                                     <th class="col-dm">Delivery manager</th>
                                     <th class="col-poc">POC</th>
                                     <th class="col-date">Payment</th>
-                                    <th class="col-days num">Days</th>
+                                    <th class="col-days num">Days Late</th>
                                     <th class="col-int num">Interest</th>
                                     <th class="col-reason">Reason code</th>
                                     <th class="col-comments">Comments</th>
-                                    <th class="col-obj">Obj ref</th>
+                                    <th class="col-obj">Evidence (Obj ref)</th>
                                 </tr>
                             </thead>
                             <tbody>
