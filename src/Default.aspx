@@ -77,7 +77,7 @@
             --muted:    #8a7c70;
             --line:     #ecdfd1;
 
-            /* System font stacks — guaranteed available on Defence SOE, no downloads required */
+            /* System font stacks â€” guaranteed available on Defence SOE, no downloads required */
             --ui-font:      "Segoe UI", "Segoe UI Web", Tahoma, "Helvetica Neue", Arial, sans-serif;
             --display-font: "Segoe UI", "Segoe UI Web", Tahoma, "Helvetica Neue", Arial, sans-serif;
         }
@@ -587,40 +587,61 @@
 
         <!-- Hero -->
         <section class="hero">
-            <span class="kicker">DFG &middot; Finance Utilities</span>
+            <span class="kicker">DFG &middot; Finance Modules</span>
             <h1>FinHub<span class="accent"></span></h1>
             <p class="tagline">
-                FinHub is a collection of finance utilities including LPPI Review Dashboard, eJET and Chart of Accounts (COA) Search.
+                FinHub provides access to finance modules within the CAPS Platform.
             </p>
             <div class="hero-cta-row">
-                <a class="btn btn-primary" href="LPPI/LPPI_Admin.aspx" target="_blank" rel="noopener noreferrer">
-                    LPPI Review Dashboard
+                <% if (!string.IsNullOrWhiteSpace(HeroCtaUrl("Primary"))) { %>
+                <a class="btn btn-primary" href="<%= HttpUtility.HtmlAttributeEncode(HeroCtaUrl("Primary")) %>" target="_blank" rel="noopener noreferrer">
+                    <%= HttpUtility.HtmlEncode(HeroCtaLabel("Primary")) %>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                 </a>
-                <a class="btn btn-ghost" href="http://creditcarduat.dpesit.protectedsit.mil.au/COASearch.asp" target="_blank" rel="noopener noreferrer">COA Search</a>
+                <% } %>
+                <% if (!string.IsNullOrWhiteSpace(HeroCtaUrl("Ghost"))) { %>
+                <a class="btn btn-ghost" href="<%= HttpUtility.HtmlAttributeEncode(HeroCtaUrl("Ghost")) %>" target="_blank" rel="noopener noreferrer">
+                    <%= HttpUtility.HtmlEncode(HeroCtaLabel("Ghost")) %>
+                </a>
+                <% } %>
             </div>
         </section>
 
         <!-- Apps -->
         <div class="section-head">
-            <h2>Available Utilities</h2>
+            <h2>Available Modules</h2>
             <span class="hint">Click to get started</span>
         </div>
         <div class="tiles">
 
-            <a class="tile" href="LPPI/LPPI_Admin.aspx" target="_blank" rel="noopener noreferrer">
+            <% if (IsTileVisible("CAPS")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("CAPS")) %>" target="_blank" rel="noopener noreferrer">
+                <div>
+                    <div class="icon">
+                        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                    </div>
+                    <h3>CAPS</h3>
+                    <p>CAPS Admin Portal Login</p>
+                </div>
+                <span class="arrow">Open &rarr;</span>
+            </a>
+            <% } %>
+
+            <% if (IsTileVisible("LPPI")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("LPPI")) %>" target="_blank" rel="noopener noreferrer">
                 <div>
                     <div class="icon">
                         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><circle cx="16" cy="16" r="3"/><path d="M16 14.5V16l1 1"/></svg>
                     </div>
-                    <h3>LPPI Review Dashobard</h3>
+                    <h3>LPPI Review Dashboard</h3>
                     <p>Review and classify Late Payment Penalty Interest cases.</p>
                 </div>
                 <span class="arrow">Open &rarr;</span>
             </a>
+            <% } %>
 
-
-            <a class="tile" href="http://creditcarduat.dpesit.protectedsit.mil.au/COASearch.asp" target="_blank" rel="noopener noreferrer">
+            <% if (IsTileVisible("COA")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("COA")) %>" target="_blank" rel="noopener noreferrer">
                 <div>
                     <div class="icon">
                         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -630,8 +651,10 @@
                 </div>
                 <span class="arrow">Open &rarr;</span>
             </a>
+            <% } %>
 
-            <a class="tile" href="http://creditcarduat.dpesit.protectedsit.mil.au/eJet.aspx" target="_blank" rel="noopener noreferrer">
+            <% if (IsTileVisible("eJET")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("eJET")) %>" target="_blank" rel="noopener noreferrer">
                 <div>
                     <div class="icon">
                         <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
@@ -641,8 +664,10 @@
                 </div>
                 <span class="arrow">Open &rarr;</span>
             </a>
+            <% } %>
 
-            <a class="tile" href="http://creditcarduat.dpesit.protectedsit.mil.au/eJet_Multi.aspx" target="_blank" rel="noopener noreferrer">
+            <% if (IsTileVisible("eJETMulti")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("eJETMulti")) %>" target="_blank" rel="noopener noreferrer">
                 <div>
                     <div class="icon">
                         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -652,8 +677,10 @@
                 </div>
                 <span class="arrow">Open &rarr;</span>
             </a>
+            <% } %>
 
-            <a class="tile" href="http://creditcarduat.dpesit.protectedsit.mil.au/Admin/CAPSAdmin/Attachments/Applications/mahdi/CPlatform/Default.aspx" target="_blank" rel="noopener noreferrer">
+            <% if (IsTileVisible("DFGForms")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("DFGForms")) %>" target="_blank" rel="noopener noreferrer">
                 <div>
                     <div class="icon">
                         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 14h6M9 17h4"/></svg>
@@ -663,16 +690,11 @@
                 </div>
                 <span class="arrow">Open &rarr;</span>
             </a>
+            <% } %>
 
         </div>
 
-        <!-- About -->
-        <section class="info">
-            <h2>About this site</h2>
-            <p>
-                FinHub is a collection of <strong>finance utilities</strong> on the CAPS platform (<strong>CPLATFORM</strong>). The page you are currently viewing is the <strong><%= EnvironmentLabel %></strong> environment.
-            </p>
-        </section>
+
     </div>
     </form>
 </body>

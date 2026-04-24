@@ -1,42 +1,38 @@
-﻿using System;
+using System;
 using System.Configuration;
 using System.Web;
-using System.Web.Hosting;
 
 /// <summary>
-/// CPLATFORM landing / intro page.
+/// CPLATFORM landing / intro page (FinHub).
 ///
-/// Environment label (UAT / PROD / DEV / UNKNOWN) is resolved dynamically — never
-/// hardcoded in the application source. Resolution order:
-///   1. web.config appSetting "CPlatform.Environment"   (explicit override)
-///   2. Environment variable      "CPLATFORM_ENV"        (set on the box / app pool)
-///   3. IIS site name             (HostingEnvironment.SiteName)
-///   4. Machine name fallback     (Environment.MachineName)
+/// Environment label (DEV / UAT / PROD / UNKNOWN) is resolved from a single,
+/// required source:
+///   1. web.config appSetting "CPlatform.Environment"  (required — explicit)
+///   2. Environment variable  "CPLATFORM_ENV"           (fallback for environments
+///                                                       where editing web.config is
+///                                                       impractical)
 ///
-/// Matching rules applied to whichever value above is found first:
-///   - contains "dev"  -> DEV
-///   - contains "uat"  -> UAT
-///   - otherwise, if the value looks like a real prod host (non-empty and
-///     contains none of the non-prod markers like "test", "local", "stage"…)
-///     -> PROD
-///   - else -> UNKNOWN  (red chip, so misconfiguration is visible)
+/// If neither is set, or if the value does not match DEV/UAT/PROD exactly
+/// (case-insensitive), the chip shows "UNKNOWN" in red so misconfiguration is
+/// immediately visible. IIS site name and machine name are NOT used — they are
+/// unreliable heuristics that can silently show "PROD" on the wrong box.
 ///
-/// To switch the banner from UAT to PROD on the production box, set ONE of:
-///   - the IIS site name to the production site name (no dev/uat/test in it)
-///   - the CPLATFORM_ENV environment variable on the app pool
-///   - a CPlatform.Environment appSetting in that environment's web.config
-/// No code change or redeploy of the binaries is required.
+/// Tile and hero CTA visibility:
+///   Each tile is driven by two appSettings:
+///     CPlatform.Tile.<n>.Url          — URL for this environment (required; empty = tile hidden)
+///     CPlatform.Tile.<n>.Environments — comma-separated environments to show the tile in;
+///                                        absent/blank = show in all environments
+///   IsTileVisible() and TileUrl() are called from Default.aspx markup.
+///   HeroCtaUrl() and HeroCtaLabel() expose the hero button values.
 /// </summary>
 public partial class CPlatformPage : System.Web.UI.Page
 {
     protected string EnvironmentLabel { get; private set; }
     protected string EnvironmentClass { get; private set; }
-    protected string HostName       { get; private set; }
-    protected string SiteName       { get; private set; }
 
     protected void Page_Load(object sender, EventArgs e)
     {
-        // Cache prevention so the banner always reflects the current environment
+        // Cache prevention so the banner always reflects the current environment.
         Response.Cache.SetCacheability(HttpCacheability.NoCache);
         Response.Cache.SetExpires(DateTime.UtcNow.AddMinutes(-1));
         Response.Cache.SetNoStore();
@@ -45,74 +41,82 @@ public partial class CPlatformPage : System.Web.UI.Page
         ResolveEnvironment();
     }
 
+    // -----------------------------------------------------------------------
+    // Environment resolution
+    // -----------------------------------------------------------------------
+
     private void ResolveEnvironment()
     {
-        SiteName = SafeGet(() => HostingEnvironment.SiteName) ?? string.Empty;
-        HostName = SafeGet(() => Environment.MachineName) ?? string.Empty;
-
         string raw = ConfigurationManager.AppSettings["CPlatform.Environment"];
+
         if (string.IsNullOrWhiteSpace(raw))
-        {
             raw = Environment.GetEnvironmentVariable("CPLATFORM_ENV");
-        }
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            raw = SiteName;
-        }
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            raw = HostName;
-        }
 
-        string lower = (raw ?? string.Empty).ToLowerInvariant();
-
-        if (lower.Contains("dev"))
+        switch ((raw ?? string.Empty).Trim().ToUpperInvariant())
         {
-            EnvironmentLabel = "DEV";
-            EnvironmentClass = "env-dev";
-        }
-        else if (lower.Contains("uat"))
-        {
-            EnvironmentLabel = "UAT";
-            EnvironmentClass = "env-uat";
-        }
-        else if (LooksLikeProd(lower))
-        {
-            EnvironmentLabel = "PROD";
-            EnvironmentClass = "env-prod";
-        }
-        else
-        {
-            EnvironmentLabel = "UNKNOWN";
-            EnvironmentClass = "env-unknown";
+            case "DEV":
+                EnvironmentLabel = "DEV";
+                EnvironmentClass = "env-dev";
+                break;
+            case "UAT":
+                EnvironmentLabel = "UAT";
+                EnvironmentClass = "env-uat";
+                break;
+            case "PROD":
+                EnvironmentLabel = "PROD";
+                EnvironmentClass = "env-prod";
+                break;
+            default:
+                EnvironmentLabel = "UNKNOWN";
+                EnvironmentClass = "env-unknown";
+                break;
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Tile helpers — called from Default.aspx markup
+    // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Returns true only if the value looks like a real production host:
-    /// non-empty and containing none of the markers we associate with
-    /// non-production environments. This prevents an empty site name or a
-    /// developer's laptop from being silently displayed as PROD.
+    /// Returns true when the named tile should be rendered for the current environment.
+    /// Hidden when: Url key is absent/blank, OR Environments key is non-blank and does
+    /// not include the current environment.
     /// </summary>
-    private static bool LooksLikeProd(string value)
+    protected bool IsTileVisible(string tileName)
     {
-        if (string.IsNullOrWhiteSpace(value)) return false;
+        string url = ConfigurationManager.AppSettings["CPlatform.Tile." + tileName + ".Url"];
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
 
-        string[] nonProdMarkers =
-        {
-            "dev", "uat", "test", "tst", "local", "localhost",
-            "stage", "stg", "sandbox", "sbx"
-        };
+        string envList = ConfigurationManager.AppSettings["CPlatform.Tile." + tileName + ".Environments"];
+        if (string.IsNullOrWhiteSpace(envList))
+            return true; // no restriction — show in all environments
 
-        foreach (string marker in nonProdMarkers)
+        foreach (string env in envList.Split(','))
         {
-            if (value.Contains(marker)) return false;
+            if (string.Equals(env.Trim(), EnvironmentLabel, StringComparison.OrdinalIgnoreCase))
+                return true;
         }
-        return true;
+        return false;
     }
 
-    private static string SafeGet(Func<string> f)
+    /// <summary>Returns the URL for the named tile as configured for this environment.</summary>
+    protected string TileUrl(string tileName)
     {
-        try { return f(); } catch { return null; }
+        return ConfigurationManager.AppSettings["CPlatform.Tile." + tileName + ".Url"] ?? string.Empty;
+    }
+
+    // -----------------------------------------------------------------------
+    // Hero CTA helpers
+    // -----------------------------------------------------------------------
+
+    protected string HeroCtaUrl(string which)
+    {
+        return ConfigurationManager.AppSettings["CPlatform.HeroCta." + which + ".Url"] ?? string.Empty;
+    }
+
+    protected string HeroCtaLabel(string which)
+    {
+        return ConfigurationManager.AppSettings["CPlatform.HeroCta." + which + ".Label"] ?? string.Empty;
     }
 }

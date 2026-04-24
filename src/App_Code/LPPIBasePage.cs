@@ -17,22 +17,35 @@ namespace CPlatform.LPPI
         public string EnvCssClass { get { return CurrentEnv.ToLowerInvariant(); } }
 
         /// <summary>
+        /// Override to false on pages that do not require admin access.
+        /// Currently only LPPI_Review.aspx, which authenticates via token.
+        /// </summary>
+        protected virtual bool RequiresAdminAccess { get { return true; } }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            if (RequiresAdminAccess && !LPPIHelper.HasLppiAccess())
+            {
+                Response.Redirect("~/LPPI/LPPI_Info.aspx", true);
+            }
+            base.OnLoad(e);
+        }
+
+        /// <summary>
         /// Render the standard LPPI page header. Pass the active nav key:
-        /// "dashboard","load","batches","cm","reasons","sendouts","export".
-        ///
-        /// TO-DO #5 — the brand now renders a subtitle line beneath "LPPI Review"
-        /// so every page in the module carries a consistent, context-setting blurb.
+        /// "dashboard","load","batches","cm","reasons","sendouts","export","adminusers".
         /// </summary>
         public string RenderHeader(string active)
         {
             var nav = new[] {
-                new { Key="dashboard", Label="Dashboard",            Url="LPPI_Admin.aspx" },
-                new { Key="load",      Label="Load file",            Url="LPPI_Load.aspx" },
-                new { Key="batches",   Label="Batches",              Url="LPPI_Batches.aspx" },
-                new { Key="sendouts",  Label="Send-outs",            Url="LPPI_SendOuts.aspx" },
-                new { Key="cm",        Label="Capability Managers",  Url="LPPI_CapabilityManagers.aspx" },
-                new { Key="reasons",   Label="Reason Codes",         Url="LPPI_ReasonCodes.aspx" },
-                new { Key="export",    Label="Export",               Url="LPPI_Export.aspx" }
+                new { Key="dashboard",  Label="Dashboard",           Url="LPPI_Admin.aspx" },
+                new { Key="load",       Label="Load file",           Url="LPPI_Load.aspx" },
+                new { Key="batches",    Label="Batches",             Url="LPPI_Batches.aspx" },
+                new { Key="sendouts",   Label="Send-outs",           Url="LPPI_SendOuts.aspx" },
+                new { Key="cm",         Label="Capability Managers", Url="LPPI_CapabilityManagers.aspx" },
+                new { Key="reasons",    Label="Reason Codes",        Url="LPPI_ReasonCodes.aspx" },
+                new { Key="export",     Label="Export",              Url="LPPI_Export.aspx" },
+                new { Key="adminusers", Label="Admin users",         Url="LPPI_AdminUsers.aspx" }
             };
 
             var sb = new StringBuilder();

@@ -111,6 +111,61 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
+        // Access control
+        //
+        // Access model:
+        //   Reviewer page  = token-based (no Windows identity check).
+        //   Everything else = gated by tblLPPI_AdminUsers.
+        //   Admin           = full access to all LPPI admin pages and actions.
+        //   Non-admin       = LPPI_Review.aspx only (via token link).
+        //
+        // Results are cached in HttpContext.Items for the lifetime of the
+        // current request — one DB round-trip per page load, not per call.
+        // -------------------------------------------------------------------
+
+        private const string ItemsKeyAdmin = "LPPI_IsAdmin";
+
+        /// <summary>
+        /// Returns true if the current Windows identity is an active admin
+        /// in tblLPPI_AdminUsers. Cached per request in HttpContext.Items.
+        /// </summary>
+        public static bool IsAdminUser()
+        {
+            var ctx = HttpContext.Current;
+            if (ctx == null) return false;
+
+            if (ctx.Items.Contains(ItemsKeyAdmin))
+                return (bool)ctx.Items[ItemsKeyAdmin];
+
+            bool result = false;
+            try
+            {
+                string userId = CurrentUserId();
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    var o = ExecuteScalar(
+                        @"SELECT COUNT(1) FROM dbo.tblLPPI_AdminUsers
+                          WHERE LOWER(UserId) = LOWER(@UserId) AND IsActive = 1",
+                        P("@UserId", userId));
+                    result = (o != null && Convert.ToInt32(o) > 0);
+                }
+            }
+            catch { }
+
+            ctx.Items[ItemsKeyAdmin] = result;
+            return result;
+        }
+
+        /// <summary>
+        /// Convenience alias — true if the current user has any LPPI admin
+        /// access (currently equivalent to IsAdminUser).
+        /// </summary>
+        public static bool HasLppiAccess()
+        {
+            return IsAdminUser();
+        }
+
+        // -------------------------------------------------------------------
         // Token generation — cryptographically strong, URL-safe, opaque.
         // ~22 chars of base64url (16 random bytes). Not a sequential ID.
         // -------------------------------------------------------------------

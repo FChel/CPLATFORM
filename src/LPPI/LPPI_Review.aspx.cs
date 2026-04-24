@@ -7,6 +7,10 @@ namespace CPlatform.LPPI
 {
     public partial class LPPI_Review : LPPIBasePage
     {
+        // This page authenticates via an unguessable token, not Windows identity.
+        // Opt out of the admin access gate in LPPIBasePage.OnLoad.
+        protected override bool RequiresAdminAccess { get { return false; } }
+
         protected string TokenForClient = "";
         protected string ProgramName    = "";
         protected DateTime DueDate;
