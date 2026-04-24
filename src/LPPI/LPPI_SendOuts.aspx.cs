@@ -20,6 +20,27 @@ namespace CPlatform.LPPI
                 BindGroups();
                 BindRecent();
             }
+
+            // Gate the Send button and show a UAT banner when not in production mode.
+            btnSend.Enabled = LPPIEmail.ProductionMode;
+            RenderUatBanner();
+        }
+
+        // -------------------------------------------------------------------
+        // UAT banner
+        // -------------------------------------------------------------------
+
+        private void RenderUatBanner()
+        {
+            phUatBanner.Controls.Clear();
+            if (LPPIEmail.ProductionMode) return;
+
+            phUatBanner.Controls.Add(new LiteralControl(
+                "<div class=\"alert alert-warn\">" +
+                "<div><strong>UAT mode</strong> — email sending is disabled. " +
+                "Use the <em>Preview email</em> button to review the formatted email for any group. " +
+                "Set <code>LPPI.ProductionMode = true</code> in web.config to enable sending.</div>" +
+                "</div>"));
         }
 
         // -------------------------------------------------------------------
@@ -84,8 +105,6 @@ namespace CPlatform.LPPI
             // Columns required by rptRecent Eval():
             //   PackageID, Token, Program, CreatedDate, DueDate,
             //   TotalDocs, ReviewedDocs, Status, LastEmailDate
-            //
-            // Token is included so Open packages can render direct review links.
             const string sql = @"
                 SELECT TOP 50
                        p.PackageID,
@@ -113,24 +132,46 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // Render helper — Open-only link buttons for rptRecent rows
+        // Render helpers
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Renders two buttons for an open package: "Open review" (new tab)
-        /// and "Copy link" (clipboard). Only called when Status = 'Open'.
+        /// Actions column for rptRecent rows. Open packages get review link
+        /// buttons plus a Preview email button. All packages get Preview email.
         /// </summary>
-        protected string RenderLinkButtons(object tokenObj)
+        protected string RenderRecentActions(object packageIdObj, object tokenObj, object statusObj)
         {
-            if (tokenObj == null || tokenObj == DBNull.Value) return "";
-            string token   = LPPIHelper.Enc(tokenObj);
-            string baseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
-            return string.Format(
-                "<button type=\"button\" class=\"btn btn-sm btn-secondary\" " +
-                "onclick=\"openReviewLink('{0}','{1}');\">Open review &rarr;</button> " +
+            if (packageIdObj == null || packageIdObj == DBNull.Value) return "";
+
+            int    packageId = Convert.ToInt32(packageIdObj);
+            string status    = statusObj != null && statusObj != DBNull.Value
+                               ? Convert.ToString(statusObj) : "";
+
+            var sb = new StringBuilder();
+
+            // Review link buttons — open packages only
+            if (string.Equals(status, "Open", StringComparison.OrdinalIgnoreCase)
+                && tokenObj != null && tokenObj != DBNull.Value)
+            {
+                string token   = LPPIHelper.Enc(tokenObj);
+                string baseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-secondary\" " +
+                    "onclick=\"openReviewLink('{0}','{1}');\">Open review &rarr;</button> ",
+                    token, baseUrl);
+            }
+
+            // Preview email — all packages
+            // Use "Reminder" type label for closed packages so the preview
+            // reflects a more complete view; Initial for Open.
+            string emailType = string.Equals(status, "Open", StringComparison.OrdinalIgnoreCase)
+                               ? "Initial" : "Reminder";
+            sb.AppendFormat(
                 "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
-                "onclick=\"copyReviewLink('{0}','{1}');\">Copy link</button>",
-                token, baseUrl);
+                "onclick=\"openPreview({0},'{1}')\">Preview email</button>",
+                packageId, emailType);
+
+            return sb.ToString();
         }
 
         // -------------------------------------------------------------------
@@ -139,6 +180,14 @@ namespace CPlatform.LPPI
 
         protected void btnSend_Click(object sender, EventArgs e)
         {
+            // Belt-and-braces — the button should already be disabled in the
+            // markup when ProductionMode is false, but guard here too.
+            if (!LPPIEmail.ProductionMode)
+            {
+                ShowMessage("Email sending is disabled in UAT. Set LPPI.ProductionMode = true in web.config to enable.", "err");
+                return;
+            }
+
             DateTime due;
             if (!DateTime.TryParse(txtDueDate.Text, out due))
             {
@@ -165,8 +214,6 @@ namespace CPlatform.LPPI
             }
 
             var failNotes    = new StringBuilder();
-            var mailtoLinks  = new List<string>();
-            // Capture (program, token) pairs for the success message links
             var sentPackages = new List<Tuple<string, string>>();
             int created = 0, emailed = 0, failed = 0;
 
@@ -182,7 +229,6 @@ namespace CPlatform.LPPI
                 }
                 created++;
 
-                // Capture program name for the success message
                 object progObj = LPPIHelper.ExecuteScalar(
                     "SELECT Program FROM tblLPPI_CapabilityManagers WHERE CmID = @id",
                     LPPIHelper.P("@id", cmId));
@@ -194,8 +240,6 @@ namespace CPlatform.LPPI
                 if (result.Success)
                 {
                     emailed++;
-                    if (result.UseClientEmail && !string.IsNullOrEmpty(result.MailtoLink))
-                        mailtoLinks.Add(result.MailtoLink);
                 }
                 else
                 {
@@ -207,58 +251,12 @@ namespace CPlatform.LPPI
 
             string kind = failed == 0 ? "ok" : "warn";
             var msg = new StringBuilder();
-            msg.Append(created).Append(" package(s) created, ")
-               .Append(emailed).Append(" email(s) queued.");
+            msg.Append(created).Append(" package").Append(created == 1 ? "" : "s").Append(" created, ")
+               .Append(emailed).Append(" email").Append(emailed == 1 ? "" : "s").Append(" sent.");
             if (failed > 0)
-                msg.Append(" ").Append(failed).Append(" failure(s).");
+                msg.Append(" ").Append(failed).Append(" failure").Append(failed == 1 ? "" : "s").Append(".");
             if (failNotes.Length > 0)
-                msg.Append("<ul class=\"bare\">").Append(failNotes).Append("</ul>");
-
-            // Reviewer links in the success banner
-            if (sentPackages.Count > 0)
-            {
-                string baseUrl = LPPIHelper.Setting("LPPI.BaseUrl", "").TrimEnd('/');
-                msg.Append("<div style=\"margin-top:10px;\">");
-                msg.Append("<strong>Reviewer links</strong> — open or copy to share directly:</div>");
-                msg.Append("<ul style=\"margin:6px 0 0;padding:0;list-style:none;\">");
-                foreach (var pkg in sentPackages)
-                {
-                    string reviewUrl = baseUrl + "/LPPI/LPPI_Review.aspx?t="
-                        + Uri.EscapeDataString(pkg.Item2);
-                    string encToken   = LPPIHelper.Enc(pkg.Item2);
-                    string encBaseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
-                    msg.AppendFormat(
-                        "<li style=\"margin:4px 0;display:flex;align-items:center;gap:8px;\">" +
-                        "<strong>{0}</strong>" +
-                        "<a href=\"{1}\" target=\"_blank\" class=\"btn btn-sm btn-secondary\" rel=\"noopener\">Open review &rarr;</a>" +
-                        "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
-                        "onclick=\"copyReviewLink('{2}','{3}');\">Copy link</button>" +
-                        "</li>",
-                        LPPIHelper.Enc(pkg.Item1),
-                        LPPIHelper.Enc(reviewUrl),
-                        encToken,
-                        encBaseUrl);
-                }
-                msg.Append("</ul>");
-            }
-
-            if (mailtoLinks.Count > 0)
-            {
-                msg.Append("<p class=\"muted\" style=\"margin-top:8px;\">")
-                   .Append("<strong>Client email mode is active.</strong> ")
-                   .Append("Your email client will open with ")
-                   .Append(mailtoLinks.Count == 1 ? "a pre-filled message"
-                                                  : mailtoLinks.Count + " pre-filled messages")
-                   .Append(" — please review and send each one manually.</p>");
-
-                var js = new StringBuilder();
-                foreach (var link in mailtoLinks)
-                    js.Append("window.open('")
-                      .Append(link.Replace("\\", "\\\\").Replace("'", "\\'"))
-                      .Append("', '_blank');");
-                ScriptManager.RegisterStartupScript(this, GetType(), "lppiMailto",
-                    js.ToString(), true);
-            }
+                msg.Append("<ul>").Append(failNotes).Append("</ul>");
 
             ShowMessageRaw(msg.ToString(), kind);
             BindGroups();
@@ -300,12 +298,12 @@ namespace CPlatform.LPPI
                 LPPIHelper.P("@cm",  cmId),
                 LPPIHelper.P("@tok", token),
                 LPPIHelper.P("@by",  LPPIHelper.CurrentUserDisplayName()),
-                LPPIHelper.P("@due", due));
+                LPPIHelper.P("@due", due.ToString("yyyy-MM-dd HH:mm:ss.000")));
             int packageId = Convert.ToInt32(idObj);
 
             LPPIHelper.ExecuteNonQuery(@"
                 INSERT INTO tblLPPI_ReviewPackageDocuments (PackageID, DocumentID)
-                SELECT @p, MIN(d.DocumentID)
+                SELECT @pkg, MIN(d.DocumentID)
                   FROM tblLPPI_Documents d
                   LEFT JOIN tblLPPI_Reviews r
                          ON r.DocumentID = (SELECT MIN(d2.DocumentID)
@@ -315,27 +313,26 @@ namespace CPlatform.LPPI
                        (SELECT Program FROM tblLPPI_CapabilityManagers WHERE CmID = @cm)
                    AND r.ReasonCodeID IS NULL
                  GROUP BY d.DocNoAccounting",
-                LPPIHelper.P("@p",  packageId),
-                LPPIHelper.P("@cm", cmId));
+                LPPIHelper.P("@pkg", packageId),
+                LPPIHelper.P("@cm",  cmId));
 
             return packageId;
         }
 
         // -------------------------------------------------------------------
-        // Helpers
+        // Message helpers
         // -------------------------------------------------------------------
 
-        private void ShowMessage(string msg, string kind)
+        private void ShowMessage(string text, string kind)
         {
-            ShowMessageRaw(LPPIHelper.Enc(msg), kind);
+            ShowMessageRaw(System.Web.HttpUtility.HtmlEncode(text), kind);
         }
 
         private void ShowMessageRaw(string html, string kind)
         {
-            var sb = new StringBuilder();
-            sb.Append("<div class=\"alert alert-").Append(kind).Append("\">")
-              .Append(html).Append("</div>");
-            phMessage.Controls.Add(new LiteralControl(sb.ToString()));
+            phMessage.Controls.Clear();
+            phMessage.Controls.Add(new LiteralControl(
+                "<div class=\"alert alert-" + kind + "\">" + html + "</div>"));
         }
     }
 }

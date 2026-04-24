@@ -8,37 +8,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LPPI Review — Send-outs</title>
     <link rel="stylesheet" href="../css/lppi.css" />
+    <style>
+        /* Email preview modal */
+        #previewOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        #previewOverlay.open { display: flex; }
+        #previewDialog {
+            background: #fff;
+            border-radius: 8px;
+            width: 680px;
+            max-width: 96vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+        }
+        #previewToolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e5e5;
+            flex-shrink: 0;
+        }
+        #previewToolbar span { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+        #previewToolbar button { font-size: 13px; }
+        #previewFrame {
+            flex: 1;
+            border: none;
+            width: 100%;
+            min-height: 520px;
+        }
+    </style>
     <script>
-        function copyReviewLink(token, baseUrl) {
-            var url = baseUrl.replace(/\/?$/, '/') + 'LPPI/LPPI_Review.aspx?t=' + encodeURIComponent(token);
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(url).then(function () {
-                    showCopied(event.currentTarget);
-                }).catch(function () { fallbackCopy(url, event.currentTarget); });
-            } else {
-                fallbackCopy(url, event.currentTarget);
-            }
-        }
-        function fallbackCopy(text, btn) {
-            var ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.position = 'fixed'; ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.focus(); ta.select();
-            try { document.execCommand('copy'); showCopied(btn); } catch (e) { alert('Copy failed — URL:\n' + text); }
-            document.body.removeChild(ta);
-        }
-        function showCopied(btn) {
-            if (!btn) return;
-            var orig = btn.textContent;
-            btn.textContent = 'Copied!';
-            btn.disabled = true;
-            setTimeout(function () { btn.textContent = orig; btn.disabled = false; }, 1800);
-        }
         function openReviewLink(token, baseUrl) {
             var url = baseUrl.replace(/\/?$/, '/') + 'LPPI/LPPI_Review.aspx?t=' + encodeURIComponent(token);
             window.open(url, '_blank');
         }
+
+        // --- Preview modal ---
+        function openPreview(packageId, emailType) {
+            var overlay = document.getElementById('previewOverlay');
+            var frame   = document.getElementById('previewFrame');
+            var label   = document.getElementById('previewLabel');
+            label.textContent = 'Email preview — Package #' + packageId + ' (' + emailType + ')';
+            frame.src = 'LPPI_EmailPreview.aspx?id=' + packageId + '&type=' + encodeURIComponent(emailType);
+            overlay.classList.add('open');
+        }
+        function openPreviewByCm(cmId) {
+            var overlay = document.getElementById('previewOverlay');
+            var frame   = document.getElementById('previewFrame');
+            var label   = document.getElementById('previewLabel');
+            label.textContent = 'Email preview';
+            frame.src = 'LPPI_EmailPreview.aspx?cm=' + cmId;
+            overlay.classList.add('open');
+        }
+        function closePreview() {
+            var overlay = document.getElementById('previewOverlay');
+            overlay.classList.remove('open');
+            document.getElementById('previewFrame').src = 'about:blank';
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closePreview();
+        });
     </script>
 </head>
 <body>
@@ -51,9 +91,13 @@
             <div>
                 <div class="crumb">LPPI Review</div>
                 <h1>Send for review</h1>
-                <p class="lead">Pick the Capability Manager groups with outstanding documents and issue a review package. Each group gets its own unguessable link.</p>
+                <p class="lead">Pick the Capability Manager groups with outstanding documents and issue a review package.
+                Each group gets its own unguessable link.</p>
             </div>
         </div>
+
+        <%-- UAT banner shown when ProductionMode is false --%>
+        <asp:PlaceHolder ID="phUatBanner" runat="server" />
 
         <asp:PlaceHolder ID="phMessage" runat="server" />
         <asp:PlaceHolder ID="phUnconfigured" runat="server" />
@@ -81,6 +125,7 @@
                                     <th>Recipients</th>
                                     <th class="num">Unreviewed docs</th>
                                     <th>Open package?</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -104,6 +149,11 @@
                                 <%# Eval("OpenPackageID") == DBNull.Value
                                     ? "<span class=\"muted\">No</span>"
                                     : "<span class=\"pill pill-open\">#" + Eval("OpenPackageID") + "</span>" %>
+                            </td>
+                            <td class="actions">
+                                <%# Eval("OpenPackageID") != DBNull.Value
+                                    ? "<button type=\"button\" class=\"btn btn-sm btn-ghost\" onclick=\"openPreview(" + Eval("OpenPackageID") + ",'Initial')\">Preview email</button>"
+                                    : "<button type=\"button\" class=\"btn btn-sm btn-ghost\" onclick=\"openPreviewByCm(" + Eval("CmID") + ")\">Preview email</button>" %>
                             </td>
                         </tr>
                     </ItemTemplate>
@@ -151,7 +201,7 @@
                             </td>
                             <td><%# LPPIHelper.FormatDate(Eval("LastEmailDate"), "dd/MM/yyyy HH:mm") %></td>
                             <td class="actions" style="white-space:nowrap;">
-                                <%# string.Equals((string)Eval("Status"), "Open") ? RenderLinkButtons(Eval("Token")) : "" %>
+                                <%# RenderRecentActions(Eval("PackageID"), Eval("Token"), Eval("Status")) %>
                             </td>
                         </tr>
                     </ItemTemplate>
@@ -168,6 +218,18 @@
         <span>LPPI Review · <%= CurrentEnv %></span>
     </footer>
 </div>
+
+<%-- Email preview modal --%>
+<div id="previewOverlay" onclick="if(event.target===this)closePreview();">
+    <div id="previewDialog">
+        <div id="previewToolbar">
+            <span id="previewLabel">Email preview</span>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="closePreview()">Close &times;</button>
+        </div>
+        <iframe id="previewFrame" src="about:blank" title="Email preview"></iframe>
+    </div>
+</div>
+
 </form>
 </body>
 </html>
