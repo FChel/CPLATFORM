@@ -1,9 +1,20 @@
 /* =============================================================================
-   LPPI Review — production create script
+   LPPI Review — schema create script
    Database: CPlatform
    All objects prefixed tblLPPI_ to avoid colliding with existing tblCC_*.
    Idempotent: safe to re-run. Each object is guarded by an existence check.
-   ========================================================================== */
+
+   Access model:
+     Reviewer page  = token-based (no Windows identity check).
+     Everything else = gated by tblLPPI_AdminUsers.
+     Admin           = full access to all LPPI admin pages and actions.
+     Non-admin       = LPPI_Review.aspx only (via token link received by email).
+
+   Run order:
+     1. LPPI_Drop.sql       (DEV / UAT reset only)
+     2. LPPI_Schema.sql     (this file)
+     3. LPPI_AdminSeed.sql  (set usernames in that file before running)
+   ============================================================================= */
 
 SET NOCOUNT ON;
 SET ANSI_NULLS ON;
@@ -116,7 +127,7 @@ BEGIN
         ReasonCodeID      INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_ReasonCodes PRIMARY KEY CLUSTERED,
         Code              NVARCHAR(20)   NOT NULL,
         Description       NVARCHAR(500)  NOT NULL,
-        Outcome           NVARCHAR(20)   NOT NULL,  /* 'Payable' or 'NotPayable' */
+        Outcome           NVARCHAR(20)   NOT NULL,
         DisplayOrder      INT            NOT NULL CONSTRAINT DF_tblLPPI_ReasonCodes_DisplayOrder DEFAULT (0),
         RequiresComments  BIT            NOT NULL CONSTRAINT DF_tblLPPI_ReasonCodes_RequiresComments DEFAULT (0),
         IsActive          BIT            NOT NULL CONSTRAINT DF_tblLPPI_ReasonCodes_IsActive DEFAULT (1),
@@ -232,7 +243,7 @@ BEGIN
         EmailLogID     INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_EmailLog PRIMARY KEY CLUSTERED,
         PackageID      INT            NULL,
         RecipientEmail NVARCHAR(500)  NOT NULL,
-        EmailType      NVARCHAR(20)   NOT NULL,  /* 'Initial' / 'Reminder' / 'Other' */
+        EmailType      NVARCHAR(20)   NOT NULL,
         Subject        NVARCHAR(500)  NULL,
         Body           NVARCHAR(MAX)  NULL,
         SentDate       DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_EmailLog_SentDate DEFAULT (SYSDATETIME()),
@@ -247,10 +258,41 @@ BEGIN
 END
 GO
 
+/* ----------------------------- tblLPPI_AdminUsers ---------------------------
+   Access model:
+     Reviewer page  = token-based (no Windows identity check).
+     Everything else = gated by this table.
+     Admin           = full access to all LPPI admin pages and actions.
+     Non-admin       = LPPI_Review.aspx only (via token link received by email).
+
+   Seeding: run LPPI_AdminSeed.sql after this script.
+   UserId is matched case-insensitively by the application.
+   Deactivation (IsActive = 0) is preferred over hard delete for audit trail.
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID(N'dbo.tblLPPI_AdminUsers', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.tblLPPI_AdminUsers
+    (
+        AdminUserID  INT           IDENTITY(1,1) NOT NULL
+            CONSTRAINT PK_tblLPPI_AdminUsers PRIMARY KEY CLUSTERED,
+        UserId       NVARCHAR(100) NOT NULL,
+        DisplayName  NVARCHAR(200) NULL,
+        Email        NVARCHAR(200) NULL,
+        IsActive     BIT           NOT NULL
+            CONSTRAINT DF_tblLPPI_AdminUsers_IsActive DEFAULT (1),
+        CreatedDate  DATETIME2(3)  NOT NULL
+            CONSTRAINT DF_tblLPPI_AdminUsers_CreatedDate DEFAULT (SYSDATETIME()),
+        CreatedBy    NVARCHAR(200) NULL,
+        ModifiedDate DATETIME2(3)  NULL,
+        CONSTRAINT UQ_tblLPPI_AdminUsers_UserId UNIQUE (UserId)
+    );
+END
+GO
+
 /* ============================================================================
    Seed data — reason codes (16 canonical codes from RMG 417 LPPI process)
-   Re-runnable: only inserts codes that don't already exist.
-============================================================================ */
+   Re-runnable: only inserts codes that do not already exist.
+   ============================================================================ */
 ;WITH Seed(Code, Description, Outcome, DisplayOrder, RequiresComments) AS
 (
     SELECT 'RC01', N'Interest Payable – ERP Technical/Migration/Access or other ERP related issues', 'Payable',     1, 0 UNION ALL
@@ -266,7 +308,7 @@ GO
     SELECT 'RC11', N'Interest Not Payable – Invoice submitted prior to delivery of goods / services',  'NotPayable', 11, 0 UNION ALL
     SELECT 'RC12', N'Interest Not Payable – Delayed due to invoice dispute',                           'NotPayable', 12, 0 UNION ALL
     SELECT 'RC13', N'Interest Not Payable – Commonwealth or State entity',                             'NotPayable', 13, 0 UNION ALL
-    SELECT 'RC14', N'Interest Not Payable – It''s a lease, Forex or GST Invoice',                      'NotPayable', 14, 0 UNION ALL
+    SELECT 'RC14', N'Interest Not Payable – It''s a lease, Forex or GST Invoice',                     'NotPayable', 14, 0 UNION ALL
     SELECT 'RC15', N'Interest Not Payable – Services delivered overseas',                              'NotPayable', 15, 0 UNION ALL
     SELECT 'RC16', N'Interest Not Payable – Other',                                                    'NotPayable', 16, 1
 )
@@ -276,5 +318,5 @@ FROM Seed s
 WHERE NOT EXISTS (SELECT 1 FROM dbo.tblLPPI_ReasonCodes rc WHERE rc.Code = s.Code);
 GO
 
-PRINT 'LPPI create script complete.';
+PRINT 'LPPI_Schema.sql complete.';
 GO

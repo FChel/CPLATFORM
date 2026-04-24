@@ -1,9 +1,22 @@
 /* =============================================================================
-   LPPI Review — DROP script (UAT reset use only — DO NOT RUN IN PROD)
+   LPPI Review — DROP script
    Database: CPlatform
+   DEV / UAT reset use only — DO NOT RUN IN PRODUCTION.
    Drops every tblLPPI_* object. Order respects FK dependencies: child tables
    are dropped before their parents. Idempotent via IF OBJECT_ID checks.
-   ========================================================================== */
+
+   Drop order:
+     1.  tblLPPI_AdminUsers                (no FK dependencies)
+     2.  tblLPPI_EmailLog                  (FK -> ReviewPackages)
+     3.  tblLPPI_ReviewPackageDocuments    (FK -> ReviewPackages, Documents)
+     4.  tblLPPI_ReviewPackages            (FK -> CapabilityManagers)
+     5.  tblLPPI_Reviews                   (FK -> Documents, ReasonCodes)
+     6.  tblLPPI_CapabilityManagerEmails   (FK -> CapabilityManagers)
+     7.  tblLPPI_CapabilityManagers
+     8.  tblLPPI_ReasonCodes
+     9.  tblLPPI_Documents                 (FK -> LoadBatches)
+     10. tblLPPI_LoadBatches
+   ============================================================================= */
 
 SET NOCOUNT ON;
 SET ANSI_NULLS ON;
@@ -13,21 +26,15 @@ GO
 USE [CPlatform];
 GO
 
-PRINT 'LPPI drop script starting — this will remove every tblLPPI_* object.';
+PRINT 'LPPI_Drop.sql starting — this will remove every tblLPPI_* object.';
 GO
 
-/* ---------------------------------------------------------------------------
-   Drop order (children first):
-     1. tblLPPI_EmailLog                 (FK -> ReviewPackages)
-     2. tblLPPI_ReviewPackageDocuments   (FK -> ReviewPackages, Documents)
-     3. tblLPPI_ReviewPackages           (FK -> CapabilityManagers)
-     4. tblLPPI_Reviews                  (FK -> Documents, ReasonCodes)
-     5. tblLPPI_CapabilityManagerEmails  (FK -> CapabilityManagers)
-     6. tblLPPI_CapabilityManagers
-     7. tblLPPI_ReasonCodes
-     8. tblLPPI_Documents                (FK -> LoadBatches)
-     9. tblLPPI_LoadBatches
-   --------------------------------------------------------------------------- */
+IF OBJECT_ID(N'dbo.tblLPPI_AdminUsers', N'U') IS NOT NULL
+BEGIN
+    DROP TABLE dbo.tblLPPI_AdminUsers;
+    PRINT '  dropped tblLPPI_AdminUsers';
+END
+GO
 
 IF OBJECT_ID(N'dbo.tblLPPI_EmailLog', N'U') IS NOT NULL
 BEGIN
@@ -92,5 +99,5 @@ BEGIN
 END
 GO
 
-PRINT 'LPPI drop script complete.';
+PRINT 'LPPI_Drop.sql complete.';
 GO
