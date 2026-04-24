@@ -8,6 +8,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LPPI Review — Send-outs</title>
     <link rel="stylesheet" href="../css/lppi.css" />
+    <script>
+        function copyReviewLink(token, baseUrl) {
+            var url = baseUrl.replace(/\/?$/, '/') + 'LPPI/LPPI_Review.aspx?t=' + encodeURIComponent(token);
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function () {
+                    showCopied(event.currentTarget);
+                }).catch(function () { fallbackCopy(url, event.currentTarget); });
+            } else {
+                fallbackCopy(url, event.currentTarget);
+            }
+        }
+        function fallbackCopy(text, btn) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            try { document.execCommand('copy'); showCopied(btn); } catch (e) { alert('Copy failed — URL:\n' + text); }
+            document.body.removeChild(ta);
+        }
+        function showCopied(btn) {
+            if (!btn) return;
+            var orig = btn.textContent;
+            btn.textContent = 'Copied!';
+            btn.disabled = true;
+            setTimeout(function () { btn.textContent = orig; btn.disabled = false; }, 1800);
+        }
+        function openReviewLink(token, baseUrl) {
+            var url = baseUrl.replace(/\/?$/, '/') + 'LPPI/LPPI_Review.aspx?t=' + encodeURIComponent(token);
+            window.open(url, '_blank');
+        }
+    </script>
 </head>
 <body>
 <form id="form1" runat="server">
@@ -24,11 +56,6 @@
         </div>
 
         <asp:PlaceHolder ID="phMessage" runat="server" />
-
-        <%-- Unconfigured-CM warning. Relocated from the Dashboard so it
-             surfaces on the page where the operator can actually act on
-             it (i.e. just before picking groups to send). Rendered in
-             code-behind via BindUnconfigured(). --%>
         <asp:PlaceHolder ID="phUnconfigured" runat="server" />
 
         <div class="card">
@@ -104,6 +131,7 @@
                                     <th class="num">Reviewed</th>
                                     <th>Status</th>
                                     <th>Last email</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -122,6 +150,9 @@
                                     : "<span class=\"pill pill-closed\">" + LPPIHelper.Enc(Eval("Status")) + "</span>" %>
                             </td>
                             <td><%# LPPIHelper.FormatDate(Eval("LastEmailDate"), "dd/MM/yyyy HH:mm") %></td>
+                            <td class="actions" style="white-space:nowrap;">
+                                <%# string.Equals((string)Eval("Status"), "Open") ? RenderLinkButtons(Eval("Token")) : "" %>
+                            </td>
                         </tr>
                     </ItemTemplate>
                     <FooterTemplate>

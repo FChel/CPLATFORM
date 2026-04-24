@@ -33,7 +33,7 @@ namespace CPlatform.LPPI
             var unconfigured = LPPIHelper.GetUnconfiguredPrograms();
             if (unconfigured.Count == 0) return;
 
-            var msg = "<div class=\"alert warn\"><div><strong>" + unconfigured.Count +
+            var msg = "<div class=\"alert alert-warn\"><div><strong>" + unconfigured.Count +
                       " Capability Manager program" + (unconfigured.Count == 1 ? "" : "s") +
                       "</strong> in your loaded data have no recipient email configured. " +
                       "You will not be able to send these out for review until they are added.<br/>" +
@@ -82,14 +82,14 @@ namespace CPlatform.LPPI
         private void BindRecent()
         {
             // Columns required by rptRecent Eval():
-            //   PackageID, Program, CreatedDate, DueDate,
+            //   PackageID, Token, Program, CreatedDate, DueDate,
             //   TotalDocs, ReviewedDocs, Status, LastEmailDate
             //
-            // TotalDocs and ReviewedDocs are document counts — each row in
-            // tblLPPI_ReviewPackageDocuments is one document (first-line id).
+            // Token is included so Open packages can render direct review links.
             const string sql = @"
                 SELECT TOP 50
                        p.PackageID,
+                       p.Token,
                        cm.Program,
                        p.CreatedDate,
                        p.DueDate,
@@ -110,6 +110,27 @@ namespace CPlatform.LPPI
                  ORDER BY p.CreatedDate DESC";
             rptRecent.DataSource = LPPIHelper.ExecuteTable(sql);
             rptRecent.DataBind();
+        }
+
+        // -------------------------------------------------------------------
+        // Render helper — Open-only link buttons for rptRecent rows
+        // -------------------------------------------------------------------
+
+        /// <summary>
+        /// Renders two buttons for an open package: "Open review" (new tab)
+        /// and "Copy link" (clipboard). Only called when Status = 'Open'.
+        /// </summary>
+        protected string RenderLinkButtons(object tokenObj)
+        {
+            if (tokenObj == null || tokenObj == DBNull.Value) return "";
+            string token   = LPPIHelper.Enc(tokenObj);
+            string baseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
+            return string.Format(
+                "<button type=\"button\" class=\"btn btn-sm btn-secondary\" " +
+                "onclick=\"openReviewLink('{0}','{1}');\">Open review &rarr;</button> " +
+                "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
+                "onclick=\"copyReviewLink('{0}','{1}');\">Copy link</button>",
+                token, baseUrl);
         }
 
         // -------------------------------------------------------------------
@@ -143,13 +164,16 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            var failNotes   = new StringBuilder();
-            var mailtoLinks = new List<string>();
+            var failNotes    = new StringBuilder();
+            var mailtoLinks  = new List<string>();
+            // Capture (program, token) pairs for the success message links
+            var sentPackages = new List<Tuple<string, string>>();
             int created = 0, emailed = 0, failed = 0;
 
             foreach (int cmId in selectedCmIds)
             {
-                int packageId = CreatePackage(cmId, due);
+                string packageToken;
+                int packageId = CreatePackage(cmId, due, out packageToken);
                 if (packageId == 0)
                 {
                     failNotes.Append("<li>CmID ").Append(cmId)
@@ -157,6 +181,14 @@ namespace CPlatform.LPPI
                     continue;
                 }
                 created++;
+
+                // Capture program name for the success message
+                object progObj = LPPIHelper.ExecuteScalar(
+                    "SELECT Program FROM tblLPPI_CapabilityManagers WHERE CmID = @id",
+                    LPPIHelper.P("@id", cmId));
+                string progName = progObj != null && progObj != DBNull.Value
+                    ? Convert.ToString(progObj) : "CmID " + cmId;
+                sentPackages.Add(Tuple.Create(progName, packageToken));
 
                 var result = LPPIEmail.SendInitial(packageId);
                 if (result.Success)
@@ -181,6 +213,34 @@ namespace CPlatform.LPPI
                 msg.Append(" ").Append(failed).Append(" failure(s).");
             if (failNotes.Length > 0)
                 msg.Append("<ul class=\"bare\">").Append(failNotes).Append("</ul>");
+
+            // Reviewer links in the success banner
+            if (sentPackages.Count > 0)
+            {
+                string baseUrl = LPPIHelper.Setting("LPPI.BaseUrl", "").TrimEnd('/');
+                msg.Append("<div style=\"margin-top:10px;\">");
+                msg.Append("<strong>Reviewer links</strong> — open or copy to share directly:</div>");
+                msg.Append("<ul style=\"margin:6px 0 0;padding:0;list-style:none;\">");
+                foreach (var pkg in sentPackages)
+                {
+                    string reviewUrl = baseUrl + "/LPPI/LPPI_Review.aspx?t="
+                        + Uri.EscapeDataString(pkg.Item2);
+                    string encToken   = LPPIHelper.Enc(pkg.Item2);
+                    string encBaseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
+                    msg.AppendFormat(
+                        "<li style=\"margin:4px 0;display:flex;align-items:center;gap:8px;\">" +
+                        "<strong>{0}</strong>" +
+                        "<a href=\"{1}\" target=\"_blank\" class=\"btn btn-sm btn-secondary\" rel=\"noopener\">Open review &rarr;</a>" +
+                        "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
+                        "onclick=\"copyReviewLink('{2}','{3}');\">Copy link</button>" +
+                        "</li>",
+                        LPPIHelper.Enc(pkg.Item1),
+                        LPPIHelper.Enc(reviewUrl),
+                        encToken,
+                        encBaseUrl);
+                }
+                msg.Append("</ul>");
+            }
 
             if (mailtoLinks.Count > 0)
             {
@@ -207,18 +267,16 @@ namespace CPlatform.LPPI
 
         // -------------------------------------------------------------------
         // Package creation
-        //
-        // One row per unreviewed document (the first-line DocumentID) is
-        // written to tblLPPI_ReviewPackageDocuments via a single INSERT…SELECT.
         // -------------------------------------------------------------------
 
-        private int CreatePackage(int cmId, DateTime due)
+        private int CreatePackage(int cmId, DateTime due, out string token)
         {
-            // Check there is anything to send before creating the package row
+            token = "";
+
             object count = LPPIHelper.ExecuteScalar(@"
                 SELECT COUNT(*)
                   FROM (
-                      SELECT MIN(d.DocumentID) as FirstLineDocumentID
+                      SELECT MIN(d.DocumentID) AS FirstLineDocumentID
                         FROM tblLPPI_Documents d
                         LEFT JOIN tblLPPI_Reviews r
                                ON r.DocumentID = (SELECT MIN(d2.DocumentID)
@@ -233,7 +291,7 @@ namespace CPlatform.LPPI
 
             if (count == null || Convert.ToInt32(count) == 0) return 0;
 
-            string token = LPPIHelper.GenerateToken();
+            token = LPPIHelper.GenerateToken();
             object idObj = LPPIHelper.ExecuteScalar(@"
                 INSERT INTO tblLPPI_ReviewPackages
                     (CmID, Token, CreatedDate, CreatedBy, DueDate, Status)
@@ -245,7 +303,6 @@ namespace CPlatform.LPPI
                 LPPIHelper.P("@due", due));
             int packageId = Convert.ToInt32(idObj);
 
-            // Single INSERT…SELECT — one row per unreviewed document
             LPPIHelper.ExecuteNonQuery(@"
                 INSERT INTO tblLPPI_ReviewPackageDocuments (PackageID, DocumentID)
                 SELECT @p, MIN(d.DocumentID)

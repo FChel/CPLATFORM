@@ -16,9 +16,9 @@ namespace CPlatform.LPPI
             {
                 BindCms();
 
-                // Optional deep-link: ?cm=<id> opens that group's email panel
-                // directly (used by the "Configure now" link on the dashboard
-                // and by the unconfigured-programs warning on the Load page).
+                // Optional deep-link: ?cm=<id> opens that group's Manage panel
+                // directly (used by "Configure now" links from the Load page
+                // and send-outs warning banner).
                 string cmArg = Request.QueryString["cm"];
                 int cmId;
                 if (!string.IsNullOrEmpty(cmArg) && int.TryParse(cmArg, out cmId))
@@ -35,26 +35,19 @@ namespace CPlatform.LPPI
         private void BindCms()
         {
             // Columns consumed by rptCms Eval() bindings:
-            //   CmID, Program, DisplayName, IsActive, ToList, CcList, OpenDocs
-            // Note: the per-recipient IsActive flag on the emails table was
-            // dropped — every recipient row is now considered active until
-            // deleted.
-            //
-            // "OpenDocs" counts DISTINCT DocNoAccounting where the document
-            // has no review on its first line (option-1 first-line-review).
-            // The previous LEFT JOIN per DocumentID miscounted lines 2..N of
-            // reviewed multi-line documents as "open" because only the first
-            // line carries the review.
+            //   CmID, Program, DisplayName, ToList, CcList, OpenDocs
+            // IsActive is not surfaced in the list — all groups are BODS-driven
+            // and the UI no longer exposes enable/disable.
             const string sql = @"
-                SELECT cm.CmID, cm.Program, cm.DisplayName, cm.IsActive,
+                SELECT cm.CmID, cm.Program, cm.DisplayName,
                        ISNULL(STUFF((SELECT ', ' + e.Email
-                                     FROM tblLPPI_CapabilityManagerEmails e
-                                     WHERE e.CmID = cm.CmID AND e.IsCC = 0
-                                     FOR XML PATH('')), 1, 2, ''), '') AS ToList,
+                                       FROM tblLPPI_CapabilityManagerEmails e
+                                      WHERE e.CmID = cm.CmID AND e.IsCC = 0
+                                      FOR XML PATH('')), 1, 2, ''), '') AS ToList,
                        ISNULL(STUFF((SELECT ', ' + e.Email
-                                     FROM tblLPPI_CapabilityManagerEmails e
-                                     WHERE e.CmID = cm.CmID AND e.IsCC = 1
-                                     FOR XML PATH('')), 1, 2, ''), '') AS CcList,
+                                       FROM tblLPPI_CapabilityManagerEmails e
+                                      WHERE e.CmID = cm.CmID AND e.IsCC = 1
+                                      FOR XML PATH('')), 1, 2, ''), '') AS CcList,
                        (SELECT COUNT(DISTINCT d.DocNoAccounting)
                           FROM tblLPPI_Documents d
                           LEFT JOIN tblLPPI_Reviews r
@@ -69,31 +62,18 @@ namespace CPlatform.LPPI
             rptCms.DataBind();
         }
 
-        protected void btnSaveCm_Click(object sender, EventArgs e)
-        {
-            string program = (txtProgram.Text ?? "").Trim();
-            if (program.Length == 0)
-            {
-                ShowMessage("Program is required.", "err");
-                return;
-            }
-            LPPIHelper.UpsertCapabilityManager(program, (txtDisplayName.Text ?? "").Trim(), chkActive.Checked);
-            txtProgram.Text = "";
-            txtDisplayName.Text = "";
-            chkActive.Checked = true;
-            ShowMessage("Group saved.", "ok");
-            BindCms();
-        }
+        // -------------------------------------------------------------------
+        // rptCms event handlers
+        // -------------------------------------------------------------------
 
         /// <summary>
-        /// Handles the per-row "Manage emails" LinkButton on the main CM list.
-        /// Wired via OnItemCommand="rptCms_ItemCommand" in the markup — without
-        /// that wiring the click posts back but bubbles to nowhere.
+        /// Handles the per-row "Manage" LinkButton. Opens the Manage panel for
+        /// the selected CM group.
         /// </summary>
         protected void rptCms_ItemCommand(object source, RepeaterCommandEventArgs e)
         {
             int cmId;
-            if (!int.TryParse(Convert.ToString(e.CommandArgument), out cmId)) { return; }
+            if (!int.TryParse(Convert.ToString(e.CommandArgument), out cmId)) return;
 
             if (e.CommandName == "Manage")
             {
@@ -102,9 +82,8 @@ namespace CPlatform.LPPI
         }
 
         /// <summary>
-        /// On each row render, decide whether this is the CM whose emails the
-        /// operator is currently editing. If so, apply the is-editing class to
-        /// the row and surface a small "(editing)" flag next to the program.
+        /// Applies the is-editing row highlight to the CM currently open in the
+        /// Manage panel.
         /// </summary>
         protected void rptCms_ItemDataBound(object sender, RepeaterItemEventArgs e)
         {
@@ -130,96 +109,121 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // Email management panel
+        // Manage panel — open / close
         // -------------------------------------------------------------------
 
         private void ShowEmailsFor(int cmId)
         {
             pnlEmails.Visible = true;
-            hfCmId.Value = cmId.ToString();
+            hfCmId.Value      = cmId.ToString();
 
-            object nameObj = LPPIHelper.ExecuteScalar(
-                "SELECT Program + ISNULL(' — ' + NULLIF(DisplayName, ''), '') FROM tblLPPI_CapabilityManagers WHERE CmID = @id",
+            DataTable cm = LPPIHelper.ExecuteTable(
+                "SELECT Program, ISNULL(DisplayName, '') AS DisplayName FROM tblLPPI_CapabilityManagers WHERE CmID = @id",
                 LPPIHelper.P("@id", cmId));
-            litCmName.Text = LPPIHelper.Enc(nameObj);
+
+            if (cm.Rows.Count == 1)
+            {
+                litCmProgram.Text     = LPPIHelper.Enc(cm.Rows[0]["Program"]);
+                litCmDisplayName.Text = LPPIHelper.Enc(cm.Rows[0]["DisplayName"]);
+                txtDisplayName.Text   = Convert.ToString(cm.Rows[0]["DisplayName"]);
+            }
 
             rptEmails.DataSource = LPPIHelper.GetCmEmails(cmId);
             rptEmails.DataBind();
 
-            // Re-bind the main list so the row-highlight logic in
-            // rptCms_ItemDataBound sees the new hfCmId value.
+            // Re-bind the main list so the row-highlight logic sees the new hfCmId.
             BindCms();
         }
 
         protected void btnCloseEmails_Click(object sender, EventArgs e)
         {
             pnlEmails.Visible = false;
-            hfCmId.Value = "";
-            txtEmail.Text = "";
-            chkCc.Checked = false;
+            hfCmId.Value      = "";
+            txtDisplayName.Text = "";
             BindCms();
         }
 
-        /// <summary>
-        /// Accepts a comma or semicolon separated list of addresses and inserts
-        /// each individually. Skips blanks; reports duplicates and obviously
-        /// invalid entries back to the operator rather than silently failing.
-        /// </summary>
+        // -------------------------------------------------------------------
+        // Display-name save
+        // -------------------------------------------------------------------
+
+        protected void btnSaveDisplayName_Click(object sender, EventArgs e)
+        {
+            int cmId;
+            if (!int.TryParse(hfCmId.Value, out cmId))
+            {
+                ShowMessage("No group selected.", "err");
+                return;
+            }
+
+            string displayName = (txtDisplayName.Text ?? "").Trim();
+
+            LPPIHelper.ExecuteNonQuery(
+                "UPDATE tblLPPI_CapabilityManagers SET DisplayName = @dn, ModifiedDate = SYSDATETIME() WHERE CmID = @id",
+                LPPIHelper.P("@dn", displayName.Length > 0 ? (object)displayName : DBNull.Value),
+                LPPIHelper.P("@id", cmId));
+
+            ShowMessage("Display name saved.", "ok");
+            ShowEmailsFor(cmId);
+        }
+
+        // -------------------------------------------------------------------
+        // Add / delete recipients
+        // -------------------------------------------------------------------
+
         protected void btnAddEmail_Click(object sender, EventArgs e)
         {
             int cmId;
-            if (!int.TryParse(hfCmId.Value, out cmId)) { return; }
+            if (!int.TryParse(hfCmId.Value, out cmId))
+            {
+                ShowMessage("No group selected.", "err");
+                return;
+            }
 
             string raw = (txtEmail.Text ?? "").Trim();
             if (raw.Length == 0)
             {
                 ShowMessage("Please enter at least one email address.", "err");
-                ShowEmailsFor(cmId);
                 return;
             }
 
-            // Split on comma or semicolon, trim whitespace, drop blanks.
-            var addresses = new List<string>();
-            foreach (var part in raw.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                var addr = part.Trim();
-                if (addr.Length > 0)
-                    addresses.Add(addr);
-            }
-
             bool isCC = chkCc.Checked;
+
+            var addresses = raw.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
             var added    = new List<string>();
-            var invalid  = new List<string>();
             var existing = new List<string>();
+            var invalid  = new List<string>();
 
             foreach (var addr in addresses)
             {
-                // Basic format check — must contain '@' not at the start.
-                if (addr.IndexOf('@') <= 0)
+                var a = addr.Trim();
+                if (a.Length == 0) continue;
+
+                // Lightweight format check
+                int at = a.IndexOf('@');
+                if (at <= 0 || at >= a.Length - 2)
                 {
-                    invalid.Add(addr);
+                    invalid.Add(a);
                     continue;
                 }
 
-                // Duplicate check — reject if the same address already exists
-                // for this CM group.
+                // Duplicate check
                 object dup = LPPIHelper.ExecuteScalar(
-                    "SELECT 1 FROM tblLPPI_CapabilityManagerEmails WHERE CmID = @cm AND Email = @em",
-                    LPPIHelper.P("@cm", cmId),
-                    LPPIHelper.P("@em", addr));
-                if (dup != null)
+                    "SELECT COUNT(*) FROM tblLPPI_CapabilityManagerEmails WHERE CmID = @id AND Email = @e",
+                    LPPIHelper.P("@id", cmId),
+                    LPPIHelper.P("@e",  a));
+                if (Convert.ToInt32(dup) > 0)
                 {
-                    existing.Add(addr);
+                    existing.Add(a);
                     continue;
                 }
 
-                LPPIHelper.ExecuteNonQuery(@"
-                    INSERT INTO tblLPPI_CapabilityManagerEmails (CmID, Email, IsCC)
-                    VALUES (@cm, @em, @cc)",
-                    LPPIHelper.P("@cm", cmId),
-                    LPPIHelper.P("@em", addr),
+                LPPIHelper.ExecuteNonQuery(
+                    "INSERT INTO tblLPPI_CapabilityManagerEmails (CmID, Email, IsCC) VALUES (@id, @e, @cc)",
+                    LPPIHelper.P("@id", cmId),
+                    LPPIHelper.P("@e",  a),
                     LPPIHelper.P("@cc", isCC ? 1 : 0));
-                added.Add(addr);
+                added.Add(a);
             }
 
             txtEmail.Text = "";
@@ -235,15 +239,10 @@ namespace CPlatform.LPPI
             ShowEmailsFor(cmId);
         }
 
-        /// <summary>
-        /// Handles Delete commands from the email repeater. Permanently removes
-        /// the row from tblLPPI_CapabilityManagerEmails; the confirm() prompt
-        /// is rendered client-side via OnClientClick on the Delete LinkButton.
-        /// </summary>
         protected void rptEmails_ItemCommand(object source, RepeaterCommandEventArgs e)
         {
             int emailId;
-            if (!int.TryParse(Convert.ToString(e.CommandArgument), out emailId)) { return; }
+            if (!int.TryParse(Convert.ToString(e.CommandArgument), out emailId)) return;
 
             if (e.CommandName == "Delete")
             {
@@ -252,17 +251,13 @@ namespace CPlatform.LPPI
                     LPPIHelper.P("@id", emailId));
                 ShowMessage("Recipient deleted.", "ok");
             }
-            else
-            {
-                return;
-            }
 
-            // Refresh both the email panel and the main list so the recipient
-            // columns on the CM list reflect the change immediately.
             int cmId;
-            if (int.TryParse(hfCmId.Value, out cmId)) { ShowEmailsFor(cmId); }
+            if (int.TryParse(hfCmId.Value, out cmId)) ShowEmailsFor(cmId);
         }
 
+        // -------------------------------------------------------------------
+        // Shared helpers
         // -------------------------------------------------------------------
 
         private void ShowMessage(string msg, string kind)

@@ -18,8 +18,8 @@
         <div class="page-head">
             <div>
                 <div class="crumb">LPPI Review</div>
-                <h1>Load BODS file</h1>
-                <p class="lead">Upload a <code>LATEPMT_INTEREST_REVIEW_*.xls</code> extract from your own computer. The file is parsed and previewed before anything is written to the database.</p>
+                <h1>Load LPPI extract file</h1>
+                <p class="lead">Upload a <code>LATEPMT_INTEREST_REVIEW_*.xls</code> extract. The file is parsed and previewed before saving to the database.</p>
             </div>
         </div>
 
@@ -28,12 +28,12 @@
         <div class="card">
             <h2>Choose a file</h2>
             <p class="muted" style="font-size:13px;">
-                BODS extracts are tab-delimited text files despite the <code>.xls</code> extension.
+                LPPI extract files are tab-delimited text files despite the <code>.xls</code> extension.
                 Files up to 100&nbsp;MB are accepted.
             </p>
             <div class="form-grid">
                 <div class="form-row form-row-wide">
-                    <label for="fuBods">BODS extract</label>
+                    <label for="fuBods">LPPI extract file</label>
                     <asp:FileUpload ID="fuBods" runat="server" CssClass="input" />
                 </div>
                 <div class="form-row form-row-actions">

@@ -29,11 +29,7 @@ namespace CPlatform.LPPI
                 litBatches.Text     = Convert.ToString(s["TotalBatches"]);
             }
 
-            // Open packages.
-            // DocCount and ReviewedCount are now true document counts because
-            // tblLPPI_ReviewPackageDocuments stores one row per document
-            // (the first-line DocumentID). The review join is a direct equality
-            // on pd.DocumentID — no correlated sub-query needed.
+            // Open packages
             var pkgSql = @"
 SELECT p.PackageID, p.CreatedDate, p.DueDate, p.Status,
        ISNULL(NULLIF(cm.DisplayName,''), cm.Program) AS CmDisplay,

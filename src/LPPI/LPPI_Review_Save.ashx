@@ -33,43 +33,34 @@ namespace CPlatform.LPPI
                 }
                 int packageId = Convert.ToInt32(pkg.Rows[0]["PackageID"]);
 
-                if (action == "markFinal")
-                {
-                    LPPIHelper.ExecuteNonQuery(@"
-                        UPDATE r
-                           SET r.IsFinal = 1
-                          FROM tblLPPI_Reviews r
-                         INNER JOIN tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = r.DocumentID
-                         WHERE pd.PackageID = @p",
-                        LPPIHelper.P("@p", packageId));
-                    Write(ctx, true, null, null);
-                    return;
-                }
-
-                // docNo (DocNoAccounting) is the sole document key
+                // docNo (DocNoAccounting) is the sole document key posted by the client.
                 string docNo = (ctx.Request.Form["docNo"] ?? "").Trim();
                 if (docNo.Length == 0) { Write(ctx, false, "Missing docNo.", null); return; }
 
-                // Resolve first-line DocumentID
-                object flObj = LPPIHelper.ExecuteScalar(
-                    "SELECT MIN(d2.DocumentID) FROM tblLPPI_Documents d2 WHERE d2.DocNoAccounting = @dn",
+                // Resolve the first-line DocumentID using the package itself as the
+                // authority — avoids the cross-batch bug where MIN(DocumentID) across
+                // ALL batches returns an older row that is not in this package.
+                //
+                // This single query both confirms membership AND returns the correct id.
+                object flObj = LPPIHelper.ExecuteScalar(@"
+                    SELECT pd.DocumentID
+                    FROM   tblLPPI_ReviewPackageDocuments pd
+                    INNER JOIN tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+                    WHERE  pd.PackageID     = @p
+                    AND    d.DocNoAccounting = @dn",
+                    LPPIHelper.P("@p",  packageId),
                     LPPIHelper.P("@dn", docNo));
+
                 if (flObj == null || flObj == DBNull.Value)
                 {
-                    Write(ctx, false, "Document not found.", null); return;
+                    Write(ctx, false, "Document is not in this package.", null); return;
                 }
                 int firstLineDocId = Convert.ToInt32(flObj);
 
-                // Confirm document belongs to this package
-                object belongs = LPPIHelper.ExecuteScalar(
-                    "SELECT 1 FROM tblLPPI_ReviewPackageDocuments WHERE PackageID = @p AND DocumentID = @d",
-                    LPPIHelper.P("@p", packageId),
-                    LPPIHelper.P("@d", firstLineDocId));
-                if (belongs == null) { Write(ctx, false, "Document is not in this package.", null); return; }
-
-                // Parse review fields
+                // Parse review fields.
+                // Field name posted by JS is "reasonCodeId" — matches here.
                 int? reasonId = null;
-                string reasonRaw = ctx.Request.Form["reasonId"] ?? "";
+                string reasonRaw = (ctx.Request.Form["reasonCodeId"] ?? "").Trim();
                 if (reasonRaw.Length > 0)
                 {
                     int v;
@@ -78,7 +69,7 @@ namespace CPlatform.LPPI
                 string comments = (ctx.Request.Form["comments"] ?? "").Trim();
                 string objref   = (ctx.Request.Form["objref"]   ?? "").Trim();
 
-                // Mandatory-field validation
+                // Mandatory-field validation (server-side — mirrors client rules).
                 if (reasonId.HasValue)
                 {
                     DataTable rcRow = LPPIHelper.ExecuteTable(
@@ -105,7 +96,7 @@ namespace CPlatform.LPPI
                     }
                 }
 
-                // MERGE on the first-line DocumentID
+                // MERGE on the first-line DocumentID.
                 LPPIHelper.ExecuteNonQuery(@"
                     MERGE tblLPPI_Reviews AS tgt
                     USING (SELECT @d AS DocumentID) AS src

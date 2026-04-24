@@ -59,7 +59,8 @@
 
         <div class="card">
             <h2>Open review packages</h2>
-            <p style="color:var(--ink-3);font-size:13px;">Each package was emailed to a Capability Manager group. Use Send-outs to create new ones, or send a reminder when a package is approaching its due date.</p>
+            <p style="color:var(--ink-3);font-size:13px;">Each package was emailed to a Capability Manager group.
+               Use Send-outs to create new ones, or send a reminder when a package is approaching its due date.</p>
             <div class="tbl-wrap">
                 <table class="tbl">
                     <thead>
