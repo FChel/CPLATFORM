@@ -1,6 +1,6 @@
 using System;
 using System.Data;
-using System.Linq;
+using System.Text;
 using System.Web.UI;
 using System.Web.UI.WebControls;
 
@@ -29,9 +29,9 @@ namespace CPlatform.LPPI
                 litBatches.Text     = Convert.ToString(s["TotalBatches"]);
             }
 
-            // Open packages
+            // Open packages — include Token so we can render the "Open review" link
             var pkgSql = @"
-SELECT p.PackageID, p.CreatedDate, p.DueDate, p.Status,
+SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
        ISNULL(NULLIF(cm.DisplayName,''), cm.Program) AS CmDisplay,
        (SELECT COUNT(*)
           FROM dbo.tblLPPI_ReviewPackageDocuments d
@@ -84,6 +84,48 @@ ORDER BY LoadedDate DESC;";
             return "<span class=\"pill open\">Open</span>";
         }
 
+        /// <summary>
+        /// Renders the actions cell for the open packages table:
+        ///   - "Open review →" button (Open packages with a token only)
+        ///   - "Send reminder" LinkButton (when CanRemind)
+        /// </summary>
+        protected string RenderPackageActions(object packageIdObj, object tokenObj,
+                                              object statusObj, bool canRemind)
+        {
+            if (packageIdObj == null || packageIdObj == DBNull.Value) return "";
+
+            int    packageId = Convert.ToInt32(packageIdObj);
+            string status    = statusObj != null && statusObj != DBNull.Value
+                               ? Convert.ToString(statusObj) : "";
+
+            var sb = new StringBuilder();
+
+            // Open review link — Open packages with a valid token
+            if (string.Equals(status, "Open", StringComparison.OrdinalIgnoreCase)
+                && tokenObj != null && tokenObj != DBNull.Value)
+            {
+                string token   = LPPIHelper.Enc(tokenObj);
+                string baseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-secondary\" " +
+                    "onclick=\"openReviewLink('{0}','{1}');\">Open review &rarr;</button> ",
+                    token, baseUrl);
+            }
+
+            // Send reminder — rendered as a plain HTML button that posts back via
+            // a hidden field, keeping the pattern consistent with existing OnPackageCommand.
+            if (canRemind)
+            {
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
+                    "onclick=\"document.getElementById('hfRemindPackageId').value='{0}';" +
+                    "document.getElementById('btnRemindTrigger').click();\">Send reminder</button>",
+                    packageId);
+            }
+
+            return sb.ToString();
+        }
+
         protected void OnPackageCommand(object sender, CommandEventArgs e)
         {
             if (e.CommandName == "Remind")
@@ -93,16 +135,38 @@ ORDER BY LoadedDate DESC;";
                 if (!res.Success)
                 {
                     phWarnings.Controls.Add(new LiteralControl(
-                        "<div class=\"alert err\">Reminder failed: " +
+                        "<div class=\"alert alert-err\">Reminder failed: " +
                         System.Web.HttpUtility.HtmlEncode(res.ErrorMessage) + "</div>"));
                 }
                 else
                 {
                     phWarnings.Controls.Add(new LiteralControl(
-                        "<div class=\"alert ok\">Reminder sent.</div>"));
+                        "<div class=\"alert alert-ok\">Reminder sent.</div>"));
                 }
                 Bind();
             }
+        }
+
+        // Hidden postback trigger for the remind button rendered via RenderPackageActions.
+        protected void btnRemindTrigger_Click(object sender, EventArgs e)
+        {
+            string raw = (hfRemindPackageId.Value ?? "").Trim();
+            int pid;
+            if (!int.TryParse(raw, out pid)) return;
+
+            var res = LPPIEmail.SendReminder(pid);
+            if (!res.Success)
+            {
+                phWarnings.Controls.Add(new LiteralControl(
+                    "<div class=\"alert alert-err\">Reminder failed: " +
+                    System.Web.HttpUtility.HtmlEncode(res.ErrorMessage) + "</div>"));
+            }
+            else
+            {
+                phWarnings.Controls.Add(new LiteralControl(
+                    "<div class=\"alert alert-ok\">Reminder sent.</div>"));
+            }
+            Bind();
         }
     }
 }

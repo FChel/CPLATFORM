@@ -1337,3 +1337,9 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     overflow-x: auto;
     overflow-y: auto;
 }
+
+/* alert-* aliases (modifier prefix form used by code-behind) */
+.alert.alert-warn { background: var(--warn-bg); border-color: #f3dca0; color: var(--warn); }
+.alert.alert-err  { background: var(--err-bg);  border-color: #f3b8b8; color: var(--err); }
+.alert.alert-ok   { background: var(--ok-bg);   border-color: #b6dcc3; color: var(--ok); }
+.alert.alert-info { background: var(--orange-soft); border-color: var(--orange-tint); color: var(--orange-deep); }

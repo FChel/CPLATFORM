@@ -8,6 +8,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LPPI Review — Dashboard</title>
     <link rel="stylesheet" href="../css/lppi.css" />
+    <script>
+        function openReviewLink(token, baseUrl) {
+            var url = baseUrl.replace(/\/?$/, '/') + 'LPPI/LPPI_Review.aspx?t=' + encodeURIComponent(token);
+            window.open(url, '_blank');
+        }
+    </script>
 </head>
 <body>
 <form id="form1" runat="server">
@@ -60,7 +66,7 @@
         <div class="card">
             <h2>Open review packages</h2>
             <p style="color:var(--ink-3);font-size:13px;">Each package was emailed to a Capability Manager group.
-               Use Send-outs to create new ones, or send a reminder when a package is approaching its due date.</p>
+            Use Send-outs to create new ones, or send a reminder when a package is approaching its due date.</p>
             <div class="tbl-wrap">
                 <table class="tbl">
                     <thead>
@@ -81,12 +87,7 @@
                                     <td class="num"><%# Eval("ReviewedCount") %></td>
                                     <td><%# RenderStatusPill(Container.DataItem) %></td>
                                     <td class="actions">
-                                        <asp:LinkButton runat="server" CssClass="btn btn-secondary btn-sm"
-                                            CommandName="Remind"
-                                            CommandArgument='<%# Eval("PackageID") %>'
-                                            OnCommand="OnPackageCommand"
-                                            Text="Send reminder"
-                                            Visible='<%# (bool)Eval("CanRemind") %>' />
+                                        <%# RenderPackageActions(Eval("PackageID"), Eval("Token"), Eval("Status"), (bool)Eval("CanRemind")) %>
                                     </td>
                                 </tr>
                             </ItemTemplate>
@@ -125,16 +126,27 @@
                                     <td class="num"><%# Eval("RowsFailed") %></td>
                                 </tr>
                             </ItemTemplate>
+                            <FooterTemplate></FooterTemplate>
                         </asp:Repeater>
                     </tbody>
                 </table>
             </div>
+            <p style="margin-top:12px;">
+                <a href="LPPI_Batches.aspx" class="btn btn-ghost btn-sm">View all batches &rarr;</a>
+            </p>
         </div>
+
     </main>
 
     <footer class="lppi-footer">
-        Defence Finance Group · LPPI Review · <%= CurrentEnv %>
+        <span>LPPI Review &middot; <%= CurrentEnv %></span>
     </footer>
+
+    <%-- Hidden postback mechanism for the remind button rendered inside RenderPackageActions.
+         The JS sets hfRemindPackageId then clicks btnRemindTrigger. --%>
+    <asp:HiddenField ID="hfRemindPackageId" runat="server" />
+    <asp:Button ID="btnRemindTrigger" runat="server" Style="display:none;"
+        OnClick="btnRemindTrigger_Click" CausesValidation="false" />
 </div>
 </form>
 </body>

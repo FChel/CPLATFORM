@@ -28,11 +28,11 @@
             <h2>Export parameters</h2>
             <div class="form-grid">
                 <div class="form-row">
-                    <label for="txtFrom">Loaded into CPLATFORM from</label>
+                    <label for="txtFrom">Loaded into FinHub from</label>
                     <asp:TextBox ID="txtFrom" runat="server" CssClass="input" TextMode="Date" />
                 </div>
                 <div class="form-row">
-                    <label for="txtTo">Loaded into CPLATFORM to</label>
+                    <label for="txtTo">Loaded into FinHub to</label>
                     <asp:TextBox ID="txtTo" runat="server" CssClass="input" TextMode="Date" />
                 </div>
                 <div class="form-row">
@@ -56,7 +56,7 @@
     </main>
 
     <footer class="lppi-footer">
-        <span>LPPI Review · <%= CurrentEnv %></span>
+        <span>LPPI Review &middot; <%= CurrentEnv %></span>
     </footer>
 </div>
 </form>

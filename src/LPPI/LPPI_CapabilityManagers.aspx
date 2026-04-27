@@ -41,7 +41,13 @@
             align-items: center;
             gap: 10px;
         }
-        .display-name-row .input { flex: 1; }
+        /* Ensure the display-name input inherits the app font stack, not the
+           browser default. The .input class in lppi.css covers this, but an
+           explicit font-family here guards against any specificity collision. */
+        .display-name-row .input {
+            flex: 1;
+            font-family: var(--font);
+        }
     </style>
 </head>
 <body>
@@ -54,7 +60,7 @@
             <div>
                 <div class="crumb">LPPI Review</div>
                 <h1>Capability Managers</h1>
-                <p class="lead">Capability Manager groups are created automatically from BODS extracts. Edit the display name or manage recipients for each group using the Manage button.</p>
+                <p class="lead">Capability Manager groups are created automatically when an ERP export file is loaded. Edit the display name or manage recipients for each group using the Manage button.</p>
             </div>
         </div>
 
@@ -201,6 +207,10 @@
         </div>
 
     </main>
+
+    <footer class="lppi-footer">
+        <span>LPPI Review &middot; <%= CurrentEnv %></span>
+    </footer>
 </div>
 </form>
 </body>

@@ -48,10 +48,20 @@ namespace CPlatform.LPPI
                 new { Key="adminusers", Label="Admin users",         Url="LPPI_AdminUsers.aspx" }
             };
 
+            // Support mailto — To: LPPI inbox, CC: DFSPI
+            string supportTo = LPPIHelper.Setting("LPPI.SupportMailboxTo", "");
+            string supportCc = LPPIHelper.Setting("LPPI.SupportMailboxCc", "");
+            var supportHref = new StringBuilder("mailto:");
+            supportHref.Append(HttpUtility.HtmlAttributeEncode(supportTo));
+            supportHref.Append("?cc=");
+            supportHref.Append(HttpUtility.HtmlAttributeEncode(supportCc));
+            supportHref.Append("&subject=");
+            supportHref.Append(HttpUtility.HtmlAttributeEncode("LPPI Review \u2014 Feedback & Support"));
+
             var sb = new StringBuilder();
             sb.Append("<header class=\"lppi-header\">");
 
-            // Brand block — title + subtitle (TO-DO #5).
+            // Brand
             sb.Append("<a href=\"LPPI_Admin.aspx\" class=\"lppi-brand\">");
             sb.Append("<span class=\"mark\"><svg viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/><circle cx=\"12\" cy=\"15\" r=\"3\"/><path d=\"M12 13v2l1 1\"/></svg></span>");
             sb.Append("<span class=\"lppi-brand-text\">");
@@ -60,6 +70,7 @@ namespace CPlatform.LPPI
             sb.Append("</span>");
             sb.Append("</a>");
 
+            // Nav
             sb.Append("<nav class=\"lppi-nav\">");
             foreach (var n in nav)
             {
@@ -69,12 +80,20 @@ namespace CPlatform.LPPI
             }
             sb.Append("</nav>");
 
+            // Right-side: env chip, user, support button
             sb.Append("<div class=\"lppi-header-right\">");
             sb.Append("<span class=\"env-chip ").Append(HttpUtility.HtmlAttributeEncode(EnvCssClass)).Append("\">")
               .Append(HttpUtility.HtmlEncode(CurrentEnv)).Append("</span>");
             sb.Append("<span class=\"lppi-user\">").Append(HttpUtility.HtmlEncode(CurrentUser)).Append("</span>");
-            sb.Append("</div>");
 
+            if (!string.IsNullOrEmpty(supportTo))
+            {
+                sb.Append("<a href=\"").Append(supportHref).Append("\" class=\"btn btn-sm btn-ghost lppi-support-btn\" title=\"Feedback &amp; support\">")
+                  .Append("Feedback &amp; support")
+                  .Append("</a>");
+            }
+
+            sb.Append("</div>");
             sb.Append("</header>");
             return sb.ToString();
         }
