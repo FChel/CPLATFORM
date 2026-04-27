@@ -1,7 +1,7 @@
 /* =============================================================================
    LPPI Review — schema create script
    Database: CPlatform
-   All objects prefixed tblLPPI_ to avoid colliding with existing tblCC_*.
+   All objects prefixed tblLPPI_ to avoid colliding with any existing tables.
    Idempotent: safe to re-run. Each object is guarded by an existence check.
 
    Access model:
@@ -193,7 +193,23 @@ BEGIN
 END
 GO
 
-/* ----------------------------- tblLPPI_ReviewPackages ----------------------- */
+/* ----------------------------- tblLPPI_ReviewPackages -----------------------
+   Status lifecycle (driven entirely by app code):
+     'NotSent'   — created at file-load time; reviewer link works but nobody
+                   has been notified. Doc set may still be added to (only
+                   another file load can do that).
+     'Sent'      — initial email has been sent. Doc set is FROZEN. Subsequent
+                   sends to the same package are reminders and do not change
+                   status.
+     'InReview'  — at least one document in the package has been reviewed.
+                   Doc set still frozen. Reminders still allowed.
+     'Complete'  — every document in the package has a non-null ReasonCodeID.
+                   ClosedDate is set. No further reviewer access.
+     'Cancelled' — admin-cancelled. ClosedDate is set. Documents in this
+                   package become eligible for repackaging on the next load.
+
+   SentDate is populated by LPPIEmail.SendInitial on a successful first send.
+   ============================================================================= */
 IF OBJECT_ID(N'dbo.tblLPPI_ReviewPackages', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tblLPPI_ReviewPackages
@@ -204,16 +220,21 @@ BEGIN
         CreatedDate  DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_ReviewPackages_CreatedDate DEFAULT (SYSDATETIME()),
         CreatedBy    NVARCHAR(200)  NULL,
         DueDate      DATETIME2(3)   NOT NULL,
+        SentDate     DATETIME2(3)   NULL,
         ClosedDate   DATETIME2(3)   NULL,
-        Status       NVARCHAR(20)   NOT NULL CONSTRAINT DF_tblLPPI_ReviewPackages_Status DEFAULT ('Open'),
+        Status       NVARCHAR(20)   NOT NULL CONSTRAINT DF_tblLPPI_ReviewPackages_Status DEFAULT ('NotSent'),
         Notes        NVARCHAR(MAX)  NULL,
         CONSTRAINT UQ_tblLPPI_ReviewPackages_Token UNIQUE (Token),
         CONSTRAINT FK_tblLPPI_ReviewPackages_Cm FOREIGN KEY (CmID) REFERENCES dbo.tblLPPI_CapabilityManagers(CmID),
-        CONSTRAINT CK_tblLPPI_ReviewPackages_Status CHECK (Status IN ('Open','Closed','Cancelled'))
+        CONSTRAINT CK_tblLPPI_ReviewPackages_Status
+            CHECK (Status IN ('NotSent','Sent','InReview','Complete','Cancelled'))
     );
 
     CREATE NONCLUSTERED INDEX IX_tblLPPI_ReviewPackages_CmID
         ON dbo.tblLPPI_ReviewPackages(CmID);
+
+    CREATE NONCLUSTERED INDEX IX_tblLPPI_ReviewPackages_Status
+        ON dbo.tblLPPI_ReviewPackages(Status);
 END
 GO
 
@@ -268,22 +289,19 @@ GO
    Seeding: run LPPI_AdminSeed.sql after this script.
    UserId is matched case-insensitively by the application.
    Deactivation (IsActive = 0) is preferred over hard delete for audit trail.
-   --------------------------------------------------------------------------- */
+   ============================================================================= */
 IF OBJECT_ID(N'dbo.tblLPPI_AdminUsers', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tblLPPI_AdminUsers
     (
-        AdminUserID  INT           IDENTITY(1,1) NOT NULL
-            CONSTRAINT PK_tblLPPI_AdminUsers PRIMARY KEY CLUSTERED,
-        UserId       NVARCHAR(100) NOT NULL,
-        DisplayName  NVARCHAR(200) NULL,
-        Email        NVARCHAR(200) NULL,
-        IsActive     BIT           NOT NULL
-            CONSTRAINT DF_tblLPPI_AdminUsers_IsActive DEFAULT (1),
-        CreatedDate  DATETIME2(3)  NOT NULL
-            CONSTRAINT DF_tblLPPI_AdminUsers_CreatedDate DEFAULT (SYSDATETIME()),
-        CreatedBy    NVARCHAR(200) NULL,
-        ModifiedDate DATETIME2(3)  NULL,
+        AdminUserID  INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_AdminUsers PRIMARY KEY CLUSTERED,
+        UserId       NVARCHAR(100)  NOT NULL,
+        DisplayName  NVARCHAR(200)  NULL,
+        Email        NVARCHAR(200)  NULL,
+        IsActive     BIT            NOT NULL CONSTRAINT DF_tblLPPI_AdminUsers_IsActive DEFAULT (1),
+        CreatedDate  DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_AdminUsers_CreatedDate DEFAULT (SYSDATETIME()),
+        ModifiedDate DATETIME2(3)   NULL,
+        CreatedBy    NVARCHAR(100)  NULL,
         CONSTRAINT UQ_tblLPPI_AdminUsers_UserId UNIQUE (UserId)
     );
 END
