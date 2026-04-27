@@ -29,10 +29,13 @@ namespace CPlatform.LPPI
                 litBatches.Text     = Convert.ToString(s["TotalBatches"]);
             }
 
-            // Open packages — include Token so we can render the "Open review" link
+            // Open packages — covers NotSent / Sent / InReview.
+            // (Token column kept in the projection for future use; the
+            // Dashboard no longer renders an Open review button — that
+            // action lives on Send-outs only.)
             var pkgSql = @"
 SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
-       ISNULL(NULLIF(cm.DisplayName,''), cm.Program) AS CmDisplay,
+       cm.Program AS CmDisplay,
        (SELECT COUNT(*)
           FROM dbo.tblLPPI_ReviewPackageDocuments d
          WHERE d.PackageID = p.PackageID) AS DocCount,
@@ -43,8 +46,10 @@ SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
            AND r.ReasonCodeID IS NOT NULL) AS ReviewedCount
   FROM dbo.tblLPPI_ReviewPackages p
  INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
- WHERE p.Status = 'Open'
- ORDER BY p.DueDate ASC;";
+ WHERE p.Status IN ('NotSent','Sent','InReview')
+ ORDER BY
+    CASE p.Status WHEN 'NotSent' THEN 0 WHEN 'Sent' THEN 1 ELSE 2 END,
+    p.DueDate ASC;";
 
             var pkgs = LPPIHelper.ExecuteTable(pkgSql);
             pkgs.Columns.Add("CanRemind", typeof(bool));
@@ -54,8 +59,12 @@ SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
                 var due      = Convert.ToDateTime(r["DueDate"]);
                 var docCount = Convert.ToInt32(r["DocCount"]);
                 var rev      = Convert.ToInt32(r["ReviewedCount"]);
+                var status   = Convert.ToString(r["Status"]);
                 var pct      = docCount == 0 ? 100 : (rev * 100 / docCount);
-                r["CanRemind"] = (due <= DateTime.Today.AddDays(warn)) && pct < 100;
+                bool isRemindable =
+                    string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase);
+                r["CanRemind"] = isRemindable && (due <= DateTime.Today.AddDays(warn)) && pct < 100;
             }
             rptPackages.DataSource = pkgs;
             rptPackages.DataBind();
@@ -74,46 +83,65 @@ ORDER BY LoadedDate DESC;";
         protected string RenderStatusPill(object dataItem)
         {
             var row      = (DataRowView)dataItem;
+            var status   = Convert.ToString(row["Status"]);
             var due      = Convert.ToDateTime(row["DueDate"]);
             var docCount = Convert.ToInt32(row["DocCount"]);
             var rev      = Convert.ToInt32(row["ReviewedCount"]);
-            if (docCount > 0 && rev >= docCount) return "<span class=\"pill reviewed\">Complete</span>";
-            if (due < DateTime.Today)             return "<span class=\"pill overdue\">Overdue</span>";
-            if (due <= DateTime.Today.AddDays(LPPIHelper.ReminderWindowDays))
-                                                  return "<span class=\"pill pending\">Due soon</span>";
-            return "<span class=\"pill open\">Open</span>";
+
+            // Active statuses get the overdue / due-soon augmentation.
+            bool active = string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase);
+
+            string label;
+            string cls;
+            switch ((status ?? "").ToLowerInvariant())
+            {
+                case "notsent":   label = "Not sent";  cls = "notsent";   break;
+                case "sent":      label = "Sent";      cls = "sent";      break;
+                case "inreview":  label = "In review"; cls = "inreview";  break;
+                case "complete":  label = "Complete";  cls = "complete";  break;
+                case "cancelled": label = "Cancelled"; cls = "cancelled"; break;
+                default:          label = status;     cls = "";          break;
+            }
+
+            // Override to "Complete"-style if every doc reviewed.
+            if (docCount > 0 && rev >= docCount && active)
+            {
+                label = "Complete (pending close)";
+                cls   = "complete";
+                active = false;
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendFormat("<span class=\"pill {0}\">{1}</span>", cls, LPPIHelper.Enc(label));
+
+            if (active && due < DateTime.Today)
+                sb.Append(" <span class=\"pill overdue\">Overdue</span>");
+            else if (active && due <= DateTime.Today.AddDays(LPPIHelper.ReminderWindowDays))
+                sb.Append(" <span class=\"pill duesoon\">Due soon</span>");
+
+            return sb.ToString();
         }
 
         /// <summary>
         /// Renders the actions cell for the open packages table:
-        ///   - "Open review →" button (Open packages with a token only)
-        ///   - "Send reminder" LinkButton (when CanRemind)
+        ///   - "Send reminder" button (when CanRemind)
+        ///
+        /// Open review is intentionally NOT rendered here. The Dashboard is
+        /// a read-only overview; all package actions (open review, send,
+        /// remind) belong on the Send-outs page so there is one obvious
+        /// place to act on a package.
         /// </summary>
         protected string RenderPackageActions(object packageIdObj, object tokenObj,
                                               object statusObj, bool canRemind)
         {
             if (packageIdObj == null || packageIdObj == DBNull.Value) return "";
 
-            int    packageId = Convert.ToInt32(packageIdObj);
-            string status    = statusObj != null && statusObj != DBNull.Value
-                               ? Convert.ToString(statusObj) : "";
+            int packageId = Convert.ToInt32(packageIdObj);
 
             var sb = new StringBuilder();
 
-            // Open review link — Open packages with a valid token
-            if (string.Equals(status, "Open", StringComparison.OrdinalIgnoreCase)
-                && tokenObj != null && tokenObj != DBNull.Value)
-            {
-                string token   = LPPIHelper.Enc(tokenObj);
-                string baseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
-                sb.AppendFormat(
-                    "<button type=\"button\" class=\"btn btn-sm btn-secondary\" " +
-                    "onclick=\"openReviewLink('{0}','{1}');\">Open review &rarr;</button> ",
-                    token, baseUrl);
-            }
-
-            // Send reminder — rendered as a plain HTML button that posts back via
-            // a hidden field, keeping the pattern consistent with existing OnPackageCommand.
+            // Send reminder — only when CanRemind (Sent/InReview, near due, not complete).
             if (canRemind)
             {
                 sb.AppendFormat(

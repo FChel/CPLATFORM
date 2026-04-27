@@ -209,6 +209,43 @@ namespace CPlatform.LPPI
                 ? "(none)"
                 : HttpUtility.HtmlEncode(string.Join("\r\n", res.FailedRows));
 
+            // Surface package reconcile outcomes — what packages got created
+            // and where added documents landed. Always shown so the operator
+            // can see what the load did, even when it did nothing notable.
+            if (res.PackagesCreated > 0 || res.DocumentsAddedToExistingPackages > 0)
+            {
+                var pmsg = new StringBuilder();
+                if (res.PackagesCreated > 0)
+                {
+                    pmsg.Append("<strong>")
+                        .Append(res.PackagesCreated)
+                        .Append(" new review package")
+                        .Append(res.PackagesCreated == 1 ? "" : "s")
+                        .Append("</strong> created (status: NotSent). ");
+                }
+                if (res.DocumentsAddedToExistingPackages > 0)
+                {
+                    pmsg.Append("<strong>")
+                        .Append(res.DocumentsAddedToExistingPackages)
+                        .Append("</strong> document")
+                        .Append(res.DocumentsAddedToExistingPackages == 1 ? "" : "s")
+                        .Append(" added to existing not-sent packages. ");
+                }
+                pmsg.Append("Visit <a href=\"LPPI_SendOuts.aspx\">Send-outs</a> to issue them.");
+                ShowMessage(pmsg.ToString(), "info");
+            }
+            else if (res.RowsInserted > 0)
+            {
+                // Inserted rows but no new packages and nothing added — most
+                // likely every new document was already in a Sent / InReview /
+                // Complete package (or had been reviewed and was excluded).
+                ShowMessage(
+                    "Documents were loaded but no review packages were created or modified — " +
+                    "either every new document was already in a sent package, or the documents " +
+                    "had already been reviewed.",
+                    "info");
+            }
+
             // Surface any auto-created CM groups so the operator knows to
             // add email addresses for them before issuing send-outs.
             if (res.NewPrograms.Count > 0)

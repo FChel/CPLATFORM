@@ -7,6 +7,23 @@ using System.Web;
 
 namespace CPlatform.LPPI
 {
+    /// <summary>
+    /// Save handler for the reviewer page. Authoritative gate for write
+    /// access — only Complete and Cancelled packages reject writes. NotSent,
+    /// Sent and InReview all accept writes.
+    ///
+    /// Side effects on a successful save:
+    ///   1. If the package was Sent, flip to InReview (first save by reviewer).
+    ///      Editing a NotSent package does NOT flip its status — the package
+    ///      only becomes Sent when the operator hits Send on the Send-outs
+    ///      page, which stamps SentDate at the same time.
+    ///   2. If every document in the package now has a non-null ReasonCodeID,
+    ///      flip to Complete and stamp ClosedDate. This only fires for
+    ///      InReview, so a fully-coded NotSent package stays NotSent until
+    ///      the operator sends it.
+    /// Both transitions are guarded by the matching prior status so concurrent
+    /// saves cannot overshoot or regress the lifecycle.
+    /// </summary>
     public class LPPI_Review_Save : IHttpHandler
     {
         public bool IsReusable { get { return false; } }
@@ -27,9 +44,17 @@ namespace CPlatform.LPPI
                     "SELECT PackageID, Status FROM tblLPPI_ReviewPackages WHERE Token = @t",
                     LPPIHelper.P("@t", token));
                 if (pkg.Rows.Count != 1) { Write(ctx, false, "Invalid link.", null); return; }
-                if (!string.Equals(Convert.ToString(pkg.Rows[0]["Status"]), "Open", StringComparison.OrdinalIgnoreCase))
+
+                string status = Convert.ToString(pkg.Rows[0]["Status"]);
+                bool readOnly =
+                    string.Equals(status, "Complete",  StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+                if (readOnly)
                 {
-                    Write(ctx, false, "This review package is closed.", null); return;
+                    Write(ctx, false,
+                        "This review package is closed (status: " + status + ") and cannot be changed.",
+                        null);
+                    return;
                 }
                 int packageId = Convert.ToInt32(pkg.Rows[0]["PackageID"]);
 
@@ -119,6 +144,44 @@ namespace CPlatform.LPPI
                     LPPIHelper.P("@uid",   LPPIHelper.CurrentUserId()),
                     LPPIHelper.P("@uname", LPPIHelper.CurrentUserDisplayName()));
 
+                // ------------------------------------------------------------
+                // Lifecycle transitions
+                // ------------------------------------------------------------
+
+                // (1) First save by reviewer flips Sent -> InReview.
+                //     The WHERE Status = 'Sent' guard ensures editing a NotSent
+                //     package will NOT trip this update — only an actual Sent
+                //     package will match. Concurrent saves on the same Sent
+                //     package can each safely fire this — only the first one
+                //     will match.
+                LPPIHelper.ExecuteNonQuery(@"
+                    UPDATE tblLPPI_ReviewPackages
+                       SET Status = 'InReview'
+                     WHERE PackageID = @p
+                       AND Status   = 'Sent';",
+                    LPPIHelper.P("@p", packageId));
+
+                // (2) If every doc in the package now has a non-null reason
+                //     code, flip InReview -> Complete and stamp ClosedDate.
+                //     The WHERE Status = 'InReview' guard ensures a fully-
+                //     coded NotSent package stays NotSent — it does not
+                //     auto-complete before the operator has had a chance to
+                //     send it.
+                LPPIHelper.ExecuteNonQuery(@"
+                    UPDATE tblLPPI_ReviewPackages
+                       SET Status     = 'Complete',
+                           ClosedDate = SYSDATETIME()
+                     WHERE PackageID = @p
+                       AND Status   = 'InReview'
+                       AND NOT EXISTS (
+                           SELECT 1
+                             FROM tblLPPI_ReviewPackageDocuments pd
+                             LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = pd.DocumentID
+                            WHERE pd.PackageID = @p
+                              AND (r.ReasonCodeID IS NULL)
+                       );",
+                    LPPIHelper.P("@p", packageId));
+
                 Write(ctx, true, null, docNo);
             }
             catch (Exception ex)
@@ -131,10 +194,14 @@ namespace CPlatform.LPPI
         {
             var sb = new StringBuilder();
             sb.Append("{\"ok\":").Append(ok ? "true" : "false");
-            if (!ok && err != null)
+            if (!string.IsNullOrEmpty(err))
+            {
                 sb.Append(",\"error\":\"").Append(JsEscape(err)).Append("\"");
-            if (docNo != null)
+            }
+            if (!string.IsNullOrEmpty(docNo))
+            {
                 sb.Append(",\"docNo\":\"").Append(JsEscape(docNo)).Append("\"");
+            }
             sb.Append("}");
             ctx.Response.Write(sb.ToString());
         }
@@ -142,19 +209,19 @@ namespace CPlatform.LPPI
         private static string JsEscape(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
-            var sb = new StringBuilder(s.Length);
+            var sb = new StringBuilder(s.Length + 8);
             foreach (char c in s)
             {
                 switch (c)
                 {
                     case '\\': sb.Append("\\\\"); break;
                     case '"':  sb.Append("\\\""); break;
-                    case '\r': sb.Append("\\r");  break;
-                    case '\n': sb.Append("\\n");  break;
-                    case '\t': sb.Append("\\t");  break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
                     default:
-                        if (c < 0x20) sb.AppendFormat("\\u{0:x4}", (int)c);
-                        else sb.Append(c);
+                        if (c < 0x20) sb.AppendFormat("\\u{0:X4}", (int)c);
+                        else          sb.Append(c);
                         break;
                 }
             }

@@ -23,6 +23,15 @@ namespace CPlatform.LPPI
         protected string DueCountdownText;
         protected string DueCssClass;
 
+        // Read-only mode. Only Complete and Cancelled are read-only.
+        // NotSent / Sent / InReview are all fully editable so admins can QA
+        // during pre-launch and reviewers can edit normally once the package
+        // is sent. Editing a NotSent package does NOT flip its status —
+        // status only moves to Sent when the operator hits Send on the
+        // Send-outs page.
+        protected bool IsReadOnly;
+        protected string StatusBannerHtml = "";
+
         private DataTable _reasonCodes;
         private DataTable _mainTable;
 
@@ -38,15 +47,18 @@ namespace CPlatform.LPPI
                 WHERE p.Token = @t",
                 LPPIHelper.P("@t", token));
 
+            // The ONLY hard reject is a missing/invalid token. Every other
+            // status renders the page; the save handler enforces write rules.
             if (pkg.Rows.Count != 1) { ShowError(); return; }
 
             DataRow pr     = pkg.Rows[0];
             string  status = Convert.ToString(pr["Status"]);
-            if (!string.Equals(status, "Open", StringComparison.OrdinalIgnoreCase))
-            {
-                ShowError();
-                return;
-            }
+
+            // Read-only when Complete or Cancelled. Everything else is editable.
+            bool readOnly = string.Equals(status, "Complete",  StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+            IsReadOnly = readOnly;
+            StatusBannerHtml = BuildStatusBanner(status);
 
             int packageId  = Convert.ToInt32(pr["PackageID"]);
             TokenForClient = token;
@@ -63,6 +75,51 @@ namespace CPlatform.LPPI
             LoadDocuments(packageId);
         }
 
+        /// <summary>
+        /// Builds the status banner shown above the review header. NotSent
+        /// gets an informational note (editable but not yet sent). Sent and
+        /// InReview render no banner — the page looks normal. Complete and
+        /// Cancelled render a read-only banner.
+        /// </summary>
+        private static string BuildStatusBanner(string status)
+        {
+            string title;
+            string body;
+            string kind;
+            switch ((status ?? "").ToLowerInvariant())
+            {
+                case "notsent":
+                    kind  = "info";
+                    title = "Not yet sent";
+                    body  = "This package has not been emailed to recipients yet. Any changes will be visible to the reviewer once the package is issued from Send-outs.";
+                    break;
+                case "complete":
+                    kind  = "ok";
+                    title = "Complete";
+                    body  = "Every document in this package has been reviewed. The package is closed and read-only.";
+                    break;
+                case "cancelled":
+                    kind  = "warn";
+                    title = "Cancelled";
+                    body  = "This package has been cancelled. It is read-only and the documents are eligible for repackaging on the next file load.";
+                    break;
+                case "sent":
+                case "inreview":
+                    return "";
+                default:
+                    kind  = "warn";
+                    title = "Unknown status";
+                    body  = "This package is in an unrecognised state.";
+                    break;
+            }
+            var sb = new StringBuilder();
+            sb.Append("<div class=\"alert alert-").Append(kind).Append("\" style=\"margin:0 0 16px 0;\">")
+              .Append("<div><strong>").Append(LPPIHelper.Enc(title)).Append("</strong> &mdash; ")
+              .Append(LPPIHelper.Enc(body))
+              .Append("</div></div>");
+            return sb.ToString();
+        }
+
         // -------------------------------------------------------------------
         // MAIN VIEW QUERY — one row per DocNoAccounting.
         //
@@ -71,9 +128,9 @@ namespace CPlatform.LPPI
         // lines. This matches the BODS extract convention where line 1 carries
         // the primary account assignment for the document.
         //
-        // The review MERGE target is pd.DocumentID, which CreatePackage
-        // writes as the package-time first-line DocumentID. The save handler
-        // resolves this via the package table directly (no cross-batch risk).
+        // The review MERGE target is pd.DocumentID, which the reconcile
+        // step writes as the package-time first-line DocumentID. The save
+        // handler resolves this via the package table directly.
         //
         // Eval() bindings in LPPI_Review.aspx must match these aliases exactly.
         // -------------------------------------------------------------------

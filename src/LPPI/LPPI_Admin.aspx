@@ -8,12 +8,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LPPI Review — Dashboard</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <script>
-        function openReviewLink(token, baseUrl) {
-            var url = baseUrl.replace(/\/?$/, '/') + 'LPPI/LPPI_Review.aspx?t=' + encodeURIComponent(token);
-            window.open(url, '_blank');
-        }
-    </script>
+    <style>
+        /* Status pill colours for the new package status set. Defined here
+           rather than in lppi.css to keep this change self-contained while
+           the broader CSS file is left untouched. */
+        .pill.notsent  { background: var(--line-2);    color: var(--ink-3); }
+        .pill.sent     { background: var(--orange-soft); color: var(--orange-deep); }
+        .pill.inreview { background: var(--orange-soft); color: var(--orange-deep); }
+        .pill.complete { background: var(--ok-bg);     color: var(--ok); }
+        .pill.cancelled{ background: var(--err-bg);    color: var(--err); }
+        .pill.duesoon  { background: var(--warn-bg);   color: var(--warn); }
+    </style>
 </head>
 <body>
 <form id="form1" runat="server">
@@ -25,7 +30,7 @@
             <div>
                 <div class="crumb">LPPI Review</div>
                 <h1>Dashboard</h1>
-                <p class="lead">Late Payment Penalty Interest review — admin overview.</p>
+                <p class="lead">Late Payment Penalty Interest review admin overview.</p>
             </div>
             <div class="btn-row">
                 <a class="btn btn-secondary" href="LPPI_Batches.aspx">View batches</a>
@@ -65,8 +70,10 @@
 
         <div class="card">
             <h2>Open review packages</h2>
-            <p style="color:var(--ink-3);font-size:13px;">Each package was emailed to a Capability Manager group.
-            Use Send-outs to create new ones, or send a reminder when a package is approaching its due date.</p>
+            <p style="color:var(--ink-3);font-size:13px;">
+                Packages in flight (NotSent / Sent / In review). Use Send-outs to issue them, or send a reminder when one is approaching its due date.
+                Admins can open the review link for any package for QA — the reviewer page will be read-only when the package is not currently active.
+            </p>
             <div class="tbl-wrap">
                 <table class="tbl">
                     <thead>

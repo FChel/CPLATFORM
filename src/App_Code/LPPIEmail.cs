@@ -16,14 +16,20 @@ namespace CPlatform.LPPI
     /// real emails can be sent. When false, Send* methods return a failure so
     /// callers cannot accidentally send in UAT. Use BuildEmailHtml() for preview
     /// in all environments without sending.
+    ///
+    /// Status transitions (driven here, not in the database):
+    ///   - SendInitial on a NotSent package: on success, status -> Sent and
+    ///     SentDate is stamped.
+    ///   - SendReminder: never changes status. (Allowed only on Sent / InReview;
+    ///     blocked on NotSent / Complete / Cancelled.)
+    ///   - SendInitial on a package that has already been sent is rejected —
+    ///     the caller should be using SendReminder for that case.
     /// </summary>
     public static class LPPIEmail
     {
         private const string OrangeHex = "#d75b07";
 
         // Support mailbox addresses — read from config.
-        // LPPI.SupportMailboxTo  defaults to dfg.dfspi@defence.gov.au
-        // LPPI.SupportMailboxCc  defaults to LPPI.report@resources.defence.gov.au
         private static string SupportMailboxTo
         {
             get { return LPPIHelper.Setting("LPPI.SupportMailboxTo", "LPPI.report@resources.defence.gov.au"); }
@@ -78,8 +84,7 @@ namespace CPlatform.LPPI
             if (row == null) return "<p>Package not found.</p>";
 
             var dueDate       = Convert.ToDateTime(row["DueDate"]);
-            var program       = Convert.ToString(row["DisplayName"]);
-            if (string.IsNullOrWhiteSpace(program)) program = Convert.ToString(row["Program"]);
+            var program       = Convert.ToString(row["Program"]);
             var token         = Convert.ToString(row["Token"]);
             var docCount      = Convert.ToInt32(row["DocCount"]);
             var reviewedCount = Convert.ToInt32(row["ReviewedCount"]);
@@ -88,7 +93,7 @@ namespace CPlatform.LPPI
         }
 
         /// <summary>
-        /// Returns a preview HTML email for a CM group that has no open package yet.
+        /// Returns a preview HTML email for a CM group that has no package yet.
         /// Uses the group's program name and current unreviewed doc count as a
         /// representative preview. No package is created.
         /// </summary>
@@ -110,8 +115,7 @@ WHERE cm.CmID = @CmID;";
             if (dt.Rows.Count == 0) return "<p>Capability Manager group not found.</p>";
 
             var row     = dt.Rows[0];
-            var program = Convert.ToString(row["DisplayName"]);
-            if (string.IsNullOrWhiteSpace(program)) program = Convert.ToString(row["Program"]);
+            var program = Convert.ToString(row["Program"]);
             var docCount = Convert.ToInt32(row["UnreviewedDocs"]);
 
             // Use a placeholder token and a representative due date for preview.
@@ -120,6 +124,10 @@ WHERE cm.CmID = @CmID;";
 
             return BuildBody("Initial", program, due, token, docCount, 0);
         }
+
+        // -------------------------------------------------------------------
+        // Send pipeline
+        // -------------------------------------------------------------------
 
         private static SendResult SendForPackage(int packageId, string type)
         {
@@ -134,9 +142,34 @@ WHERE cm.CmID = @CmID;";
             if (row == null)
                 return new SendResult { Success = false, ErrorMessage = "Package not found." };
 
+            var status = Convert.ToString(row["Status"]);
+
+            // Status guard. Initial sends are only valid on NotSent. Reminders
+            // are only valid on Sent / InReview. Anything else is rejected so
+            // we do not accidentally re-fire on Complete / Cancelled, or send
+            // an "initial" for a package that already had its first send.
+            bool isInitial = string.Equals(type, "Initial", StringComparison.OrdinalIgnoreCase);
+            if (isInitial && !string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
+            {
+                return new SendResult
+                {
+                    Success      = false,
+                    ErrorMessage = "Initial send is only valid for NotSent packages (current status: " + status + "). Use Send reminder instead."
+                };
+            }
+            if (!isInitial &&
+                !(string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase)))
+            {
+                return new SendResult
+                {
+                    Success      = false,
+                    ErrorMessage = "Reminders are only valid for Sent or InReview packages (current status: " + status + ")."
+                };
+            }
+
             var dueDate       = Convert.ToDateTime(row["DueDate"]);
-            var program       = Convert.ToString(row["DisplayName"]);
-            if (string.IsNullOrWhiteSpace(program)) program = Convert.ToString(row["Program"]);
+            var program       = Convert.ToString(row["Program"]);
             var token         = Convert.ToString(row["Token"]);
             var docCount      = Convert.ToInt32(row["DocCount"]);
             var reviewedCount = Convert.ToInt32(row["ReviewedCount"]);
@@ -180,6 +213,19 @@ WHERE cm.CmID = @CmID;";
                 string.Join(";", toList) + (ccList.Count > 0 ? " | CC: " + string.Join(";", ccList) : ""),
                 type, subject, body, ok, error);
 
+            // Status transition — only on a successful initial send, and only
+            // when the package was still NotSent (re-checked above).
+            if (ok && isInitial)
+            {
+                LPPIHelper.ExecuteNonQuery(@"
+UPDATE dbo.tblLPPI_ReviewPackages
+   SET Status   = 'Sent',
+       SentDate = SYSDATETIME()
+ WHERE PackageID = @P
+   AND Status   = 'NotSent';",
+                    LPPIHelper.P("@P", packageId));
+            }
+
             return new SendResult { Success = ok, ErrorMessage = error };
         }
 
@@ -190,7 +236,7 @@ WHERE cm.CmID = @CmID;";
         private static System.Data.DataRow LoadPackageRow(int packageId)
         {
             const string sql = @"
-SELECT p.PackageID, p.Token, p.DueDate, p.CreatedDate, p.Status,
+SELECT p.PackageID, p.Token, p.DueDate, p.CreatedDate, p.SentDate, p.Status,
        cm.CmID, cm.Program, cm.DisplayName,
        (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments d WHERE d.PackageID = p.PackageID) AS DocCount,
        (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments d
@@ -333,12 +379,6 @@ WHERE p.PackageID = @P;";
                 "<p>Please complete your review by <span style=\"font-weight:bold\">{0}</span>.</p>",
                 dueDateEnc);
 
-            // RMG-417 policy reference
-            sb.Append("<p>For background, refer to the Department of Finance&#8217;s Supplier Pay On-Time or Pay Interest Policy (RMG 417): ")
-              .Append("<a href=\"https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417\" style=\"color:")
-              .Append(OrangeHex)
-              .Append(";\">https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417</a>.</p>");
-
             // Review link button
             sb.AppendFormat(
                 "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{0}\" target=\"_blank\" style=\"background:{1};color:#fff;font-weight:bold;text-decoration:none;padding:12px 28px;border-radius:4px;display:inline-block;\">Begin Review</a></td></tr></table>",
@@ -356,6 +396,15 @@ WHERE p.PackageID = @P;";
                   OrangeHex)
               .Append("<span style=\"font-weight:bold;color:#b45309;\">Please note:</span> if no response is received by the due date, payment will be automatically processed from the responsible cost centre.")
               .Append("</td></tr></table>");
+
+            // RMG-417 policy reference — placed after the Please note callout.
+            // Anchor text is short and human-readable rather than the full URL,
+            // so Outlook does not split or mangle it on the way through.
+            sb.Append("<p>For background, refer to the Department of Finance&#8217;s ")
+              .Append("<a href=\"https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417\"")
+              .Append(" target=\"_blank\" rel=\"noopener\" style=\"color:")
+              .Append(OrangeHex)
+              .Append(";\">Supplier Pay On-Time or Pay Interest Policy (RMG 417)</a>.</p>");
 
             // Support / feedback line
             sb.AppendFormat(

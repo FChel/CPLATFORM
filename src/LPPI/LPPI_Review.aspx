@@ -8,6 +8,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LPPI Review</title>
     <link rel="stylesheet" href="../css/lppi.css" />
+    <style>
+        /* Read-only mode — a single hook on the shell disables every form
+           input on the page. The save handler is the authoritative gate;
+           this is purely a UX hint so admin QA viewers cannot accidentally
+           type into fields they are not meant to edit. */
+        .review-shell[data-readonly="1"] select,
+        .review-shell[data-readonly="1"] textarea,
+        .review-shell[data-readonly="1"] input[type="text"],
+        .review-shell[data-readonly="1"] input[type="checkbox"] {
+            pointer-events: none;
+            background: #f8f8f8;
+            color: var(--ink-3);
+        }
+        .review-shell[data-readonly="1"] #saveAllBtn,
+        .review-shell[data-readonly="1"] #bulkBar {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
 
@@ -27,14 +45,19 @@
             </div>
         </div>
     </div>
-    <p style="padding:0 4px;">This review link is no longer active. It may have expired, already been used, or the package may be closed. Please contact your Capability Manager if you believe this is an error.</p>
+    <p style="padding:0 4px;">This review link is no longer active.
+    It may have expired, already been used, or the package may be closed. Please contact your Capability Manager if you believe this is an error.</p>
 </div>
 </asp:PlaceHolder>
 
 <asp:PlaceHolder ID="phReview" runat="server" Visible="false">
 <input type="hidden" id="reviewToken" value="<%= LPPIHelper.Enc(TokenForClient) %>" />
+<input type="hidden" id="reviewReadOnly" value="<%= IsReadOnly ? "1" : "0" %>" />
 
-<div class="review-shell">
+<div class="review-shell" data-readonly="<%= IsReadOnly ? "1" : "0" %>">
+
+    <%-- Status banner — only rendered for non-active package statuses --%>
+    <%= StatusBannerHtml %>
 
     <%-- Review header --%>
     <div class="review-head">

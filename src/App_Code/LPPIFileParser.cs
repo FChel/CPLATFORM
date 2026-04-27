@@ -115,6 +115,7 @@ namespace CPlatform.LPPI
         // Commit parsed rows into tblLPPI_Documents and create a load batch.
         // Skip-and-warn duplicates by (DOC_NO_ACCOUNTING, ITEM_SEQUENCE).
         // Auto-creates any CM groups seen in the file that do not yet exist.
+        // After insert, reconciles documents into review packages.
         // -------------------------------------------------------------------
 
         public class CommitResult
@@ -129,6 +130,9 @@ namespace CPlatform.LPPI
             public List<string> FailedRows = new List<string>();
             // Programs that were created automatically during this commit.
             public List<string> NewPrograms = new List<string>();
+            // Package reconciliation outcomes.
+            public int PackagesCreated;
+            public int DocumentsAddedToExistingPackages;
         }
 
         public static CommitResult Commit(ParseResult parsed, string fileName, string sourcePath,
@@ -223,6 +227,13 @@ UPDATE dbo.tblLPPI_LoadBatches
                 LPPIHelper.P("@F", res.RowsFailed),
                 LPPIHelper.P("@B", res.BatchID));
 
+            // ------------------------------------------------------------------
+            // Reconcile packages — add unreviewed docs that are not already
+            // in any non-Cancelled package into either the CM's existing
+            // NotSent package or a fresh NotSent package.
+            // ------------------------------------------------------------------
+            ReconcilePackages(res);
+
             return res;
         }
 
@@ -260,6 +271,142 @@ UPDATE dbo.tblLPPI_LoadBatches
                 }
                 // If it already exists, leave it alone — do not overwrite the
                 // admin-maintained display name or active flag.
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Package reconciliation
+        //
+        // Rule:
+        //   For each CM, identify documents that are unreviewed AND not
+        //   already attached to any non-Cancelled package. Those are the
+        //   "loose" documents that need a home.
+        //
+        //   - If the CM has a NotSent package, add the loose docs to it.
+        //   - Otherwise, create a fresh NotSent package and add them.
+        //
+        //   Docs already in any Sent / InReview / Complete package are
+        //   ignored — those packages are frozen.
+        //   Docs in Cancelled packages are eligible to be repackaged.
+        //
+        // We use the document's first-line DocumentID as the package
+        // membership key, matching the rest of the LPPI codebase.
+        // -------------------------------------------------------------------
+
+        private static void ReconcilePackages(CommitResult res)
+        {
+            // Pull the candidate first-line DocumentIDs grouped by CmID.
+            // A document is a candidate iff:
+            //   - it is unreviewed (no row in tblLPPI_Reviews with a reason code), AND
+            //   - it is not already in any non-Cancelled package.
+            //
+            // Working at first-line DocumentID matches everything else in
+            // the codebase (Reviews, ReviewPackageDocuments).
+            const string candidateSql = @"
+SELECT cm.CmID, MIN(d.DocumentID) AS FirstLineDocumentID
+  FROM dbo.tblLPPI_Documents d
+  INNER JOIN dbo.tblLPPI_CapabilityManagers cm
+          ON cm.Program = d.CapabilityManagerProgram
+ WHERE NOT EXISTS (
+        SELECT 1
+          FROM dbo.tblLPPI_Reviews r
+         WHERE r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                 FROM dbo.tblLPPI_Documents d2
+                                WHERE d2.DocNoAccounting = d.DocNoAccounting)
+           AND r.ReasonCodeID IS NOT NULL
+   )
+   AND NOT EXISTS (
+        SELECT 1
+          FROM dbo.tblLPPI_ReviewPackageDocuments pd
+          INNER JOIN dbo.tblLPPI_ReviewPackages p ON p.PackageID = pd.PackageID
+         WHERE pd.DocumentID = (SELECT MIN(d3.DocumentID)
+                                  FROM dbo.tblLPPI_Documents d3
+                                 WHERE d3.DocNoAccounting = d.DocNoAccounting)
+           AND p.Status <> 'Cancelled'
+   )
+ GROUP BY cm.CmID, d.DocNoAccounting";
+
+            DataTable candidates = LPPIHelper.ExecuteTable(candidateSql);
+            if (candidates.Rows.Count == 0) return;
+
+            // Group candidate first-line DocumentIDs by CmID.
+            var byCm = new Dictionary<int, List<int>>();
+            foreach (DataRow r in candidates.Rows)
+            {
+                int cmId = Convert.ToInt32(r["CmID"]);
+                int docId = Convert.ToInt32(r["FirstLineDocumentID"]);
+                List<int> list;
+                if (!byCm.TryGetValue(cmId, out list))
+                {
+                    list = new List<int>();
+                    byCm[cmId] = list;
+                }
+                list.Add(docId);
+            }
+
+            int defaultDueDays = LPPIHelper.DefaultDueDays;
+            string createdBy   = LPPIHelper.CurrentUserDisplayName();
+
+            foreach (var kv in byCm)
+            {
+                int cmId = kv.Key;
+                List<int> docIds = kv.Value;
+                if (docIds.Count == 0) continue;
+
+                // Find an existing NotSent package for this CM, if any.
+                object existingPkgIdObj = LPPIHelper.ExecuteScalar(@"
+SELECT TOP 1 PackageID
+  FROM dbo.tblLPPI_ReviewPackages
+ WHERE CmID = @cm AND Status = 'NotSent'
+ ORDER BY CreatedDate DESC",
+                    LPPIHelper.P("@cm", cmId));
+
+                int packageId;
+                bool isNewPackage = (existingPkgIdObj == null || existingPkgIdObj == DBNull.Value);
+
+                if (isNewPackage)
+                {
+                    string token = LPPIHelper.GenerateToken();
+                    DateTime due = DateTime.Today.AddDays(defaultDueDays);
+                    object newPkgId = LPPIHelper.ExecuteScalar(@"
+INSERT INTO dbo.tblLPPI_ReviewPackages
+    (CmID, Token, CreatedDate, CreatedBy, DueDate, Status)
+OUTPUT inserted.PackageID
+VALUES (@cm, @tok, SYSDATETIME(), @by, @due, 'NotSent')",
+                        LPPIHelper.P("@cm",  cmId),
+                        LPPIHelper.P("@tok", token),
+                        LPPIHelper.P("@by",  createdBy),
+                        LPPIHelper.P("@due", due));
+                    packageId = Convert.ToInt32(newPkgId);
+                    res.PackagesCreated++;
+                }
+                else
+                {
+                    packageId = Convert.ToInt32(existingPkgIdObj);
+                }
+
+                // Add each candidate document to the package. Use INSERT WHERE
+                // NOT EXISTS to be safe against any racing duplicates — the
+                // primary key would catch them anyway, but this is cleaner.
+                int added = 0;
+                foreach (int docId in docIds)
+                {
+                    int rows = LPPIHelper.ExecuteNonQuery(@"
+INSERT INTO dbo.tblLPPI_ReviewPackageDocuments (PackageID, DocumentID)
+SELECT @pkg, @doc
+ WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.tblLPPI_ReviewPackageDocuments
+     WHERE PackageID = @pkg AND DocumentID = @doc
+ )",
+                        LPPIHelper.P("@pkg", packageId),
+                        LPPIHelper.P("@doc", docId));
+                    if (rows > 0) added++;
+                }
+
+                if (!isNewPackage)
+                {
+                    res.DocumentsAddedToExistingPackages += added;
+                }
             }
         }
 

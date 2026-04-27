@@ -47,6 +47,15 @@
             width: 100%;
             min-height: 520px;
         }
+
+        /* Status pill colours for the new package status set */
+        .pill.notsent  { background: var(--line-2);    color: var(--ink-3); }
+        .pill.sent     { background: var(--orange-soft); color: var(--orange-deep); }
+        .pill.inreview { background: var(--orange-soft); color: var(--orange-deep); }
+        .pill.complete { background: var(--ok-bg);     color: var(--ok); }
+        .pill.cancelled{ background: var(--err-bg);    color: var(--err); }
+        .pill.overdue  { background: var(--err-bg);    color: var(--err); }
+        .pill.duesoon  { background: var(--warn-bg);   color: var(--warn); }
     </style>
     <script>
         function openReviewLink(token, baseUrl) {
@@ -61,14 +70,6 @@
             var label   = document.getElementById('previewLabel');
             label.textContent = 'Email preview — Package #' + packageId + ' (' + emailType + ')';
             frame.src = 'LPPI_EmailPreview.aspx?id=' + packageId + '&type=' + encodeURIComponent(emailType);
-            overlay.classList.add('open');
-        }
-        function openPreviewByCm(cmId) {
-            var overlay = document.getElementById('previewOverlay');
-            var frame   = document.getElementById('previewFrame');
-            var label   = document.getElementById('previewLabel');
-            label.textContent = 'Email preview';
-            frame.src = 'LPPI_EmailPreview.aspx?cm=' + cmId;
             overlay.classList.add('open');
         }
         function closePreview() {
@@ -91,8 +92,7 @@
             <div>
                 <div class="crumb">LPPI Review</div>
                 <h1>Send for review</h1>
-                <p class="lead">Pick the Capability Manager groups with outstanding documents and issue a review package.
-                Each group gets its own unguessable link.</p>
+                <p class="lead">Packages are created automatically when a file is loaded. Pick the packages you want to send (or remind) and issue them here.</p>
             </div>
         </div>
 
@@ -103,28 +103,35 @@
         <asp:PlaceHolder ID="phUnconfigured" runat="server" />
 
         <div class="card">
-            <h2>Outstanding work by group</h2>
+            <h2>Open packages</h2>
+            <p style="color:var(--ink-3);font-size:13px;">
+                NotSent packages can be issued for the first time. Sent and InReview packages can be reminded.
+                Use Preview email at any time to see what the recipients will receive.
+            </p>
             <div class="form-grid">
                 <div class="form-row">
-                    <label for="txtDueDate">Due date</label>
+                    <label for="txtDueDate">Due date (applied to NotSent packages on first send)</label>
                     <asp:TextBox ID="txtDueDate" runat="server" CssClass="input" TextMode="Date" />
                 </div>
                 <div class="form-row form-row-actions">
-                    <asp:Button ID="btnSend" runat="server" CssClass="btn btn-primary" Text="Send selected groups" OnClick="btnSend_Click" />
+                    <asp:Button ID="btnSend" runat="server" CssClass="btn btn-primary" Text="Send / remind selected" OnClick="btnSend_Click" />
                 </div>
             </div>
 
             <div class="tbl-wrap">
-                <asp:Repeater ID="rptGroups" runat="server">
+                <asp:Repeater ID="rptPackages" runat="server">
                     <HeaderTemplate>
                         <table class="tbl">
                             <thead>
                                 <tr>
-                                    <th><input type="checkbox" id="chkAll" onclick="document.querySelectorAll('.cmPick').forEach(function(c){c.checked=this.checked}.bind(this))" /></th>
-                                    <th>Program</th>
+                                    <th><input type="checkbox" id="chkAll" onclick="document.querySelectorAll('.pkgPick').forEach(function(c){c.checked=this.checked}.bind(this))" /></th>
+                                    <th>Package</th>
+                                    <th>Capability Manager</th>
                                     <th>Recipients</th>
-                                    <th class="num">Unreviewed docs</th>
-                                    <th>Open package?</th>
+                                    <th class="num">Docs</th>
+                                    <th class="num">Reviewed</th>
+                                    <th>Status</th>
+                                    <th>Last email</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -133,27 +140,24 @@
                     <ItemTemplate>
                         <tr>
                             <td>
-                                <asp:CheckBox runat="server" ID="chkPick" CssClass="cmPick"
-                                              Enabled='<%# (int)Eval("UnreviewedDocs") > 0 && (int)Eval("ToCount") > 0 %>' />
-                                <asp:HiddenField runat="server" ID="hfCmId" Value='<%# Eval("CmID") %>' />
+                                <asp:CheckBox runat="server" ID="chkPick" CssClass="pkgPick"
+                                              Enabled='<%# (int)Eval("ToCount") > 0 %>' />
+                                <asp:HiddenField runat="server" ID="hfPackageId" Value='<%# Eval("PackageID") %>' />
                             </td>
+                            <td>#<%# Eval("PackageID") %></td>
                             <td>
                                 <strong><%# LPPIHelper.Enc(Eval("Program")) %></strong>
                                 <%# (int)Eval("ToCount") == 0
-                                    ? " <span class=\"pill pill-overdue\">no recipients</span>"
+                                    ? " <span class=\"pill overdue\">no recipients</span>"
                                     : "" %>
                             </td>
                             <td><%# LPPIHelper.Enc(Eval("ToList")) %></td>
-                            <td class="num"><%# Eval("UnreviewedDocs") %></td>
-                            <td>
-                                <%# Eval("OpenPackageID") == DBNull.Value
-                                    ? "<span class=\"muted\">No</span>"
-                                    : "<span class=\"pill pill-open\">#" + Eval("OpenPackageID") + "</span>" %>
-                            </td>
-                            <td class="actions">
-                                <%# Eval("OpenPackageID") != DBNull.Value
-                                    ? "<button type=\"button\" class=\"btn btn-sm btn-ghost\" onclick=\"openPreview(" + Eval("OpenPackageID") + ",'Initial')\">Preview email</button>"
-                                    : "<button type=\"button\" class=\"btn btn-sm btn-ghost\" onclick=\"openPreviewByCm(" + Eval("CmID") + ")\">Preview email</button>" %>
+                            <td class="num"><%# Eval("DocCount") %></td>
+                            <td class="num"><%# Eval("ReviewedCount") %></td>
+                            <td><%# RenderStatusPill(Container.DataItem) %></td>
+                            <td><%# LPPIHelper.FormatDate(Eval("LastEmailDate"), "dd/MM/yyyy HH:mm") %></td>
+                            <td class="actions" style="white-space:nowrap;">
+                                <%# RenderPackageActions(Eval("PackageID"), Eval("Token"), Eval("Status")) %>
                             </td>
                         </tr>
                     </ItemTemplate>
@@ -162,6 +166,9 @@
                         </table>
                     </FooterTemplate>
                 </asp:Repeater>
+                <asp:PlaceHolder ID="phNoPackages" runat="server" Visible="false">
+                    <p class="muted" style="padding:24px;text-align:center;">No open packages. Load a file to create new packages.</p>
+                </asp:PlaceHolder>
             </div>
         </div>
 
@@ -174,7 +181,7 @@
                             <thead>
                                 <tr>
                                     <th>Package</th>
-                                    <th>Program</th>
+                                    <th>Capability Manager</th>
                                     <th>Created</th>
                                     <th>Due</th>
                                     <th class="num">Docs</th>
@@ -194,11 +201,7 @@
                             <td><%# LPPIHelper.FormatDate(Eval("DueDate")) %></td>
                             <td class="num"><%# Eval("TotalDocs") %></td>
                             <td class="num"><%# Eval("ReviewedDocs") %></td>
-                            <td>
-                                <%# string.Equals((string)Eval("Status"), "Open")
-                                    ? "<span class=\"pill pill-open\">Open</span>"
-                                    : "<span class=\"pill pill-closed\">" + LPPIHelper.Enc(Eval("Status")) + "</span>" %>
-                            </td>
+                            <td><%# RenderStatusPillFromStatus(Eval("Status")) %></td>
                             <td><%# LPPIHelper.FormatDate(Eval("LastEmailDate"), "dd/MM/yyyy HH:mm") %></td>
                             <td class="actions" style="white-space:nowrap;">
                                 <%# RenderRecentActions(Eval("PackageID"), Eval("Token"), Eval("Status")) %>

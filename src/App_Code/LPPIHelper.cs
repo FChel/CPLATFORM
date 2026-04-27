@@ -17,6 +17,16 @@ namespace CPlatform.LPPI
     public static class LPPIHelper
     {
         // -------------------------------------------------------------------
+        // Active-package status set
+        //
+        // The "open packages" concept on the dashboard and elsewhere covers
+        // every package that is in flight — i.e. created and not yet finished
+        // or cancelled. NotSent is included because admins can still preview
+        // and QA those packages, and they still count as outstanding work.
+        // -------------------------------------------------------------------
+        public const string ActivePackageStatusList = "'NotSent','Sent','InReview'";
+
+        // -------------------------------------------------------------------
         // Config helpers
         // -------------------------------------------------------------------
 
@@ -496,19 +506,16 @@ WHERE d.CapabilityManagerProgram IS NOT NULL
         // -------------------------------------------------------------------
         // Dashboard summary
         //
-        // Under the ItemSequence schema, tblLPPI_Documents stores one row
-        // per LINE. Document-level counts must operate on
-        // COUNT(DISTINCT DocNoAccounting). Under the option-1 first-line-
-        // review model, the number of Payable+NotPayable reviews equals the
-        // number of reviewed DOCUMENTS (each document has one review, stored
-        // against the first line's DocumentID), so TotalReviewed stays as
-        // COUNT(*) on tblLPPI_Reviews — numerically it is still a document
-        // count.
+        // "OpenPackages" / "OverduePackages" / "NearDeadlinePackages" use the
+        // active package status set: NotSent, Sent, InReview. Complete and
+        // Cancelled are out of scope for these counts.
         //
+        // Document-level counts work on COUNT(DISTINCT DocNoAccounting). The
+        // first-line-review model puts one Review row per document, against
+        // the first line's DocumentID, so TotalReviewed stays as COUNT(*) on
+        // tblLPPI_Reviews — numerically it is still a document count.
         // TotalOutstanding is derived as TotalDocs - TotalReviewed so the
-        // three numbers reconcile cleanly even if some documents briefly
-        // have no Reviews row at all (reason-code cleared to NULL, for
-        // example).
+        // three numbers reconcile cleanly.
         // -------------------------------------------------------------------
 
         public static DataRow GetDashboardSummary()
@@ -519,11 +526,14 @@ SELECT
    (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL)     AS TotalReviewed,
    (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents)
      - (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL) AS TotalOutstanding,
-   (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages WHERE Status='Open')         AS OpenPackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
-       WHERE Status='Open' AND DueDate < SYSDATETIME())                          AS OverduePackages,
+       WHERE Status IN ('NotSent','Sent','InReview'))                            AS OpenPackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
-       WHERE Status='Open' AND DueDate BETWEEN SYSDATETIME() AND DATEADD(day, @WarnDays, SYSDATETIME()))
+       WHERE Status IN ('NotSent','Sent','InReview')
+         AND DueDate < SYSDATETIME())                                            AS OverduePackages,
+   (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
+       WHERE Status IN ('NotSent','Sent','InReview')
+         AND DueDate BETWEEN SYSDATETIME() AND DATEADD(day, @WarnDays, SYSDATETIME()))
                                                                                  AS NearDeadlinePackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_LoadBatches)                                AS TotalBatches;";
             var dt = ExecuteTable(sql, P("@WarnDays", ReminderWindowDays));
@@ -579,11 +589,6 @@ SELECT
         /// <summary>
         /// Build an SAP Fiori deep link for a Purchase Order. Returns "" if the
         /// base URL or the PO value is missing.
-        ///
-        ///   {base}/sap/bc/ui2/flp?sap-language=EN#PurchaseOrder-display?PurchaseOrder={PO}&amp;sap-app-origin-hint=&amp;uitype=advanced
-        ///
-        /// Note the '?' before PurchaseOrder= — that is the Fiori intent-parameter
-        /// separator, NOT an '&amp;'. Subsequent params are '&amp;' as usual.
         /// </summary>
         public static string SapPoLink(object poNumber)
         {
@@ -603,10 +608,7 @@ SELECT
         /// Build an SAP Fiori deep link for an FI accounting document.
         /// ClearingMonth is a "M.YYYY" string as produced by BODS (e.g. "7.2025");
         /// the AU fiscal year rolls forward for Jul-Dec. If ClearingMonth cannot be
-        /// parsed, FiscalYear is OMITTED from the URL entirely (SAP will then
-        /// prompt the user, which is preferable to sending a bogus FY).
-        ///
-        ///   {base}/sap/bc/ui2/flp?sap-language=EN#AccountingDocument-displayDocument?AccountingDocument={DOC}&amp;CompanyCode={CC}[&amp;FiscalYear={FY}]&amp;sap-app-origin-hint=&amp;uitype=advanced
+        /// parsed, FiscalYear is OMITTED from the URL entirely.
         /// </summary>
         public static string SapFiLink(object docNoAccounting, object companyCode, object clearingMonth)
         {
@@ -633,8 +635,6 @@ SELECT
             {
                 sb.Append("&FiscalYear=").Append(fy.ToString(CultureInfo.InvariantCulture));
             }
-            // If we could not derive FY, deliberately omit the parameter rather than
-            // guess — the task spec is explicit about this.
 
             sb.Append("&sap-app-origin-hint=")
               .Append("&uitype=advanced");
@@ -643,11 +643,7 @@ SELECT
 
         /// <summary>
         /// Render a PO number as an anchor to its SAP Fiori PO display page, or as
-        /// plain HTML-encoded text when the URL cannot be built (no base URL
-        /// configured, or no PO value).
-        ///
-        /// Callers use this inline in .aspx:
-        ///   &lt;%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %&gt;
+        /// plain HTML-encoded text when the URL cannot be built.
         /// </summary>
         public static string SapPoNumberHtml(object poNumber)
         {
@@ -709,11 +705,6 @@ SELECT
         /// form "M.YYYY" (e.g. "7.2025" -&gt; FY 2026, "4.2025" -&gt; FY 2025).
         /// Returns false when the input is null, blank or malformed — in which case
         /// the out parameter is left at 0 and the caller should omit FY entirely.
-        ///
-        /// This logic is duplicated (with a fallback-to-today) in LPPIExport.cs for
-        /// the export file build. The two derivations agree for well-formed input;
-        /// the difference is only in the fallback behaviour (export falls back to
-        /// today, deep links omit the parameter).
         /// </summary>
         public static bool TryDeriveAuFiscalYear(string clearingMonth, out int fiscalYear)
         {
