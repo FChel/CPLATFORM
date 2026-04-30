@@ -76,7 +76,7 @@ namespace CPlatform.LPPI
             { get { return Setting("LPPI.ExportPath", @"C:\Temp\LPPI_Exports"); } }
 
         public static string Environment
-            { get { return Setting("LPPI.Environment", "DEV").ToUpperInvariant(); } }
+            { get { return Setting("CPlatform.Environment", "DEV").ToUpperInvariant(); } }
 
         public static int ReminderWindowDays
             { get { return SettingInt("LPPI.ReminderWindowDays", 3); } }

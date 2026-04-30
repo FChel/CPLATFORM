@@ -96,7 +96,7 @@
             </div>
         </div>
 
-        <%-- UAT banner shown when ProductionMode is false --%>
+        <%-- Test mode banner shown when ProductionMode is false --%>
         <asp:PlaceHolder ID="phUatBanner" runat="server" />
 
         <asp:PlaceHolder ID="phMessage" runat="server" />
@@ -114,7 +114,21 @@
                     <asp:TextBox ID="txtDueDate" runat="server" CssClass="input" TextMode="Date" />
                 </div>
                 <div class="form-row form-row-actions">
-                    <asp:Button ID="btnSend" runat="server" CssClass="btn btn-primary" Text="Send / remind selected" OnClick="btnSend_Click" />
+                    <%-- Real send — visible always, disabled when not in production. --%>
+                    <asp:Button ID="btnSend" runat="server"
+                                CssClass="btn btn-primary"
+                                Text="Send / remind selected"
+                                OnClick="btnSend_Click" />
+
+                    <%-- Mark as sent — visible only in non-production. Drives the
+                         lifecycle without dispatching email so end-to-end flow
+                         can be tested. Mutually exclusive with the real send by
+                         construction (gated on the same ProductionMode flag). --%>
+                    <asp:Button ID="btnMarkSent" runat="server"
+                                CssClass="btn btn-secondary"
+                                Text="Mark as sent (test)"
+                                Visible="false"
+                                OnClick="btnMarkSent_Click" />
                 </div>
             </div>
 

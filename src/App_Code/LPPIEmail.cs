@@ -17,9 +17,18 @@ namespace CPlatform.LPPI
     /// callers cannot accidentally send in UAT. Use BuildEmailHtml() for preview
     /// in all environments without sending.
     ///
+    /// In UAT (ProductionMode = false), MarkAsSent is available as a way to
+    /// drive the package lifecycle end-to-end without an actual SMTP send.
+    /// It is mutually exclusive with the real send: when ProductionMode is
+    /// true the Mark-as-sent button is hidden, when false the Send button
+    /// is disabled. One flag drives both.
+    ///
     /// Status transitions (driven here, not in the database):
     ///   - SendInitial on a NotSent package: on success, status -> Sent and
     ///     SentDate is stamped.
+    ///   - MarkAsSent on a NotSent package (UAT only): same status transition
+    ///     as SendInitial, no email sent. Audit row written with type
+    ///     "Initial-MarkedSent" so the log distinguishes simulated from real.
     ///   - SendReminder: never changes status. (Allowed only on Sent / InReview;
     ///     blocked on NotSent / Complete / Cancelled.)
     ///   - SendInitial on a package that has already been sent is rejected —
@@ -41,7 +50,8 @@ namespace CPlatform.LPPI
 
         /// <summary>
         /// Returns true when LPPI.ProductionMode = "true" in appSettings.
-        /// When false, Send* methods are blocked — only preview is available.
+        /// When false, Send* methods are blocked — only preview is available
+        /// and MarkAsSent can be used to drive the lifecycle for UAT testing.
         /// Defaults to false (safe) if the key is absent.
         /// </summary>
         public static bool ProductionMode
@@ -123,6 +133,92 @@ WHERE cm.CmID = @CmID;";
             var token = "PREVIEW";
 
             return BuildBody("Initial", program, due, token, docCount, 0);
+        }
+
+        /// <summary>
+        /// UAT-only — mark a NotSent package as sent without dispatching any
+        /// email. Performs the same status transition as a successful initial
+        /// send (Status -> Sent, SentDate stamped) so the rest of the
+        /// lifecycle (reviewer Sent -> InReview, InReview -> Complete) can
+        /// be exercised end-to-end. Available only when ProductionMode is
+        /// false; refuses to run in PROD as a defence-in-depth measure even
+        /// if the caller bypasses the UI gate.
+        ///
+        /// Recipient validation mirrors the real send: refuses when the CM
+        /// has no recipients configured, so the workflow rule "you must
+        /// configure recipients before sending" is enforced in UAT too.
+        ///
+        /// Audit log row is written with EmailType = "Initial-MarkedSent" and
+        /// ErrorMessage carrying a clear marker, so the log makes it obvious
+        /// which packages were marked-as-sent versus actually sent.
+        /// </summary>
+        public static SendResult MarkAsSent(int packageId)
+        {
+            // Refuse to run in PROD — defence in depth. The button that calls
+            // this is also hidden when ProductionMode is true, but the gate
+            // here protects against any direct postback.
+            if (ProductionMode)
+                return new SendResult
+                {
+                    Success      = false,
+                    ErrorMessage = "Mark as sent is not available in production. Use Send to dispatch real emails."
+                };
+
+            var row = LoadPackageRow(packageId);
+            if (row == null)
+                return new SendResult { Success = false, ErrorMessage = "Package not found." };
+
+            var status = Convert.ToString(row["Status"]);
+            if (!string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
+                return new SendResult
+                {
+                    Success      = false,
+                    ErrorMessage = "Mark as sent is only valid for NotSent packages (current status: " + status + ")."
+                };
+
+            var program  = Convert.ToString(row["Program"]);
+            var dueDate  = Convert.ToDateTime(row["DueDate"]);
+            var docCount = Convert.ToInt32(row["DocCount"]);
+            var cmId     = Convert.ToInt32(row["CmID"]);
+
+            // Same recipient guard as the real send — keeps the workflow
+            // rule visible and enforced in UAT.
+            List<string> ccList;
+            var toList = LPPIHelper.GetActiveRecipients(cmId, out ccList);
+            if (toList.Count == 0)
+                return new SendResult
+                {
+                    Success      = false,
+                    ErrorMessage = "No recipients configured for this Capability Manager group. Add an email first."
+                };
+
+            // Build the same subject the real send would use, so the audit
+            // row reads coherently — but no body, no SMTP call.
+            var subject = BuildSubject("Initial", program, dueDate);
+
+            // Audit row first — recipients listed exactly as the real send
+            // would have used (To and CC), so the log shows what *would*
+            // have happened in PROD. EmailType differentiates simulated.
+            string recipientsLogged = string.Join(";", toList) +
+                (ccList.Count > 0 ? " | CC: " + string.Join(";", ccList) : "");
+            LogSend(packageId,
+                    recipientsLogged,
+                    "Initial-MarkedSent",
+                    subject,
+                    "(no body — marked as sent in test mode, no email dispatched)",
+                    true,
+                    "MARK-AS-SENT (test mode) — no email dispatched. ProductionMode=false.");
+
+            // Status transition — same race-safe guard as the real send.
+            LPPIHelper.ExecuteNonQuery(@"
+UPDATE dbo.tblLPPI_ReviewPackages
+   SET Status   = 'Sent',
+       SentDate = SYSDATETIME()
+ WHERE PackageID = @P
+   AND Status   = 'NotSent';",
+                LPPIHelper.P("@P", packageId));
+
+            return new SendResult { Success = true, ErrorMessage = null };
         }
 
         // -------------------------------------------------------------------

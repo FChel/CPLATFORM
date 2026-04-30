@@ -291,6 +291,10 @@ UPDATE dbo.tblLPPI_LoadBatches
         //
         // We use the document's first-line DocumentID as the package
         // membership key, matching the rest of the LPPI codebase.
+        //
+        // CMs are processed alphabetically by Program name so that PackageIDs
+        // come out in CM order. This keeps the Send-outs and Dashboard
+        // tables (both alpha-sorted) tidy after a fresh load.
         // -------------------------------------------------------------------
 
         private static void ReconcilePackages(CommitResult res)
@@ -302,8 +306,11 @@ UPDATE dbo.tblLPPI_LoadBatches
             //
             // Working at first-line DocumentID matches everything else in
             // the codebase (Reviews, ReviewPackageDocuments).
+            //
+            // cm.Program is projected so the dispatch loop can iterate
+            // alphabetically by Program name.
             const string candidateSql = @"
-SELECT cm.CmID, MIN(d.DocumentID) AS FirstLineDocumentID
+SELECT cm.CmID, cm.Program, MIN(d.DocumentID) AS FirstLineDocumentID
   FROM dbo.tblLPPI_Documents d
   INNER JOIN dbo.tblLPPI_CapabilityManagers cm
           ON cm.Program = d.CapabilityManagerProgram
@@ -324,33 +331,45 @@ SELECT cm.CmID, MIN(d.DocumentID) AS FirstLineDocumentID
                                  WHERE d3.DocNoAccounting = d.DocNoAccounting)
            AND p.Status <> 'Cancelled'
    )
- GROUP BY cm.CmID, d.DocNoAccounting";
+ GROUP BY cm.CmID, cm.Program, d.DocNoAccounting";
 
             DataTable candidates = LPPIHelper.ExecuteTable(candidateSql);
             if (candidates.Rows.Count == 0) return;
 
-            // Group candidate first-line DocumentIDs by CmID.
-            var byCm = new Dictionary<int, List<int>>();
+            // Build the per-CM bucket. Use a small helper class so we can
+            // sort by Program name when iterating, while still carrying the
+            // CmID needed for the package INSERT.
+            var byCm = new Dictionary<int, CmBucket>();
             foreach (DataRow r in candidates.Rows)
             {
-                int cmId = Convert.ToInt32(r["CmID"]);
-                int docId = Convert.ToInt32(r["FirstLineDocumentID"]);
-                List<int> list;
-                if (!byCm.TryGetValue(cmId, out list))
+                int    cmId    = Convert.ToInt32(r["CmID"]);
+                string program = Convert.ToString(r["Program"]);
+                int    docId   = Convert.ToInt32(r["FirstLineDocumentID"]);
+
+                CmBucket bucket;
+                if (!byCm.TryGetValue(cmId, out bucket))
                 {
-                    list = new List<int>();
-                    byCm[cmId] = list;
+                    bucket = new CmBucket { CmID = cmId, Program = program ?? "" };
+                    byCm[cmId] = bucket;
                 }
-                list.Add(docId);
+                bucket.DocIds.Add(docId);
             }
+
+            // Iterate alphabetically by Program. Case-insensitive ordinal
+            // ordering matches how the Send-outs and Dashboard tables sort
+            // (SQL Server default collation, which is case-insensitive on
+            // CPLATFORM).
+            var ordered = byCm.Values
+                .OrderBy(b => b.Program, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
             int defaultDueDays = LPPIHelper.DefaultDueDays;
             string createdBy   = LPPIHelper.CurrentUserDisplayName();
 
-            foreach (var kv in byCm)
+            foreach (var bucket in ordered)
             {
-                int cmId = kv.Key;
-                List<int> docIds = kv.Value;
+                int cmId = bucket.CmID;
+                List<int> docIds = bucket.DocIds;
                 if (docIds.Count == 0) continue;
 
                 // Find an existing NotSent package for this CM, if any.
@@ -408,6 +427,18 @@ SELECT @pkg, @doc
                     res.DocumentsAddedToExistingPackages += added;
                 }
             }
+        }
+
+        /// <summary>
+        /// Per-CM bucket used by ReconcilePackages so that iteration can be
+        /// ordered by Program name while the package INSERT still has the
+        /// CmID it needs.
+        /// </summary>
+        private class CmBucket
+        {
+            public int    CmID;
+            public string Program;
+            public List<int> DocIds = new List<int>();
         }
 
         private static void InsertDocument(int batchId, string docNo, int itemSequence, ParsedRow row)

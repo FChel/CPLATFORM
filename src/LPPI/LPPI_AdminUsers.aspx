@@ -35,8 +35,7 @@
                 <div class="crumb">LPPI Review</div>
                 <h1>Admin users</h1>
                 <p class="lead">
-                    Manage who has access to the LPPI admin pages. Any authenticated FinHub
-                    user not listed here is directed to the LPPI info page instead.
+                    Manage who has access to the LPPI admin pages. Users not listed here are directed to the LPPI info page.
                 </p>
             </div>
         </div>
@@ -57,6 +56,12 @@
                     <label for="txtEditEmail">Email</label>
                     <asp:TextBox ID="txtEditEmail" runat="server" CssClass="input" MaxLength="200" TextMode="Email" />
                 </div>
+                <div class="form-row form-row-check">
+                    <label>
+                        <asp:CheckBox ID="chkEditActive" runat="server" Checked="true" />
+                        Active
+                    </label>
+                </div>
                 <div class="form-row form-row-actions">
                     <asp:HiddenField ID="hfEditId" runat="server" />
                     <asp:Button ID="btnSaveEdit" runat="server" CssClass="btn btn-primary" Text="Save" OnClick="btnSaveEdit_Click" />
@@ -70,18 +75,18 @@
              ================================================================ --%>
         <div class="card" style="margin-bottom:16px;">
             <h2>Add user</h2>
-            <p class="muted" style="font-size:13px;">Enter the Windows username (e.g. <code>DEFENCE\jsmith</code>). Separate multiple usernames with commas.</p>
+            <p class="muted" style="font-size:13px;">Enter the Windows username (e.g. <code>DRN\firstname.lastname)</p>
             <div class="form-grid">
                 <div class="form-row form-row-wide">
-                    <label for="txtAddUserIds">Username(s)</label>
-                    <asp:TextBox ID="txtAddUserIds" runat="server" CssClass="input" MaxLength="500" placeholder="DEFENCE\username" />
+                    <label for="txtAddUserIds">Username</label>
+                    <asp:TextBox ID="txtAddUserIds" runat="server" CssClass="input" MaxLength="500" placeholder="DRN\firstname.lastname" />
                 </div>
                 <div class="form-row">
-                    <label for="txtAddDisplayName">Display name <span class="muted">(optional — single user only)</span></label>
+                    <label for="txtAddDisplayName">Display name <span class="muted">(optional)</span></label>
                     <asp:TextBox ID="txtAddDisplayName" runat="server" CssClass="input" MaxLength="200" />
                 </div>
                 <div class="form-row">
-                    <label for="txtAddEmail">Email <span class="muted">(optional — single user only)</span></label>
+                    <label for="txtAddEmail">Email <span class="muted">(optional)</span></label>
                     <asp:TextBox ID="txtAddEmail" runat="server" CssClass="input" MaxLength="200" TextMode="Email" />
                 </div>
                 <div class="form-row form-row-actions">

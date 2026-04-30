@@ -12,6 +12,15 @@ namespace CPlatform.LPPI
     /// Send-outs page. Lists packages (NotSent / Sent / InReview) and lets
     /// the operator issue them or send reminders. Packages are NOT created
     /// here — they are created by the file-load reconcile step.
+    ///
+    /// In UAT (LPPIEmail.ProductionMode = false), an additional
+    /// "Mark as sent (UAT)" button is visible. It performs the same status
+    /// transition as a real initial send (NotSent -> Sent, stamps SentDate)
+    /// without dispatching any email, so the lifecycle can be tested
+    /// end-to-end without relying on email delivery. The two buttons are
+    /// mutually exclusive: in PROD only Send is visible, in UAT only
+    /// Mark as sent is enabled. The single LPPIEmail.ProductionMode flag
+    /// drives both.
     /// </summary>
     public partial class LPPI_SendOuts : LPPIBasePage
     {
@@ -26,8 +35,13 @@ namespace CPlatform.LPPI
                 BindRecent();
             }
 
-            // Gate the Send button and show a UAT banner when not in production mode.
-            btnSend.Enabled = LPPIEmail.ProductionMode;
+            // Mutually exclusive button visibility, gated on ProductionMode:
+            //   PROD: btnSend enabled, btnMarkSent hidden.
+            //   UAT:  btnSend disabled (kept visible so its presence is obvious),
+            //         btnMarkSent visible and enabled.
+            btnSend.Enabled    = LPPIEmail.ProductionMode;
+            btnMarkSent.Visible = !LPPIEmail.ProductionMode;
+
             RenderUatBanner();
         }
 
@@ -42,9 +56,11 @@ namespace CPlatform.LPPI
 
             phUatBanner.Controls.Add(new LiteralControl(
                 "<div class=\"alert alert-warn\">" +
-                "<div><strong>UAT mode</strong> — email sending is disabled. " +
-                "Use the <em>Preview email</em> button to review the formatted email for any package. " +
-                "Set <code>LPPI.ProductionMode = true</code> in web.config to enable sending.</div>" +
+                "<div><strong>Test mode.</strong> Real email sending is disabled. " +
+                "Use <em>Preview email</em> to see the formatted email and " +
+                "<em>Mark as sent (test)</em> to simulate email sending " +
+                " and set package(s) status to [Sent]." +
+		"</div>" +
                 "</div>"));
         }
 
@@ -106,10 +122,7 @@ namespace CPlatform.LPPI
                   FROM tblLPPI_ReviewPackages p
                  INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
                  WHERE p.Status IN ('NotSent','Sent','InReview')
-                 ORDER BY
-                    CASE p.Status WHEN 'NotSent' THEN 0 WHEN 'Sent' THEN 1 ELSE 2 END,
-                    cm.Program,
-                    p.CreatedDate";
+                 ORDER BY cm.Program, p.PackageID";
 
             DataTable dt = LPPIHelper.ExecuteTable(sql);
             rptPackages.DataSource = dt;
@@ -122,6 +135,10 @@ namespace CPlatform.LPPI
             // Columns required by rptRecent Eval():
             //   PackageID, Token, Program, CreatedDate, DueDate,
             //   TotalDocs, ReviewedDocs, Status, LastEmailDate
+            //
+            // Filtered to packages that have actually been sent so this
+            // table only shows real send-out history, not pre-launch
+            // NotSent packages.
             const string sql = @"
                 SELECT TOP 50
                        p.PackageID,
@@ -286,14 +303,34 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // Send / remind selected packages
+        // Selection helper — shared between Send and Mark-as-sent
+        // -------------------------------------------------------------------
+
+        private List<int> CollectSelectedPackageIds()
+        {
+            var ids = new List<int>();
+            foreach (RepeaterItem item in rptPackages.Items)
+            {
+                var chk = item.FindControl("chkPick") as CheckBox;
+                var hf  = item.FindControl("hfPackageId") as HiddenField;
+                if (chk != null && hf != null && chk.Checked)
+                {
+                    int id;
+                    if (int.TryParse(hf.Value, out id)) ids.Add(id);
+                }
+            }
+            return ids;
+        }
+
+        // -------------------------------------------------------------------
+        // Send / remind selected packages — real send (PROD only)
         // -------------------------------------------------------------------
 
         protected void btnSend_Click(object sender, EventArgs e)
         {
             if (!LPPIEmail.ProductionMode)
             {
-                ShowMessage("Email sending is disabled in UAT. Set LPPI.ProductionMode = true in web.config to enable.", "err");
+                ShowMessage("Email sending is disabled in test mode. Use Mark as sent (test) instead, or set LPPI.ProductionMode = true in web.config.", "err");
                 return;
             }
 
@@ -304,18 +341,7 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            var selectedPackageIds = new List<int>();
-            foreach (RepeaterItem item in rptPackages.Items)
-            {
-                var chk = item.FindControl("chkPick") as CheckBox;
-                var hf  = item.FindControl("hfPackageId") as HiddenField;
-                if (chk != null && hf != null && chk.Checked)
-                {
-                    int id;
-                    if (int.TryParse(hf.Value, out id)) selectedPackageIds.Add(id);
-                }
-            }
-
+            var selectedPackageIds = CollectSelectedPackageIds();
             if (selectedPackageIds.Count == 0)
             {
                 ShowMessage("Select at least one package to send.", "err");
@@ -379,6 +405,89 @@ namespace CPlatform.LPPI
             var msg = new StringBuilder();
             msg.Append(initialOk).Append(" initial email").Append(initialOk == 1 ? "" : "s").Append(" sent, ")
                .Append(reminderOk).Append(" reminder").Append(reminderOk == 1 ? "" : "s").Append(" sent.");
+            if (failed > 0)
+                msg.Append(" ").Append(failed).Append(" failure").Append(failed == 1 ? "" : "s").Append(".");
+            if (failNotes.Length > 0)
+                msg.Append("<ul>").Append(failNotes).Append("</ul>");
+
+            ShowMessageRaw(msg.ToString(), kind);
+            BindPackages();
+            BindRecent();
+        }
+
+        // -------------------------------------------------------------------
+        // Mark as sent (UAT only) — drive the lifecycle without sending email
+        // -------------------------------------------------------------------
+
+        protected void btnMarkSent_Click(object sender, EventArgs e)
+        {
+            // Defence in depth — the button is hidden in PROD via Visible,
+            // but a server-side gate protects against any direct postback.
+            if (LPPIEmail.ProductionMode)
+            {
+                ShowMessage("Mark as sent is not available in production. Use Send / remind selected.", "err");
+                return;
+            }
+
+            DateTime due;
+            if (!DateTime.TryParse(txtDueDate.Text, out due))
+            {
+                ShowMessage("A valid due date is required.", "err");
+                return;
+            }
+
+            var selectedPackageIds = CollectSelectedPackageIds();
+            if (selectedPackageIds.Count == 0)
+            {
+                ShowMessage("Select at least one package to mark as sent.", "err");
+                return;
+            }
+
+            int markedOk = 0, skipped = 0, failed = 0;
+            var failNotes = new StringBuilder();
+
+            foreach (int pid in selectedPackageIds)
+            {
+                // Mark as sent only operates on NotSent packages — anything
+                // else is skipped with a clear message rather than failing.
+                object statusObj = LPPIHelper.ExecuteScalar(
+                    "SELECT Status FROM tblLPPI_ReviewPackages WHERE PackageID = @P",
+                    LPPIHelper.P("@P", pid));
+                string status = statusObj == null || statusObj == DBNull.Value
+                              ? "" : Convert.ToString(statusObj);
+
+                if (!string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
+                {
+                    skipped++;
+                    failNotes.Append("<li>Package #").Append(pid)
+                             .Append(": skipped — already ").Append(LPPIHelper.Enc(status)).Append(".</li>");
+                    continue;
+                }
+
+                // Apply the chosen due date before marking — same as the real
+                // send. Mark-as-sent is the operator's last chance to set the
+                // due date in UAT.
+                LPPIHelper.ExecuteNonQuery(
+                    "UPDATE tblLPPI_ReviewPackages SET DueDate = @D WHERE PackageID = @P AND Status = 'NotSent'",
+                    LPPIHelper.P("@D", due),
+                    LPPIHelper.P("@P", pid));
+
+                var res = LPPIEmail.MarkAsSent(pid);
+                if (res.Success) markedOk++;
+                else
+                {
+                    failed++;
+                    failNotes.Append("<li>Package #").Append(pid).Append(": ")
+                             .Append(LPPIHelper.Enc(res.ErrorMessage)).Append("</li>");
+                }
+            }
+
+            string kind = (failed == 0 && skipped == 0) ? "ok" : "warn";
+            var msg = new StringBuilder();
+            msg.Append(markedOk).Append(" package").Append(markedOk == 1 ? "" : "s")
+               .Append(" marked as sent (test mode — no email dispatched).");
+            if (skipped > 0)
+                msg.Append(" ").Append(skipped).Append(" skipped (not NotSent).");
             if (failed > 0)
                 msg.Append(" ").Append(failed).Append(" failure").Append(failed == 1 ? "" : "s").Append(".");
             if (failNotes.Length > 0)

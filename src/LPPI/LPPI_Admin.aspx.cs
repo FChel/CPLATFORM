@@ -30,6 +30,10 @@ namespace CPlatform.LPPI
             }
 
             // Open packages — covers NotSent / Sent / InReview.
+            // Sort order: alphabetical by Capability Manager, with PackageID
+            // as a stable tie-break for the rare case where one CM has more
+            // than one open package. The status pill itself communicates
+            // urgency, so the row order does not need to.
             // (Token column kept in the projection for future use; the
             // Dashboard no longer renders an Open review button — that
             // action lives on Send-outs only.)
@@ -47,9 +51,7 @@ SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
   FROM dbo.tblLPPI_ReviewPackages p
  INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
  WHERE p.Status IN ('NotSent','Sent','InReview')
- ORDER BY
-    CASE p.Status WHEN 'NotSent' THEN 0 WHEN 'Sent' THEN 1 ELSE 2 END,
-    p.DueDate ASC;";
+ ORDER BY cm.Program, p.PackageID;";
 
             var pkgs = LPPIHelper.ExecuteTable(pkgSql);
             pkgs.Columns.Add("CanRemind", typeof(bool));

@@ -35,9 +35,9 @@
 
     var FACETS = [
         { id: 'filterDm',  attr: 'data-dm'  },
+        { id: 'filterPoc', attr: 'data-poc' },
         { id: 'filterWbs', attr: 'data-wbs' },
         { id: 'filterPc',  attr: 'data-pc'  }
-        // filterPoc removed from entry view toolbar; still works on detail rows
     ];
 
     /* =========================================================================
@@ -189,7 +189,8 @@
        ========================================================================= */
     function bindExpandChevrons() {
         document.addEventListener('click', function (e) {
-            var btn = e.target && e.target.closest ? e.target.closest('.btn-expand') : null;
+            var btn = e.target && e.target.closest ?
+                      e.target.closest('.btn-expand') : null;
             if (!btn) return;
 
             var docNo     = btn.getAttribute('data-doc-no');
@@ -234,7 +235,6 @@
             + '</tr></thead><tbody>';
 
         rows.forEach(function (r) {
-            var cells = r.querySelectorAll('td');
             // Map by col class
             function cell(cls) {
                 var el = r.querySelector('td.' + cls);

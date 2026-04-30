@@ -25,6 +25,13 @@
         .review-shell[data-readonly="1"] #bulkBar {
             display: none !important;
         }
+
+        /* Export-to-Excel toolbar above the All Lines tab */
+        .lines-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 8px;
+        }
     </style>
 </head>
 <body>
@@ -120,6 +127,10 @@
                 <option value="">All DM Programs</option>
                 <%= BuildFacetOptions("dm") %>
             </select>
+            <select id="filterPoc" class="input filter-facet" title="POC email">
+                <option value="">All POCs</option>
+                <%= BuildFacetOptions("poc") %>
+            </select>
             <select id="filterWbs" class="input filter-facet" title="WBS element">
                 <option value="">All WBS</option>
                 <%= BuildFacetOptions("wbs") %>
@@ -166,7 +177,7 @@
                         <thead>
                             <tr>
                                 <th class="col-sel"></th>
-                                <th class="col-doc">Document</th>
+                                <th class="col-doc">Document (Lines)</th>
                                 <th class="col-vendor">Vendor</th>
                                 <th class="col-po">PO</th>
                                 <th class="col-wbs">WBS Element</th>
@@ -198,7 +209,7 @@
                         </td>
                         <td class="col-doc">
                             <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %>
-                            <span class="line-count-inline muted">(<%# Eval("LineCount") %> line<%# Convert.ToInt32(Eval("LineCount")) == 1 ? "" : "s" %>)</span>
+                            <span class="line-count-inline muted">(<%# Eval("LineCount") %>)</span>
                         </td>
                         <td class="col-vendor" title='<%# LPPIHelper.Enc(Eval("VendorName")) + " (" + LPPIHelper.Enc(Eval("VendorNum")) + ")" %>'>
                             <%# LPPIHelper.Enc(Eval("VendorName")) %>
@@ -266,20 +277,35 @@
          TAB 2 — All lines (read-only detail)
          ================================================================ --%>
     <div id="paneLines" class="review-pane" role="tabpanel" aria-labelledby="tabLines">
+
+        <%-- Per-tab toolbar — Export button. Anchored to the lines pane so
+             it does not appear on the entry tab. --%>
+        <div class="lines-toolbar">
+            <a id="exportLinesBtn" class="btn btn-secondary"
+               href='<%= "LPPI_Review_Export.ashx?t=" + System.Uri.EscapeDataString(TokenForClient) %>'
+               title="Download all lines as Excel">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>Export to Excel</span>
+            </a>
+        </div>
+
         <div class="detail-scroll-wrap">
             <asp:Repeater ID="rptDetail" runat="server">
                 <HeaderTemplate>
                     <table class="tbl tbl-detail">
                         <thead>
                             <tr>
-                                <th class="col-doc">Document No.</th>
+                                <th class="col-doc">Document</th>
                                 <th class="col-seq num">Line</th>
                                 <th class="col-vendor">Vendor</th>
-                                <th class="col-po">PO Number</th>
+                                <th class="col-po">PO</th>
                                 <th class="col-wbs">WBS Element</th>
-                                <th class="col-gl">GL Account</th>
+                                <th class="col-gl">Account</th>
                                 <th class="col-pc">Profit Centre</th>
-                                <th class="col-tax">Tax Code</th>
                                 <th class="col-dm">DM Program</th>
                                 <th class="col-poc">POC Email</th>
                                 <th class="col-date">Payment Date</th>
@@ -309,7 +335,6 @@
                         <td class="col-wbs" title='<%# LPPIHelper.Enc(Eval("WbsDesc")) %>'><%# LPPIHelper.Enc(Eval("WbsElement")) %></td>
                         <td class="col-gl"><%# LPPIHelper.Enc(Eval("GlAccount")) %></td>
                         <td class="col-pc"><%# LPPIHelper.Enc(Eval("ProfitCentre")) %></td>
-                        <td class="col-tax"><%# LPPIHelper.Enc(Eval("TaxCode")) %></td>
                         <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'><%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %></td>
                         <td class="col-poc"><%# LPPIHelper.Enc(Eval("PocEmail")) %></td>
                         <td class="col-date"><%# LPPIHelper.FormatDate(Eval("PaymentRunDate")) %></td>
