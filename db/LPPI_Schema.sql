@@ -137,7 +137,12 @@ BEGIN
 END
 GO
 
-/* ----------------------------- tblLPPI_Reviews ------------------------------ */
+/* ----------------------------- tblLPPI_Reviews ------------------------------
+   Latest-state-only table. One row per document (UQ on DocumentID).
+   ReviewedDate doubles as the optimistic-locking version token — the save
+   handler reads it on load, posts it back on save, and refuses the update
+   if it has changed in between.
+   ============================================================================ */
 IF OBJECT_ID(N'dbo.tblLPPI_Reviews', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tblLPPI_Reviews
@@ -155,6 +160,56 @@ BEGIN
         CONSTRAINT FK_tblLPPI_Reviews_Document   FOREIGN KEY (DocumentID)   REFERENCES dbo.tblLPPI_Documents(DocumentID),
         CONSTRAINT FK_tblLPPI_Reviews_ReasonCode FOREIGN KEY (ReasonCodeID) REFERENCES dbo.tblLPPI_ReasonCodes(ReasonCodeID)
     );
+END
+GO
+
+/* ----------------------------- tblLPPI_ReviewHistory ------------------------
+   Append-only audit log of review changes. One row per Save click that
+   actually changed something for a given document. Snapshot model — each row
+   captures the new state at that point in time. Old values for any row are
+   the previous row for the same DocumentID, or NULL if it is the first row.
+
+   No-change saves do NOT write a history row. The save handler short-
+   circuits before history insert if all three review fields match the
+   current state.
+
+   The first row for a DocumentID is the initial review. Every subsequent
+   row is an update — reconstructable via LAG(...) OVER (PARTITION BY
+   DocumentID ORDER BY ChangedDate) when reporting.
+
+   ChangedByName is the audit identity. For reviewer-link traffic this is
+   typically the name supplied by the host site (or empty if anonymous);
+   for admin QA it is the Windows display name. CFO use case is "did
+   someone overwrite a colleague's classification" — the ChangedDate
+   chronology answers that without needing a viewer.
+
+   PackageID is denormalised in to avoid a join via
+   tblLPPI_ReviewPackageDocuments when reporting "all changes for this
+   package". Matches the package the review was made under.
+   ============================================================================ */
+IF OBJECT_ID(N'dbo.tblLPPI_ReviewHistory', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.tblLPPI_ReviewHistory
+    (
+        HistoryID            INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_ReviewHistory PRIMARY KEY CLUSTERED,
+        DocumentID           INT             NOT NULL,
+        PackageID            INT             NOT NULL,
+        ReasonCodeID         INT             NULL,
+        Comments             NVARCHAR(MAX)   NULL,
+        ObjectiveReference   NVARCHAR(200)   NULL,
+        ChangedByUserId      NVARCHAR(100)   NULL,
+        ChangedByName        NVARCHAR(200)   NULL,
+        ChangedDate          DATETIME2(3)    NOT NULL CONSTRAINT DF_tblLPPI_ReviewHistory_ChangedDate DEFAULT (SYSDATETIME()),
+        CONSTRAINT FK_tblLPPI_ReviewHistory_Document   FOREIGN KEY (DocumentID)   REFERENCES dbo.tblLPPI_Documents(DocumentID),
+        CONSTRAINT FK_tblLPPI_ReviewHistory_Package    FOREIGN KEY (PackageID)    REFERENCES dbo.tblLPPI_ReviewPackages(PackageID),
+        CONSTRAINT FK_tblLPPI_ReviewHistory_ReasonCode FOREIGN KEY (ReasonCodeID) REFERENCES dbo.tblLPPI_ReasonCodes(ReasonCodeID)
+    );
+
+    CREATE NONCLUSTERED INDEX IX_tblLPPI_ReviewHistory_DocumentID
+        ON dbo.tblLPPI_ReviewHistory(DocumentID, ChangedDate DESC);
+
+    CREATE NONCLUSTERED INDEX IX_tblLPPI_ReviewHistory_PackageID
+        ON dbo.tblLPPI_ReviewHistory(PackageID, ChangedDate DESC);
 END
 GO
 

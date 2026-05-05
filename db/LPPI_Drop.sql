@@ -8,14 +8,15 @@
    Drop order:
      1.  tblLPPI_AdminUsers                (no FK dependencies)
      2.  tblLPPI_EmailLog                  (FK -> ReviewPackages)
-     3.  tblLPPI_ReviewPackageDocuments    (FK -> ReviewPackages, Documents)
-     4.  tblLPPI_ReviewPackages            (FK -> CapabilityManagers)
-     5.  tblLPPI_Reviews                   (FK -> Documents, ReasonCodes)
-     6.  tblLPPI_CapabilityManagerEmails   (FK -> CapabilityManagers)
-     7.  tblLPPI_CapabilityManagers
-     8.  tblLPPI_ReasonCodes
-     9.  tblLPPI_Documents                 (FK -> LoadBatches)
-     10. tblLPPI_LoadBatches
+     3.  tblLPPI_ReviewHistory             (FK -> Documents, ReviewPackages, ReasonCodes)
+     4.  tblLPPI_ReviewPackageDocuments    (FK -> ReviewPackages, Documents)
+     5.  tblLPPI_ReviewPackages            (FK -> CapabilityManagers)
+     6.  tblLPPI_Reviews                   (FK -> Documents, ReasonCodes)
+     7.  tblLPPI_CapabilityManagerEmails   (FK -> CapabilityManagers)
+     8.  tblLPPI_CapabilityManagers
+     9.  tblLPPI_ReasonCodes
+     10. tblLPPI_Documents                 (FK -> LoadBatches)
+     11. tblLPPI_LoadBatches
    ============================================================================= */
 
 SET NOCOUNT ON;
@@ -40,6 +41,13 @@ IF OBJECT_ID(N'dbo.tblLPPI_EmailLog', N'U') IS NOT NULL
 BEGIN
     DROP TABLE dbo.tblLPPI_EmailLog;
     PRINT '  dropped tblLPPI_EmailLog';
+END
+GO
+
+IF OBJECT_ID(N'dbo.tblLPPI_ReviewHistory', N'U') IS NOT NULL
+BEGIN
+    DROP TABLE dbo.tblLPPI_ReviewHistory;
+    PRINT '  dropped tblLPPI_ReviewHistory';
 END
 GO
 

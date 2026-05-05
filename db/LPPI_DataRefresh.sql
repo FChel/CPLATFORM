@@ -10,14 +10,15 @@
    WHAT GETS DELETED
    ----------------------------------------------------------------------
      - tblLPPI_EmailLog                  (every send / mark-as-sent record)
+     - tblLPPI_ReviewHistory             (every reviewer-side change snapshot)
      - tblLPPI_ReviewPackageDocuments    (every package <-> document link)
      - tblLPPI_ReviewPackages            (every package, every status)
      - tblLPPI_Reviews                   (every reason code / comment / objref)
      - tblLPPI_Documents                 (every loaded document line)
      - tblLPPI_LoadBatches               (every load batch header)
 
-   IDENTITY columns are reseeded so PackageID / DocumentID / BatchID start
-   from 1 again on the next load.
+   IDENTITY columns are reseeded so PackageID / DocumentID / BatchID /
+   HistoryID start from 1 again on the next load.
 
    ----------------------------------------------------------------------
    WHAT IS PRESERVED
@@ -84,6 +85,7 @@ BEGIN TRANSACTION;
 
 /* Pre-counts — for the after-the-fact summary. */
 DECLARE @cnt_EmailLog          INT = (SELECT COUNT(*) FROM dbo.tblLPPI_EmailLog);
+DECLARE @cnt_History           INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewHistory);
 DECLARE @cnt_PackageDocs       INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments);
 DECLARE @cnt_Packages          INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages);
 DECLARE @cnt_Reviews           INT = (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews);
@@ -93,15 +95,19 @@ DECLARE @cnt_LoadBatches       INT = (SELECT COUNT(*) FROM dbo.tblLPPI_LoadBatch
 /* ----------------------------------------------------------------------
    Delete order respects FK dependencies:
      1. EmailLog              -> ReviewPackages
-     2. ReviewPackageDocuments-> ReviewPackages, Documents
-     3. ReviewPackages        -> CapabilityManagers (kept)
-     4. Reviews               -> Documents, ReasonCodes (kept)
-     5. Documents             -> LoadBatches
-     6. LoadBatches           (no incoming FKs left)
+     2. ReviewHistory         -> Documents, ReviewPackages, ReasonCodes (kept)
+     3. ReviewPackageDocuments-> ReviewPackages, Documents
+     4. ReviewPackages        -> CapabilityManagers (kept)
+     5. Reviews               -> Documents, ReasonCodes (kept)
+     6. Documents             -> LoadBatches
+     7. LoadBatches           (no incoming FKs left)
    ---------------------------------------------------------------------- */
 
 DELETE FROM dbo.tblLPPI_EmailLog;
 PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_EmailLog', @cnt_EmailLog);
+
+DELETE FROM dbo.tblLPPI_ReviewHistory;
+PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_ReviewHistory', @cnt_History);
 
 DELETE FROM dbo.tblLPPI_ReviewPackageDocuments;
 PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_ReviewPackageDocuments', @cnt_PackageDocs);
@@ -127,6 +133,7 @@ PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_LoadBatches', @cnt_LoadBat
 DBCC CHECKIDENT (N'dbo.tblLPPI_LoadBatches',    RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_Documents',      RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_Reviews',        RESEED, 0);
+DBCC CHECKIDENT (N'dbo.tblLPPI_ReviewHistory',  RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_ReviewPackages', RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_EmailLog',       RESEED, 0);
 
