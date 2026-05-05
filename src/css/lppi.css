@@ -1343,3 +1343,49 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 .alert.alert-err  { background: var(--err-bg);  border-color: #f3b8b8; color: var(--err); }
 .alert.alert-ok   { background: var(--ok-bg);   border-color: #b6dcc3; color: var(--ok); }
 .alert.alert-info { background: var(--orange-soft); border-color: var(--orange-tint); color: var(--orange-deep); }
+
+/* ---------- Save button — disabled state ----------
+   The button is disabled by default on page load (nothing dirty) and goes
+   disabled again while a save is in flight. The existing #saveAllBtn rule
+   gives it the orange shadow; we only override here for the inactive case. */
+#saveAllBtn:disabled,
+#saveAllBtn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+    filter: grayscale(0.2);
+}
+
+/* ---------- Dirty row marker ----------
+   Soft left border in DFG orange — visible enough to spot at a glance, not
+   so strong it competes with the needs-comment error styling. */
+.review-shell .tbl-review tr.doc-main.dirty td:first-child {
+    box-shadow: inset 3px 0 0 var(--orange);
+}
+
+/* ---------- Inline row message — variants ----------
+   Default .row-msg colour stays red (validation), .row-msg-error keeps that
+   red explicitly (no change), .row-msg-stale uses the warn amber so users
+   can tell at a glance "out of date" from "wrong". */
+.review-shell .row-msg.row-msg-stale {
+    color: var(--warn);
+}
+.review-shell .row-msg.row-msg-error {
+    color: var(--err);
+}
+
+/* Inline action group beside a row message (e.g. the Reload row button). */
+.review-shell .row-msg-actions {
+    display: inline-flex;
+    gap: 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+/* Compact button used inside .row-msg-actions. */
+.review-shell .btn-sm {
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+

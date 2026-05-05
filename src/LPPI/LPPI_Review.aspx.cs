@@ -240,6 +240,11 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
         // step writes as the package-time first-line DocumentID. The save
         // handler resolves this via the package table directly.
         //
+        // r.ReviewedDate is projected as ReviewedVersion. The aspx writes it
+        // onto each row as a data-version attribute. The save handler's
+        // optimistic-lock check compares this against the current value at
+        // save time — if they differ, the save is rejected as stale.
+        //
         // Eval() bindings in LPPI_Review.aspx must match these aliases exactly.
         // -------------------------------------------------------------------
         private void LoadDocuments(int packageId)
@@ -277,6 +282,7 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     r.ReasonCodeID                          AS SelectedReasonCodeID,
                     r.Comments,
                     r.ObjectiveReference,
+                    r.ReviewedDate                          AS ReviewedVersion,
                     rc.Code                                 AS ReasonCode,
                     rc.Outcome                              AS ReasonOutcome,
                     ISNULL(rc.RequiresComments, 0)          AS RequiresComments
@@ -304,7 +310,7 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     d1.WbsElement, d1.WbsDesc, d1.GlAccount, d1.ProfitCentre, d1.TaxCode,
                     d1.DeliveryManager, d1.DeliveryManagerName, d1.DeliveryManagerProgram,
                     d1.PocEmail,
-                    r.ReasonCodeID, r.Comments, r.ObjectiveReference,
+                    r.ReasonCodeID, r.Comments, r.ObjectiveReference, r.ReviewedDate,
                     rc.Code, rc.Outcome, rc.RequiresComments
 
                 ORDER BY SUM(d.InterestPayable) DESC",
@@ -479,6 +485,21 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                   .Append(LPPIHelper.Enc(v)).Append("</option>");
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Formats a ReviewedDate value as the ISO 8601 string the save
+        /// handler expects in the version field. Empty string when the
+        /// review row does not yet exist.
+        /// </summary>
+        protected static string FormatVersion(object reviewedDate)
+        {
+            if (reviewedDate == null || reviewedDate == DBNull.Value) return "";
+            DateTime dt;
+            if (reviewedDate is DateTime) dt = (DateTime)reviewedDate;
+            else if (!DateTime.TryParse(Convert.ToString(reviewedDate),
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out dt)) return "";
+            return dt.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
         }
 
         private void SetDueCountdown()

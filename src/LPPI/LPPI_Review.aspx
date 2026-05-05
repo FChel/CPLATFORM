@@ -219,14 +219,14 @@
             </select>
         </div>
         <div class="toolbar-right">
-            <span id="saveIndicator" class="save-indicator" role="status" aria-live="polite">All changes saved</span>
-            <button type="button" id="saveAllBtn" class="btn btn-primary" title="Save every unsaved row">
+            <span id="saveIndicator" class="save-indicator saved" role="status" aria-live="polite">No changes to save</span>
+            <button type="button" id="saveAllBtn" class="btn btn-primary" disabled title="Save unsaved changes">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                     <polyline points="17 21 17 13 7 13 7 21"/>
                     <polyline points="7 3 7 8 15 8"/>
                 </svg>
-                <span>Save</span>
+                <span id="saveAllBtnLabel">Save changes</span>
             </button>
         </div>
     </div>
@@ -275,6 +275,7 @@
                     <tr class="doc-main"
                         data-doc-no='<%# LPPIHelper.Enc(Eval("DocNoAccounting")) %>'
                         data-first-line-id='<%# Eval("FirstLineDocumentID") %>'
+                        data-version='<%# LPPIHelper.Enc(FormatVersion(Eval("ReviewedVersion"))) %>'
                         data-search='<%# LPPIHelper.Enc((string)Eval("SearchBlob")) %>'
                         data-dm='<%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %>'
                         data-poc='<%# LPPIHelper.Enc(Eval("PocEmail")) %>'

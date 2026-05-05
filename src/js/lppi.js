@@ -4,16 +4,26 @@
 
    Behaviour:
    * Two top-level tabs: "Reason code entry" (Tab 1) and "All lines" (Tab 2).
-   * Tab 1 — editable table, one row per document. Auto-save on blur/change.
-     No manual Save button — saves happen automatically.
-   * Expand chevron on each doc row opens an inline sub-row showing all lines
-     for that document (read from the rptDetail DOM — no extra server call).
-   * Comments textarea expands on focus, contracts on blur.
+   * Tab 1 — editable table, one row per document. EXPLICIT save model:
+     editing fields marks the row dirty; nothing is sent until the user
+     clicks the "Save changes" button. The button is disabled when there
+     are no unsaved changes.
+   * Optimistic locking: each row carries a data-version attribute
+     reflecting the ReviewedDate the row was loaded with. The save handler
+     refuses any row whose loaded version no longer matches the current
+     value in the DB ("someone else has saved this since you opened it"),
+     and returns the latest values so the user can reload the row.
+   * Bulk-apply stages dirty rows rather than saving immediately. Click
+     Save to commit.
    * Mandatory-field rules enforced client-side (server enforces authoritatively):
        - RequiresComments: Comments must be non-empty.
        - NotPayable: both Comments and Objective Reference required.
+   * beforeunload warning if the dirty set is non-empty.
    * Filters (search, status, facets) apply to both Tab 1 rows and Tab 2 rows.
-   * Bulk-select + bulk-apply reason code on Tab 1.
+   * Expand chevron on each doc row opens an inline sub-row showing all
+     lines for that document (read from the rptDetail DOM — no extra
+     server call).
+   * Comments textarea expands on focus, contracts on blur.
    * Primary key: DocNoAccounting (data-doc-no).
    ============================================================================= */
 (function () {
@@ -21,17 +31,20 @@
 
     var SAVE_URL = 'LPPI_Review_Save.ashx';
     var token    = (document.getElementById('reviewToken') || {}).value || '';
+    var readOnly = ((document.getElementById('reviewReadOnly') || {}).value || '0') === '1';
 
     var allMain   = [];
     var mainByDoc = {};   // docNo -> .doc-main <tr>
     var allDetail = [];   // .detail-row elements (Tab 2)
 
-    var dirtyDocNos  = {};
-    var savingCount  = 0;
-    var totalDocs    = 0;
-    var reviewedDocs = 0;
+    var dirtySet      = {};   // docNo -> true, while there are unsaved local changes
+    var saveInFlight  = false;
+    var totalDocs     = 0;
+    var reviewedDocs  = 0;
 
     var saveIndicator = document.getElementById('saveIndicator');
+    var saveButton    = document.getElementById('saveAllBtn');
+    var saveLabel     = document.getElementById('saveAllBtnLabel');
 
     var FACETS = [
         { id: 'filterDm',  attr: 'data-dm'  },
@@ -53,13 +66,14 @@
             if (dn) mainByDoc[dn] = row;
         });
 
-        // Seed reviewed class from pre-selected reason codes
+        // Seed reviewed class from pre-selected reason codes.
         allMain.forEach(function (row) {
             var sel = row.querySelector('.reason-select');
             if (sel && sel.value) row.classList.add('reviewed');
         });
         reviewedDocs = allMain.filter(function (r) { return r.classList.contains('reviewed'); }).length;
         updateProgress();
+        updateDoneState();
 
         bindRowControls(allMain);
         allMain.forEach(evaluateNeeds);
@@ -82,20 +96,22 @@
         if (tabReason) tabReason.addEventListener('click', function () { setTab('reason'); });
         if (tabLines)  tabLines.addEventListener('click',  function () { setTab('lines');  });
 
-        // Action buttons
-        var saveAllBtn = document.getElementById('saveAllBtn');
-        if (saveAllBtn) saveAllBtn.addEventListener('click', saveAllDirty);
+        // Save button
+        if (saveButton) saveButton.addEventListener('click', onSaveClick);
 
         bindBulk();
         bindKeyboard();
 
+        // Beforeunload warning
         window.addEventListener('beforeunload', function (e) {
-            if (Object.keys(dirtyDocNos).length > 0) {
+            if (Object.keys(dirtySet).length > 0) {
                 var msg = 'You have unsaved review changes. Leave anyway?';
                 e.returnValue = msg;
                 return msg;
             }
         });
+
+        updateSaveButton();
     }
 
     /* =========================================================================
@@ -134,7 +150,6 @@
                 sel.addEventListener('change', function () {
                     markDirty(row, docNo);
                     evaluateNeeds(row);
-                    queueSave(docNo);
                 });
             }
 
@@ -144,12 +159,6 @@
                     markDirty(row, docNo);
                     evaluateNeeds(row);
                 });
-                ta.addEventListener('blur', function () {
-                    if (dirtyDocNos[docNo]) {
-                        evaluateNeeds(row);
-                        queueSave(docNo);
-                    }
-                });
             }
 
             var inp = row.querySelector('.objref-input');
@@ -157,12 +166,6 @@
                 inp.addEventListener('input', function () {
                     markDirty(row, docNo);
                     evaluateNeeds(row);
-                });
-                inp.addEventListener('blur', function () {
-                    if (dirtyDocNos[docNo]) {
-                        evaluateNeeds(row);
-                        queueSave(docNo);
-                    }
                 });
             }
         });
@@ -189,8 +192,7 @@
        ========================================================================= */
     function bindExpandChevrons() {
         document.addEventListener('click', function (e) {
-            var btn = e.target && e.target.closest ?
-                      e.target.closest('.btn-expand') : null;
+            var btn = e.target && e.target.closest ? e.target.closest('.btn-expand') : null;
             if (!btn) return;
 
             var docNo     = btn.getAttribute('data-doc-no');
@@ -235,7 +237,6 @@
             + '</tr></thead><tbody>';
 
         rows.forEach(function (r) {
-            // Map by col class
             function cell(cls) {
                 var el = r.querySelector('td.' + cls);
                 return el ? el.textContent.trim() : '';
@@ -270,13 +271,49 @@
        Dirty state
        ========================================================================= */
     function markDirty(row, docNo) {
-        dirtyDocNos[docNo] = true;
+        dirtySet[docNo] = true;
         row.classList.add('dirty');
-        setIndicator('saving', 'Unsaved changes…');
+        // Clear any prior stale flag — the user is editing again.
+        clearRowMessage(row);
+        updateSaveButton();
+    }
+
+    function clearDirty(row, docNo) {
+        delete dirtySet[docNo];
+        row.classList.remove('dirty');
+    }
+
+    function updateSaveButton() {
+        var n = Object.keys(dirtySet).length;
+        if (!saveButton) return;
+
+        if (readOnly) {
+            saveButton.disabled = true;
+            if (saveLabel) saveLabel.textContent = 'Save changes';
+            setIndicator('saved', '');
+            return;
+        }
+
+        if (saveInFlight) {
+            saveButton.disabled = true;
+            if (saveLabel) saveLabel.textContent = 'Saving…';
+            setIndicator('saving', 'Saving…');
+            return;
+        }
+
+        if (n === 0) {
+            saveButton.disabled = true;
+            if (saveLabel) saveLabel.textContent = 'Save changes';
+            setIndicator('saved', 'No changes to save');
+        } else {
+            saveButton.disabled = false;
+            if (saveLabel) saveLabel.textContent = 'Save changes (' + n + ')';
+            setIndicator('saving', n + ' unsaved change' + (n === 1 ? '' : 's'));
+        }
     }
 
     /* =========================================================================
-       Mandatory-field validation
+       Mandatory-field validation (client-side hint)
        ========================================================================= */
     function evaluateNeeds(row) {
         var sel    = row.querySelector('.reason-select');
@@ -293,7 +330,7 @@
 
         row.classList.toggle('needs-comment', needs);
 
-        if (msgEl) {
+        if (msgEl && !msgEl.classList.contains('row-msg-stale')) {
             var msgs = [];
             if (req  && ta  && !ta.value.trim())  msgs.push('A comment is required for this reason code.');
             if (outcome === 'NotPayable') {
@@ -304,98 +341,243 @@
         }
     }
 
+    function clearRowMessage(row) {
+        var docNo = row.getAttribute('data-doc-no');
+        var msgEl = document.querySelector('.doc-main-msg[data-doc-no="' + escAttr(docNo) + '"] .row-msg');
+        if (!msgEl) return;
+        msgEl.classList.remove('row-msg-stale', 'row-msg-error');
+        msgEl.textContent = '';
+        // Remove any reload button that was injected.
+        var actions = msgEl.parentNode.querySelector('.row-msg-actions');
+        if (actions) actions.parentNode.removeChild(actions);
+    }
+
     /* =========================================================================
-       Save pipeline
+       Save flow — explicit, batch
        ========================================================================= */
-    function queueSave(docNo) {
-        var row = mainByDoc[docNo];
-        if (!row) return;
+    function onSaveClick() {
+        if (saveInFlight) return;
+        if (readOnly) return;
+        var keys = Object.keys(dirtySet);
+        if (keys.length === 0) return;
 
-        var sel = row.querySelector('.reason-select');
-        var ta  = row.querySelector('.comments-input');
-        var inp = row.querySelector('.objref-input');
+        // Client-side validation pre-filter — rows that fail are kept dirty
+        // and surfaced via evaluateNeeds; we still send all dirty rows so
+        // the server has the final say.
+        var payload = new FormData();
+        payload.append('token',   token);
+        payload.append('action',  'save');
+        payload.append('rowCount', keys.length);
 
-        if (sel) {
-            var opt     = sel.options[sel.selectedIndex] || {};
-            var outcome = opt.getAttribute ? (opt.getAttribute('data-outcome') || '') : '';
-            var req     = opt.getAttribute ? opt.getAttribute('data-requires') === '1' : false;
-            if (req  && ta  && !ta.value.trim())  return;
-            if (outcome === 'NotPayable' && (!ta || !ta.value.trim() || !inp || !inp.value.trim())) return;
-        }
+        keys.forEach(function (docNo, idx) {
+            var row = mainByDoc[docNo];
+            if (!row) return;
+            var sel = row.querySelector('.reason-select');
+            var ta  = row.querySelector('.comments-input');
+            var inp = row.querySelector('.objref-input');
+            var ver = row.getAttribute('data-version') || '';
 
-        doSave(docNo);
-    }
+            payload.append('rows[' + idx + '].docNo',        docNo);
+            payload.append('rows[' + idx + '].reasonCodeId', sel ? sel.value : '');
+            payload.append('rows[' + idx + '].comments',     ta  ? ta.value  : '');
+            payload.append('rows[' + idx + '].objref',       inp ? inp.value : '');
+            payload.append('rows[' + idx + '].version',      ver);
+        });
 
-    function saveAllDirty() {
-        var keys = Object.keys(dirtyDocNos);
-        if (keys.length === 0) {
-            setIndicator('saved', 'All changes saved');
-            return;
-        }
-        keys.forEach(function (dn) { queueSave(dn); });
-    }
-
-    function doSave(docNo) {
-        var row = mainByDoc[docNo];
-        if (!row) return;
-
-        var sel      = row.querySelector('.reason-select');
-        var ta       = row.querySelector('.comments-input');
-        var inp      = row.querySelector('.objref-input');
-        var reasonId = sel  ? sel.value  : '';
-        var comments = ta   ? ta.value   : '';
-        var objRef   = inp  ? inp.value  : '';
-
-        var fd = new FormData();
-        fd.append('token',        token);
-        fd.append('action',       'save');
-        fd.append('docNo',        docNo);
-        fd.append('reasonCodeId', reasonId);   // matches handler field name
-        fd.append('comments',     comments);
-        fd.append('objref',       objRef);
-
-        savingCount++;
-        setIndicator('saving', 'Saving…');
+        saveInFlight = true;
+        updateSaveButton();
 
         var xhr = new XMLHttpRequest();
         xhr.open('POST', SAVE_URL, true);
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== 4) return;
-            savingCount = Math.max(0, savingCount - 1);
+            saveInFlight = false;
 
-            var ok  = false;
-            var err = '';
-            if (xhr.status === 200) {
-                try {
-                    var resp = JSON.parse(xhr.responseText);
-                    ok  = resp.ok;
-                    err = resp.error || '';
-                } catch (ex) { err = 'Invalid server response'; }
-            } else {
-                err = 'HTTP ' + xhr.status;
+            if (xhr.status !== 200) {
+                setIndicator('error', 'Save failed (HTTP ' + xhr.status + ')');
+                updateSaveButton();
+                return;
             }
 
-            if (ok) {
-                delete dirtyDocNos[docNo];
-                row.classList.remove('dirty');
-                row.classList.toggle('reviewed', reasonId.length > 0);
-                showRowSaved(docNo);
-                reviewedDocs = allMain.filter(function (r) { return r.classList.contains('reviewed'); }).length;
-                updateProgress();
-                updateDoneState();
-            } else {
-                evaluateNeeds(row);
+            var resp;
+            try { resp = JSON.parse(xhr.responseText); }
+            catch (ex) {
+                setIndicator('error', 'Save failed (invalid response)');
+                updateSaveButton();
+                return;
             }
 
-            if (savingCount === 0) {
-                if (ok && Object.keys(dirtyDocNos).length === 0) {
-                    setIndicator('saved', 'All changes saved');
-                } else if (!ok) {
-                    setIndicator('error', err || 'Save failed');
+            handleSaveResponse(resp);
+        };
+        xhr.onerror = function () {
+            saveInFlight = false;
+            setIndicator('error', 'Save failed (network)');
+            updateSaveButton();
+        };
+        xhr.send(payload);
+    }
+
+    function handleSaveResponse(resp) {
+        if (!resp) {
+            setIndicator('error', 'Save failed');
+            updateSaveButton();
+            return;
+        }
+
+        // Top-level error (e.g. invalid token, package read-only) — surface
+        // and stop. Don't clear any dirty state.
+        if (resp.error) {
+            setIndicator('error', resp.error);
+            updateSaveButton();
+            return;
+        }
+
+        var results = resp.results || [];
+        var staleCount = 0;
+        var validationCount = 0;
+        var savedCount = 0;
+        var serverErrCount = 0;
+
+        results.forEach(function (r) {
+            var row = mainByDoc[r.docNo];
+            if (!row) return;
+
+            if (r.ok) {
+                // Update version + reviewed marker, clear dirty.
+                row.setAttribute('data-version', r.newVersion || '');
+                clearDirty(row, r.docNo);
+                clearRowMessage(row);
+                applyServerValuesToRow(row, r);
+                row.classList.toggle('reviewed', !!r.newReasonCodeId);
+                if (r.errorCode !== 'noChange') {
+                    flashSaved(row);
+                    savedCount++;
+                }
+            } else {
+                if (r.errorCode === 'stale') {
+                    staleCount++;
+                    showStale(row, r);
+                } else if (r.errorCode === 'validation') {
+                    validationCount++;
+                    showRowError(row, r.error || 'Validation failed.');
+                } else if (r.errorCode === 'notInPackage') {
+                    showRowError(row, r.error || 'Document is not in this package.');
+                    serverErrCount++;
+                } else {
+                    showRowError(row, r.error || 'Save failed.');
+                    serverErrCount++;
                 }
             }
-        };
-        xhr.send(fd);
+        });
+
+        // Recalculate reviewed count + progress.
+        reviewedDocs = allMain.filter(function (r) { return r.classList.contains('reviewed'); }).length;
+        updateProgress();
+        updateDoneState();
+
+        // If the package status flipped to Complete, mark the page as
+        // read-only so the user cannot keep editing.
+        if (resp.packageStatus === 'Complete' || resp.packageStatus === 'Cancelled') {
+            readOnly = true;
+            var shell = document.querySelector('.review-shell');
+            if (shell) shell.setAttribute('data-readonly', '1');
+        }
+
+        // Indicator summary.
+        if (staleCount + validationCount + serverErrCount === 0) {
+            setIndicator('saved', savedCount > 0
+                ? 'Saved ' + savedCount + ' change' + (savedCount === 1 ? '' : 's')
+                : 'No changes to save');
+        } else {
+            var bits = [];
+            if (savedCount      > 0) bits.push(savedCount      + ' saved');
+            if (staleCount      > 0) bits.push(staleCount      + ' out of date');
+            if (validationCount > 0) bits.push(validationCount + ' need attention');
+            if (serverErrCount  > 0) bits.push(serverErrCount  + ' failed');
+            setIndicator('error', bits.join(', '));
+        }
+
+        updateSaveButton();
+    }
+
+    function applyServerValuesToRow(row, r) {
+        var sel = row.querySelector('.reason-select');
+        var ta  = row.querySelector('.comments-input');
+        var inp = row.querySelector('.objref-input');
+
+        if (sel) sel.value = r.newReasonCodeId == null ? '' : String(r.newReasonCodeId);
+        if (ta)  ta.value  = r.newComments || '';
+        if (inp) inp.value = r.newObjectiveReference || '';
+
+        // Refresh the data-outcome / data-requires attributes from the
+        // currently selected option so subsequent validation hints are
+        // accurate.
+        if (sel) {
+            var opt = sel.options[sel.selectedIndex];
+            if (opt) {
+                row.setAttribute('data-outcome',  opt.getAttribute('data-outcome')  || '');
+                row.setAttribute('data-requires', opt.getAttribute('data-requires') || '0');
+            } else {
+                row.setAttribute('data-outcome',  '');
+                row.setAttribute('data-requires', '0');
+            }
+        }
+        evaluateNeeds(row);
+    }
+
+    function flashSaved(row) {
+        row.classList.add('just-saved');
+        setTimeout(function () { row.classList.remove('just-saved'); }, 1800);
+    }
+
+    function showStale(row, r) {
+        var docNo = row.getAttribute('data-doc-no');
+        var msgRow = document.querySelector('.doc-main-msg[data-doc-no="' + escAttr(docNo) + '"]');
+        if (!msgRow) return;
+        var msgEl = msgRow.querySelector('.row-msg');
+        if (!msgEl) return;
+
+        msgEl.classList.add('row-msg-stale');
+        msgEl.textContent = (r.error || 'This document has been updated by someone else since you opened the page.')
+            + (r.newReviewedByName ? ' Last saved by: ' + r.newReviewedByName + '.' : '');
+
+        // Inject a Reload button next to the message. Replace any existing
+        // actions block.
+        var existing = msgRow.querySelector('.row-msg-actions');
+        if (existing) existing.parentNode.removeChild(existing);
+
+        var actions = document.createElement('span');
+        actions.className = 'row-msg-actions';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-ghost btn-sm';
+        btn.textContent = 'Reload row';
+        btn.addEventListener('click', function () {
+            // Apply server-supplied current values to the row, refresh the
+            // version, clear dirty + stale.
+            applyServerValuesToRow(row, r);
+            row.setAttribute('data-version', r.newVersion || '');
+            row.classList.toggle('reviewed', !!r.newReasonCodeId);
+            clearDirty(row, docNo);
+            clearRowMessage(row);
+            evaluateNeeds(row);
+            reviewedDocs = allMain.filter(function (rr) { return rr.classList.contains('reviewed'); }).length;
+            updateProgress();
+            updateDoneState();
+            updateSaveButton();
+        });
+        actions.appendChild(btn);
+        msgEl.appendChild(document.createTextNode(' '));
+        msgEl.appendChild(actions);
+    }
+
+    function showRowError(row, message) {
+        var docNo = row.getAttribute('data-doc-no');
+        var msgEl = document.querySelector('.doc-main-msg[data-doc-no="' + escAttr(docNo) + '"] .row-msg');
+        if (!msgEl) return;
+        msgEl.classList.remove('row-msg-stale');
+        msgEl.classList.add('row-msg-error');
+        msgEl.textContent = message;
     }
 
     /* =========================================================================
@@ -415,7 +597,6 @@
             var show   = matchesRow(row, searchVal, statusVal, facetVals, true);
             row.style.display = show ? '' : 'none';
             var docNo  = row.getAttribute('data-doc-no');
-            // Also hide the msg row and expand panel when row is hidden
             var msgRow = document.querySelector('.doc-main-msg[data-doc-no="' + escAttr(docNo) + '"]');
             if (msgRow) msgRow.style.display = show ? '' : 'none';
             var panelRow = document.querySelector('.doc-expand-panel[data-doc-no="' + escAttr(docNo) + '"]');
@@ -459,7 +640,7 @@
     }
 
     /* =========================================================================
-       Bulk select
+       Bulk select — stages dirty rows; user clicks Save to commit
        ========================================================================= */
     function bindBulk() {
         var bar     = document.getElementById('bulkBar');
@@ -480,8 +661,8 @@
             var requires = opt.getAttribute('data-requires') === '1';
             if (requires || outcome === 'NotPayable') {
                 var msg = outcome === 'NotPayable'
-                    ? 'Not-Payable needs a Comment and Objective Reference on every selected row. Apply anyway?'
-                    : 'This reason code requires a comment. Apply anyway?';
+                    ? 'Not-Payable needs a Comment and Objective Reference on every selected row. Stage anyway?'
+                    : 'This reason code requires a comment. Stage anyway?';
                 if (!confirm(msg)) return;
             }
             var seen = {};
@@ -496,8 +677,9 @@
                 s.value = rid;
                 markDirty(row, docNo);
                 evaluateNeeds(row);
-                queueSave(docNo);
             });
+            // Hint to the user that nothing has hit the server yet.
+            updateSaveButton();
         });
 
         if (clear) clear.addEventListener('click', function () {
@@ -535,19 +717,12 @@
     }
 
     /* =========================================================================
-       Indicator / row flash
+       Indicator
        ========================================================================= */
     function setIndicator(state, text) {
         if (!saveIndicator) return;
         saveIndicator.className   = 'save-indicator ' + state;
-        saveIndicator.textContent = text;
-    }
-
-    function showRowSaved(docNo) {
-        var row = mainByDoc[docNo];
-        if (!row) return;
-        row.classList.add('just-saved');
-        setTimeout(function () { row.classList.remove('just-saved'); }, 1800);
+        saveIndicator.textContent = text || '';
     }
 
     /* =========================================================================
