@@ -18,6 +18,165 @@
         .pill.complete { background: var(--ok-bg);     color: var(--ok); }
         .pill.cancelled{ background: var(--err-bg);    color: var(--err); }
         .pill.duesoon  { background: var(--warn-bg);   color: var(--warn); }
+
+        /* =====================================================================
+           LPPI exposure block — dollar totals
+           Layout: hero card on the left (40%), three breakdown cards on the
+           right (60% split evenly) on desktop. Single column on mobile.
+           ===================================================================== */
+        .exposure-section {
+            margin-bottom: 24px;
+        }
+        .exposure-section .section-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--ink-3);
+            font-weight: 700;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .exposure-section .section-label::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--line);
+        }
+
+        .exposure-grid {
+            display: grid;
+            grid-template-columns: minmax(280px, 1.4fr) repeat(3, 1fr);
+            gap: 12px;
+        }
+        @media (max-width: 1100px) {
+            .exposure-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .exposure-hero {
+                grid-column: 1 / -1;
+            }
+        }
+        @media (max-width: 640px) {
+            .exposure-grid {
+                grid-template-columns: 1fr;
+            }
+            .exposure-hero {
+                grid-column: auto;
+            }
+        }
+
+        /* Hero card — total LPPI exposure */
+        .exposure-hero {
+            background: linear-gradient(135deg, var(--orange-soft) 0%, var(--white) 60%);
+            border: 1px solid var(--orange-tint);
+            border-radius: var(--r-lg);
+            padding: 22px 24px;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            overflow: hidden;
+        }
+        .exposure-hero::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px; height: 100%;
+            background: var(--orange);
+        }
+        .exposure-hero .lbl {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--orange-deep);
+            font-weight: 700;
+        }
+        .exposure-hero .val {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--orange);
+            margin-top: 6px;
+            line-height: 1.05;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.01em;
+        }
+        .exposure-hero .currency {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--orange-deep);
+            margin-right: 2px;
+            vertical-align: 4px;
+        }
+        .exposure-hero .sub {
+            font-size: 12px;
+            color: var(--ink-3);
+            margin-top: 4px;
+        }
+
+        /* Breakdown cards — Payable / Not payable / Awaiting review */
+        .exposure-card {
+            background: var(--white);
+            border: 1px solid var(--line);
+            border-radius: var(--r-lg);
+            padding: 16px 18px;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 122px;
+        }
+        .exposure-card .lbl {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--ink-3);
+            font-weight: 600;
+        }
+        .exposure-card .val {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-top: 4px;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+        }
+        .exposure-card .val .currency {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--ink-3);
+            margin-right: 1px;
+            vertical-align: 3px;
+        }
+
+        /* Progress bar showing share of total — colour-coded per outcome */
+        .exposure-bar {
+            margin-top: 10px;
+        }
+        .exposure-bar .track {
+            height: 5px;
+            background: var(--line-2);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .exposure-bar .fill {
+            height: 100%;
+            border-radius: 999px;
+            transition: width 0.4s ease;
+        }
+        .exposure-bar .pct {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--ink-3);
+            margin-top: 4px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .exposure-card.payable    .val { color: var(--ok); }
+        .exposure-card.payable    .fill { background: var(--ok); }
+        .exposure-card.notpayable .val { color: var(--err); }
+        .exposure-card.notpayable .fill { background: var(--err); }
+        .exposure-card.awaiting   .val { color: var(--warn); }
+        .exposure-card.awaiting   .fill { background: var(--warn); }
     </style>
 </head>
 <body>
@@ -40,6 +199,62 @@
 
         <asp:PlaceHolder ID="phWarnings" runat="server" />
 
+        <%-- ================================================================
+             LPPI exposure — dollar totals headline
+             ================================================================ --%>
+        <section class="exposure-section">
+            <div class="section-label">LPPI exposure</div>
+            <div class="exposure-grid">
+                <div class="exposure-hero">
+                    <div class="lbl">Total exposure</div>
+                    <div class="val">
+                        <span class="currency">$</span><asp:Literal ID="litExpTotal" runat="server" Text="0.00"/>
+                    </div>
+                    <div class="sub">across <asp:Literal ID="litExpDocs" runat="server" Text="0"/> documents</div>
+                </div>
+
+                <div class="exposure-card payable">
+                    <div>
+                        <div class="lbl">Payable (confirmed)</div>
+                        <div class="val">
+                            <span class="currency">$</span><asp:Literal ID="litExpPayable" runat="server" Text="0.00"/>
+                        </div>
+                    </div>
+                    <div class="exposure-bar">
+                        <div class="track"><div class="fill" style="width: <%= ExpPayablePct %>%"></div></div>
+                        <div class="pct"><%= ExpPayablePct %>% of total</div>
+                    </div>
+                </div>
+
+                <div class="exposure-card notpayable">
+                    <div>
+                        <div class="lbl">Not payable</div>
+                        <div class="val">
+                            <span class="currency">$</span><asp:Literal ID="litExpNotPayable" runat="server" Text="0.00"/>
+                        </div>
+                    </div>
+                    <div class="exposure-bar">
+                        <div class="track"><div class="fill" style="width: <%= ExpNotPayablePct %>%"></div></div>
+                        <div class="pct"><%= ExpNotPayablePct %>% of total</div>
+                    </div>
+                </div>
+
+                <div class="exposure-card awaiting">
+                    <div>
+                        <div class="lbl">Awaiting review</div>
+                        <div class="val">
+                            <span class="currency">$</span><asp:Literal ID="litExpAwaiting" runat="server" Text="0.00"/>
+                        </div>
+                    </div>
+                    <div class="exposure-bar">
+                        <div class="track"><div class="fill" style="width: <%= ExpAwaitingPct %>%"></div></div>
+                        <div class="pct"><%= ExpAwaitingPct %>% of total</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <%-- Existing stat-grid below — counts, not dollars --%>
         <div class="stat-grid">
             <div class="stat">
                 <div class="lbl">Total documents</div>

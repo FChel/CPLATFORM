@@ -48,7 +48,7 @@ namespace CPlatform.LPPI
             //   DocNoAccounting, ItemSequence, VendorName, PoNumber,
             //   CapabilityManagerProgram, InvoiceDate, PaymentRunDate,
             //   DaysVariance, InterestPayable, ExportedDate, ReasonCode,
-            //   CompanyCode, ClearingMonth
+            //   CompanyCode, FiscalYear
             //
             // ItemSequence model: tblLPPI_Documents now holds one row per
             // LINE. The reviewer codes each DOCUMENT once, with the review
@@ -62,10 +62,13 @@ namespace CPlatform.LPPI
             // The batch detail intentionally keeps one row per LINE (admin
             // visibility — the whole file is shown as it arrived), with
             // ORDER BY ItemSequence so multi-line documents group together.
+            //
+            // FiscalYear is projected so the doc-number deep link in the
+            // markup can pass it to SapFiNumberHtml.
             const string sql = @"
                 SELECT d.DocNoAccounting, d.ItemSequence,
                        d.VendorName, d.PoNumber, d.CapabilityManagerProgram,
-                       d.CompanyCode, d.ClearingMonth,
+                       d.CompanyCode, d.FiscalYear,
                        d.InvoiceDate, d.PaymentRunDate, d.DaysVariance, d.InterestPayable,
                        d.ExportedDate,
                        rc.Code AS ReasonCode

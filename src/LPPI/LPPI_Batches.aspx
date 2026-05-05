@@ -101,7 +101,7 @@
                     </HeaderTemplate>
                     <ItemTemplate>
                         <tr>
-                            <td><%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %></td>
+                            <td><%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("FiscalYear")) %></td>
                             <td class="num"><%# string.Format("{0:000}", Eval("ItemSequence")) %></td>
                             <td><%# LPPIHelper.Enc(Eval("VendorName")) %></td>
                             <td><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>

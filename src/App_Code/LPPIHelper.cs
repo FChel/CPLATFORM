@@ -68,13 +68,6 @@ namespace CPlatform.LPPI
             return int.TryParse(Setting(key, ""), out n) ? n : fallback;
         }
 
-        public static string SourcePath
-            { get { return Setting("LPPI.SourcePath",
-                @"\\d85sitcifs.dpesit.protectedsit.mil.au\d85dws01_cif_sit_01\OUTPUT_MIRROR"); } }
-
-        public static string ExportPath
-            { get { return Setting("LPPI.ExportPath", @"C:\Temp\LPPI_Exports"); } }
-
         public static string Environment
             { get { return Setting("CPlatform.Environment", "DEV").ToUpperInvariant(); } }
 
@@ -541,6 +534,51 @@ SELECT
         }
 
         // -------------------------------------------------------------------
+        // Exposure summary — dollar totals
+        //
+        // Returns a single row with four decimal columns:
+        //   TotalExposure       — sum of InterestPayable across every document.
+        //   PayableExposure     — sum where the document's review has a Payable
+        //                         outcome.
+        //   NotPayableExposure  — sum where the review has a NotPayable outcome.
+        //   AwaitingExposure    — sum where there is no review yet (or the
+        //                         review has no reason code set).
+        //
+        // The three component figures sum to the total — useful invariant for
+        // the dashboard's three-bar breakdown.
+        //
+        // Per-document dollar values are computed once per DocNoAccounting via
+        // a CTE that totals InterestPayable over every line of that document
+        // (BODS now produces multiple ITEM_SEQUENCE lines per document). Each
+        // document is then classified by its first-line review's outcome.
+        // -------------------------------------------------------------------
+        public static DataRow GetExposureSummary()
+        {
+            const string sql = @"
+WITH DocTotals AS (
+    SELECT
+        d.DocNoAccounting,
+        (SELECT MIN(d2.DocumentID)
+           FROM dbo.tblLPPI_Documents d2
+          WHERE d2.DocNoAccounting = d.DocNoAccounting) AS FirstLineDocumentID,
+        SUM(d.InterestPayable) AS DocInterest
+      FROM dbo.tblLPPI_Documents d
+     GROUP BY d.DocNoAccounting
+)
+SELECT
+    ISNULL(SUM(dt.DocInterest), 0)                                   AS TotalExposure,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'Payable'    THEN dt.DocInterest ELSE 0 END), 0) AS PayableExposure,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'NotPayable' THEN dt.DocInterest ELSE 0 END), 0) AS NotPayableExposure,
+    ISNULL(SUM(CASE WHEN rc.ReasonCodeID IS NULL   THEN dt.DocInterest ELSE 0 END), 0) AS AwaitingExposure,
+    COUNT(*) AS DocCount
+FROM DocTotals dt
+LEFT JOIN dbo.tblLPPI_Reviews r       ON r.DocumentID   = dt.FirstLineDocumentID
+LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
+            var dt = ExecuteTable(sql);
+            return dt.Rows.Count > 0 ? dt.Rows[0] : null;
+        }
+
+        // -------------------------------------------------------------------
         // HTML encoding shortcut
         // -------------------------------------------------------------------
 
@@ -606,15 +644,16 @@ SELECT
 
         /// <summary>
         /// Build an SAP Fiori deep link for an FI accounting document.
-        /// ClearingMonth is a "M.YYYY" string as produced by BODS (e.g. "7.2025");
-        /// the AU fiscal year rolls forward for Jul-Dec. If ClearingMonth cannot be
-        /// parsed, FiscalYear is OMITTED from the URL entirely.
+        /// fiscalYear is the document's own fiscal year as carried in the BODS
+        /// FISCAL_YEAR column (e.g. "2025", "2026"). Appended to the URL when
+        /// it parses as a 4-digit integer in the 1900..2999 range; omitted
+        /// otherwise so a malformed value never produces a broken URL.
         /// </summary>
-        public static string SapFiLink(object docNoAccounting, object companyCode, object clearingMonth)
+        public static string SapFiLink(object docNoAccounting, object companyCode, object fiscalYear)
         {
             string doc = (docNoAccounting == null || docNoAccounting == DBNull.Value) ? "" : Convert.ToString(docNoAccounting).Trim();
             string cc  = (companyCode     == null || companyCode     == DBNull.Value) ? "" : Convert.ToString(companyCode).Trim();
-            string cm  = (clearingMonth   == null || clearingMonth   == DBNull.Value) ? "" : Convert.ToString(clearingMonth).Trim();
+            string fy  = (fiscalYear      == null || fiscalYear      == DBNull.Value) ? "" : Convert.ToString(fiscalYear).Trim();
 
             if (doc.Length == 0) return "";
             var baseUrl = SapBaseUrl;
@@ -630,10 +669,15 @@ SELECT
                 sb.Append("&CompanyCode=").Append(System.Uri.EscapeDataString(cc));
             }
 
-            int fy;
-            if (TryDeriveAuFiscalYear(cm, out fy))
+            // Append fiscal year only when it parses cleanly as a 4-digit year.
+            // BODS sometimes emits blank or malformed values; in that case omit
+            // the parameter rather than send junk to SAP.
+            int fyNum;
+            if (fy.Length > 0
+                && int.TryParse(fy, NumberStyles.Integer, CultureInfo.InvariantCulture, out fyNum)
+                && fyNum >= 1900 && fyNum <= 2999)
             {
-                sb.Append("&FiscalYear=").Append(fy.ToString(CultureInfo.InvariantCulture));
+                sb.Append("&FiscalYear=").Append(fyNum.ToString(CultureInfo.InvariantCulture));
             }
 
             sb.Append("&sap-app-origin-hint=")
@@ -659,14 +703,15 @@ SELECT
         /// <summary>
         /// Render an FI document number as an anchor to its SAP Fiori
         /// Accounting-Document display page, or plain HTML-encoded text when the
-        /// URL cannot be built.
+        /// URL cannot be built. fiscalYear comes from the document's own
+        /// FISCAL_YEAR column (BODS-supplied).
         /// </summary>
-        public static string SapFiNumberHtml(object docNoAccounting, object companyCode, object clearingMonth)
+        public static string SapFiNumberHtml(object docNoAccounting, object companyCode, object fiscalYear)
         {
             string doc = (docNoAccounting == null || docNoAccounting == DBNull.Value) ? "" : Convert.ToString(docNoAccounting).Trim();
             if (doc.Length == 0) return "";
 
-            var href = SapFiLink(docNoAccounting, companyCode, clearingMonth);
+            var href = SapFiLink(docNoAccounting, companyCode, fiscalYear);
             if (href.Length == 0) return Enc(doc);
 
             return BuildNumberAnchor(href, doc, "Open document " + doc + " in SAP");
@@ -698,31 +743,6 @@ SELECT
             else                     combined = we + " — " + wd;
 
             return HttpUtility.HtmlAttributeEncode(combined);
-        }
-
-        /// <summary>
-        /// Derive the Australian fiscal year from a ClearingMonth string of the
-        /// form "M.YYYY" (e.g. "7.2025" -&gt; FY 2026, "4.2025" -&gt; FY 2025).
-        /// Returns false when the input is null, blank or malformed — in which case
-        /// the out parameter is left at 0 and the caller should omit FY entirely.
-        /// </summary>
-        public static bool TryDeriveAuFiscalYear(string clearingMonth, out int fiscalYear)
-        {
-            fiscalYear = 0;
-            if (string.IsNullOrWhiteSpace(clearingMonth)) return false;
-
-            var parts = clearingMonth.Trim().Split('.');
-            if (parts.Length != 2) return false;
-
-            int month, year;
-            if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out month)) return false;
-            if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out year))  return false;
-
-            if (month < 1 || month > 12) return false;
-            if (year  < 1900 || year > 2999) return false;
-
-            fiscalYear = (month >= 7) ? year + 1 : year;
-            return true;
         }
 
     }

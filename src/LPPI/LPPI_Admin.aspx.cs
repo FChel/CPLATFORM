@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Globalization;
 using System.Text;
 using System.Web.UI;
 using System.Web.UI.WebControls;
@@ -8,6 +9,13 @@ namespace CPlatform.LPPI
 {
     public partial class LPPI_Admin : LPPIBasePage
     {
+        // Exposed to the markup via <%= ExpPayablePct %> etc. Set during Bind()
+        // from the dollar-share figures so the progress bars render the right
+        // widths inline.
+        protected int ExpPayablePct;
+        protected int ExpNotPayablePct;
+        protected int ExpAwaitingPct;
+
         protected void Page_Load(object sender, EventArgs e)
         {
             if (!IsPostBack)
@@ -16,7 +24,35 @@ namespace CPlatform.LPPI
 
         private void Bind()
         {
-            // Stats
+            // -----------------------------------------------------------------
+            // Exposure totals (dollar figures) — headline at the top of the
+            // dashboard. The three component figures sum to the total so the
+            // progress bars are eye-checkable against each other.
+            // -----------------------------------------------------------------
+            var exp = LPPIHelper.GetExposureSummary();
+            decimal expTotal      = AsDecimal(exp, "TotalExposure");
+            decimal expPayable    = AsDecimal(exp, "PayableExposure");
+            decimal expNotPayable = AsDecimal(exp, "NotPayableExposure");
+            decimal expAwaiting   = AsDecimal(exp, "AwaitingExposure");
+            int     expDocs       = exp == null || exp["DocCount"] == DBNull.Value
+                                    ? 0 : Convert.ToInt32(exp["DocCount"]);
+
+            litExpTotal.Text      = FormatMoney(expTotal);
+            litExpPayable.Text    = FormatMoney(expPayable);
+            litExpNotPayable.Text = FormatMoney(expNotPayable);
+            litExpAwaiting.Text   = FormatMoney(expAwaiting);
+            litExpDocs.Text       = expDocs.ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
+
+            // Percentage shares — clamped 0..100. When total is zero, all
+            // three bars render empty (0%) which is the right thing for an
+            // empty system.
+            ExpPayablePct    = SharePct(expPayable,    expTotal);
+            ExpNotPayablePct = SharePct(expNotPayable, expTotal);
+            ExpAwaitingPct   = SharePct(expAwaiting,   expTotal);
+
+            // -----------------------------------------------------------------
+            // Counts (existing stat-grid)
+            // -----------------------------------------------------------------
             var s = LPPIHelper.GetDashboardSummary();
             if (s != null)
             {
@@ -80,6 +116,40 @@ FROM dbo.tblLPPI_LoadBatches
 ORDER BY LoadedDate DESC;";
             rptBatches.DataSource = LPPIHelper.ExecuteTable(batchSql);
             rptBatches.DataBind();
+        }
+
+        // -------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------
+
+        private static decimal AsDecimal(DataRow row, string column)
+        {
+            if (row == null || row[column] == DBNull.Value) return 0m;
+            return Convert.ToDecimal(row[column]);
+        }
+
+        /// <summary>
+        /// Whole-number percentage of part / whole, clamped to 0..100.
+        /// Returns 0 when whole is zero to avoid divide-by-zero.
+        /// </summary>
+        private static int SharePct(decimal part, decimal whole)
+        {
+            if (whole <= 0m) return 0;
+            decimal pct = (part / whole) * 100m;
+            int rounded = (int)Math.Round(pct, MidpointRounding.AwayFromZero);
+            if (rounded < 0)   rounded = 0;
+            if (rounded > 100) rounded = 100;
+            return rounded;
+        }
+
+        /// <summary>
+        /// Money formatter for the exposure block — en-AU thousands separators,
+        /// two decimals. The "$" symbol is added by the markup so the value
+        /// itself is just the number.
+        /// </summary>
+        private static string FormatMoney(decimal value)
+        {
+            return value.ToString("N2", CultureInfo.GetCultureInfo("en-AU"));
         }
 
         protected string RenderStatusPill(object dataItem)

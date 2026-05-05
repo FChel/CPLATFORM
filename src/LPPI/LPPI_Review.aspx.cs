@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.Text;
 
 namespace CPlatform.LPPI
@@ -31,6 +32,17 @@ namespace CPlatform.LPPI
         // Send-outs page.
         protected bool IsReadOnly;
         protected string StatusBannerHtml = "";
+
+        // Exposure (dollar) figures — scoped to this package only. Driven into
+        // the head-row "Exposure" cell. The three component values sum to the
+        // total so the stacked bar reconciles.
+        protected string ExposureTotalText            = "0.00";
+        protected string ExposurePayableTextShort     = "0";
+        protected string ExposureNotPayableTextShort  = "0";
+        protected string ExposureAwaitingTextShort    = "0";
+        protected int    ExposurePayablePct;
+        protected int    ExposureNotPayablePct;
+        protected int    ExposureAwaitingPct;
 
         private DataTable _reasonCodes;
         private DataTable _mainTable;
@@ -73,6 +85,7 @@ namespace CPlatform.LPPI
 
             _reasonCodes = LPPIHelper.GetReasonCodes(activeOnly: true);
             LoadDocuments(packageId);
+            LoadExposure(packageId);
         }
 
         /// <summary>
@@ -91,7 +104,7 @@ namespace CPlatform.LPPI
                 case "notsent":
                     kind  = "info";
                     title = "Not yet sent";
-                    body  = "This package has not been emailed to recipients yet. Any changes will be visible to the reviewer once the package is issued from Send-outs.";
+                    body  = "This package has not been emailed to recipients yet. You can edit reason codes here for testing or QA — your changes will be visible to the reviewer once the package is issued from Send-outs.";
                     break;
                 case "complete":
                     kind  = "ok";
@@ -118,6 +131,101 @@ namespace CPlatform.LPPI
               .Append(LPPIHelper.Enc(body))
               .Append("</div></div>");
             return sb.ToString();
+        }
+
+        // -------------------------------------------------------------------
+        // Exposure totals — scoped to this package
+        //
+        // Mirrors LPPIHelper.GetExposureSummary's logic but constrained to the
+        // package via tblLPPI_ReviewPackageDocuments. Per-document totals are
+        // computed from every line of each DocNoAccounting (BODS multi-line),
+        // then classified by the first-line review's outcome.
+        // -------------------------------------------------------------------
+        private void LoadExposure(int packageId)
+        {
+            const string sql = @"
+WITH PkgDocs AS (
+    SELECT pd.DocumentID AS FirstLineDocumentID,
+           (SELECT MIN(d2.DocumentID)
+              FROM tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = (SELECT d3.DocNoAccounting
+                                           FROM tblLPPI_Documents d3
+                                          WHERE d3.DocumentID = pd.DocumentID)) AS NormalisedFirstLine,
+           (SELECT d4.DocNoAccounting
+              FROM tblLPPI_Documents d4
+             WHERE d4.DocumentID = pd.DocumentID) AS DocNoAccounting
+      FROM tblLPPI_ReviewPackageDocuments pd
+     WHERE pd.PackageID = @p
+),
+DocTotals AS (
+    SELECT pkd.FirstLineDocumentID,
+           SUM(d.InterestPayable) AS DocInterest
+      FROM PkgDocs pkd
+      INNER JOIN tblLPPI_Documents d
+              ON d.DocNoAccounting = pkd.DocNoAccounting
+     GROUP BY pkd.FirstLineDocumentID
+)
+SELECT
+    ISNULL(SUM(dt.DocInterest), 0)                                                        AS TotalExposure,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'Payable'    THEN dt.DocInterest ELSE 0 END), 0) AS PayableExposure,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'NotPayable' THEN dt.DocInterest ELSE 0 END), 0) AS NotPayableExposure,
+    ISNULL(SUM(CASE WHEN rc.ReasonCodeID IS NULL   THEN dt.DocInterest ELSE 0 END), 0) AS AwaitingExposure
+FROM DocTotals dt
+LEFT JOIN tblLPPI_Reviews r       ON r.DocumentID    = dt.FirstLineDocumentID
+LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
+
+            DataTable dt = LPPIHelper.ExecuteTable(sql, LPPIHelper.P("@p", packageId));
+            if (dt.Rows.Count == 0) return;
+
+            DataRow r = dt.Rows[0];
+            decimal total      = AsDecimal(r, "TotalExposure");
+            decimal payable    = AsDecimal(r, "PayableExposure");
+            decimal notPayable = AsDecimal(r, "NotPayableExposure");
+            decimal awaiting   = AsDecimal(r, "AwaitingExposure");
+
+            ExposureTotalText           = total.ToString("N2", CultureInfo.GetCultureInfo("en-AU"));
+            ExposurePayableTextShort    = FormatShortMoney(payable);
+            ExposureNotPayableTextShort = FormatShortMoney(notPayable);
+            ExposureAwaitingTextShort   = FormatShortMoney(awaiting);
+
+            ExposurePayablePct    = SharePct(payable,    total);
+            ExposureNotPayablePct = SharePct(notPayable, total);
+            ExposureAwaitingPct   = SharePct(awaiting,   total);
+        }
+
+        /// <summary>
+        /// Compact money string for the legend (e.g. $98k, $1.2M, $345). Total
+        /// stays full-precision; only the per-segment legend uses this.
+        /// Negative values shouldn't occur for LPPI but handled defensively.
+        /// </summary>
+        private static string FormatShortMoney(decimal value)
+        {
+            if (value == 0m) return "0";
+
+            decimal abs = Math.Abs(value);
+            string sign = value < 0m ? "-" : "";
+
+            if (abs >= 1000000m)
+                return sign + (abs / 1000000m).ToString("0.#", CultureInfo.InvariantCulture) + "M";
+            if (abs >= 1000m)
+                return sign + (abs / 1000m).ToString("0.#", CultureInfo.InvariantCulture) + "k";
+            return sign + abs.ToString("0", CultureInfo.InvariantCulture);
+        }
+
+        private static decimal AsDecimal(DataRow row, string column)
+        {
+            if (row == null || row[column] == DBNull.Value) return 0m;
+            return Convert.ToDecimal(row[column]);
+        }
+
+        private static int SharePct(decimal part, decimal whole)
+        {
+            if (whole <= 0m) return 0;
+            decimal pct = (part / whole) * 100m;
+            int rounded = (int)Math.Round(pct, MidpointRounding.AwayFromZero);
+            if (rounded < 0)   rounded = 0;
+            if (rounded > 100) rounded = 100;
+            return rounded;
         }
 
         // -------------------------------------------------------------------
@@ -234,6 +342,7 @@ namespace CPlatform.LPPI
 
             // ------------------------------------------------------------------
             // DETAIL VIEW QUERY — one row per line, read-only.
+            // FiscalYear projected for the SapFiNumberHtml deep link.
             // ------------------------------------------------------------------
             DataTable detail = LPPIHelper.ExecuteTable(@"
                 SELECT
@@ -246,6 +355,7 @@ namespace CPlatform.LPPI
                     d.VendorNum,
                     d.PoNumber,
                     d.ClearingMonth,
+                    d.FiscalYear,
                     d.WbsElement,
                     d.WbsDesc,
                     d.GlAccount,

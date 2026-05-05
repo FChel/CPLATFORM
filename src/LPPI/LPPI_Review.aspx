@@ -32,6 +32,68 @@
             justify-content: flex-end;
             margin-bottom: 8px;
         }
+
+        /* ============================================================
+           Reviewer-page exposure cell
+           Sits inside the existing .review-meta grid alongside Due /
+           Progress / Policy. Compact — value in 18px orange, then a
+           horizontally-stacked segmented bar (green/red/amber) showing
+           the share of total for each outcome.
+           ============================================================ */
+        .review-meta .meta-exposure .meta-value {
+            color: var(--orange);
+            font-variant-numeric: tabular-nums;
+            font-size: 18px;
+            letter-spacing: -0.005em;
+        }
+        .review-meta .meta-exposure .meta-value .currency {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--orange-deep);
+            margin-right: 1px;
+            vertical-align: 2px;
+        }
+
+        .exposure-stack-bar {
+            display: flex;
+            height: 6px;
+            background: var(--line-2);
+            border-radius: 999px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .exposure-stack-bar .seg {
+            height: 100%;
+            transition: width 0.4s ease;
+        }
+        .exposure-stack-bar .seg.payable    { background: var(--ok); }
+        .exposure-stack-bar .seg.notpayable { background: var(--err); }
+        .exposure-stack-bar .seg.awaiting   { background: var(--warn); }
+
+        .exposure-legend {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+            font-size: 11px;
+            color: var(--ink-3);
+            font-variant-numeric: tabular-nums;
+            flex-wrap: wrap;
+        }
+        .exposure-legend .item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        .exposure-legend .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .exposure-legend .dot.payable    { background: var(--ok); }
+        .exposure-legend .dot.notpayable { background: var(--err); }
+        .exposure-legend .dot.awaiting   { background: var(--warn); }
+        .exposure-legend .amount { font-weight: 600; color: var(--ink-2); }
     </style>
 </head>
 <body>
@@ -89,9 +151,25 @@
                 <span class="meta-sub <%= DueCssClass %>"><%= DueCountdownText %></span>
             </div>
             <div class="meta-item">
-                <span class="meta-label">Progress</span>
+                <span class="meta-label">Progress (by document)</span>
                 <span class="meta-value" id="progressLabel"><%= ReviewedCount %> of <%= TotalCount %></span>
                 <div class="progress-track"><div class="progress-bar" id="progressBar" style="width: <%= ProgressPercent %>%"></div></div>
+            </div>
+            <div class="meta-item meta-exposure">
+                <span class="meta-label">Exposure (by $)</span>
+                <span class="meta-value">
+                    <span class="currency">$</span><%= ExposureTotalText %>
+                </span>
+                <div class="exposure-stack-bar" title="Payable / Not payable / Awaiting">
+                    <div class="seg payable"    style="width: <%= ExposurePayablePct    %>%"></div>
+                    <div class="seg notpayable" style="width: <%= ExposureNotPayablePct %>%"></div>
+                    <div class="seg awaiting"   style="width: <%= ExposureAwaitingPct   %>%"></div>
+                </div>
+                <div class="exposure-legend">
+                    <span class="item"><span class="dot payable"></span>Payable <span class="amount">$<%= ExposurePayableTextShort %></span></span>
+                    <span class="item"><span class="dot notpayable"></span>Not pay <span class="amount">$<%= ExposureNotPayableTextShort %></span></span>
+                    <span class="item"><span class="dot awaiting"></span>Awaiting <span class="amount">$<%= ExposureAwaitingTextShort %></span></span>
+                </div>
             </div>
             <div class="meta-item">
                 <a href="https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417"
@@ -208,7 +286,7 @@
                             <input type="checkbox" class="rowselect" data-doc-no='<%# LPPIHelper.Enc(Eval("DocNoAccounting")) %>' />
                         </td>
                         <td class="col-doc">
-                            <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %>
+                            <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("FiscalYear")) %>
                             <span class="line-count-inline muted">(<%# Eval("LineCount") %>)</span>
                         </td>
                         <td class="col-vendor" title='<%# LPPIHelper.Enc(Eval("VendorName")) + " (" + LPPIHelper.Enc(Eval("VendorNum")) + ")" %>'>
@@ -299,13 +377,14 @@
                     <table class="tbl tbl-detail">
                         <thead>
                             <tr>
-                                <th class="col-doc">Document</th>
+                                <th class="col-doc">Document No.</th>
                                 <th class="col-seq num">Line</th>
                                 <th class="col-vendor">Vendor</th>
-                                <th class="col-po">PO</th>
+                                <th class="col-po">PO Number</th>
                                 <th class="col-wbs">WBS Element</th>
-                                <th class="col-gl">Account</th>
+                                <th class="col-gl">GL Account</th>
                                 <th class="col-pc">Profit Centre</th>
+                                <th class="col-tax">Tax Code</th>
                                 <th class="col-dm">DM Program</th>
                                 <th class="col-poc">POC Email</th>
                                 <th class="col-date">Payment Date</th>
@@ -327,7 +406,7 @@
                         data-wbs='<%# LPPIHelper.Enc(Eval("WbsElement")) %>'
                         data-pc='<%# LPPIHelper.Enc(Eval("ProfitCentre")) %>'>
                         <td class="col-doc">
-                            <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("ClearingMonth")) %>
+                            <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("FiscalYear")) %>
                         </td>
                         <td class="col-seq num"><span class="seq-chip"><%# string.Format("{0:000}", Eval("ItemSequence")) %></span></td>
                         <td class="col-vendor" title='<%# LPPIHelper.Enc(Eval("VendorName")) %>'><%# LPPIHelper.Enc(Eval("VendorName")) %></td>
@@ -335,6 +414,7 @@
                         <td class="col-wbs" title='<%# LPPIHelper.Enc(Eval("WbsDesc")) %>'><%# LPPIHelper.Enc(Eval("WbsElement")) %></td>
                         <td class="col-gl"><%# LPPIHelper.Enc(Eval("GlAccount")) %></td>
                         <td class="col-pc"><%# LPPIHelper.Enc(Eval("ProfitCentre")) %></td>
+                        <td class="col-tax"><%# LPPIHelper.Enc(Eval("TaxCode")) %></td>
                         <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'><%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %></td>
                         <td class="col-poc"><%# LPPIHelper.Enc(Eval("PocEmail")) %></td>
                         <td class="col-date"><%# LPPIHelper.FormatDate(Eval("PaymentRunDate")) %></td>
