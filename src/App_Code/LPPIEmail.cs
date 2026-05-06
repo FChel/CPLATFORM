@@ -33,10 +33,31 @@ namespace CPlatform.LPPI
     ///     blocked on NotSent / Complete / Cancelled.)
     ///   - SendInitial on a package that has already been sent is rejected —
     ///     the caller should be using SendReminder for that case.
+    ///
+    /// -------------------------------------------------------------------
+    /// Outlook font rendering (April 2026)
+    /// -------------------------------------------------------------------
+    /// Outlook on Windows uses the Word HTML rendering engine which does NOT
+    /// inherit font-family from a parent element — it falls back to Times New
+    /// Roman for any text-bearing element that does not declare its own
+    /// font-family. The fix is two-fold:
+    ///   1. A &lt;head&gt;&lt;style&gt; block covering every text element as a
+    ///      defence-in-depth fallback (Outlook web, dark mode, mobile clients).
+    ///   2. Inline font-family on every text-bearing element in the body
+    ///      (Outlook desktop, the strict case).
+    /// The FontInline constant below is appended to every existing inline
+    /// style so the fix can be added surgically without rewriting layout.
     /// </summary>
     public static class LPPIEmail
     {
         private const string OrangeHex = "#d75b07";
+
+        // Font stack used everywhere in the email. Segoe UI matches the app
+        // font and renders in Outlook 2016+ on Windows. Arial is the safe
+        // fallback for clients that do not have Segoe UI. sans-serif catches
+        // anything else.
+        private const string FontStack  = "'Segoe UI', Arial, sans-serif";
+        private const string FontInline = "font-family:'Segoe UI', Arial, sans-serif;";
 
         // Support mailbox addresses — read from config.
         private static string SupportMailboxTo
@@ -91,7 +112,7 @@ namespace CPlatform.LPPI
         public static string BuildEmailHtml(int packageId, string type = "Initial")
         {
             var row = LoadPackageRow(packageId);
-            if (row == null) return "<p>Package not found.</p>";
+            if (row == null) return "<p style=\"" + FontInline + "\">Package not found.</p>";
 
             var dueDate       = Convert.ToDateTime(row["DueDate"]);
             var program       = Convert.ToString(row["Program"]);
@@ -122,7 +143,7 @@ SELECT cm.Program, cm.DisplayName,
 FROM dbo.tblLPPI_CapabilityManagers cm
 WHERE cm.CmID = @CmID;";
             var dt = LPPIHelper.ExecuteTable(sql, LPPIHelper.P("@CmID", cmId));
-            if (dt.Rows.Count == 0) return "<p>Capability Manager group not found.</p>";
+            if (dt.Rows.Count == 0) return "<p style=\"" + FontInline + "\">Capability Manager group not found.</p>";
 
             var row     = dt.Rows[0];
             var program = Convert.ToString(row["Program"]);
@@ -427,90 +448,110 @@ WHERE p.PackageID = @P;";
                     docCount, program, dueDateLong);
 
             var sb = new StringBuilder();
-            sb.Append("<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;\">");
+
+            // -----------------------------------------------------------------
+            // <head><style> block — Outlook web, dark mode, mobile fallback.
+            // Outlook desktop (Word renderer) IGNORES this for the most part,
+            // which is why we ALSO declare font-family inline on every text-
+            // bearing element below.
+            // -----------------------------------------------------------------
+            sb.Append("<!DOCTYPE html><html><head>");
+            sb.Append("<meta charset=\"utf-8\" />");
+            sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />");
+            sb.Append("<style type=\"text/css\">");
+            sb.Append("body, table, td, tr, p, span, a, div, li, ul, ol, h1, h2, h3, strong, em {");
+            sb.Append(" font-family: ").Append(FontStack).Append(" !important;");
+            sb.Append("}");
+            sb.Append("</style></head>");
+
+            // Body — font-family inline as primary defence against Outlook's
+            // Word renderer.
+            sb.Append("<body style=\"margin:0;padding:0;background:#f4f4f4;").Append(FontInline).Append("\">");
 
             // Hidden preheader
-            sb.Append("<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f4f4f4;\">")
+            sb.Append("<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f4f4f4;").Append(FontInline).Append("\">")
               .Append(HttpUtility.HtmlEncode(preheader))
               .Append("&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;")
               .Append("</div>");
 
-            sb.Append("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr><td align=\"center\" style=\"padding:24px 0;\">");
+            sb.Append("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr><td align=\"center\" style=\"padding:24px 0;").Append(FontInline).Append("\">");
             sb.Append("<table width=\"600\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#fff;border-radius:6px;overflow:hidden;\">");
 
             // Header band
-            sb.AppendFormat("<tr><td style=\"background:{0};padding:20px 32px;\">", OrangeHex);
-            sb.Append("<span style=\"color:#fff;font-size:18px;font-weight:bold;\">LPPI Review</span></td></tr>");
+            sb.AppendFormat("<tr><td style=\"background:{0};padding:20px 32px;{1}\">", OrangeHex, FontInline);
+            sb.Append("<span style=\"color:#fff;font-size:18px;font-weight:bold;").Append(FontInline).Append("\">LPPI Review</span></td></tr>");
 
             // Body
-            sb.Append("<tr><td style=\"padding:28px 32px;color:#1a1a1a;font-size:14px;line-height:1.6;\">");
+            sb.Append("<tr><td style=\"padding:28px 32px;color:#1a1a1a;font-size:14px;line-height:1.6;").Append(FontInline).Append("\">");
 
             if (isOverdue)
-                sb.Append("<p style=\"color:#b45309;margin-top:0;\">This is a reminder — your review is now overdue.</p>");
+                sb.Append("<p style=\"color:#b45309;margin-top:0;").Append(FontInline).Append("\">This is a reminder — your review is now overdue.</p>");
             else if (isReminder)
-                sb.Append("<p style=\"color:#b45309;margin-top:0;\">This is a reminder — your review is due soon.</p>");
+                sb.Append("<p style=\"color:#b45309;margin-top:0;").Append(FontInline).Append("\">This is a reminder — your review is due soon.</p>");
 
             // Opening paragraph — bold: program name, doc count
             sb.AppendFormat(
-                "<p>You have been provided with access to the LPPI (Late Payment Penalty Interest) review package for <span style=\"font-weight:bold\">{0}</span>. This package contains <span style=\"font-weight:bold\">{1}</span> documents for payments that were made late and incurred LPPI.</p>",
-                programEnc, docCount);
+                "<p style=\"{2}\">You have been provided with access to the LPPI (Late Payment Penalty Interest) review package for <span style=\"font-weight:bold;{2}\">{0}</span>. " +
+                "This package contains <span style=\"font-weight:bold;{2}\">{1}</span> documents for payments that were made late and incurred LPPI.</p>",
+                programEnc, docCount, FontInline);
 
             // Progress line — reminders only
             if (isReminder)
             {
                 sb.AppendFormat(
-                    "<p>{0} of {1} document{2} {3} been reviewed. <span style=\"font-weight:bold\">{4}</span> still require{5} a decision.</p>",
+                    "<p style=\"{6}\">{0} of {1} document{2} {3} been reviewed. <span style=\"font-weight:bold;{6}\">{4}</span> still require{5} a decision.</p>",
                     reviewedCount,
                     docCount,
                     docCount == 1 ? "" : "s",
                     docCount == 1 ? "has" : "have",
                     outstanding,
-                    outstanding == 1 ? "s" : "");
+                    outstanding == 1 ? "s" : "",
+                    FontInline);
             }
 
-            // Bold: "Reason Code", due date
-            sb.Append("<p>For each document, please select the appropriate <span style=\"font-weight:bold\">Reason Code</span> to indicate whether the LPPI is payable or not payable, and click the link below to begin your review.</p>");
+            // Bold: "Reason Code"
+            sb.Append("<p style=\"").Append(FontInline).Append("\">For each document, please select the appropriate <span style=\"font-weight:bold;").Append(FontInline).Append("\">Reason Code</span> to indicate whether the LPPI is payable or not payable, and click the link below to begin your review.</p>");
 
             sb.AppendFormat(
-                "<p>Please complete your review by <span style=\"font-weight:bold\">{0}</span>.</p>",
-                dueDateEnc);
+                "<p style=\"{1}\">Please complete your review by <span style=\"font-weight:bold;{1}\">{0}</span>.</p>",
+                dueDateEnc, FontInline);
 
             // Review link button
             sb.AppendFormat(
-                "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\"><a href=\"{0}\" target=\"_blank\" style=\"background:{1};color:#fff;font-weight:bold;text-decoration:none;padding:12px 28px;border-radius:4px;display:inline-block;\">Begin Review</a></td></tr></table>",
-                reviewUrlAtt, OrangeHex);
+                "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"margin:24px 0;\"><tr><td align=\"center\" style=\"{2}\"><a href=\"{0}\" target=\"_blank\" style=\"background:{1};color:#fff;font-weight:bold;text-decoration:none;padding:12px 28px;border-radius:4px;display:inline-block;{2}\">Begin Review</a></td></tr></table>",
+                reviewUrlAtt, OrangeHex, FontInline);
 
             sb.AppendFormat(
-                "<p>If the button above does not work, copy and paste this link into your browser:<br/><a href=\"{0}\" target=\"_blank\" style=\"color:{1};word-break:break-all;\">{2}</a></p>",
-                reviewUrlAtt, OrangeHex, reviewUrlTxt);
+                "<p style=\"{3}\">If the button above does not work, copy and paste this link into your browser:<br/><a href=\"{0}\" target=\"_blank\" style=\"color:{1};word-break:break-all;{3}\">{2}</a></p>",
+                reviewUrlAtt, OrangeHex, reviewUrlTxt, FontInline);
 
-            sb.Append("<p>Once the review page is open, select the appropriate Reason Code for each document. Your selections are saved automatically.</p>");
+            sb.Append("<p style=\"").Append(FontInline).Append("\">Once the review page is open, select the appropriate Reason Code for each document. Your selections are saved automatically.</p>");
 
             // "Please note:" callout
             sb.Append("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"margin:8px 0 16px 0;\"><tr>")
-              .AppendFormat("<td style=\"background:#fff7ed;border-left:4px solid {0};padding:12px 16px;color:#1a1a1a;font-size:14px;line-height:1.5;\">",
-                  OrangeHex)
-              .Append("<span style=\"font-weight:bold;color:#b45309;\">Please note:</span> if no response is received by the due date, payment will be automatically processed from the responsible cost centre.")
+              .AppendFormat("<td style=\"background:#fff7ed;border-left:4px solid {0};padding:12px 16px;color:#1a1a1a;font-size:14px;line-height:1.5;{1}\">",
+                  OrangeHex, FontInline)
+              .Append("<span style=\"font-weight:bold;color:#b45309;").Append(FontInline).Append("\">Please note:</span> if no response is received by the due date, payment will be automatically processed from the responsible cost centre.")
               .Append("</td></tr></table>");
 
             // RMG-417 policy reference — placed after the Please note callout.
             // Anchor text is short and human-readable rather than the full URL,
             // so Outlook does not split or mangle it on the way through.
-            sb.Append("<p>For background, refer to the Department of Finance&#8217;s ")
+            sb.Append("<p style=\"").Append(FontInline).Append("\">For background, refer to the Department of Finance&#8217;s ")
               .Append("<a href=\"https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417\"")
               .Append(" target=\"_blank\" rel=\"noopener\" style=\"color:")
-              .Append(OrangeHex)
-              .Append(";\">Supplier Pay On-Time or Pay Interest Policy (RMG 417)</a>.</p>");
+              .Append(OrangeHex).Append(";").Append(FontInline)
+              .Append("\">Supplier Pay On-Time or Pay Interest Policy (RMG 417)</a>.</p>");
 
             // Support / feedback line
             sb.AppendFormat(
-                "<p>If you have any questions or require assistance with the review, please contact us at <a href=\"{0}\" style=\"color:{1};\">{2}</a>.</p>",
-                HttpUtility.HtmlAttributeEncode(supportHref), OrangeHex, supportTxt);
+                "<p style=\"{3}\">If you have any questions or require assistance with the review, please contact us at <a href=\"{0}\" style=\"color:{1};{3}\">{2}</a>.</p>",
+                HttpUtility.HtmlAttributeEncode(supportHref), OrangeHex, supportTxt, FontInline);
 
             sb.Append("</td></tr>");
 
             // Footer band
-            sb.Append("<tr><td style=\"background:#1a1a1a;padding:16px 32px;\"><div style=\"color:#999;font-size:11px;\">Defence Finance Group · Late Payment Penalty Interest Review · ")
+            sb.Append("<tr><td style=\"background:#1a1a1a;padding:16px 32px;").Append(FontInline).Append("\"><div style=\"color:#999;font-size:11px;").Append(FontInline).Append("\">Defence Finance Group · Late Payment Penalty Interest Review · ")
               .Append(LPPIHelper.Environment).Append("</div></td></tr>");
             sb.Append("</table>");
             sb.Append("</td></tr></table></body></html>");

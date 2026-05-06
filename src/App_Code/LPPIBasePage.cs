@@ -33,12 +33,13 @@ namespace CPlatform.LPPI
 
         /// <summary>
         /// Render the standard LPPI page header. Pass the active nav key:
-        /// "dashboard","load","batches","cm","reasons","sendouts","export","adminusers".
+        /// "dashboard","help","load","batches","cm","reasons","sendouts","export","adminusers".
         /// </summary>
         public string RenderHeader(string active)
         {
             var nav = new[] {
                 new { Key="dashboard",  Label="Dashboard",           Url="LPPI_Admin.aspx" },
+                new { Key="help",       Label="Help",                Url="LPPI_Help.aspx" },
                 new { Key="load",       Label="Load file",           Url="LPPI_Load.aspx" },
                 new { Key="batches",    Label="Batches",             Url="LPPI_Batches.aspx" },
                 new { Key="sendouts",   Label="Send-outs",           Url="LPPI_SendOuts.aspx" },

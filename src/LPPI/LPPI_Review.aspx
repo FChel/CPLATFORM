@@ -178,20 +178,23 @@
         </div>
     </div>
 
-    <%-- Tab strip --%>
+    <%-- Tab strip — Instructions tab is first but Reason code entry is the
+         default-active tab on page load. --%>
     <div class="review-tabs" role="tablist" aria-label="Review views">
-        <button type="button" id="tabReason" class="review-tab active" role="tab" aria-selected="true"  aria-controls="paneReason">Reason code entry</button>
-        <button type="button" id="tabLines"  class="review-tab"        role="tab" aria-selected="false" aria-controls="paneLines">All lines</button>
+        <button type="button" id="tabInstructions" class="review-tab"        role="tab" aria-selected="false" aria-controls="paneInstructions">Instructions</button>
+        <button type="button" id="tabReason"       class="review-tab active" role="tab" aria-selected="true"  aria-controls="paneReason">Reason code entry</button>
+        <button type="button" id="tabLines"        class="review-tab"        role="tab" aria-selected="false" aria-controls="paneLines">All lines</button>
     </div>
 
-    <%-- Toolbar — outside both panes --%>
+    <%-- Toolbar — outside all panes. Hidden when the Instructions tab is
+         active (no rows to filter or save while reading instructions). --%>
     <div class="toolbar">
         <div class="toolbar-left">
             <div class="search-wrap">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
                 </svg>
-                <input type="text" id="searchBox" class="input" placeholder="Search vendor, doc no, PO, WBS, DM program…" />
+                <input type="text" id="searchBox" class="input" placeholder="Search vendor, doc no, PO, WBS, DM program, CM…" />
             </div>
             <select id="statusFilter" class="input" title="Review status">
                 <option value="">All statuses</option>
@@ -213,9 +216,9 @@
                 <option value="">All WBS</option>
                 <%= BuildFacetOptions("wbs") %>
             </select>
-            <select id="filterPc" class="input filter-facet" title="Profit centre">
-                <option value="">All profit centres</option>
-                <%= BuildFacetOptions("pc") %>
+            <select id="filterCm" class="input filter-facet" title="Capability Manager (LPPI Charge Cost Centre)">
+                <option value="">All Capability Managers</option>
+                <%= BuildFacetOptions("cm") %>
             </select>
         </div>
         <div class="toolbar-right">
@@ -237,7 +240,117 @@
     </div>
 
     <%-- ================================================================
-         TAB 1 — Reason code entry
+         TAB 0 — Instructions / about this page
+         (First in tab order, NOT the default-active pane.)
+
+         Layout: full-width container with a sticky in-pane TOC sidebar on
+         the left and the body content on the right. Mirrors the admin
+         Help page pattern so the two help surfaces feel consistent. The
+         body wraps each section in <section id="..."> blocks so the TOC
+         can deep-link with smooth scroll (handled by lppi.js
+         bindInstructionsTocLinks; CSS scroll-margin-top keeps section
+         tops clear of the sticky shell header on jump).
+         ================================================================ --%>
+    <div id="paneInstructions" class="review-pane" role="tabpanel" aria-labelledby="tabInstructions">
+        <div class="instructions-pane">
+
+            <%-- Sticky in-pane TOC --%>
+            <nav class="instructions-toc" aria-label="Instructions contents">
+                <div class="toc-title">On this page</div>
+                <ol>
+                    <li><a href="#instr-about">About this review</a></li>
+                    <li><a href="#instr-howto">How to complete your review</a></li>
+                    <li><a href="#instr-columns">Columns explained</a></li>
+                    <li><a href="#instr-alllines">The All lines tab</a></li>
+                    <li><a href="#instr-help">Need help?</a></li>
+                </ol>
+            </nav>
+
+            <%-- Body --%>
+            <div class="instructions-body">
+
+                <section id="instr-about">
+                    <h2>About this review</h2>
+                    <p>
+                        This page lists payments that have incurred Late Payment Penalty Interest (LPPI) under
+                        <a href="https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417" target="_blank" rel="noopener">RMG-417 &mdash; Supplier Pay On-Time or Pay Interest Policy</a>.
+                        For each document, please decide whether the LPPI is <strong>payable</strong> or <strong>not payable</strong>
+                        by selecting a Reason Code. Once every document has a Reason Code, the package is complete and the LPPI charges
+                        will be processed against the responsible cost centres.
+                    </p>
+                </section>
+
+                <section id="instr-howto">
+                    <h2>How to complete your review</h2>
+                    <ol class="instr-steps">
+                        <li>
+                            <strong>Open the Reason code entry tab.</strong> Each row is one document. Use the
+                            <em>chevron</em> on the right of any row to see the underlying line-item detail.
+                        </li>
+                        <li>
+                            <strong>Pick a Reason Code</strong> from the dropdown. The colour of the code indicates the outcome:
+                            <span class="instr-pill instr-pill-pay">Payable</span> means the LPPI charge will be processed,
+                            <span class="instr-pill instr-pill-nopay">Not payable</span> means the charge will not be processed.
+                        </li>
+                        <li>
+                            <strong>Add Comments and Evidence (Objective Reference)</strong> where required. The page will prompt
+                            you with a red highlight when these fields are mandatory:
+                            <ul>
+                                <li>Comments are required for any code marked <em>Requires comments</em>.</li>
+                                <li>Both Comments <em>and</em> Evidence are required when the outcome is <em>Not payable</em>.</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Apply codes in bulk</strong> by ticking the checkboxes on multiple rows. Use the bulk action bar
+                            at the bottom to apply the same Reason Code to every selected row at once.
+                        </li>
+                        <li>
+                            <strong>Save your changes</strong> using the orange Save changes button at the top right. Nothing is
+                            written to the database until you save. The button is disabled when there are no pending changes.
+                        </li>
+                    </ol>
+                </section>
+
+                <section id="instr-columns">
+                    <h2>Columns explained</h2>
+                    <ul class="instr-list">
+                        <li><strong>Document (Lines)</strong> &mdash; SAP accounting document number. The number in brackets is the line count for that document. Click to open the SAP Fiori deep link.</li>
+                        <li><strong>Vendor</strong> &mdash; the vendor that was paid late.</li>
+                        <li><strong>PO</strong> &mdash; the purchase order. Click to open in SAP Fiori.</li>
+                        <li><strong>WBS Element</strong> &mdash; the WBS that funded the underlying invoice.</li>
+                        <li><strong>Capability Manager</strong> &mdash; the LPPI Charge Cost Centre. This is the cost centre that will be charged with the interest if the outcome is Payable. Hover for the Capability Manager name.</li>
+                        <li><strong>Delivery Manager Program</strong> &mdash; the program that owns the delivery. Hover for the Delivery Manager name.</li>
+                        <li><strong>Days Late</strong> / <strong>Interest Payable</strong> &mdash; the late-payment numbers.</li>
+                        <li><strong>Reason Code</strong> &mdash; your decision.</li>
+                        <li><strong>Comments</strong> / <strong>Evidence (Obj Ref)</strong> &mdash; supporting context for the decision.</li>
+                    </ul>
+                </section>
+
+                <section id="instr-alllines">
+                    <h2>The All lines tab</h2>
+                    <p>
+                        The <strong>All lines</strong> tab shows the full line-by-line detail for every document in the package.
+                        It is read-only and useful for reviewing or exporting the underlying data. The Reason Code that you set on
+                        the document level applies to every line of that document &mdash; one decision per document, applied uniformly.
+                        Use the <em>Export to Excel</em> button on that tab to download the complete dataset.
+                    </p>
+                </section>
+
+                <section id="instr-help">
+                    <h2>Need help?</h2>
+                    <p>
+                        If you have any questions about this review or believe a document is in the wrong package, please contact the
+                        LPPI administrator using the support link in the email that brought you here. If no decision is recorded by
+                        the due date, the LPPI charge will be processed automatically against the responsible cost centre.
+                    </p>
+                </section>
+
+            </div>
+        </div>
+    </div><%-- /paneInstructions --%>
+
+    <%-- ================================================================
+         TAB 1 — Reason code entry  (default-active pane on page load)
          ================================================================ --%>
     <div id="paneReason" class="review-pane active" role="tabpanel" aria-labelledby="tabReason">
 
@@ -259,7 +372,7 @@
                                 <th class="col-vendor">Vendor</th>
                                 <th class="col-po">PO</th>
                                 <th class="col-wbs">WBS Element</th>
-                                <th class="col-pc">Profit Centre</th>
+                                <th class="col-cm" title="LPPI Charge Cost Centre">Capability Manager</th>
                                 <th class="col-dm">Delivery Manager Program</th>
                                 <th class="col-days num">Days Late</th>
                                 <th class="col-int num">Interest Payable</th>
@@ -280,7 +393,7 @@
                         data-dm='<%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %>'
                         data-poc='<%# LPPIHelper.Enc(Eval("PocEmail")) %>'
                         data-wbs='<%# LPPIHelper.Enc(Eval("WbsElement")) %>'
-                        data-pc='<%# LPPIHelper.Enc(Eval("ProfitCentre")) %>'
+                        data-cm='<%# LPPIHelper.Enc(Eval("CapabilityManager")) %>'
                         data-outcome='<%# LPPIHelper.Enc(Eval("ReasonOutcome")) %>'
                         data-requires='<%# Convert.ToBoolean(Eval("RequiresComments")) ? "1" : "0" %>'>
                         <td class="col-sel">
@@ -295,7 +408,9 @@
                         </td>
                         <td class="col-po"><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
                         <td class="col-wbs" title='<%# LPPIHelper.Enc(Eval("WbsDesc")) %>'><%# LPPIHelper.Enc(Eval("WbsElement")) %></td>
-                        <td class="col-pc"><%# LPPIHelper.Enc(Eval("ProfitCentre")) %></td>
+                        <td class="col-cm" title='<%# "LPPI Charge Cost Centre: " + LPPIHelper.Enc(Eval("CapabilityManager")) + " (" + LPPIHelper.Enc(Eval("CapabilityManagerName")) + ")" %>'>
+                            <%# LPPIHelper.Enc(Eval("CapabilityManager")) %>
+                        </td>
                         <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'>
                             <%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %>
                         </td>
@@ -384,9 +499,9 @@
                                 <th class="col-po">PO Number</th>
                                 <th class="col-wbs">WBS Element</th>
                                 <th class="col-gl">GL Account</th>
-                                <th class="col-pc">Profit Centre</th>
-                                <th class="col-tax">Tax Code</th>
-                                <th class="col-dm">DM Program</th>
+                                <th class="col-dm">Delivery Manager</th>
+                                <th class="col-dmprog">DM Program</th>
+                                <th class="col-cm" title="LPPI Charge Cost Centre">Capability Manager</th>
                                 <th class="col-poc">POC Email</th>
                                 <th class="col-date">Payment Date</th>
                                 <th class="col-days num">Days Late</th>
@@ -405,7 +520,7 @@
                         data-dm='<%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %>'
                         data-poc='<%# LPPIHelper.Enc(Eval("PocEmail")) %>'
                         data-wbs='<%# LPPIHelper.Enc(Eval("WbsElement")) %>'
-                        data-pc='<%# LPPIHelper.Enc(Eval("ProfitCentre")) %>'>
+                        data-cm='<%# LPPIHelper.Enc(Eval("CapabilityManager")) %>'>
                         <td class="col-doc">
                             <%# LPPIHelper.SapFiNumberHtml(Eval("DocNoAccounting"), Eval("CompanyCode"), Eval("FiscalYear")) %>
                         </td>
@@ -414,9 +529,9 @@
                         <td class="col-po"><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
                         <td class="col-wbs" title='<%# LPPIHelper.Enc(Eval("WbsDesc")) %>'><%# LPPIHelper.Enc(Eval("WbsElement")) %></td>
                         <td class="col-gl"><%# LPPIHelper.Enc(Eval("GlAccount")) %></td>
-                        <td class="col-pc"><%# LPPIHelper.Enc(Eval("ProfitCentre")) %></td>
-                        <td class="col-tax"><%# LPPIHelper.Enc(Eval("TaxCode")) %></td>
-                        <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'><%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %></td>
+                        <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'><%# LPPIHelper.Enc(Eval("DeliveryManager")) %></td>
+                        <td class="col-dmprog"><%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %></td>
+                        <td class="col-cm" title='<%# "LPPI Charge Cost Centre: " + LPPIHelper.Enc(Eval("CapabilityManager")) + " (" + LPPIHelper.Enc(Eval("CapabilityManagerName")) + ")" %>'><%# LPPIHelper.Enc(Eval("CapabilityManager")) %></td>
                         <td class="col-poc"><%# LPPIHelper.Enc(Eval("PocEmail")) %></td>
                         <td class="col-date"><%# LPPIHelper.FormatDate(Eval("PaymentRunDate")) %></td>
                         <td class="col-days num"><%# Eval("DaysVariance") %></td>

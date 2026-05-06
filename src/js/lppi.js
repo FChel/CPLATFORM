@@ -3,7 +3,9 @@
    Vanilla JS, no jQuery, no frameworks.
 
    Behaviour:
-   * Two top-level tabs: "Reason code entry" (Tab 1) and "All lines" (Tab 2).
+   * Three top-level tabs: "Instructions" (Tab 0), "Reason code entry" (Tab 1)
+     and "All lines" (Tab 2). Tab 1 is the default-active pane on page load;
+     the Instructions tab is informational only.
    * Tab 1 — editable table, one row per document. EXPLICIT save model:
      editing fields marks the row dirty; nothing is sent until the user
      clicks the "Save changes" button. The button is disabled when there
@@ -20,9 +22,11 @@
        - NotPayable: both Comments and Objective Reference required.
    * beforeunload warning if the dirty set is non-empty.
    * Filters (search, status, facets) apply to both Tab 1 rows and Tab 2 rows.
-   * Expand chevron on each doc row opens an inline sub-row showing all
-     lines for that document (read from the rptDetail DOM — no extra
-     server call).
+     The Instructions tab hides the toolbar entirely.
+   * Expand chevron on each doc row opens an inline sub-row showing line
+     detail for that document (read from the rptDetail DOM — no extra
+     server call). The chevron now works on every row, not just multi-line
+     documents — single-line docs render the same panel layout with one row.
    * Comments textarea expands on focus, contracts on blur.
    * Primary key: DocNoAccounting (data-doc-no).
    ============================================================================= */
@@ -50,7 +54,7 @@
         { id: 'filterDm',  attr: 'data-dm'  },
         { id: 'filterPoc', attr: 'data-poc' },
         { id: 'filterWbs', attr: 'data-wbs' },
-        { id: 'filterPc',  attr: 'data-pc'  }
+        { id: 'filterCm',  attr: 'data-cm'  }
     ];
 
     /* =========================================================================
@@ -79,6 +83,7 @@
         allMain.forEach(evaluateNeeds);
         bindExpandChevrons();
         bindCommentsExpand();
+        bindInstructionsTocLinks();
 
         // Filters
         var search = document.getElementById('searchBox');
@@ -91,10 +96,12 @@
         });
 
         // Tabs
-        var tabReason = document.getElementById('tabReason');
-        var tabLines  = document.getElementById('tabLines');
-        if (tabReason) tabReason.addEventListener('click', function () { setTab('reason'); });
-        if (tabLines)  tabLines.addEventListener('click',  function () { setTab('lines');  });
+        var tabInstructions = document.getElementById('tabInstructions');
+        var tabReason       = document.getElementById('tabReason');
+        var tabLines        = document.getElementById('tabLines');
+        if (tabInstructions) tabInstructions.addEventListener('click', function () { setTab('instructions'); });
+        if (tabReason)       tabReason.addEventListener('click',       function () { setTab('reason'); });
+        if (tabLines)        tabLines.addEventListener('click',        function () { setTab('lines');  });
 
         // Save button
         if (saveButton) saveButton.addEventListener('click', onSaveClick);
@@ -116,26 +123,84 @@
 
     /* =========================================================================
        Tab switching
+
+       Three tabs: instructions / reason / lines. The toolbar (search +
+       facets + save) and the bulk action bar are visible only on the
+       Reason code entry tab. The Instructions tab is informational only
+       and hides those controls; the All lines tab keeps the search/facet
+       filters live but hides the bulk bar (no editable rows there).
        ========================================================================= */
     function setTab(tab) {
-        var paneReason = document.getElementById('paneReason');
-        var paneLines  = document.getElementById('paneLines');
-        var tabReason  = document.getElementById('tabReason');
-        var tabLines   = document.getElementById('tabLines');
+        var paneInstructions = document.getElementById('paneInstructions');
+        var paneReason       = document.getElementById('paneReason');
+        var paneLines        = document.getElementById('paneLines');
+        var tabInstructions  = document.getElementById('tabInstructions');
+        var tabReason        = document.getElementById('tabReason');
+        var tabLines         = document.getElementById('tabLines');
         if (!paneReason || !paneLines) return;
 
-        if (tab === 'lines') {
-            paneReason.classList.remove('active');
+        // Reset all panes / tabs first.
+        if (paneInstructions) paneInstructions.classList.remove('active');
+        paneReason.classList.remove('active');
+        paneLines.classList.remove('active');
+
+        if (tabInstructions) { tabInstructions.classList.remove('active'); tabInstructions.setAttribute('aria-selected', 'false'); }
+        if (tabReason)       { tabReason.classList.remove('active');       tabReason.setAttribute('aria-selected',       'false'); }
+        if (tabLines)        { tabLines.classList.remove('active');        tabLines.setAttribute('aria-selected',        'false'); }
+
+        // Toolbar + bulk bar visibility.
+        var toolbar = document.querySelector('.review-shell > .toolbar');
+        var bulkBar = document.getElementById('bulkBar');
+
+        if (tab === 'instructions') {
+            if (paneInstructions) paneInstructions.classList.add('active');
+            if (tabInstructions)  { tabInstructions.classList.add('active'); tabInstructions.setAttribute('aria-selected', 'true'); }
+            if (toolbar) toolbar.style.display = 'none';
+            if (bulkBar) bulkBar.style.display = 'none';
+        } else if (tab === 'lines') {
             paneLines.classList.add('active');
-            if (tabLines)  { tabLines.classList.add('active');    tabLines.setAttribute('aria-selected', 'true');  }
-            if (tabReason) { tabReason.classList.remove('active'); tabReason.setAttribute('aria-selected', 'false'); }
+            if (tabLines) { tabLines.classList.add('active'); tabLines.setAttribute('aria-selected', 'true'); }
+            if (toolbar) toolbar.style.display = '';
+            // Bulk bar hidden on All lines (no editable rows there). The CSS
+            // class .bulk-bar is hidden by default and shown via .show; we
+            // strip .show here so it cannot leak onto the lines tab.
+            if (bulkBar) {
+                bulkBar.classList.remove('show');
+                bulkBar.style.display = '';
+            }
         } else {
-            paneLines.classList.remove('active');
             paneReason.classList.add('active');
-            if (tabReason) { tabReason.classList.add('active');   tabReason.setAttribute('aria-selected', 'true');  }
-            if (tabLines)  { tabLines.classList.remove('active'); tabLines.setAttribute('aria-selected', 'false'); }
+            if (tabReason) { tabReason.classList.add('active'); tabReason.setAttribute('aria-selected', 'true'); }
+            if (toolbar) toolbar.style.display = '';
+            if (bulkBar) bulkBar.style.display = '';
         }
+
         applyFilter();
+    }
+
+    /* =========================================================================
+       Instructions tab — TOC links
+
+       The Instructions pane has a sticky in-pane TOC sidebar. Clicking a
+       TOC link should scroll smoothly to the target section. Browser
+       default jump is jarring inside a scrolling pane; smooth-scroll
+       softens it. CSS scroll-margin-top in lppi.css keeps section
+       headings clear of the sticky shell header on jump.
+       ========================================================================= */
+    function bindInstructionsTocLinks() {
+        var pane = document.getElementById('paneInstructions');
+        if (!pane) return;
+        var links = pane.querySelectorAll('.instructions-toc a[href^="#"]');
+        Array.prototype.forEach.call(links, function (a) {
+            a.addEventListener('click', function (e) {
+                var href = a.getAttribute('href') || '';
+                if (href.length < 2) return;
+                var target = document.getElementById(href.slice(1));
+                if (!target) return;
+                e.preventDefault();
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
     }
 
     /* =========================================================================
@@ -189,6 +254,11 @@
 
     /* =========================================================================
        Chevron expand/collapse — inline line-detail sub-row
+
+       The expand panel is now built for EVERY document, not just multi-line
+       ones. Single-line docs render the same panel layout with their one
+       line — useful because the panel exposes detail (Delivery Manager,
+       Capability Manager, GL account, POC) that the main row doesn't show.
        ========================================================================= */
     function bindExpandChevrons() {
         document.addEventListener('click', function (e) {
@@ -199,7 +269,8 @@
             var mainRow   = mainByDoc[docNo];
             if (!mainRow) return;
 
-            // Find the expand panel row (always the third sibling after doc-main)
+            // Find the expand panel row (always the third sibling after doc-main:
+            // mainRow -> doc-main-msg -> doc-expand-panel)
             var panelRow  = mainRow.nextElementSibling && mainRow.nextElementSibling.nextElementSibling;
             if (!panelRow || !panelRow.classList.contains('doc-expand-panel')) return;
 
@@ -210,14 +281,18 @@
                 btn.setAttribute('aria-expanded', 'false');
                 btn.classList.remove('is-open');
             } else {
-                // Build content from rptDetail rows for this docNo
+                // Build content from rptDetail rows for this docNo. Every doc has
+                // at least one line so the panel is always populated — no special
+                // case for single-line documents.
                 var lines = allDetail.filter(function (r) {
                     return r.getAttribute('data-doc-no') === docNo;
                 });
                 var inner = panelRow.querySelector('.expand-panel-inner');
                 if (inner) {
-                    if (lines.length <= 1) {
-                        inner.innerHTML = '<p class="muted" style="padding:8px 0;font-size:12px;">This document has only one line.</p>';
+                    if (lines.length === 0) {
+                        // Defensive — shouldn't happen given how the package is
+                        // built, but better than rendering an empty table.
+                        inner.innerHTML = '<p class="muted" style="padding:8px 0;font-size:12px;">No line detail available for this document.</p>';
                     } else {
                         inner.innerHTML = buildDetailPanel(lines);
                     }
@@ -229,25 +304,58 @@
         });
     }
 
+    /* -------------------------------------------------------------------------
+       buildDetailPanel — renders the inline expand panel for a document.
+
+       Column order (May 2026):
+         Line | GL Account | WBS | Capability Manager | Delivery Manager |
+         DM Program | POC | Days Late | Interest
+
+       Capability Manager and Delivery Manager show the NUMBER (cell text),
+       with the NAME in the title attribute. The CM tooltip is propagated
+       directly from the All Lines td title — formatted upstream as
+       "LPPI Charge Cost Centre: <number> (<name>)" — so the tooltip is
+       authored once in the .aspx markup and inherited everywhere.
+
+       Profit Centre and Tax Code are intentionally NOT shown here. PC is
+       legacy in the new ERP world; Tax Code is informational only.
+       ------------------------------------------------------------------------- */
     function buildDetailPanel(rows) {
         var html = '<table class="tbl tbl-expand-detail"><thead><tr>'
-            + '<th>Line</th><th>WBS</th><th>GL Account</th><th>Profit Centre</th>'
-            + '<th>Tax Code</th><th>DM Program</th><th>POC</th>'
-            + '<th class="num">Days Late</th><th class="num">Interest</th>'
+            + '<th>Line</th>'
+            + '<th>GL Account</th>'
+            + '<th>WBS</th>'
+            + '<th title="LPPI Charge Cost Centre">Capability Manager</th>'
+            + '<th>Delivery Manager</th>'
+            + '<th>DM Program</th>'
+            + '<th>POC</th>'
+            + '<th class="num">Days Late</th>'
+            + '<th class="num">Interest</th>'
             + '</tr></thead><tbody>';
 
         rows.forEach(function (r) {
+            // Pull cell text by class — robust against column reordering as
+            // long as the class names stay aligned with LPPI_Review.aspx.
             function cell(cls) {
                 var el = r.querySelector('td.' + cls);
                 return el ? el.textContent.trim() : '';
             }
+            // Pull the title attribute off a cell — used to surface the
+            // CM/DM name as a tooltip without re-querying the DB.
+            function cellTitle(cls) {
+                var el = r.querySelector('td.' + cls);
+                if (!el) return '';
+                var t = el.getAttribute('title');
+                return t ? t : '';
+            }
+
             html += '<tr>'
                 + '<td><span class="seq-chip">' + esc(cell('col-seq').replace(/\D/g,'')) + '</span></td>'
-                + '<td title="' + attr(r.getAttribute('data-wbs') || '') + '">' + esc(cell('col-wbs')) + '</td>'
                 + '<td>' + esc(cell('col-gl')) + '</td>'
-                + '<td>' + esc(cell('col-pc')) + '</td>'
-                + '<td>' + esc(cell('col-tax')) + '</td>'
-                + '<td>' + esc(cell('col-dm')) + '</td>'
+                + '<td title="' + attr(r.getAttribute('data-wbs') || '') + '">' + esc(cell('col-wbs')) + '</td>'
+                + '<td title="' + attr(cellTitle('col-cm')) + '">' + esc(cell('col-cm')) + '</td>'
+                + '<td title="' + attr(cellTitle('col-dm')) + '">' + esc(cell('col-dm')) + '</td>'
+                + '<td>' + esc(cell('col-dmprog')) + '</td>'
                 + '<td>' + esc(cell('col-poc')) + '</td>'
                 + '<td class="num">' + esc(cell('col-days')) + '</td>'
                 + '<td class="num">' + esc(cell('col-int')) + '</td>'

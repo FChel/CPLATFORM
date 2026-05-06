@@ -236,6 +236,13 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
         // lines. This matches the BODS extract convention where line 1 carries
         // the primary account assignment for the document.
         //
+        // Capability Manager fields (CapabilityManager number + Name) are
+        // projected so the reviewer page can show the LPPI Charge Cost Centre
+        // column. Within a single CM_program package (e.g. ARMY) different
+        // documents can have different individual CMs (e.g. 50001580 "Dir Gen
+        // Land Operations"), so this column varies row by row even though the
+        // package is grouped by CM_program.
+        //
         // The review MERGE target is pd.DocumentID, which the reconcile
         // step writes as the package-time first-line DocumentID. The save
         // handler resolves this via the package table directly.
@@ -273,6 +280,9 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     d1.GlAccount,
                     d1.ProfitCentre,
                     d1.TaxCode,
+                    d1.CapabilityManager,
+                    d1.CapabilityManagerName,
+                    d1.CapabilityManagerProgram,
                     d1.DeliveryManager,
                     d1.DeliveryManagerName,
                     d1.DeliveryManagerProgram,
@@ -308,6 +318,7 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                 GROUP BY
                     pd.DocumentID, d.DocNoAccounting,
                     d1.WbsElement, d1.WbsDesc, d1.GlAccount, d1.ProfitCentre, d1.TaxCode,
+                    d1.CapabilityManager, d1.CapabilityManagerName, d1.CapabilityManagerProgram,
                     d1.DeliveryManager, d1.DeliveryManagerName, d1.DeliveryManagerProgram,
                     d1.PocEmail,
                     r.ReasonCodeID, r.Comments, r.ObjectiveReference, r.ReviewedDate,
@@ -328,7 +339,9 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     Convert.ToString(r["PoNumber"]),
                     NullOrString(r["WbsElement"]),
                     NullOrString(r["WbsDesc"]),
-                    NullOrString(r["ProfitCentre"]),
+                    NullOrString(r["CapabilityManager"]),
+                    NullOrString(r["CapabilityManagerName"]),
+                    NullOrString(r["DeliveryManager"]),
                     NullOrString(r["DeliveryManagerProgram"]),
                     NullOrString(r["DeliveryManagerName"]),
                     NullOrString(r["PocEmail"])
@@ -349,6 +362,8 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
             // ------------------------------------------------------------------
             // DETAIL VIEW QUERY — one row per line, read-only.
             // FiscalYear projected for the SapFiNumberHtml deep link.
+            // CapabilityManager / Name / Program projected so the All Lines tab
+            // and the per-row expand panel can show the LPPI Charge Cost Centre.
             // ------------------------------------------------------------------
             DataTable detail = LPPIHelper.ExecuteTable(@"
                 SELECT
@@ -367,6 +382,9 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     d.GlAccount,
                     d.ProfitCentre,
                     d.TaxCode,
+                    d.CapabilityManager,
+                    d.CapabilityManagerName,
+                    d.CapabilityManagerProgram,
                     d.DeliveryManager,
                     d.DeliveryManagerName,
                     d.DeliveryManagerProgram,
@@ -407,7 +425,9 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     Convert.ToString(r["PoNumber"]),
                     NullOrString(r["WbsElement"]),
                     NullOrString(r["WbsDesc"]),
-                    NullOrString(r["ProfitCentre"]),
+                    NullOrString(r["CapabilityManager"]),
+                    NullOrString(r["CapabilityManagerName"]),
+                    NullOrString(r["DeliveryManager"]),
                     NullOrString(r["DeliveryManagerProgram"]),
                     NullOrString(r["DeliveryManagerName"]),
                     NullOrString(r["PocEmail"])
@@ -455,34 +475,59 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Builds the &lt;option&gt; list for the toolbar facet selects. Source
+        /// column varies by facet kind. For the Capability Manager facet, the
+        /// option label combines the CM number and name (e.g. "50001289 — DG
+        /// Air Cbt Cap-AF") so reviewers can recognise either; the option value
+        /// is the bare CM number to match the data-cm attribute on rows.
+        /// </summary>
         protected string BuildFacetOptions(string kind)
         {
             if (_mainTable == null || _mainTable.Rows.Count == 0) return "";
 
             string column;
+            string nameColumn = null;
             switch ((kind ?? "").ToLowerInvariant())
             {
                 case "dm":  column = "DeliveryManagerProgram"; break;
                 case "poc": column = "PocEmail";               break;
                 case "wbs": column = "WbsElement";             break;
-                case "pc":  column = "ProfitCentre";           break;
+                case "cm":  column = "CapabilityManager"; nameColumn = "CapabilityManagerName"; break;
                 default:    return "";
             }
 
-            var values = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Use a dictionary so we can pair the value (number) with a
+            // human-readable name where one exists. SortedDictionary keeps
+            // the dropdown alphabetised by the value string.
+            var values = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (DataRow r in _mainTable.Rows)
             {
                 var v = r[column];
                 if (v == null || v == DBNull.Value) continue;
                 var s = Convert.ToString(v);
-                if (!string.IsNullOrWhiteSpace(s)) values.Add(s.Trim());
+                if (string.IsNullOrWhiteSpace(s)) continue;
+                s = s.Trim();
+
+                string display = s;
+                if (nameColumn != null)
+                {
+                    var nv = r[nameColumn];
+                    if (nv != null && nv != DBNull.Value)
+                    {
+                        var ns = Convert.ToString(nv).Trim();
+                        if (!string.IsNullOrEmpty(ns)) display = s + " \u2014 " + ns;
+                    }
+                }
+
+                if (!values.ContainsKey(s)) values[s] = display;
             }
 
             var sb = new StringBuilder();
-            foreach (var v in values)
+            foreach (var kv in values)
             {
-                sb.Append("<option value=\"").Append(LPPIHelper.Enc(v)).Append("\">")
-                  .Append(LPPIHelper.Enc(v)).Append("</option>");
+                sb.Append("<option value=\"").Append(LPPIHelper.Enc(kv.Key)).Append("\">")
+                  .Append(LPPIHelper.Enc(kv.Value)).Append("</option>");
             }
             return sb.ToString();
         }

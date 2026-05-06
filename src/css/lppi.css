@@ -1389,3 +1389,440 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     line-height: 1.4;
 }
 
+/* ---------- Instructions pane ---------- */
+.review-shell .instructions-pane {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+    padding: 28px 32px;
+    margin-bottom: 16px;
+    color: var(--ink-2);
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 900px;
+}
+.review-shell .instructions-pane h2 {
+    font-size: 16px;
+    color: var(--ink);
+    margin-top: 24px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--orange-tint);
+    display: inline-block;
+}
+.review-shell .instructions-pane h2:first-child { margin-top: 0; }
+
+.review-shell .instructions-pane p { margin: 0 0 14px; }
+
+.review-shell .instructions-pane ol.instr-steps,
+.review-shell .instructions-pane ul.instr-list {
+    margin: 0 0 16px;
+    padding-left: 24px;
+}
+.review-shell .instructions-pane ol.instr-steps > li,
+.review-shell .instructions-pane ul.instr-list > li {
+    margin-bottom: 10px;
+}
+.review-shell .instructions-pane ol.instr-steps > li::marker {
+    color: var(--orange-deep);
+    font-weight: 700;
+}
+.review-shell .instructions-pane ul.instr-list > li::marker { color: var(--orange); }
+.review-shell .instructions-pane ol.instr-steps ul {
+    margin: 6px 0 0;
+    padding-left: 22px;
+}
+.review-shell .instructions-pane ol.instr-steps ul > li { margin-bottom: 4px; }
+
+.review-shell .instructions-pane a {
+    color: var(--orange);
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.15s;
+}
+.review-shell .instructions-pane a:hover {
+    border-bottom-color: var(--orange);
+    text-decoration: none;
+}
+
+/* Inline pill used in the instructions to preview Reason Code outcomes. */
+.review-shell .instr-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    vertical-align: 1px;
+}
+.review-shell .instr-pill-pay   { background: var(--ok-bg);  color: var(--ok); }
+.review-shell .instr-pill-nopay { background: var(--err-bg); color: var(--err); }
+
+/* ---------- New column-width hints ----------
+   The main reasons-entry table now has a Capability Manager column where
+   Profit Centre used to be; CM number is short (8-digit) so the column can
+   be tighter than vendor/WBS. The expand-panel detail also gains DM Program
+   and Capability Manager columns. */
+
+.review-shell .tbl-review .col-cm   { width: 110px; }
+
+/* Expand panel detail table — make CM/DM number columns easy to scan. */
+.review-shell .tbl-expand-detail .col-dm,
+.review-shell .tbl-expand-detail .col-cm     { width: 100px; }
+.review-shell .tbl-expand-detail .col-dmprog { width: 140px; }
+
+/* All Lines (Tab 2) — the new DM (number) and CM columns. */
+.review-shell .tbl-detail .col-dm,
+.review-shell .tbl-detail .col-cm     { white-space: nowrap; }
+.review-shell .tbl-detail .col-dmprog { white-space: normal; }
+
+
+/* ---------- Instructions pane ----------
+   Full-width container that mirrors .help-grid on LPPI_Help.aspx: a 220px
+   sticky TOC sidebar on the left, body content on the right. Stacks to a
+   single column on narrow viewports. */
+.review-shell .instructions-pane {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 24px;
+    margin-top: 0;
+    margin-bottom: 16px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--ink-2);
+    font-size: 14px;
+    line-height: 1.6;
+}
+@media (max-width: 900px) {
+    .review-shell .instructions-pane { grid-template-columns: 1fr; }
+    .review-shell .instructions-toc  { position: static; max-height: none; }
+}
+
+/* Sticky TOC — same behaviour as .help-toc on LPPI_Help.aspx. */
+.review-shell .instructions-toc {
+    position: sticky;
+    top: 88px;
+    align-self: start;
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-sm);
+    font-size: 13px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+.review-shell .instructions-toc .toc-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.review-shell .instructions-toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    counter-reset: instrtoc;
+}
+.review-shell .instructions-toc ol > li {
+    counter-increment: instrtoc;
+    margin-bottom: 4px;
+}
+.review-shell .instructions-toc ol > li > a {
+    display: block;
+    padding: 5px 8px;
+    border-radius: var(--r-sm);
+    color: var(--ink-2);
+    text-decoration: none;
+}
+.review-shell .instructions-toc ol > li > a::before {
+    content: counter(instrtoc) ". ";
+    color: var(--orange-deep);
+    font-weight: 700;
+    margin-right: 4px;
+}
+.review-shell .instructions-toc ol > li > a:hover {
+    background: var(--orange-soft);
+    color: var(--orange-deep);
+    text-decoration: none;
+}
+
+/* Body — wrapper around the section blocks. Matches the .help-body card
+   on LPPI_Help.aspx for visual consistency. */
+.review-shell .instructions-body {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 28px 32px;
+    box-shadow: var(--shadow-sm);
+    max-width: 900px;
+}
+.review-shell .instructions-body section {
+    margin-bottom: 24px;
+    /* Keep section tops clear of the sticky shell header on jump (the
+       Toolbar above sticks at top:16px and is ~56px tall, plus a little
+       breathing room). */
+    scroll-margin-top: 88px;
+}
+.review-shell .instructions-body section:last-child { margin-bottom: 0; }
+
+.review-shell .instructions-body h2 {
+    font-size: 16px;
+    color: var(--ink);
+    margin-top: 0;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--orange-tint);
+    display: inline-block;
+}
+.review-shell .instructions-body p { margin: 0 0 14px; }
+
+.review-shell .instructions-body ol.instr-steps,
+.review-shell .instructions-body ul.instr-list {
+    margin: 0 0 16px;
+    padding-left: 24px;
+}
+.review-shell .instructions-body ol.instr-steps > li,
+.review-shell .instructions-body ul.instr-list > li {
+    margin-bottom: 10px;
+}
+.review-shell .instructions-body ol.instr-steps > li::marker {
+    color: var(--orange-deep);
+    font-weight: 700;
+}
+.review-shell .instructions-body ul.instr-list > li::marker { color: var(--orange); }
+.review-shell .instructions-body ol.instr-steps ul {
+    margin: 6px 0 0;
+    padding-left: 22px;
+}
+.review-shell .instructions-body ol.instr-steps ul > li { margin-bottom: 4px; }
+
+.review-shell .instructions-body a {
+    color: var(--orange);
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.15s;
+}
+.review-shell .instructions-body a:hover {
+    border-bottom-color: var(--orange);
+    text-decoration: none;
+}
+
+/* Inline pill used in the instructions to preview Reason Code outcomes. */
+.review-shell .instr-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    vertical-align: 1px;
+}
+.review-shell .instr-pill-pay   { background: var(--ok-bg);  color: var(--ok); }
+.review-shell .instr-pill-nopay { background: var(--err-bg); color: var(--err); }
+
+/* ---------- New column-width hints ----------
+   The main reasons-entry table now has a Capability Manager column where
+   Profit Centre used to be; CM number is short (8-digit) so the column can
+   be tighter than vendor/WBS. The expand-panel detail also gains DM Program
+   and Capability Manager columns. */
+
+.review-shell .tbl-review .col-cm   { width: 110px; }
+
+/* Expand panel detail table — make CM/DM number columns easy to scan. */
+.review-shell .tbl-expand-detail .col-dm,
+.review-shell .tbl-expand-detail .col-cm     { width: 100px; }
+.review-shell .tbl-expand-detail .col-dmprog { width: 140px; }
+
+/* All Lines (Tab 2) — the new DM (number) and CM columns. */
+.review-shell .tbl-detail .col-dm,
+.review-shell .tbl-detail .col-cm     { white-space: nowrap; }
+.review-shell .tbl-detail .col-dmprog { white-space: normal; }
+
+/* Cursor hint on the column-header tooltip cells, so users discover the
+   tooltip more readily on hover. Tiny detail but improves discoverability. */
+.review-shell .tbl-review th[title],
+.review-shell .tbl-detail th[title],
+.review-shell .tbl-expand-detail th[title] {
+    cursor: help;
+}
+
+
+/* ---------- Instructions pane ----------
+   Full-width container that mirrors .help-grid on LPPI_Help.aspx: a 220px
+   sticky TOC sidebar on the left, body content on the right. Stacks to a
+   single column on narrow viewports. */
+.review-shell .instructions-pane {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 24px;
+    margin-top: 0;
+    margin-bottom: 16px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--ink-2);
+    font-size: 14px;
+    line-height: 1.6;
+}
+@media (max-width: 900px) {
+    .review-shell .instructions-pane { grid-template-columns: 1fr; }
+    .review-shell .instructions-toc  { position: static; max-height: none; }
+}
+
+/* Sticky TOC — same behaviour as .help-toc on LPPI_Help.aspx. */
+.review-shell .instructions-toc {
+    position: sticky;
+    top: 88px;
+    align-self: start;
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-sm);
+    font-size: 13px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+.review-shell .instructions-toc .toc-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.review-shell .instructions-toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    counter-reset: instrtoc;
+}
+.review-shell .instructions-toc ol > li {
+    counter-increment: instrtoc;
+    margin-bottom: 4px;
+}
+.review-shell .instructions-toc ol > li > a {
+    display: block;
+    padding: 5px 8px;
+    border-radius: var(--r-sm);
+    color: var(--ink-2);
+    text-decoration: none;
+}
+.review-shell .instructions-toc ol > li > a::before {
+    content: counter(instrtoc) ". ";
+    color: var(--orange-deep);
+    font-weight: 700;
+    margin-right: 4px;
+}
+.review-shell .instructions-toc ol > li > a:hover {
+    background: var(--orange-soft);
+    color: var(--orange-deep);
+    text-decoration: none;
+}
+
+/* Body — wrapper around the section blocks. Matches the .help-body card
+   on LPPI_Help.aspx for visual consistency. */
+.review-shell .instructions-body {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 28px 32px;
+    box-shadow: var(--shadow-sm);
+    max-width: 900px;
+}
+.review-shell .instructions-body section {
+    margin-bottom: 24px;
+    /* Keep section tops clear of the sticky shell header on jump (the
+       Toolbar above sticks at top:16px and is ~56px tall, plus a little
+       breathing room). */
+    scroll-margin-top: 88px;
+}
+.review-shell .instructions-body section:last-child { margin-bottom: 0; }
+
+.review-shell .instructions-body h2 {
+    font-size: 16px;
+    color: var(--ink);
+    margin-top: 0;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--orange-tint);
+    display: inline-block;
+}
+.review-shell .instructions-body p { margin: 0 0 14px; }
+
+.review-shell .instructions-body ol.instr-steps,
+.review-shell .instructions-body ul.instr-list {
+    margin: 0 0 16px;
+    padding-left: 24px;
+}
+.review-shell .instructions-body ol.instr-steps > li,
+.review-shell .instructions-body ul.instr-list > li {
+    margin-bottom: 10px;
+}
+.review-shell .instructions-body ol.instr-steps > li::marker {
+    color: var(--orange-deep);
+    font-weight: 700;
+}
+.review-shell .instructions-body ul.instr-list > li::marker { color: var(--orange); }
+.review-shell .instructions-body ol.instr-steps ul {
+    margin: 6px 0 0;
+    padding-left: 22px;
+}
+.review-shell .instructions-body ol.instr-steps ul > li { margin-bottom: 4px; }
+
+.review-shell .instructions-body a {
+    color: var(--orange);
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.15s;
+}
+.review-shell .instructions-body a:hover {
+    border-bottom-color: var(--orange);
+    text-decoration: none;
+}
+
+/* Inline pill used in the instructions to preview Reason Code outcomes. */
+.review-shell .instr-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    vertical-align: 1px;
+}
+.review-shell .instr-pill-pay   { background: var(--ok-bg);  color: var(--ok); }
+.review-shell .instr-pill-nopay { background: var(--err-bg); color: var(--err); }
+
+/* ---------- New column-width hints ----------
+   The main reasons-entry table now has a Capability Manager column where
+   Profit Centre used to be; CM number is short (8-digit) so the column can
+   be tighter than vendor/WBS. The expand-panel detail also gains DM Program
+   and Capability Manager columns. */
+
+.review-shell .tbl-review .col-cm   { width: 110px; }
+
+/* Expand panel detail table — make CM/DM number columns easy to scan. */
+.review-shell .tbl-expand-detail .col-dm,
+.review-shell .tbl-expand-detail .col-cm     { width: 100px; }
+.review-shell .tbl-expand-detail .col-dmprog { width: 140px; }
+
+/* All Lines (Tab 2) — the new DM (number) and CM columns. */
+.review-shell .tbl-detail .col-dm,
+.review-shell .tbl-detail .col-cm     { white-space: nowrap; }
+.review-shell .tbl-detail .col-dmprog { white-space: normal; }
+
+/* Cursor hint on the column-header tooltip cells, so users discover the
+   tooltip more readily on hover. Tiny detail but improves discoverability. */
+.review-shell .tbl-review th[title],
+.review-shell .tbl-detail th[title],
+.review-shell .tbl-expand-detail th[title] {
+    cursor: help;
+}
+
