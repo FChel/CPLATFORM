@@ -9,9 +9,22 @@ using System.Web.UI.WebControls;
 namespace CPlatform.LPPI
 {
     /// <summary>
-    /// Send-outs page. Lists packages (NotSent / Sent / InReview) and lets
-    /// the operator issue them or send reminders. Packages are NOT created
-    /// here — they are created by the file-load reconcile step.
+    /// Send-outs page. Lists packages in flight (NotSent / Sent / InReview /
+    /// Finalised) and lets the operator issue them or send reminders.
+    /// Packages are NOT created here — they are created by the file-load
+    /// reconcile step.
+    ///
+    /// Lifecycle visibility:
+    ///   - NotSent / Sent / InReview show in Open packages and are
+    ///     actionable (can be sent / reminded).
+    ///   - Finalised shows in Open packages too, as a read-only row —
+    ///     useful for visibility ("which CMs have finished") even though
+    ///     no email action is meaningful any more. Reminders refuse on
+    ///     Finalised packages (status guard in LPPIEmail). Finalisation
+    ///     is self-service on the reviewer page; there is no Unfinalise
+    ///     button here.
+    ///   - Exported / Cancelled are out of scope and only surface on the
+    ///     dashboard / batches page.
     ///
     /// In UAT (LPPIEmail.ProductionMode = false), an additional
     /// "Mark as sent (UAT)" button is visible. It performs the same status
@@ -59,8 +72,8 @@ namespace CPlatform.LPPI
                 "<div><strong>Test mode.</strong> Real email sending is disabled. " +
                 "Use <em>Preview email</em> to see the formatted email and " +
                 "<em>Mark as sent (test)</em> to simulate email sending " +
-                " and set package(s) status to [Sent]." +
-		"</div>" +
+                "and set package(s) status to [Sent]." +
+                "</div>" +
                 "</div>"));
         }
 
@@ -86,6 +99,12 @@ namespace CPlatform.LPPI
 
         // -------------------------------------------------------------------
         // Data binding — open packages table
+        //
+        // Scope expanded to include Finalised so users can see which
+        // packages have closed off without having to switch to the
+        // dashboard. Finalised rows are visually distinct (green pill) and
+        // their checkbox is suppressed in the markup since they have no
+        // valid send/remind action.
         // -------------------------------------------------------------------
 
         private void BindPackages()
@@ -121,7 +140,7 @@ namespace CPlatform.LPPI
                          WHERE el.PackageID = p.PackageID) AS LastEmailDate
                   FROM tblLPPI_ReviewPackages p
                  INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
-                 WHERE p.Status IN ('NotSent','Sent','InReview')
+                 WHERE p.Status IN ('NotSent','Sent','InReview','Finalised')
                  ORDER BY cm.Program, p.PackageID";
 
             DataTable dt = LPPIHelper.ExecuteTable(sql);
@@ -172,7 +191,10 @@ namespace CPlatform.LPPI
 
         /// <summary>
         /// Status pill for the Open packages table. Uses package status as
-        /// authoritative, but augments with overdue/due-soon when applicable.
+        /// authoritative, but augments with overdue/due-soon for active
+        /// statuses (Sent / InReview only — NotSent is yet to be sent so
+        /// the due date isn't relevant; Finalised is closed off, no
+        /// "overdue" concern).
         /// </summary>
         protected string RenderStatusPill(object dataItem)
         {
@@ -180,8 +202,8 @@ namespace CPlatform.LPPI
             var status = Convert.ToString(row["Status"]);
             var due    = row["DueDate"] == DBNull.Value ? DateTime.MaxValue : Convert.ToDateTime(row["DueDate"]);
 
-            // For Sent / InReview, show overdue / due-soon as a secondary signal.
-            bool active = string.Equals(status, "Sent", StringComparison.OrdinalIgnoreCase)
+            // Overdue / due-soon augmentation only applies to Sent / InReview.
+            bool active = string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase)
                        || string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase);
 
             string statusLabel;
@@ -191,7 +213,8 @@ namespace CPlatform.LPPI
                 case "notsent":   statusLabel = "Not sent";   statusClass = "notsent";   break;
                 case "sent":      statusLabel = "Sent";       statusClass = "sent";      break;
                 case "inreview":  statusLabel = "In review";  statusClass = "inreview";  break;
-                case "complete":  statusLabel = "Complete";   statusClass = "complete";  break;
+                case "finalised": statusLabel = "Finalised";  statusClass = "finalised"; break;
+                case "exported":  statusLabel = "Exported";   statusClass = "exported";  break;
                 case "cancelled": statusLabel = "Cancelled";  statusClass = "cancelled"; break;
                 default:          statusLabel = status;       statusClass = "";          break;
             }
@@ -225,7 +248,8 @@ namespace CPlatform.LPPI
                 case "notsent":   label = "Not sent";  cls = "notsent";   break;
                 case "sent":      label = "Sent";      cls = "sent";      break;
                 case "inreview":  label = "In review"; cls = "inreview";  break;
-                case "complete":  label = "Complete";  cls = "complete";  break;
+                case "finalised": label = "Finalised"; cls = "finalised"; break;
+                case "exported":  label = "Exported";  cls = "exported";  break;
                 case "cancelled": label = "Cancelled"; cls = "cancelled"; break;
                 default:          label = status;     cls = "";          break;
             }
@@ -234,7 +258,10 @@ namespace CPlatform.LPPI
 
         /// <summary>
         /// Actions cell on the Open packages table. Every package gets an
-        /// "Open review" link (admin QA) and a "Preview email" button.
+        /// "Open review" link (admin QA / visibility into Finalised packages).
+        /// Preview email is offered for any non-terminal package — pointless
+        /// on Finalised since the email cycle is over, so we suppress it
+        /// there to reduce clutter.
         /// </summary>
         protected string RenderPackageActions(object packageIdObj, object tokenObj, object statusObj)
         {
@@ -257,20 +284,26 @@ namespace CPlatform.LPPI
                     token, baseUrl);
             }
 
-            // Preview email — always available.
-            string emailType = string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase)
-                               ? "Initial" : "Reminder";
-            sb.AppendFormat(
-                "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
-                "onclick=\"openPreview({0},'{1}')\">Preview email</button>",
-                packageId, emailType);
+            // Preview email — useful while the email cycle is still
+            // relevant. Suppressed on Finalised since reminders have no
+            // meaning at that point.
+            bool isFinalised = string.Equals(status, "Finalised", StringComparison.OrdinalIgnoreCase);
+            if (!isFinalised)
+            {
+                string emailType = string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase)
+                                   ? "Initial" : "Reminder";
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
+                    "onclick=\"openPreview({0},'{1}')\">Preview email</button>",
+                    packageId, emailType);
+            }
 
             return sb.ToString();
         }
 
         /// <summary>
         /// Actions column for rptRecent rows — same model: review link
-        /// available for any package, preview always available.
+        /// available for any package, preview suppressed on Finalised.
         /// </summary>
         protected string RenderRecentActions(object packageIdObj, object tokenObj, object statusObj)
         {
@@ -292,18 +325,30 @@ namespace CPlatform.LPPI
                     token, baseUrl);
             }
 
-            string emailType = string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase)
-                               ? "Initial" : "Reminder";
-            sb.AppendFormat(
-                "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
-                "onclick=\"openPreview({0},'{1}')\">Preview email</button>",
-                packageId, emailType);
+            bool isFinalised = string.Equals(status, "Finalised", StringComparison.OrdinalIgnoreCase);
+            bool isExported  = string.Equals(status, "Exported",  StringComparison.OrdinalIgnoreCase);
+            bool isCancelled = string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+
+            if (!isFinalised && !isExported && !isCancelled)
+            {
+                string emailType = string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase)
+                                   ? "Initial" : "Reminder";
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
+                    "onclick=\"openPreview({0},'{1}')\">Preview email</button>",
+                    packageId, emailType);
+            }
 
             return sb.ToString();
         }
 
         // -------------------------------------------------------------------
-        // Selection helper — shared between Send and Mark-as-sent
+        // Selection helper — shared between Send and Mark-as-sent.
+        //
+        // The picker only enables the checkbox on rows whose status is one
+        // of NotSent / Sent / InReview (markup gates this via Eval). Even
+        // so, the server re-checks status at action time so a Finalised
+        // package racing through cannot get sent.
         // -------------------------------------------------------------------
 
         private List<int> CollectSelectedPackageIds()
@@ -311,7 +356,11 @@ namespace CPlatform.LPPI
             var ids = new List<int>();
             foreach (RepeaterItem item in rptPackages.Items)
             {
-                var chk = item.FindControl("chkPick") as CheckBox;
+                // chkPick is a plain HTML checkbox with runat=server (not
+                // asp:CheckBox), so it materialises as HtmlInputCheckBox.
+                // See the comment in the .aspx for the JS-class-on-input
+                // reason behind this choice.
+                var chk = item.FindControl("chkPick") as System.Web.UI.HtmlControls.HtmlInputCheckBox;
                 var hf  = item.FindControl("hfPackageId") as HiddenField;
                 if (chk != null && hf != null && chk.Checked)
                 {
@@ -361,12 +410,8 @@ namespace CPlatform.LPPI
                 string status = statusObj == null || statusObj == DBNull.Value
                               ? "" : Convert.ToString(statusObj);
 
-                bool isNotSent = string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase);
-
-                if (isNotSent)
+                if (string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Apply the chosen due date before sending — first-send
-                    // is the operator's last chance to set the due date.
                     LPPIHelper.ExecuteNonQuery(
                         "UPDATE tblLPPI_ReviewPackages SET DueDate = @D WHERE PackageID = @P AND Status = 'NotSent'",
                         LPPIHelper.P("@D", due),
@@ -377,11 +422,11 @@ namespace CPlatform.LPPI
                     else
                     {
                         failed++;
-                        failNotes.Append("<li>Package #").Append(pid).Append(": ")
+                        failNotes.Append("<li>Package #").Append(pid).Append(" (initial): ")
                                  .Append(LPPIHelper.Enc(res.ErrorMessage)).Append("</li>");
                     }
                 }
-                else if (string.Equals(status, "Sent", StringComparison.OrdinalIgnoreCase) ||
+                else if (string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase))
                 {
                     var res = LPPIEmail.SendReminder(pid);
@@ -389,7 +434,7 @@ namespace CPlatform.LPPI
                     else
                     {
                         failed++;
-                        failNotes.Append("<li>Package #").Append(pid).Append(": ")
+                        failNotes.Append("<li>Package #").Append(pid).Append(" (reminder): ")
                                  .Append(LPPIHelper.Enc(res.ErrorMessage)).Append("</li>");
                     }
                 }
@@ -397,11 +442,12 @@ namespace CPlatform.LPPI
                 {
                     failed++;
                     failNotes.Append("<li>Package #").Append(pid)
-                             .Append(": cannot send — status is ").Append(LPPIHelper.Enc(status)).Append(".</li>");
+                             .Append(": skipped — status is ").Append(LPPIHelper.Enc(status))
+                             .Append(", which is not eligible for send/remind.</li>");
                 }
             }
 
-            string kind = failed == 0 ? "ok" : "warn";
+            string kind = (failed == 0) ? "ok" : "warn";
             var msg = new StringBuilder();
             msg.Append(initialOk).Append(" initial email").Append(initialOk == 1 ? "" : "s").Append(" sent, ")
                .Append(reminderOk).Append(" reminder").Append(reminderOk == 1 ? "" : "s").Append(" sent.");

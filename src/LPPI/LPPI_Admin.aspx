@@ -9,15 +9,9 @@
     <title>LPPI Review — Dashboard</title>
     <link rel="stylesheet" href="../css/lppi.css" />
     <style>
-        /* Status pill colours for the new package status set. Defined here
-           rather than in lppi.css to keep this change self-contained while
-           the broader CSS file is left untouched. */
-        .pill.notsent  { background: var(--line-2);    color: var(--ink-3); }
-        .pill.sent     { background: var(--orange-soft); color: var(--orange-deep); }
-        .pill.inreview { background: var(--orange-soft); color: var(--orange-deep); }
-        .pill.complete { background: var(--ok-bg);     color: var(--ok); }
-        .pill.cancelled{ background: var(--err-bg);    color: var(--err); }
-        .pill.duesoon  { background: var(--warn-bg);   color: var(--warn); }
+        /* The lifecycle pill colour rules that previously lived inline here
+           have been consolidated into lppi.css (look for "Lifecycle pills").
+           Page-specific layout for the LPPI exposure block remains here. */
 
         /* =====================================================================
            LPPI exposure block — dollar totals
@@ -286,7 +280,8 @@
         <div class="card">
             <h2>Open review packages</h2>
             <p style="color:var(--ink-3);font-size:13px;">
-                Packages in flight (NotSent / Sent / In review). Use Send-outs to issue them, or send a reminder when one is approaching its due date.
+                Packages in flight (NotSent / Sent / In review / Finalised). Use Send-outs to issue them, or send a reminder when one is approaching its due date.
+                Finalised packages are queued for export — visit the Export page to ship them to ERP.
                 Admins can open the review link for any package for QA — the reviewer page will be read-only when the package is not currently active.
             </p>
             <div class="tbl-wrap">

@@ -9,14 +9,25 @@
     <title>LPPI Review</title>
     <link rel="stylesheet" href="../css/lppi.css" />
     <style>
-        /* Read-only mode — a single hook on the shell disables every form
-           input on the page. The save handler is the authoritative gate;
-           this is purely a UX hint so admin QA viewers cannot accidentally
-           type into fields they are not meant to edit. */
-        .review-shell[data-readonly="1"] select,
-        .review-shell[data-readonly="1"] textarea,
-        .review-shell[data-readonly="1"] input[type="text"],
-        .review-shell[data-readonly="1"] input[type="checkbox"] {
+        /* Read-only mode — disables data-entry controls inside the review
+           table only. The toolbar (search box, status filter, facet
+           selects) stays live in every state so users can navigate and
+           inspect a Finalised or Exported package as freely as an
+           editable one.
+
+           The save handler is the authoritative gate; this is purely a
+           UX hint so admin QA viewers cannot accidentally type into
+           fields they are not meant to edit.
+
+           Note: #actionBtn is NOT in the read-only display:none list,
+           because on a Finalised package the action button shows
+           "Unfinalise" — we WANT it visible. The button is rendered or
+           omitted by the server based on status (ShowActionButton); when
+           it is present, it should be clickable. */
+        .review-shell[data-readonly="1"] .tbl-review select,
+        .review-shell[data-readonly="1"] .tbl-review textarea,
+        .review-shell[data-readonly="1"] .tbl-review input[type="text"],
+        .review-shell[data-readonly="1"] .tbl-review input[type="checkbox"] {
             pointer-events: none;
             background: #f8f8f8;
             color: var(--ink-3);
@@ -94,6 +105,69 @@
         .exposure-legend .dot.notpayable { background: var(--err); }
         .exposure-legend .dot.awaiting   { background: var(--warn); }
         .exposure-legend .amount { font-weight: 600; color: var(--ink-2); }
+
+        /* ============================================================
+           Action button — single slot in the toolbar that toggles
+           between Finalise and Unfinalise based on package status.
+
+           Two variants:
+             .action-finalise   — green, positive close-off action
+             .action-unfinalise — orange, reversal action
+
+           Same shape and footprint either way, so the toolbar layout
+           does not shift between states.
+           ============================================================ */
+        #actionBtn {
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        #actionBtn.action-finalise {
+            background: var(--ok);
+            color: #fff;
+            border-color: var(--ok);
+            box-shadow: 0 2px 6px rgba(46,125,50,0.25);
+        }
+        #actionBtn.action-finalise:hover:not(:disabled) {
+            filter: brightness(0.95);
+        }
+        #actionBtn.action-unfinalise {
+            background: var(--orange);
+            color: #fff;
+            border-color: var(--orange);
+            box-shadow: 0 2px 6px rgba(215,91,7,0.25);
+        }
+        #actionBtn.action-unfinalise:hover:not(:disabled) {
+            background: var(--orange-deep);
+            border-color: var(--orange-deep);
+        }
+        #actionBtn:disabled,
+        #actionBtn[disabled] {
+            opacity: 0.45;
+            cursor: not-allowed;
+            box-shadow: none;
+            filter: grayscale(0.2);
+        }
+        #actionBtn svg { stroke: currentColor; flex: 0 0 auto; }
+
+        /* The "ready to finalise" hint replaces the old "all done" banner
+           when every doc has been coded but the package is not yet
+           Finalised. Different colour (orange-deep gradient) so it cannot
+           be confused with the green Finalised status banner above. */
+        .ready-banner {
+            background: linear-gradient(135deg, var(--orange) 0%, var(--orange-deep) 100%);
+            color: #fff;
+            padding: 16px 24px;
+            border-radius: var(--r-lg);
+            margin-bottom: 16px;
+            box-shadow: var(--shadow);
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .ready-banner.show { display: flex; }
+        .ready-banner .ready-text strong { font-size: 15px; display: block; margin-bottom: 2px; }
+        .ready-banner .ready-text span   { font-size: 13px; color: rgba(255,255,255,0.92); }
     </style>
 </head>
 <body>
@@ -122,6 +196,7 @@
 <asp:PlaceHolder ID="phReview" runat="server" Visible="false">
 <input type="hidden" id="reviewToken" value="<%= LPPIHelper.Enc(TokenForClient) %>" />
 <input type="hidden" id="reviewReadOnly" value="<%= IsReadOnly ? "1" : "0" %>" />
+<input type="hidden" id="reviewStatus" value="<%= LPPIHelper.Enc(CurrentStatus) %>" />
 
 <div class="review-shell" data-readonly="<%= IsReadOnly ? "1" : "0" %>">
 
@@ -187,7 +262,13 @@
     </div>
 
     <%-- Toolbar — outside all panes. Hidden when the Instructions tab is
-         active (no rows to filter or save while reading instructions). --%>
+         active (no rows to filter or save while reading instructions).
+
+         The "Save changes" button is hidden by CSS when the page is
+         read-only (Finalised, Exported, Cancelled). The action button
+         (Finalise / Unfinalise) is rendered conditionally by the server
+         based on status — green Finalise when editable, orange Unfinalise
+         when Finalised, omitted entirely when terminal. --%>
     <div class="toolbar">
         <div class="toolbar-left">
             <div class="search-wrap">
@@ -231,12 +312,41 @@
                 </svg>
                 <span id="saveAllBtnLabel">Save changes</span>
             </button>
+            <% if (ShowActionButton) { %>
+              <% if (IsFinalised) { %>
+                <button type="button" id="actionBtn" class="btn action-unfinalise"
+                        data-action="unfinalise"
+                        title="Reopen this package for further edits. Auto-applied 'no response' codes will be cleared.">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 12a9 9 0 1 0 3-6.7"/>
+                        <polyline points="3 4 3 10 9 10"/>
+                    </svg>
+                    <span id="actionBtnLabel">Unfinalise</span>
+                </button>
+              <% } else { %>
+                <button type="button" id="actionBtn" class="btn action-finalise"
+                        data-action="finalise"
+                        title="Finalise this package — locks all rows, defaults any undecided documents to RC-NR (Payable, no response).">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    <span id="actionBtnLabel">Finalise</span>
+                </button>
+              <% } %>
+            <% } %>
         </div>
     </div>
 
-    <%-- Done banner --%>
-    <div id="doneBanner" class="done-banner" role="status">
-        <strong>All done.</strong> Every document in this package has a reason code. Thanks for completing the review.
+    <%-- "Ready to finalise" hint — shown when every document has been
+         coded but the package is still in flight (i.e. not yet Finalised).
+         Distinct from the green Finalised status banner at the top of
+         the page; this one is a call-to-action while the page is
+         editable. JS toggles the .show class based on dirty state. --%>
+    <div id="readyBanner" class="ready-banner<%= IsAllReviewed ? " show" : "" %>" role="status">
+        <div class="ready-text">
+            <strong>All reviewed — ready to finalise.</strong>
+            <span>Every document in this package has a reason code. Click Finalise above when you are ready to close it off; you can unfinalise later if you need to make changes.</span>
+        </div>
     </div>
 
     <%-- ================================================================
@@ -275,8 +385,8 @@
                         This page lists payments that have incurred Late Payment Penalty Interest (LPPI) under
                         <a href="https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417" target="_blank" rel="noopener">RMG-417 &mdash; Supplier Pay On-Time or Pay Interest Policy</a>.
                         For each document, please decide whether the LPPI is <strong>payable</strong> or <strong>not payable</strong>
-                        by selecting a Reason Code. Once every document has a Reason Code, the package is complete and the LPPI charges
-                        will be processed against the responsible cost centres.
+                        by selecting a Reason Code. Once every document has a Reason Code, you can finalise the package; the LPPI
+                        charges will then be processed against the responsible cost centres on the next ERP export run.
                     </p>
                 </section>
 
@@ -307,6 +417,11 @@
                         <li>
                             <strong>Save your changes</strong> using the orange Save changes button at the top right. Nothing is
                             written to the database until you save. The button is disabled when there are no pending changes.
+                        </li>
+                        <li>
+                            <strong>Finalise the package</strong> using the green Finalise button when you are done.
+                            Any undecided documents will be defaulted to <em>RC-NR (Payable, no response received)</em>.
+                            Finalising locks the form fields. You can unfinalise the package at any time before it is exported to ERP.
                         </li>
                     </ol>
                 </section>

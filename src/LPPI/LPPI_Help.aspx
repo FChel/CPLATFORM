@@ -113,7 +113,8 @@
         }
 
         /* Lifecycle pills inline — match the dashboard's status-pill colours
-           so admins recognise them immediately. */
+           so admins recognise them immediately. The classes themselves
+           (.pill.notsent etc.) live in lppi.css; we just inherit them. */
         .lifecycle-pills {
             display: flex;
             flex-wrap: wrap;
@@ -191,10 +192,9 @@
                 <ol>
                     <li><a href="#overview">Overview</a></li>
                     <li><a href="#lifecycle">Package lifecycle</a></li>
+                    <li><a href="#roles">Who does what</a></li>
                     <li><a href="#pages">Page-by-page guide</a></li>
-                    <li><a href="#flags">Configuration flags</a></li>
                     <li><a href="#operations">Common operations</a></li>
-                    <li><a href="#troubleshooting">Troubleshooting</a></li>
                     <li><a href="#support">Support</a></li>
                 </ol>
             </nav>
@@ -209,97 +209,95 @@
                         cases under
                         <a href="https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417"
                            target="_blank" rel="noopener">RMG-417 &mdash; Supplier Pay On-Time or Pay Interest Policy</a>.
+                        BODS produces a tab-delimited extract of late payments; this module brings that extract into FinHub,
+                        bundles each Capability Manager program's late payments into a review package, emails the AS Fin team for
+                        that program, captures their decisions (Payable / Not Payable per document with a Reason Code), and ships
+                        the payable cases to ERP as a Payment Request bulk-upload spreadsheet.
                     </p>
-                    <p>
-                        The end-to-end loop is: <strong>Load file</strong> &rarr; <strong>Send-outs</strong> (issue review packages
-                        to Capability Managers) &rarr; <strong>Reviewer page</strong> (CMs classify each document with a Reason
-                        Code) &rarr; <strong>Export</strong> (push payable cases back to BODS for SAP processing).
-                    </p>
-                    <p>
-                        Each loaded file is parsed line-by-line, broken into <strong>review packages</strong> by Capability Manager
-                        program (e.g. ARMY, NAVY), and emailed to the recipients configured for that group. Reviewers click the
-                        link in the email and complete their review on a token-authenticated page &mdash; no application login
-                        required for them.
-                    </p>
+                    <div class="callout">
+                        <strong>Replaces a shared spreadsheet.</strong> Before this module existed the same workflow ran in a
+                        shared Excel file. Moving it to a web app gives every save an audit trail, prevents two people overwriting
+                        each other's edits, and gives admins a single dashboard to see what's outstanding across all programs.
+                    </div>
                 </section>
 
                 <section id="lifecycle">
                     <h2>Package lifecycle</h2>
-                    <p>Every package moves through a fixed sequence of statuses, driven by the application code (not by SQL defaults):</p>
-                    <div class="lifecycle-pills">
-                        <span class="pill notsent">NotSent</span>
+                    <p>A review package moves through a small number of statuses, in a fixed order:</p>
+                    <div class="lifecycle-pills" aria-label="Package lifecycle">
+                        <span class="pill notsent">Not sent</span>
                         <span class="arrow">&rarr;</span>
                         <span class="pill sent">Sent</span>
                         <span class="arrow">&rarr;</span>
-                        <span class="pill inreview">InReview</span>
+                        <span class="pill inreview">In review</span>
                         <span class="arrow">&rarr;</span>
-                        <span class="pill complete">Complete</span>
+                        <span class="pill finalised">Finalised</span>
+                        <span class="arrow">&rarr;</span>
+                        <span class="pill exported">Exported</span>
+                        <span class="arrow" aria-hidden="true">&nbsp;|&nbsp;</span>
+                        <span class="pill cancelled">Cancelled</span>
                     </div>
-                    <p>Plus the side branch <span class="pill cancelled">Cancelled</span> for packages that were withdrawn.</p>
                     <ul>
-                        <li><strong>NotSent</strong> &mdash; created at file load, contents reconciled into the CM&rsquo;s existing NotSent package or a fresh one. Editable in QA but not yet emailed.</li>
-                        <li><strong>Sent</strong> &mdash; the first send (or Mark-as-sent in test mode) flips the status and stamps SentDate. Document set is now frozen for that package.</li>
-                        <li><strong>InReview</strong> &mdash; first reviewer save against a Sent package flips the status. Reminders can be sent at any point during Sent or InReview.</li>
-                        <li><strong>Complete</strong> &mdash; set automatically when every document in the package has a Reason Code. ClosedDate is stamped. Reviewer page becomes read-only.</li>
-                        <li><strong>Cancelled</strong> &mdash; admin action to withdraw a package. Documents are eligible for repackaging on the next file load.</li>
+                        <li><strong>Not sent</strong> &mdash; created at file-load time, no email yet. Editable on the reviewer page (admin QA).</li>
+                        <li><strong>Sent</strong> &mdash; the initial email has been sent. Document set is now frozen.</li>
+                        <li><strong>In review</strong> &mdash; at least one document has a reason code. Reminders still allowed.</li>
+                        <li><strong>Finalised</strong> &mdash; the AS Fin team has clicked Finalise. Form fields are locked. Any documents without a reason code have been auto-marked as <code>RC-NR</code> (Payable, no response received). Reversible: AS Fin can click Unfinalise to reopen.</li>
+                        <li><strong>Exported</strong> &mdash; admin has included the package in an ERP payment file. Terminal &mdash; no further changes.</li>
+                        <li><strong>Cancelled</strong> &mdash; admin-cancelled side branch. Documents become eligible for repackaging on the next file load.</li>
                     </ul>
                     <div class="callout">
-                        <strong>Note:</strong> editing a NotSent package on the reviewer page (admin QA) does NOT change its status &mdash;
-                        only Send (or Mark-as-sent in test mode) on the Send-outs page does that.
+                        <strong>Two checkpoints, two responsibilities.</strong>
+                        <em>Finalise</em> is self-service for AS Fin &mdash; it closes off the review.
+                        <em>Export</em> is admin-only &mdash; it ships the file to ERP and locks the package permanently.
                     </div>
+                </section>
+
+                <section id="roles">
+                    <h2>Who does what</h2>
+                    <p>The module recognises two populations:</p>
+                    <ul>
+                        <li>
+                            <strong>AS Fin / Capability Manager team</strong> &mdash; receives the review email at the team mailbox configured for the program (e.g. AS Fin ARMY for the ARMY package). The team
+                            self-organises internally: a small team has one person doing everything; a larger team can have one person review and another finalise. The system does not model the internal split &mdash; it just records who clicked
+                            Save / Finalise / Unfinalise via Windows identity.
+                        </li>
+                        <li>
+                            <strong>Administrator (DFG)</strong> &mdash; loads files, configures CM recipients, issues review packages, sends reminders, and ships finalised packages to ERP via Export.
+                            Admin access is gated by the <code>tblLPPI_AdminUsers</code> table (see Admin users page).
+                        </li>
+                    </ul>
                 </section>
 
                 <section id="pages">
                     <h2>Page-by-page guide</h2>
                     <dl class="help-pages">
                         <dt>Dashboard</dt>
-                        <dd>Module overview &mdash; total LPPI exposure (with payable / not-payable / awaiting breakdown), document and package counts, and the list of open packages.</dd>
-
-                        <dt>Help</dt>
-                        <dd>This page.</dd>
+                        <dd>Read-only overview. LPPI exposure (dollar headlines), counts, open packages (NotSent/Sent/InReview/Finalised), recent loads.</dd>
 
                         <dt>Load file</dt>
-                        <dd>Upload a <code>LATEPMT_INTEREST_REVIEW_*.xls</code> extract from BODS (tab-delimited despite the .xls extension). The file is parsed and previewed before commit.</dd>
-
-                        <dt>Batches</dt>
-                        <dd>History of every loaded file with line-level drill-through. Read-only.</dd>
+                        <dd>Upload a BODS extract (<code>LATEPMT_INTEREST_REVIEW_*.xls</code>), preview, then commit. The reconcile step creates new packages and adds documents to existing NotSent packages.</dd>
 
                         <dt>Send-outs</dt>
-                        <dd>Issue NotSent packages, send reminders for Sent / InReview ones, preview the email body before sending. The "Mark as sent (test)" button is available only when ProductionMode is false.</dd>
+                        <dd>Lists in-flight packages. Issue first sends, send reminders, preview emails. Finalised packages are visible (read-only) so you can see what's queued for export. UAT mode replaces real Send with Mark-as-sent.</dd>
 
-                        <dt>Capability Managers</dt>
-                        <dd>Manage CM groups (ARMY, NAVY, etc.) &mdash; created automatically at file load &mdash; and their email recipient lists (To and Cc).</dd>
-
-                        <dt>Reason Codes</dt>
-                        <dd>Maintain the active Reason Code list (RC01-RC16 by default plus any custom codes). Outcome (Payable / NotPayable) and Requires-Comments flag drive reviewer-page validation.</dd>
+                        <dt>Reviewer page</dt>
+                        <dd>Token-authenticated. AS Fin reviews each document, picks a reason code, optionally adds comments and an objective reference, then clicks Finalise to close the package. Unfinalise is available on the same toolbar to reopen.</dd>
 
                         <dt>Export</dt>
-                        <dd>Build the ERP Payment Request bulk-upload spreadsheet for reviewed Payable documents within a date range. Mark-as-exported on commit so cases are not double-billed.</dd>
+                        <dd>Pick one or more Finalised packages, generate the ERP Payment Request bulk-upload file. Selected packages flip to Exported and are locked. Past export batches are listed below the picker with Download buttons that re-stream the stored file.</dd>
+
+                        <dt>Batches</dt>
+                        <dd>Every file load is recorded. Drill into a batch to see the lines it brought in, including which export batch (if any) shipped each line.</dd>
+
+                        <dt>Capability Managers</dt>
+                        <dd>Configure recipient email addresses for each CM program. A package cannot be sent until at least one TO recipient is configured for its program.</dd>
+
+                        <dt>Reason Codes</dt>
+                        <dd>Maintain the reason code list. Each code carries an Outcome (Payable / Not Payable) and an optional <em>Requires comments</em> flag.</dd>
 
                         <dt>Admin users</dt>
-                        <dd>Manage the LPPI admin access list. Anyone not on this list is redirected to the public access-denied landing page when they attempt to reach an admin page.</dd>
+                        <dd>Manage the LPPI admin allow-list. Users not in this list cannot reach the admin pages. The reviewer page is unaffected (it uses tokens, not Windows identity).</dd>
                     </dl>
-                </section>
-
-                <section id="flags">
-                    <h2>Configuration flags</h2>
-                    <p>The most important <code>web.config</code> appSettings:</p>
-                    <ul>
-                        <li><code>CPlatform.Environment</code> &mdash; environment label (DEV / UAT / PROD), shown on the header chip.</li>
-                        <li><code>LPPI.ProductionMode</code> &mdash; <strong>true</strong> enables real email sending and hides the Mark-as-sent button; <strong>false</strong> blocks Send and shows Mark-as-sent. Mutually exclusive by construction.</li>
-                        <li><code>LPPI.BaseUrl</code> &mdash; the public hostname used when building reviewer links in outgoing emails.</li>
-                        <li><code>LPPI.DefaultDueDays</code> &mdash; default review window applied to new packages.</li>
-                        <li><code>LPPI.ReminderWindowDays</code> &mdash; "due soon" threshold used by reminders and dashboard pills.</li>
-                        <li><code>LPPI.SmtpHost</code> &nbsp;/&nbsp; <code>LPPI.SmtpPort</code> &nbsp;/&nbsp; <code>LPPI.SmtpEnableSsl</code> &nbsp;/&nbsp; <code>LPPI.SmtpUser</code> &nbsp;/&nbsp; <code>LPPI.SmtpPassword</code> &mdash; SMTP relay configuration (only consulted when ProductionMode is true).</li>
-                        <li><code>LPPI.MailFrom</code> &nbsp;/&nbsp; <code>LPPI.MailFromName</code> &mdash; From address on outgoing reviewer emails.</li>
-                        <li><code>LPPI.SupportMailboxTo</code> &nbsp;/&nbsp; <code>LPPI.SupportMailboxCc</code> &mdash; the support / feedback mailbox surfaced in the reviewer email and the page-header "Feedback &amp; support" button.</li>
-                        <li><code>LPPI.SapBaseUrl</code> &mdash; SAP S/4HANA Fiori host for the document-number and PO deep links.</li>
-                    </ul>
-                    <div class="callout warn">
-                        <strong>PROD checklist:</strong> set <code>CPlatform.Environment</code> to <code>PROD</code>, set <code>LPPI.ProductionMode</code> to <code>true</code>,
-                        set the real <code>LPPI.SmtpHost</code> and confirm <code>LPPI.BaseUrl</code> matches the public hostname &mdash;
-                        otherwise reviewer email links will be wrong.
-                    </div>
                 </section>
 
                 <section id="operations">
@@ -310,43 +308,41 @@
                         <li>Receive the file from BODS (named <code>LATEPMT_INTEREST_REVIEW_*.xls</code>).</li>
                         <li>Open <strong>Load file</strong>, choose the file, click <em>Upload &amp; preview</em>.</li>
                         <li>Confirm the header validation passes and the row count looks reasonable.</li>
-                        <li>Click <em>Commit</em>. A new batch is recorded; documents are reconciled into existing NotSent packages or a fresh package per CM.</li>
-                        <li>Visit <strong>Send-outs</strong> &mdash; new packages will be in <em>NotSent</em> and ready to issue.</li>
+                        <li>Click <em>Commit</em>. A new batch is recorded; documents are reconciled into existing NotSent packages or a fresh package per CM program.</li>
+                        <li>Visit <strong>Send-outs</strong> &mdash; new packages will be in NotSent and ready to issue.</li>
                     </ol>
 
                     <h3>Issuing review packages</h3>
                     <ol>
-                        <li>Open <strong>Send-outs</strong>. The page shows every NotSent / Sent / InReview package.</li>
-                        <li>Use <em>Preview email</em> on any row to see the rendered email before committing to a send.</li>
+                        <li>Open <strong>Send-outs</strong>. The page lists every package that is NotSent / Sent / InReview / Finalised.</li>
+                        <li>Use <em>Preview email</em> on any actionable row to see the rendered email before committing to a send.</li>
                         <li>Confirm the recipients are configured on <strong>Capability Managers</strong> &mdash; the page warns when a program has no recipient (it cannot be sent until configured).</li>
                         <li>Set the due date if you want to override the default, then click <em>Send / remind selected</em> on the rows you want to issue.</li>
                         <li>In UAT (ProductionMode = false), use <em>Mark as sent (test)</em> instead &mdash; this drives the lifecycle to Sent without dispatching email.</li>
                     </ol>
 
                     <h3>Sending reminders</h3>
-                    <p>Reminders are valid only on <strong>Sent</strong> or <strong>InReview</strong> packages &mdash; never on NotSent (use Send) or Complete / Cancelled. The dashboard surfaces packages that are near deadline or overdue.</p>
+                    <p>Reminders are valid only on <strong>Sent</strong> or <strong>In review</strong> packages. NotSent uses Send instead; Finalised / Exported / Cancelled packages cannot be reminded. The dashboard surfaces packages that are near deadline or overdue.</p>
+
+                    <h3>Finalising and unfinalising (AS Fin self-service)</h3>
+                    <p>This happens on the reviewer page, not in the admin pages &mdash; AS Fin manages its own workflow.</p>
+                    <ul>
+                        <li>The toolbar <em>Finalise</em> button (green) closes the package off. Any documents that were not coded are auto-marked as <code>RC-NR</code> (Payable &mdash; no response received from CM). Form fields lock.</li>
+                        <li>The same slot becomes <em>Unfinalise</em> (orange) when the package is Finalised. Clicking it clears the auto-applied <code>RC-NR</code> rows, returns the package to InReview, and reopens the form. History is recorded for both directions.</li>
+                        <li>Once a package is Exported it is terminal &mdash; the toolbar shows no action button.</li>
+                    </ul>
 
                     <h3>Exporting payable cases to ERP</h3>
                     <ol>
-                        <li>Open <strong>Export</strong>.</li>
-                        <li>Choose the date range (defaults to last month). Optionally restrict to a single batch.</li>
-                        <li>Click <em>Preview count</em> to see how many distinct payable documents and lines will be exported.</li>
-                        <li>Click <em>Generate payment file</em>. The spreadsheet is built using the ERP bulk-upload template (27 columns, Sheet1, plain headers).</li>
-                        <li>By default <em>Mark documents as exported</em> is on &mdash; this stamps ExportedDate so the same case is not double-billed on a later run.</li>
+                        <li>Open <strong>Export</strong>. The page lists Finalised packages awaiting export.</li>
+                        <li>Tick one or more packages. The totals strip at the bottom shows the package count, payable doc count, and total payable dollars for what you have selected.</li>
+                        <li>Click <em>Generate ERP file</em>. The xlsx is built, stored against an export-batch row in the database, and downloaded to your browser.</li>
+                        <li>The picked packages flip to <strong>Exported</strong> and disappear from the picker.</li>
+                        <li>The Recent batches table at the bottom of the page shows past export runs with Download buttons &mdash; the file is re-streamed from the database, no need to regenerate.</li>
                     </ol>
-                </section>
-
-                <section id="troubleshooting">
-                    <h2>Troubleshooting</h2>
-                    <ul>
-                        <li><strong>"Send is disabled"</strong> &mdash; <code>LPPI.ProductionMode</code> is false. In UAT this is normal and Mark-as-sent is the alternative; in PROD this needs to be flipped to <code>true</code>.</li>
-                        <li><strong>"No active recipients configured"</strong> on a send &mdash; the CM group has no rows in <code>tblLPPI_CapabilityManagerEmails</code>. Add at least one To recipient on the Capability Managers page.</li>
-                        <li><strong>Code changes not taking effect</strong> &mdash; a stale <code>bin\App_Code.dll</code> can override updated <code>App_Code/*.cs</code> files. Touch <code>web.config</code> (e.g. add a trailing space) to recycle the application pool, or restart the application pool directly.</li>
-                        <li><strong>Reviewer page shows a Windows-auth prompt</strong> &mdash; IIS Windows Authentication must be enabled in IIS Manager (not just <code>web.config</code>). The reviewer page uses anonymous + token; admin pages use Windows identity.</li>
-                        <li><strong>Email font is Times New Roman in Outlook</strong> &mdash; should be fixed as of April 2026. If it recurs, every text-bearing element in <code>LPPIEmail.cs</code> <code>BuildBody</code> must declare <code>font-family</code> inline; the Word renderer in Outlook does not inherit fonts from a parent.</li>
-                        <li><strong>Reviewer link returns "Invalid link"</strong> &mdash; the package may have been Cancelled, the token may have been regenerated, or the email link may be older than the most recent reload-and-reissue. Check the package status on Send-outs.</li>
-                        <li><strong>OLE DB parameter binding error</strong> &mdash; SQL must use positional <code>?</code> placeholders, not named <code>@param</code> markers. The <code>LPPIHelper.P()</code> helper does the translation; make sure new code goes through it.</li>
-                    </ul>
+                    <div class="callout warn">
+                        <strong>Export is irreversible.</strong> Once a package is Exported, it cannot be unfinalised or modified. If you need to amend a payment after export, do it through the normal ERP correction process &mdash; not by trying to undo the export here.
+                    </div>
                 </section>
 
                 <section id="support">

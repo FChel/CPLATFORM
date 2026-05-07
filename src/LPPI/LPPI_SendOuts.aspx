@@ -9,7 +9,9 @@
     <title>LPPI Review — Send-outs</title>
     <link rel="stylesheet" href="../css/lppi.css" />
     <style>
-        /* Email preview modal */
+        /* Email preview modal — page-specific, kept inline. The pill colour
+           rules that used to live here have moved to the shared lppi.css
+           lifecycle-pills section so all pages stay in sync. */
         #previewOverlay {
             display: none;
             position: fixed;
@@ -47,15 +49,6 @@
             width: 100%;
             min-height: 520px;
         }
-
-        /* Status pill colours for the new package status set */
-        .pill.notsent  { background: var(--line-2);    color: var(--ink-3); }
-        .pill.sent     { background: var(--orange-soft); color: var(--orange-deep); }
-        .pill.inreview { background: var(--orange-soft); color: var(--orange-deep); }
-        .pill.complete { background: var(--ok-bg);     color: var(--ok); }
-        .pill.cancelled{ background: var(--err-bg);    color: var(--err); }
-        .pill.overdue  { background: var(--err-bg);    color: var(--err); }
-        .pill.duesoon  { background: var(--warn-bg);   color: var(--warn); }
     </style>
     <script>
         function openReviewLink(token, baseUrl) {
@@ -92,7 +85,10 @@
             <div>
                 <div class="crumb">LPPI Review</div>
                 <h1>Send for review</h1>
-                <p class="lead">Packages are created automatically when a file is loaded. Pick the packages you want to send (or remind) and issue them here.</p>
+                <p class="lead">
+                    Packages are created automatically when a file is loaded. Pick the packages you want to send (or remind) and issue them here.
+                    Finalised packages remain in the list for visibility but cannot be re-sent.
+                </p>
             </div>
         </div>
 
@@ -106,6 +102,7 @@
             <h2>Open packages</h2>
             <p style="color:var(--ink-3);font-size:13px;">
                 NotSent packages can be issued for the first time. Sent and InReview packages can be reminded.
+                Finalised packages are read-only here — they are visible for monitoring and proceed to Export when ready.
                 Use Preview email at any time to see what the recipients will receive.
             </p>
             <div class="form-grid">
@@ -154,8 +151,28 @@
                     <ItemTemplate>
                         <tr>
                             <td>
-                                <asp:CheckBox runat="server" ID="chkPick" CssClass="pkgPick"
-                                              Enabled='<%# (int)Eval("ToCount") > 0 %>' />
+                                <%-- Plain HTML checkbox with runat=server (not asp:CheckBox)
+                                     so the .pkgPick CSS class lands on the actual <input>
+                                     element rather than a wrapping <span>. The chkAll
+                                     select-all up in the header relies on
+                                     document.querySelectorAll('.pkgPick') being able to
+                                     toggle .checked on each result. Server-side selection
+                                     still works via FindControl, cast to HtmlInputCheckBox.
+
+                                     The disabled attribute is data-bound — runat=server
+                                     makes ASP.NET bind to HtmlInputCheckBox.Disabled which
+                                     is a bool property, NOT a passthrough HTML attribute.
+                                     The expression here is the negation of "is actionable",
+                                     i.e. true => disabled, false => enabled. The actionable
+                                     criteria are:
+                                       - the package has at least one configured recipient (ToCount > 0), AND
+                                       - the status is one of NotSent / Sent / InReview (i.e. actionable
+                                         for send/remind). Finalised rows show but cannot be picked. --%>
+                                <input type="checkbox" runat="server" id="chkPick" class="pkgPick"
+                                       disabled='<%# !( (int)Eval("ToCount") > 0
+                                                    && ( string.Equals(Convert.ToString(Eval("Status")), "NotSent",  System.StringComparison.OrdinalIgnoreCase)
+                                                      || string.Equals(Convert.ToString(Eval("Status")), "Sent",     System.StringComparison.OrdinalIgnoreCase)
+                                                      || string.Equals(Convert.ToString(Eval("Status")), "InReview", System.StringComparison.OrdinalIgnoreCase) ) ) %>' />
                                 <asp:HiddenField runat="server" ID="hfPackageId" Value='<%# Eval("PackageID") %>' />
                             </td>
                             <td>#<%# Eval("PackageID") %></td>

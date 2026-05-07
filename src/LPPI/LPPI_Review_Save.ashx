@@ -32,19 +32,22 @@ namespace CPlatform.LPPI
     ///     to tblLPPI_ReviewHistory capturing the new state. UPDATE +
     ///     history insert are wrapped in a single transaction per row.
     ///
-    /// Authoritative gate: only Complete and Cancelled packages reject
-    /// writes. NotSent, Sent and InReview all accept writes.
+    /// Authoritative gate: writes are rejected when the package is in any
+    /// of these states: Finalised, Exported, Cancelled. Editable states
+    /// are NotSent, Sent and InReview — the same set covered by the
+    /// LPPIHelper.ActivePackageStatusList constant minus Finalised.
     ///
-    /// Lifecycle transitions, run once after all rows are processed:
-    ///   1. If the package was Sent and any row in this batch saved, flip
-    ///      Sent -> InReview. Editing a NotSent package does NOT flip
-    ///      its status — the package only becomes Sent when the operator
-    ///      hits Send on the Send-outs page, which stamps SentDate at the
-    ///      same time.
-    ///   2. If every document in the package now has a non-null
-    ///      ReasonCodeID, flip InReview -> Complete and stamp ClosedDate.
-    ///      This only fires for InReview, so a fully-coded NotSent package
-    ///      stays NotSent until the operator sends it.
+    /// Lifecycle transition:
+    ///   * If the package was Sent and any row in this batch saved, flip
+    ///     Sent -> InReview. Editing a NotSent package does NOT flip
+    ///     its status — the package only becomes Sent when the operator
+    ///     hits Send on the Send-outs page, which stamps SentDate at the
+    ///     same time.
+    ///
+    /// There is NO automatic flip to Finalised. Reaching Finalised is an
+    /// explicit AS Fin action via the Finalise button on the reviewer page
+    /// (separate handler — LPPIHelper.FinalisePackage). The reviewer can
+    /// keep editing right up to the moment Finalise is clicked.
     ///
     /// Posted form fields:
     ///   token              the package token (required)
@@ -110,14 +113,26 @@ namespace CPlatform.LPPI
                 int    packageId = Convert.ToInt32(pkg.Rows[0]["PackageID"]);
                 string status    = Convert.ToString(pkg.Rows[0]["Status"]);
 
+                // Read-only gate: Finalised, Exported and Cancelled all
+                // reject writes. Reviewer page renders these with a banner
+                // that disables the form, but this is the authoritative
+                // server-side check and matches the helper constant so a
+                // future status rename only needs to change one place.
                 bool readOnly =
-                    string.Equals(status, "Complete",  StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+                    string.Equals(status, LPPIHelper.StatusFinalised, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(status, LPPIHelper.StatusExported,  StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(status, LPPIHelper.StatusCancelled, StringComparison.OrdinalIgnoreCase);
                 if (readOnly)
                 {
-                    WriteTopLevel(ctx, false,
-                        "This review package is closed (status: " + status + ") and cannot be changed.",
-                        status, null);
+                    string msg;
+                    if (string.Equals(status, LPPIHelper.StatusFinalised, StringComparison.OrdinalIgnoreCase))
+                        msg = "This review package has been finalised by AS Fin and cannot be changed. Contact the LPPI administrator if you believe a change is needed.";
+                    else if (string.Equals(status, LPPIHelper.StatusExported, StringComparison.OrdinalIgnoreCase))
+                        msg = "This review package has been included in an ERP payment file and is locked.";
+                    else
+                        msg = "This review package has been cancelled and cannot be changed.";
+
+                    WriteTopLevel(ctx, false, msg, status, null);
                     return;
                 }
 
@@ -155,14 +170,19 @@ namespace CPlatform.LPPI
                 }
 
                 // ----------------------------------------------------------
-                // Lifecycle transitions — run once at end of batch.
+                // Lifecycle transition — run once at end of batch.
+                //
+                // First save by reviewer flips Sent -> InReview. The
+                // WHERE Status = 'Sent' guard means editing a NotSent
+                // package will NOT trip this update.
+                //
+                // There is NO automatic flip to Finalised — that is an
+                // explicit AS Fin action via the Finalise button (handled
+                // by LPPI_Review_Finalise.ashx + LPPIHelper.FinalisePackage).
                 // ----------------------------------------------------------
                 string finalStatus = status;
                 if (anyRowSaved)
                 {
-                    // (1) First save by reviewer flips Sent -> InReview. The
-                    //     WHERE Status = 'Sent' guard means editing a NotSent
-                    //     package will NOT trip this update.
                     LPPIHelper.ExecuteNonQuery(@"
                         UPDATE tblLPPI_ReviewPackages
                            SET Status = 'InReview'
@@ -170,27 +190,8 @@ namespace CPlatform.LPPI
                            AND Status   = 'Sent';",
                         LPPIHelper.P("@p", packageId));
 
-                    // (2) If every doc in the package now has a non-null
-                    //     reason code, flip InReview -> Complete and stamp
-                    //     ClosedDate. Status = 'InReview' guard ensures a
-                    //     fully-coded NotSent package stays NotSent.
-                    LPPIHelper.ExecuteNonQuery(@"
-                        UPDATE tblLPPI_ReviewPackages
-                           SET Status     = 'Complete',
-                               ClosedDate = SYSDATETIME()
-                         WHERE PackageID = @p
-                           AND Status   = 'InReview'
-                           AND NOT EXISTS (
-                               SELECT 1
-                                 FROM tblLPPI_ReviewPackageDocuments pd
-                                 LEFT JOIN tblLPPI_Reviews r ON r.DocumentID = pd.DocumentID
-                                WHERE pd.PackageID = @p
-                                  AND (r.ReasonCodeID IS NULL)
-                           );",
-                        LPPIHelper.P("@p", packageId));
-
                     // Re-read status so the client UI can react if the
-                    // package has flipped to Complete.
+                    // package has flipped to InReview.
                     object newStatus = LPPIHelper.ExecuteScalar(
                         "SELECT Status FROM tblLPPI_ReviewPackages WHERE PackageID = @p",
                         LPPIHelper.P("@p", packageId));

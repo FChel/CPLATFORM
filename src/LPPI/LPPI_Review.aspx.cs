@@ -8,8 +8,24 @@ namespace CPlatform.LPPI
 {
     public partial class LPPI_Review : LPPIBasePage
     {
-        // This page authenticates via an unguessable token, not Windows identity.
-        // Opt out of the admin access gate in LPPIBasePage.OnLoad.
+        // This page authenticates via an unguessable token, not the admin
+        // gate. It opts out of LPPIBasePage's admin-access check so the CM /
+        // AS Fin team for the program can reach it without being on the
+        // admin allow-list.
+        //
+        // IIS Windows Authentication is still active on the page though,
+        // so HttpContext.Current.User.Identity carries the SSO identity.
+        // LPPIHelper.CurrentUserId() / CurrentUserDisplayName() pick that
+        // up and we record it as ChangedByName / FinalisedBy in the audit
+        // tables — answering the question "who clicked Finalise" even
+        // though the page itself is token-gated.
+        //
+        // Note on roles: there is no separate "reviewer" vs "AS Fin" role.
+        // The token-holder population for a package IS the AS Fin team
+        // responsible for that CM program (e.g. AS Fin ARMY for the ARMY
+        // package). They review, finalise and unfinalise self-service.
+        // The admin-only checkpoint is the ERP export — once a package is
+        // included in an export run, it is locked.
         protected override bool RequiresAdminAccess { get { return false; } }
 
         protected string TokenForClient = "";
@@ -24,14 +40,30 @@ namespace CPlatform.LPPI
         protected string DueCountdownText;
         protected string DueCssClass;
 
-        // Read-only mode. Only Complete and Cancelled are read-only.
-        // NotSent / Sent / InReview are all fully editable so admins can QA
-        // during pre-launch and reviewers can edit normally once the package
-        // is sent. Editing a NotSent package does NOT flip its status —
-        // status only moves to Sent when the operator hits Send on the
-        // Send-outs page.
+        // Read-only mode. Finalised, Exported and Cancelled all render
+        // read-only ON THE FORM FIELDS, but Finalised is editable in the
+        // sense that the user can click Unfinalise to return it to InReview.
+        // The IsReadOnly flag drives the form-field disable hooks; the
+        // toolbar action button is rendered separately based on status.
         protected bool IsReadOnly;
         protected string StatusBannerHtml = "";
+        protected string CurrentStatus    = "";
+
+        // Toolbar action button gating. There is one button slot in the
+        // toolbar; its label and colour depend on status.
+        //
+        //   Editable (NotSent / Sent / InReview) -> green "Finalise"
+        //   Finalised                            -> orange "Unfinalise"
+        //   Exported / Cancelled                 -> no button (terminal)
+        //
+        // The empty-package case (TotalCount == 0) suppresses the button
+        // in all states — there is nothing to finalise.
+        protected bool ShowActionButton;
+        protected bool IsFinalised;
+
+        // "Ready to finalise" hint banner — shown when every doc has been
+        // coded but the package is still in flight (NotSent/Sent/InReview).
+        protected bool IsAllReviewed;
 
         // Exposure (dollar) figures — scoped to this package only. Driven into
         // the head-row "Exposure" cell. The three component values sum to the
@@ -53,7 +85,9 @@ namespace CPlatform.LPPI
             if (token.Length == 0) { ShowError(); return; }
 
             DataTable pkg = LPPIHelper.ExecuteTable(@"
-                SELECT p.PackageID, p.CmID, p.DueDate, p.Status, cm.Program, cm.DisplayName
+                SELECT p.PackageID, p.CmID, p.DueDate, p.Status,
+                       p.FinalisedDate, p.FinalisedBy,
+                       cm.Program, cm.DisplayName
                 FROM tblLPPI_ReviewPackages p
                 INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
                 WHERE p.Token = @t",
@@ -65,12 +99,27 @@ namespace CPlatform.LPPI
 
             DataRow pr     = pkg.Rows[0];
             string  status = Convert.ToString(pr["Status"]);
+            CurrentStatus  = status;
 
-            // Read-only when Complete or Cancelled. Everything else is editable.
-            bool readOnly = string.Equals(status, "Complete",  StringComparison.OrdinalIgnoreCase)
-                         || string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+            // Form-field read-only when Finalised / Exported / Cancelled.
+            // Even though Finalised is reversible (via Unfinalise), the
+            // form fields stay locked — to edit data you must Unfinalise
+            // first. This keeps the audit trail clean: every save happens
+            // against an editable status.
+            bool readOnly =
+                string.Equals(status, LPPIHelper.StatusFinalised, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(status, LPPIHelper.StatusExported,  StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(status, LPPIHelper.StatusCancelled, StringComparison.OrdinalIgnoreCase);
             IsReadOnly = readOnly;
-            StatusBannerHtml = BuildStatusBanner(status);
+            IsFinalised = string.Equals(status, LPPIHelper.StatusFinalised, StringComparison.OrdinalIgnoreCase);
+
+            // Build the banner. For Finalised, include the FinalisedBy / Date
+            // so the user can see who closed it off and when.
+            string finalisedBy   = pr["FinalisedBy"]   == DBNull.Value ? "" : Convert.ToString(pr["FinalisedBy"]);
+            DateTime? finalisedAt = pr["FinalisedDate"] == DBNull.Value
+                ? (DateTime?)null
+                : Convert.ToDateTime(pr["FinalisedDate"]);
+            StatusBannerHtml = BuildStatusBanner(status, finalisedBy, finalisedAt);
 
             int packageId  = Convert.ToInt32(pr["PackageID"]);
             TokenForClient = token;
@@ -86,19 +135,39 @@ namespace CPlatform.LPPI
             _reasonCodes = LPPIHelper.GetReasonCodes(activeOnly: true);
             LoadDocuments(packageId);
             LoadExposure(packageId);
+
+            // Toolbar action-button gating, computed after LoadDocuments so
+            // we have ReviewedCount / TotalCount available.
+            //
+            //   - Editable states show Finalise.
+            //   - Finalised shows Unfinalise.
+            //   - Exported / Cancelled show no button.
+            //   - Empty package suppresses the button entirely.
+            bool editable =
+                string.Equals(status, LPPIHelper.StatusNotSent,  StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(status, LPPIHelper.StatusSent,     StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(status, LPPIHelper.StatusInReview, StringComparison.OrdinalIgnoreCase);
+            ShowActionButton = (editable || IsFinalised) && TotalCount > 0;
+            IsAllReviewed    = editable && TotalCount > 0 && ReviewedCount >= TotalCount;
         }
 
         /// <summary>
-        /// Builds the status banner shown above the review header. NotSent
-        /// gets an informational note (editable but not yet sent). Sent and
-        /// InReview render no banner — the page looks normal. Complete and
-        /// Cancelled render a read-only banner.
+        /// Builds the status banner shown above the review header.
+        ///   NotSent   — informational; editable but not yet sent.
+        ///   Sent      — no banner; the page looks "normal".
+        ///   InReview  — no banner; same as Sent.
+        ///   Finalised — banner naming who finalised and when. The banner
+        ///               text does not need to mention Unfinalise — the
+        ///               toolbar button takes care of that.
+        ///   Exported  — locked, in an ERP file. Terminal.
+        ///   Cancelled — read-only; documents may be re-bundled. Terminal.
         /// </summary>
-        private static string BuildStatusBanner(string status)
+        private static string BuildStatusBanner(string status, string finalisedBy, DateTime? finalisedAt)
         {
             string title;
             string body;
             string kind;
+
             switch ((status ?? "").ToLowerInvariant())
             {
                 case "notsent":
@@ -106,25 +175,43 @@ namespace CPlatform.LPPI
                     title = "Not yet sent";
                     body  = "This package has not been emailed to recipients yet. You can edit reason codes here for testing or QA — your changes will be visible to the reviewer once the package is issued from Send-outs.";
                     break;
-                case "complete":
+
+                case "finalised":
                     kind  = "ok";
-                    title = "Complete";
-                    body  = "Every document in this package has been reviewed. The package is closed and read-only.";
+                    var who  = string.IsNullOrEmpty(finalisedBy) ? "AS Fin" : finalisedBy;
+                    var when = finalisedAt.HasValue
+                        ? finalisedAt.Value.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("en-AU"))
+                        : "";
+                    title = "Finalised";
+                    if (when.Length > 0)
+                        body = "Finalised by " + who + " on " + when + ". The form fields are locked. Click Unfinalise above to reopen this package for further edits.";
+                    else
+                        body = "Finalised by " + who + ". The form fields are locked. Click Unfinalise above to reopen this package for further edits.";
                     break;
+
+                case "exported":
+                    kind  = "ok";
+                    title = "Exported";
+                    body  = "This package has been included in an ERP payment file and is locked. No further changes are possible.";
+                    break;
+
                 case "cancelled":
                     kind  = "warn";
                     title = "Cancelled";
                     body  = "This package has been cancelled. It is read-only and the documents are eligible for repackaging on the next file load.";
                     break;
+
                 case "sent":
                 case "inreview":
                     return "";
+
                 default:
                     kind  = "warn";
                     title = "Unknown status";
                     body  = "This package is in an unrecognised state.";
                     break;
             }
+
             var sb = new StringBuilder();
             sb.Append("<div class=\"alert alert-").Append(kind).Append("\" style=\"margin:0 0 16px 0;\">")
               .Append("<div><strong>").Append(LPPIHelper.Enc(title)).Append("</strong> &mdash; ")

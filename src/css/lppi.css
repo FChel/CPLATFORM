@@ -1826,3 +1826,18 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     cursor: help;
 }
 
+.pill.notsent   { background: var(--line-2);     color: var(--ink-3); }
+.pill.sent      { background: var(--orange-soft); color: var(--orange-deep); }
+.pill.inreview  { background: var(--orange-soft); color: var(--orange-deep); }
+.pill.finalised { background: var(--ok-bg);       color: var(--ok); }
+.pill.exported  { background: #e6ecf2;            color: #2a4f73; }
+.pill.cancelled { background: var(--err-bg);      color: var(--err); }
+
+/* The legacy .complete class is retained for any page that has not yet
+   migrated to the new status set. Same green as Finalised so a stale
+   reference does not look broken. Safe to remove once all pages use the
+   new switch. */
+.pill.complete  { background: var(--ok-bg);       color: var(--ok); }
+
+.pill.duesoon   { background: var(--warn-bg);     color: var(--warn); }
+/* .pill.overdue is already defined earlier in this file — leave alone. */

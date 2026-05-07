@@ -7,6 +7,21 @@ using System.Web.UI.WebControls;
 
 namespace CPlatform.LPPI
 {
+    /// <summary>
+    /// Dashboard. Read-only overview of LPPI activity.
+    ///
+    /// Lifecycle scope (May 2026):
+    ///   The Open packages list now covers NotSent / Sent / InReview /
+    ///   Finalised. Finalised packages stay visible here so admins can see
+    ///   what's queued for export at a glance. Exported and Cancelled
+    ///   packages drop off the dashboard entirely — they're terminal and
+    ///   surface on the Batches page if needed.
+    ///
+    ///   The old "Complete (pending close)" override (which cosmetically
+    ///   relabelled fully-reviewed Sent/InReview packages) is GONE — there
+    ///   is now a real Finalised status with its own pill, so the override
+    ///   is obsolete.
+    /// </summary>
     public partial class LPPI_Admin : LPPIBasePage
     {
         // Exposed to the markup via <%= ExpPayablePct %> etc. Set during Bind()
@@ -65,14 +80,17 @@ namespace CPlatform.LPPI
                 litBatches.Text     = Convert.ToString(s["TotalBatches"]);
             }
 
-            // Open packages — covers NotSent / Sent / InReview.
+            // -----------------------------------------------------------------
+            // Open packages — NotSent / Sent / InReview / Finalised.
+            //
+            // Finalised packages stay visible so admins can see what's
+            // queued for export. Exported and Cancelled drop off (terminal).
+            //
             // Sort order: alphabetical by Capability Manager, with PackageID
             // as a stable tie-break for the rare case where one CM has more
             // than one open package. The status pill itself communicates
             // urgency, so the row order does not need to.
-            // (Token column kept in the projection for future use; the
-            // Dashboard no longer renders an Open review button — that
-            // action lives on Send-outs only.)
+            // -----------------------------------------------------------------
             var pkgSql = @"
 SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
        cm.Program AS CmDisplay,
@@ -86,7 +104,7 @@ SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
            AND r.ReasonCodeID IS NOT NULL) AS ReviewedCount
   FROM dbo.tblLPPI_ReviewPackages p
  INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
- WHERE p.Status IN ('NotSent','Sent','InReview')
+ WHERE p.Status IN ('NotSent','Sent','InReview','Finalised')
  ORDER BY cm.Program, p.PackageID;";
 
             var pkgs = LPPIHelper.ExecuteTable(pkgSql);
@@ -99,6 +117,10 @@ SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
                 var rev      = Convert.ToInt32(r["ReviewedCount"]);
                 var status   = Convert.ToString(r["Status"]);
                 var pct      = docCount == 0 ? 100 : (rev * 100 / docCount);
+
+                // CanRemind: only on Sent / InReview, near due, and not yet
+                // fully reviewed. Finalised packages are NOT remindable —
+                // the email cycle is over for them.
                 bool isRemindable =
                     string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase);
@@ -152,15 +174,21 @@ ORDER BY LoadedDate DESC;";
             return value.ToString("N2", CultureInfo.GetCultureInfo("en-AU"));
         }
 
+        /// <summary>
+        /// Status pill for the Open packages table. Authoritative status
+        /// drives the colour; overdue / due-soon adornment only applies
+        /// to Sent / InReview (NotSent is yet to be sent so the due date
+        /// isn't relevant; Finalised is closed off).
+        ///
+        /// The old "Complete (pending close)" override is gone — Finalised
+        /// is its own real status with its own pill.
+        /// </summary>
         protected string RenderStatusPill(object dataItem)
         {
-            var row      = (DataRowView)dataItem;
-            var status   = Convert.ToString(row["Status"]);
-            var due      = Convert.ToDateTime(row["DueDate"]);
-            var docCount = Convert.ToInt32(row["DocCount"]);
-            var rev      = Convert.ToInt32(row["ReviewedCount"]);
+            var row    = (DataRowView)dataItem;
+            var status = Convert.ToString(row["Status"]);
+            var due    = Convert.ToDateTime(row["DueDate"]);
 
-            // Active statuses get the overdue / due-soon augmentation.
             bool active = string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase)
                        || string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase);
 
@@ -171,17 +199,10 @@ ORDER BY LoadedDate DESC;";
                 case "notsent":   label = "Not sent";  cls = "notsent";   break;
                 case "sent":      label = "Sent";      cls = "sent";      break;
                 case "inreview":  label = "In review"; cls = "inreview";  break;
-                case "complete":  label = "Complete";  cls = "complete";  break;
+                case "finalised": label = "Finalised"; cls = "finalised"; break;
+                case "exported":  label = "Exported";  cls = "exported";  break;
                 case "cancelled": label = "Cancelled"; cls = "cancelled"; break;
                 default:          label = status;     cls = "";          break;
-            }
-
-            // Override to "Complete"-style if every doc reviewed.
-            if (docCount > 0 && rev >= docCount && active)
-            {
-                label = "Complete (pending close)";
-                cls   = "complete";
-                active = false;
             }
 
             var sb = new StringBuilder();

@@ -20,6 +20,12 @@
    * Mandatory-field rules enforced client-side (server enforces authoritatively):
        - RequiresComments: Comments must be non-empty.
        - NotPayable: both Comments and Objective Reference required.
+   * Action button (single slot in the toolbar): toggles between Finalise
+     and Unfinalise based on the package status. Editable states show a
+     green Finalise button; Finalised shows an orange Unfinalise button;
+     Exported / Cancelled show no button. Confirmation is a confirm()
+     dialog re-stating the action; on success the page is reloaded so
+     the new status comes from the server-rendered HTML.
    * beforeunload warning if the dirty set is non-empty.
    * Filters (search, status, facets) apply to both Tab 1 rows and Tab 2 rows.
      The Instructions tab hides the toolbar entirely.
@@ -33,7 +39,9 @@
 (function () {
     'use strict';
 
-    var SAVE_URL = 'LPPI_Review_Save.ashx';
+    var SAVE_URL       = 'LPPI_Review_Save.ashx';
+    var FINALISE_URL   = 'LPPI_Review_Finalise.ashx';
+    var UNFINALISE_URL = 'LPPI_Review_Unfinalise.ashx';
     var token    = (document.getElementById('reviewToken') || {}).value || '';
     var readOnly = ((document.getElementById('reviewReadOnly') || {}).value || '0') === '1';
 
@@ -41,14 +49,22 @@
     var mainByDoc = {};   // docNo -> .doc-main <tr>
     var allDetail = [];   // .detail-row elements (Tab 2)
 
-    var dirtySet      = {};   // docNo -> true, while there are unsaved local changes
-    var saveInFlight  = false;
-    var totalDocs     = 0;
-    var reviewedDocs  = 0;
+    var dirtySet         = {};   // docNo -> true, while there are unsaved local changes
+    var saveInFlight     = false;
+    var actionInFlight   = false;
+    var totalDocs        = 0;
+    var reviewedDocs     = 0;
 
     var saveIndicator = document.getElementById('saveIndicator');
     var saveButton    = document.getElementById('saveAllBtn');
     var saveLabel     = document.getElementById('saveAllBtnLabel');
+
+    // Action button — single slot that holds either Finalise (editable
+    // states) or Unfinalise (Finalised). May be null on Exported /
+    // Cancelled / empty-package, in which case there is no action to take.
+    // Distinguish via the data-action attribute set in the markup.
+    var actionButton = document.getElementById('actionBtn');
+    var actionLabel  = document.getElementById('actionBtnLabel');
 
     var FACETS = [
         { id: 'filterDm',  attr: 'data-dm'  },
@@ -77,7 +93,7 @@
         });
         reviewedDocs = allMain.filter(function (r) { return r.classList.contains('reviewed'); }).length;
         updateProgress();
-        updateDoneState();
+        updateReadyBanner();
 
         bindRowControls(allMain);
         allMain.forEach(evaluateNeeds);
@@ -105,6 +121,11 @@
 
         // Save button
         if (saveButton) saveButton.addEventListener('click', onSaveClick);
+
+        // Action button — Finalise OR Unfinalise. The handler dispatches
+        // by the data-action attribute set in the markup so a single
+        // listener handles both directions.
+        if (actionButton) actionButton.addEventListener('click', onActionClick);
 
         bindBulk();
         bindKeyboard();
@@ -581,11 +602,18 @@
         // Recalculate reviewed count + progress.
         reviewedDocs = allMain.filter(function (r) { return r.classList.contains('reviewed'); }).length;
         updateProgress();
-        updateDoneState();
+        updateReadyBanner();
 
-        // If the package status flipped to Complete, mark the page as
-        // read-only so the user cannot keep editing.
-        if (resp.packageStatus === 'Complete' || resp.packageStatus === 'Cancelled') {
+        // If the package status flipped to a terminal state (Finalised,
+        // Exported, Cancelled) the server has set the read-only gate;
+        // mirror that on the client so the user cannot keep editing.
+        // Note: a successful save against a NotSent/Sent/InReview package
+        // never moves to a terminal state via the save endpoint — only
+        // the dedicated finalise / export / cancel paths can do that —
+        // but defending here is cheap.
+        if (resp.packageStatus === 'Finalised'
+            || resp.packageStatus === 'Exported'
+            || resp.packageStatus === 'Cancelled') {
             readOnly = true;
             var shell = document.querySelector('.review-shell');
             if (shell) shell.setAttribute('data-readonly', '1');
@@ -671,7 +699,7 @@
             evaluateNeeds(row);
             reviewedDocs = allMain.filter(function (rr) { return rr.classList.contains('reviewed'); }).length;
             updateProgress();
-            updateDoneState();
+            updateReadyBanner();
             updateSaveButton();
         });
         actions.appendChild(btn);
@@ -686,6 +714,149 @@
         msgEl.classList.remove('row-msg-stale');
         msgEl.classList.add('row-msg-error');
         msgEl.textContent = message;
+    }
+
+    /* =========================================================================
+       Action button — Finalise / Unfinalise
+
+       The action button has a single slot in the toolbar and toggles
+       between Finalise (editable states) and Unfinalise (Finalised state)
+       via the data-action attribute set by the server in the markup. This
+       function dispatches by that attribute so a single click handler
+       covers both directions.
+
+       Both actions:
+         - Refuse if there are unsaved local edits (mixing the two would
+           make the audit trail ambiguous).
+         - Show a confirm() dialog explaining what will happen.
+         - POST to the appropriate endpoint with the package token.
+         - On success, reload the page so the new banner / status pill /
+           form-field locks come from the server-rendered HTML.
+
+       Finalise auto-applies RC-NR to undecided documents and locks the
+       form. Unfinalise wipes those auto-applied codes and reopens the
+       form for further editing. Both write history rows so the audit
+       trail captures every direction change.
+       ========================================================================= */
+    function onActionClick() {
+        if (actionInFlight) return;
+        if (!actionButton) return;
+
+        var action = actionButton.getAttribute('data-action') || '';
+        if (action === 'finalise') {
+            doFinalise();
+        } else if (action === 'unfinalise') {
+            doUnfinalise();
+        }
+    }
+
+    function doFinalise() {
+        // Refuse if there are unsaved changes.
+        var dirtyCount = Object.keys(dirtySet).length;
+        if (dirtyCount > 0) {
+            alert('Please save your changes first. ' +
+                  dirtyCount + ' row' + (dirtyCount === 1 ? ' has' : 's have') + ' unsaved edits.');
+            return;
+        }
+
+        var undecided = totalDocs - reviewedDocs;
+        var undecidedLine;
+        if (undecided <= 0) {
+            undecidedLine = 'Every document already has a reason code, so no defaults will be applied.';
+        } else if (undecided === 1) {
+            undecidedLine = '1 document still has no reason code. It will be marked as RC-NR (Payable — no response received from CM).';
+        } else {
+            undecidedLine = undecided + ' documents still have no reason code. They will be marked as RC-NR (Payable — no response received from CM).';
+        }
+
+        var confirmMsg =
+            'Finalise this package?\n\n' +
+            undecidedLine + '\n\n' +
+            'After finalising, the form fields are locked. ' +
+            'You can unfinalise the package at any time before it is exported to ERP.';
+
+        if (!confirm(confirmMsg)) return;
+
+        runActionRequest(FINALISE_URL, 'finalise', 'Finalising…', 'Finalise failed');
+    }
+
+    function doUnfinalise() {
+        // Editing is locked while Finalised, so there should never be
+        // dirty rows. Belt and braces though.
+        var dirtyCount = Object.keys(dirtySet).length;
+        if (dirtyCount > 0) {
+            alert('There are unsaved edits in flight. Please reload the page and try again.');
+            return;
+        }
+
+        var confirmMsg =
+            'Unfinalise this package?\n\n' +
+            'The auto-applied "no response" codes will be cleared and the package will return to In Review. ' +
+            'You can finalise again at any time.';
+
+        if (!confirm(confirmMsg)) return;
+
+        runActionRequest(UNFINALISE_URL, 'unfinalise', 'Unfinalising…', 'Unfinalise failed');
+    }
+
+    /* Common runner for both finalise and unfinalise — the only differences
+       are URL, posted action value, and the in-flight label. */
+    function runActionRequest(url, actionValue, busyLabel, failurePrefix) {
+        actionInFlight = true;
+        if (actionButton) actionButton.disabled = true;
+        if (actionLabel)  actionLabel.textContent = busyLabel;
+
+        var payload = new FormData();
+        payload.append('token',  token);
+        payload.append('action', actionValue);
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            actionInFlight = false;
+
+            if (xhr.status !== 200) {
+                resetActionButton();
+                alert(failurePrefix + ' (HTTP ' + xhr.status + '). Please try again or contact the LPPI administrator.');
+                return;
+            }
+
+            var resp;
+            try { resp = JSON.parse(xhr.responseText); }
+            catch (ex) {
+                resetActionButton();
+                alert(failurePrefix + ' (invalid server response). Please try again or contact the LPPI administrator.');
+                return;
+            }
+
+            if (!resp.ok) {
+                resetActionButton();
+                alert(failurePrefix + ': ' + (resp.error || 'Unknown error.'));
+                return;
+            }
+
+            // Success. Reload the page so the new banner, status pill,
+            // form-field locks and toggled action button all come from
+            // the server-rendered HTML.
+            window.location.reload();
+        };
+        xhr.onerror = function () {
+            actionInFlight = false;
+            resetActionButton();
+            alert(failurePrefix + ' (network). Please try again or contact the LPPI administrator.');
+        };
+        xhr.send(payload);
+    }
+
+    function resetActionButton() {
+        if (!actionButton) return;
+        actionButton.disabled = false;
+        if (actionLabel) {
+            // Restore the label that matches the current data-action.
+            var action = actionButton.getAttribute('data-action') || '';
+            actionLabel.textContent = action === 'unfinalise' ? 'Unfinalise' : 'Finalise';
+        }
     }
 
     /* =========================================================================
@@ -819,9 +990,16 @@
         if (bar) bar.style.width = (totalDocs === 0 ? 0 : Math.round(100 * reviewedDocs / totalDocs)) + '%';
     }
 
-    function updateDoneState() {
-        var banner = document.getElementById('doneBanner');
-        if (banner) banner.style.display = (totalDocs > 0 && reviewedDocs >= totalDocs) ? '' : 'none';
+    /* "Ready to finalise" hint — replaces the old auto-Complete done banner.
+       Shown when every document has a reason code BUT the package is still
+       editable (i.e. Finalise has not yet been clicked). On a Finalised /
+       Exported / Cancelled package the banner stays hidden — the status
+       banner at the top of the page handles those cases. */
+    function updateReadyBanner() {
+        var banner = document.getElementById('readyBanner');
+        if (!banner) return;
+        var ready = !readOnly && totalDocs > 0 && reviewedDocs >= totalDocs;
+        banner.classList.toggle('show', ready);
     }
 
     /* =========================================================================

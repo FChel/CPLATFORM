@@ -23,14 +23,18 @@ namespace CPlatform.LPPI
     /// true the Mark-as-sent button is hidden, when false the Send button
     /// is disabled. One flag drives both.
     ///
+    /// BCC: every real send (Initial and Reminder) BCCs the LPPI support
+    /// mailbox so AS Fin has an archive of every email that left the system.
+    /// The CM does not see the BCC. Driven from LPPI.SupportMailboxTo.
+    ///
     /// Status transitions (driven here, not in the database):
     ///   - SendInitial on a NotSent package: on success, status -> Sent and
     ///     SentDate is stamped.
     ///   - MarkAsSent on a NotSent package (UAT only): same status transition
     ///     as SendInitial, no email sent. Audit row written with type
     ///     "Initial-MarkedSent" so the log distinguishes simulated from real.
-    ///   - SendReminder: never changes status. (Allowed only on Sent / InReview;
-    ///     blocked on NotSent / Complete / Cancelled.)
+    ///   - SendReminder: never changes status. Allowed only on Sent / InReview;
+    ///     blocked on NotSent / Finalised / Exported / Cancelled.
     ///   - SendInitial on a package that has already been sent is rejected —
     ///     the caller should be using SendReminder for that case.
     ///
@@ -160,8 +164,8 @@ WHERE cm.CmID = @CmID;";
         /// UAT-only — mark a NotSent package as sent without dispatching any
         /// email. Performs the same status transition as a successful initial
         /// send (Status -> Sent, SentDate stamped) so the rest of the
-        /// lifecycle (reviewer Sent -> InReview, InReview -> Complete) can
-        /// be exercised end-to-end. Available only when ProductionMode is
+        /// lifecycle (reviewer Sent -> InReview, admin Finalise) can be
+        /// exercised end-to-end. Available only when ProductionMode is
         /// false; refuses to run in PROD as a defence-in-depth measure even
         /// if the caller bypasses the UI gate.
         ///
@@ -190,7 +194,7 @@ WHERE cm.CmID = @CmID;";
                 return new SendResult { Success = false, ErrorMessage = "Package not found." };
 
             var status = Convert.ToString(row["Status"]);
-            if (!string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(status, LPPIHelper.StatusNotSent, StringComparison.OrdinalIgnoreCase))
                 return new SendResult
                 {
                     Success      = false,
@@ -218,10 +222,9 @@ WHERE cm.CmID = @CmID;";
             var subject = BuildSubject("Initial", program, dueDate);
 
             // Audit row first — recipients listed exactly as the real send
-            // would have used (To and CC), so the log shows what *would*
+            // would have used (To, CC and BCC), so the log shows what *would*
             // have happened in PROD. EmailType differentiates simulated.
-            string recipientsLogged = string.Join(";", toList) +
-                (ccList.Count > 0 ? " | CC: " + string.Join(";", ccList) : "");
+            string recipientsLogged = FormatRecipientsForLog(toList, ccList, SupportMailboxTo);
             LogSend(packageId,
                     recipientsLogged,
                     "Initial-MarkedSent",
@@ -263,10 +266,11 @@ UPDATE dbo.tblLPPI_ReviewPackages
 
             // Status guard. Initial sends are only valid on NotSent. Reminders
             // are only valid on Sent / InReview. Anything else is rejected so
-            // we do not accidentally re-fire on Complete / Cancelled, or send
-            // an "initial" for a package that already had its first send.
+            // we do not accidentally re-fire on Finalised / Exported /
+            // Cancelled, or send an "initial" for a package that already had
+            // its first send.
             bool isInitial = string.Equals(type, "Initial", StringComparison.OrdinalIgnoreCase);
-            if (isInitial && !string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
+            if (isInitial && !string.Equals(status, LPPIHelper.StatusNotSent, StringComparison.OrdinalIgnoreCase))
             {
                 return new SendResult
                 {
@@ -275,8 +279,8 @@ UPDATE dbo.tblLPPI_ReviewPackages
                 };
             }
             if (!isInitial &&
-                !(string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase) ||
-                  string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase)))
+                !(string.Equals(status, LPPIHelper.StatusSent,     StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(status, LPPIHelper.StatusInReview, StringComparison.OrdinalIgnoreCase)))
             {
                 return new SendResult
                 {
@@ -300,6 +304,11 @@ UPDATE dbo.tblLPPI_ReviewPackages
             var subject = BuildSubject(type, program, dueDate);
             var body    = BuildBody(type, program, dueDate, token, docCount, reviewedCount);
 
+            // BCC the LPPI support mailbox so AS Fin has an archive of every
+            // email that leaves the system. CM does not see this address.
+            // Empty string means no BCC (defensive — config might be blank).
+            string bccAddress = SupportMailboxTo;
+
             string error = null;
             bool   ok    = false;
             try
@@ -311,6 +320,8 @@ UPDATE dbo.tblLPPI_ReviewPackages
                         LPPIHelper.Setting("LPPI.MailFromName", "LPPI Review"));
                     foreach (var to in toList) msg.To.Add(to);
                     foreach (var cc in ccList) msg.CC.Add(cc);
+                    if (!string.IsNullOrWhiteSpace(bccAddress))
+                        msg.Bcc.Add(bccAddress);
                     msg.Subject      = subject;
                     msg.Body         = body;
                     msg.IsBodyHtml   = true;
@@ -327,7 +338,7 @@ UPDATE dbo.tblLPPI_ReviewPackages
             }
 
             LogSend(packageId,
-                string.Join(";", toList) + (ccList.Count > 0 ? " | CC: " + string.Join(";", ccList) : ""),
+                FormatRecipientsForLog(toList, ccList, bccAddress),
                 type, subject, body, ok, error);
 
             // Status transition — only on a successful initial send, and only
@@ -344,6 +355,22 @@ UPDATE dbo.tblLPPI_ReviewPackages
             }
 
             return new SendResult { Success = ok, ErrorMessage = error };
+        }
+
+        // -------------------------------------------------------------------
+        // Recipient log formatter — keeps audit-row format consistent.
+        // Format: "to1;to2 | CC: cc1;cc2 | BCC: bcc"
+        // CC and BCC sections are omitted when empty.
+        // -------------------------------------------------------------------
+        private static string FormatRecipientsForLog(List<string> toList, List<string> ccList, string bcc)
+        {
+            var sb = new StringBuilder();
+            sb.Append(string.Join(";", toList));
+            if (ccList != null && ccList.Count > 0)
+                sb.Append(" | CC: ").Append(string.Join(";", ccList));
+            if (!string.IsNullOrWhiteSpace(bcc))
+                sb.Append(" | BCC: ").Append(bcc);
+            return sb.ToString();
         }
 
         // -------------------------------------------------------------------

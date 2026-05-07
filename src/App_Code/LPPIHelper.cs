@@ -12,19 +12,53 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Central data access + utility helper for the LPPI Review utility.
     /// Parameterised SQL only. No ORM. Connection string read from web.config
-    /// appSetting "LPPI.ConnectionString" (falls back to ConnectionStrings["CPlatform"]).
+    /// appSetting "LPPI.ConnectionString" (falls back to a UDL under
+    /// ~/Database/CPlatform.udl, matching CPLATFORM convention).
     /// </summary>
     public static class LPPIHelper
     {
         // -------------------------------------------------------------------
-        // Active-package status set
+        // Lifecycle status constants and sets
         //
-        // The "open packages" concept on the dashboard and elsewhere covers
-        // every package that is in flight — i.e. created and not yet finished
-        // or cancelled. NotSent is included because admins can still preview
-        // and QA those packages, and they still count as outstanding work.
+        // The package lifecycle (driven entirely by app code, not SQL defaults):
+        //
+        //     NotSent -> Sent -> InReview -> Finalised -> Exported
+        //                                       ^
+        //                                       └── admin can Unfinalise back
+        //                                           to InReview while still
+        //                                           Finalised (i.e. not yet
+        //                                           Exported).
+        //
+        //     Cancelled is the side-branch, terminal.
+        //
+        // ActivePackageStatusList covers everything that is in flight — i.e.
+        // created and not yet either committed to ERP (Exported) or withdrawn
+        // (Cancelled). Includes Finalised: from a workflow perspective, a
+        // Finalised package is still "in the system" — admins can unfinalise
+        // it, and it has not yet been billed to ERP. It only leaves the
+        // dashboard active list when it goes to Exported or Cancelled.
         // -------------------------------------------------------------------
-        public const string ActivePackageStatusList = "'NotSent','Sent','InReview'";
+        public const string StatusNotSent   = "NotSent";
+        public const string StatusSent      = "Sent";
+        public const string StatusInReview  = "InReview";
+        public const string StatusFinalised = "Finalised";
+        public const string StatusExported  = "Exported";
+        public const string StatusCancelled = "Cancelled";
+
+        // SQL-quoted IN list of statuses considered "active" for the dashboard,
+        // package lists, etc. Excludes the two terminal statuses (Exported,
+        // Cancelled).
+        public const string ActivePackageStatusList = "'NotSent','Sent','InReview','Finalised'";
+
+        // Reviewer-page write gate — saves are rejected when the package is
+        // in any of these states. Only a Finalised package can be unfinalised
+        // (admin action on Send-outs); Exported and Cancelled are terminal.
+        public const string ReadOnlyPackageStatusList = "'Finalised','Exported','Cancelled'";
+
+        // The system reason code applied when AS Fin clicks Finalise on a
+        // package that still has undecided documents. IsActive = 0 in
+        // tblLPPI_ReasonCodes so it does NOT appear in the reviewer dropdown.
+        public const string NoResponseReasonCode = "RC-NR";
 
         // -------------------------------------------------------------------
         // Config helpers
@@ -117,7 +151,9 @@ namespace CPlatform.LPPI
         // Access control
         //
         // Access model:
-        //   Reviewer page  = token-based (no Windows identity check).
+        //   Reviewer page  = token-based; admin gate disabled. IIS Windows
+        //                    auth still captures the identity though, and we
+        //                    use it for audit (ChangedByName etc.).
         //   Everything else = gated by tblLPPI_AdminUsers.
         //   Admin           = full access to all LPPI admin pages and actions.
         //   Non-admin       = LPPI_Review.aspx only (via token link).
@@ -408,6 +444,22 @@ namespace CPlatform.LPPI
             return ExecuteTable(sql, P("@Active", activeOnly ? 1 : 0));
         }
 
+        /// <summary>
+        /// Looks up a single reason code by its Code string (e.g. "RC-NR")
+        /// and returns its ReasonCodeID. Used by the finalise flow to find
+        /// the system "no response" code without hard-coding an ID. Returns
+        /// null when the code does not exist or is missing.
+        /// </summary>
+        public static int? GetReasonCodeIdByCode(string code)
+        {
+            if (string.IsNullOrWhiteSpace(code)) return null;
+            var o = ExecuteScalar(
+                "SELECT ReasonCodeID FROM dbo.tblLPPI_ReasonCodes WHERE Code = @c",
+                P("@c", code.Trim()));
+            if (o == null || o == DBNull.Value) return null;
+            return Convert.ToInt32(o);
+        }
+
         // -------------------------------------------------------------------
         // Capability managers
         // -------------------------------------------------------------------
@@ -500,8 +552,8 @@ WHERE d.CapabilityManagerProgram IS NOT NULL
         // Dashboard summary
         //
         // "OpenPackages" / "OverduePackages" / "NearDeadlinePackages" use the
-        // active package status set: NotSent, Sent, InReview. Complete and
-        // Cancelled are out of scope for these counts.
+        // active package status set: NotSent, Sent, InReview, Finalised.
+        // Exported and Cancelled are out of scope for these counts.
         //
         // Document-level counts work on COUNT(DISTINCT DocNoAccounting). The
         // first-line-review model puts one Review row per document, against
@@ -513,6 +565,10 @@ WHERE d.CapabilityManagerProgram IS NOT NULL
 
         public static DataRow GetDashboardSummary()
         {
+            // The IN list is built from the StatusXxx constants so a future
+            // status rename only happens in one place.
+            var activeIn = ActivePackageStatusList;
+
             var sql = @"
 SELECT
    (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents)           AS TotalDocs,
@@ -520,12 +576,12 @@ SELECT
    (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents)
      - (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL) AS TotalOutstanding,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
-       WHERE Status IN ('NotSent','Sent','InReview'))                            AS OpenPackages,
+       WHERE Status IN (" + activeIn + @"))                                      AS OpenPackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
-       WHERE Status IN ('NotSent','Sent','InReview')
+       WHERE Status IN (" + activeIn + @")
          AND DueDate < SYSDATETIME())                                            AS OverduePackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
-       WHERE Status IN ('NotSent','Sent','InReview')
+       WHERE Status IN (" + activeIn + @")
          AND DueDate BETWEEN SYSDATETIME() AND DATEADD(day, @WarnDays, SYSDATETIME()))
                                                                                  AS NearDeadlinePackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_LoadBatches)                                AS TotalBatches;";
@@ -717,33 +773,479 @@ LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
             return BuildNumberAnchor(href, doc, "Open document " + doc + " in SAP");
         }
 
-        private static string BuildNumberAnchor(string href, string visibleText, string title)
+        private static string BuildNumberAnchor(string href, string text, string title)
         {
-            return
-                "<a class=\"sap-number-link\" href=\"" + HttpUtility.HtmlAttributeEncode(href) + "\""
-              + " target=\"_blank\" rel=\"noopener\""
-              + " title=\"" + HttpUtility.HtmlAttributeEncode(title) + "\">"
-              + HttpUtility.HtmlEncode(visibleText)
-              + "</a>";
+            var sb = new System.Text.StringBuilder();
+            sb.Append("<a href=\"").Append(HttpUtility.HtmlAttributeEncode(href)).Append("\"")
+              .Append(" target=\"_blank\" rel=\"noopener\"")
+              .Append(" title=\"").Append(HttpUtility.HtmlAttributeEncode(title)).Append("\">")
+              .Append(Enc(text))
+              .Append("</a>");
+            return sb.ToString();
+        }
+
+        // -------------------------------------------------------------------
+        // Finalise / Unfinalise — package-level lifecycle transitions.
+        //
+        // FINALISE
+        //   AS Fin clicks Finalise on the reviewer page. Any document still
+        //   without a reason code is auto-stamped with reason code 'RC-NR'
+        //   (Payable per RMG-417, no response received). A history row is
+        //   written for each auto-applied review. The package status flips
+        //   to 'Finalised' and FinalisedDate / FinalisedBy are stamped.
+        //
+        //   The reviewer page becomes read-only after this. Admin can
+        //   Unfinalise from Send-outs until the package is Exported.
+        //
+        //   All work happens in a single transaction so a partial failure
+        //   leaves the package in its previous state.
+        //
+        // UNFINALISE
+        //   Admin clicks Unfinalise on Send-outs. The auto-applied 'RC-NR'
+        //   reviews are wiped (option (i) — clean intent). For each wiped
+        //   review, a history row is written with ReasonCodeID = NULL and
+        //   a marker in the comments so the audit trail is unambiguous.
+        //
+        //   Status flips back to 'InReview', FinalisedDate / FinalisedBy
+        //   are cleared, and the reviewer page becomes editable again.
+        //   Refused if the package is already Exported (terminal).
+        //
+        // The reviewer page only ever calls FinalisePackage; admin-side
+        // UnfinalisePackage lives behind the admin gate.
+        // -------------------------------------------------------------------
+
+        public class LifecycleResult
+        {
+            public bool   Success;
+            public string ErrorMessage;
+            public int    AutoAppliedCount;   // FINALISE only — # docs auto-coded RC-NR
+            public int    AutoClearedCount;   // UNFINALISE only — # RC-NR rows wiped
         }
 
         /// <summary>
-        /// Build a WBS tooltip combining the element and its description, safe to
-        /// embed in an HTML attribute. Handles DBNull/empty values gracefully so
-        /// the .aspx does not need a ternary inline.
+        /// Finalise a package. Auto-applies reason code RC-NR to any
+        /// undecided document, flips status to Finalised, stamps
+        /// FinalisedDate and FinalisedBy. Refuses unless the package is in
+        /// NotSent / Sent / InReview.
         /// </summary>
-        public static string WbsTooltip(object wbsElement, object wbsDesc)
+        public static LifecycleResult FinalisePackage(int packageId)
         {
-            string we = (wbsElement == null || wbsElement == DBNull.Value) ? "" : Convert.ToString(wbsElement);
-            string wd = (wbsDesc    == null || wbsDesc    == DBNull.Value) ? "" : Convert.ToString(wbsDesc);
+            var result = new LifecycleResult();
 
-            string combined;
-            if (we.Length == 0)      combined = wd;
-            else if (wd.Length == 0) combined = we;
-            else                     combined = we + " — " + wd;
+            // Look up RC-NR id once. If it's missing the migration didn't run.
+            int? noRespId = GetReasonCodeIdByCode(NoResponseReasonCode);
+            if (!noRespId.HasValue)
+            {
+                result.Success = false;
+                result.ErrorMessage = "System reason code '" + NoResponseReasonCode +
+                    "' is missing — finalise cannot proceed. Re-run the lifecycle migration.";
+                return result;
+            }
 
-            return HttpUtility.HtmlAttributeEncode(combined);
+            // Look up the package's current status.
+            object stObj = ExecuteScalar(
+                "SELECT Status FROM dbo.tblLPPI_ReviewPackages WHERE PackageID = @p",
+                P("@p", packageId));
+            if (stObj == null)
+            {
+                result.Success = false;
+                result.ErrorMessage = "Package not found.";
+                return result;
+            }
+            string status = Convert.ToString(stObj);
+
+            // Status guard — finalise only valid for in-flight states.
+            if (!(string.Equals(status, StatusNotSent,  StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(status, StatusSent,     StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(status, StatusInReview, StringComparison.OrdinalIgnoreCase)))
+            {
+                result.Success = false;
+                result.ErrorMessage = "Cannot finalise a package whose status is '" + status +
+                    "'. Finalise is only available for NotSent, Sent or InReview packages.";
+                return result;
+            }
+
+            string userId   = CurrentUserId();
+            string userName = CurrentUserDisplayName();
+
+            // ISO 8601 string used as both ReviewedDate and ChangedDate so
+            // the auto-applied reviews and their history rows share a single
+            // timestamp.
+            string nowIso = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+            string autoComment = "AS Fin finalised on " +
+                DateTime.Now.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("en-AU")) +
+                " — no response received from CM by close-off.";
+
+            using (var cn = new OleDbConnection(ConnectionString))
+            {
+                cn.Open();
+                using (var tx = cn.BeginTransaction())
+                {
+                    try
+                    {
+                        // 1) Find every package document that has no review row,
+                        //    and INSERT one with RC-NR. Each INSERT is paired
+                        //    with a history row.
+                        //
+                        //    Documents that already have a review (any code, or
+                        //    even NULL) are left alone — we do not overwrite
+                        //    deliberate decisions. The query targets documents
+                        //    where tblLPPI_Reviews has no row at all.
+                        //
+                        //    Then, separately, deal with any review row that
+                        //    exists but has ReasonCodeID = NULL: stamp RC-NR
+                        //    via UPDATE. (This case is rare under normal flow
+                        //    but possible if a reviewer cleared a code.)
+
+                        // 1a) INSERT path — documents with no review row yet.
+                        ExecTx(cn, tx, @"
+INSERT INTO dbo.tblLPPI_Reviews
+    (DocumentID, ReasonCodeID, Comments, ObjectiveReference,
+     ReviewedByUserId, ReviewedByName, ReviewedDate, IsFinal)
+SELECT pd.DocumentID, @rc, @cm, NULL,
+       @uid, @uname, @nv, 0
+  FROM dbo.tblLPPI_ReviewPackageDocuments pd
+ WHERE pd.PackageID = @p
+   AND NOT EXISTS (SELECT 1 FROM dbo.tblLPPI_Reviews r
+                    WHERE r.DocumentID = pd.DocumentID);",
+                            P("@p",     packageId),
+                            P("@rc",    noRespId.Value),
+                            P("@cm",    autoComment),
+                            P("@uid",   userId),
+                            P("@uname", userName),
+                            P("@nv",    nowIso));
+
+                        // 1b) History row for every newly-INSERTed review.
+                        //     The matching predicate is "review row exists for
+                        //     a doc in this package, with our ReviewedDate".
+                        //     Safer than re-scanning by code because someone
+                        //     could have legitimately picked RC-NR if it were
+                        //     active — we want only the rows we just wrote.
+                        ExecTx(cn, tx, @"
+INSERT INTO dbo.tblLPPI_ReviewHistory
+    (DocumentID, PackageID, ReasonCodeID, Comments,
+     ObjectiveReference, ChangedByUserId, ChangedByName, ChangedDate)
+SELECT r.DocumentID, @p, r.ReasonCodeID, r.Comments,
+       r.ObjectiveReference, r.ReviewedByUserId, r.ReviewedByName, r.ReviewedDate
+  FROM dbo.tblLPPI_Reviews r
+ INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = r.DocumentID
+ WHERE pd.PackageID    = @p
+   AND r.ReviewedDate  = @nv
+   AND r.ReasonCodeID  = @rc;",
+                            P("@p",     packageId),
+                            P("@nv",    nowIso),
+                            P("@rc",    noRespId.Value));
+
+                        // 1c) UPDATE path — review row exists but has no code.
+                        //     Bring it up to RC-NR. We use a slightly
+                        //     different ReviewedDate (1 millisecond later) so
+                        //     step 1d can find these specifically without
+                        //     colliding with the INSERT path's history.
+                        string nowIso2 = DateTime.Now.AddMilliseconds(1)
+                            .ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+
+                        ExecTx(cn, tx, @"
+UPDATE r
+   SET r.ReasonCodeID     = @rc,
+       r.Comments         = @cm,
+       r.ReviewedByUserId = @uid,
+       r.ReviewedByName   = @uname,
+       r.ReviewedDate     = @nv2
+  FROM dbo.tblLPPI_Reviews r
+ INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = r.DocumentID
+ WHERE pd.PackageID = @p
+   AND r.ReasonCodeID IS NULL;",
+                            P("@p",     packageId),
+                            P("@rc",    noRespId.Value),
+                            P("@cm",    autoComment),
+                            P("@uid",   userId),
+                            P("@uname", userName),
+                            P("@nv2",   nowIso2));
+
+                        // 1d) History row for the UPDATE path.
+                        ExecTx(cn, tx, @"
+INSERT INTO dbo.tblLPPI_ReviewHistory
+    (DocumentID, PackageID, ReasonCodeID, Comments,
+     ObjectiveReference, ChangedByUserId, ChangedByName, ChangedDate)
+SELECT r.DocumentID, @p, r.ReasonCodeID, r.Comments,
+       r.ObjectiveReference, r.ReviewedByUserId, r.ReviewedByName, r.ReviewedDate
+  FROM dbo.tblLPPI_Reviews r
+ INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = r.DocumentID
+ WHERE pd.PackageID    = @p
+   AND r.ReviewedDate  = @nv2
+   AND r.ReasonCodeID  = @rc;",
+                            P("@p",     packageId),
+                            P("@nv2",   nowIso2),
+                            P("@rc",    noRespId.Value));
+
+                        // 2) Count how many docs were auto-applied (for the
+                        //    response message). Sum of the INSERT and UPDATE
+                        //    path reviews carrying our two timestamps.
+                        int autoCount = ExecScalarTx(cn, tx, @"
+SELECT COUNT(*)
+  FROM dbo.tblLPPI_Reviews r
+ INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = r.DocumentID
+ WHERE pd.PackageID = @p
+   AND (r.ReviewedDate = @nv OR r.ReviewedDate = @nv2)
+   AND r.ReasonCodeID  = @rc;",
+                            P("@p",     packageId),
+                            P("@nv",    nowIso),
+                            P("@nv2",   nowIso2),
+                            P("@rc",    noRespId.Value));
+
+                        // 3) Flip status. Race-safe — if another finalise call
+                        //    won, this UPDATE affects 0 rows and we surface a
+                        //    generic message.
+                        int statusUpdated = ExecTx(cn, tx, @"
+UPDATE dbo.tblLPPI_ReviewPackages
+   SET Status        = 'Finalised',
+       FinalisedDate = SYSDATETIME(),
+       FinalisedBy   = @by
+ WHERE PackageID = @p
+   AND Status   IN ('NotSent','Sent','InReview');",
+                            P("@p",  packageId),
+                            P("@by", userName));
+
+                        if (statusUpdated == 0)
+                        {
+                            tx.Rollback();
+                            result.Success = false;
+                            result.ErrorMessage = "Package status changed during finalise — please reload.";
+                            return result;
+                        }
+
+                        tx.Commit();
+                        result.Success = true;
+                        result.AutoAppliedCount = autoCount;
+                        return result;
+                    }
+                    catch (Exception ex)
+                    {
+                        try { tx.Rollback(); } catch { /* swallow */ }
+                        result.Success = false;
+                        result.ErrorMessage = "Finalise failed: " + ex.Message;
+                        return result;
+                    }
+                }
+            }
         }
 
+        /// <summary>
+        /// Unfinalise a Finalised package — wipes the auto-applied RC-NR
+        /// reviews, clears FinalisedDate / FinalisedBy, flips status back
+        /// to InReview. Refused if the package is already Exported.
+        ///
+        /// Wipe semantics: only RC-NR reviews authored by the finalise
+        /// flow itself are removed. Any review with a different reason
+        /// code — i.e. a deliberate AS Fin decision recorded before
+        /// finalising — is left alone.
+        /// </summary>
+        public static LifecycleResult UnfinalisePackage(int packageId)
+        {
+            var result = new LifecycleResult();
+
+            int? noRespId = GetReasonCodeIdByCode(NoResponseReasonCode);
+            if (!noRespId.HasValue)
+            {
+                result.Success = false;
+                result.ErrorMessage = "System reason code '" + NoResponseReasonCode +
+                    "' is missing — unfinalise cannot proceed.";
+                return result;
+            }
+
+            object stObj = ExecuteScalar(
+                "SELECT Status FROM dbo.tblLPPI_ReviewPackages WHERE PackageID = @p",
+                P("@p", packageId));
+            if (stObj == null)
+            {
+                result.Success = false;
+                result.ErrorMessage = "Package not found.";
+                return result;
+            }
+            string status = Convert.ToString(stObj);
+
+            if (!string.Equals(status, StatusFinalised, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Success = false;
+                result.ErrorMessage = "Only Finalised packages can be unfinalised (current status: " + status + ").";
+                return result;
+            }
+
+            string userId   = CurrentUserId();
+            string userName = CurrentUserDisplayName();
+            string nowIso   = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+            string clearComment = "Unfinalised on " +
+                DateTime.Now.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("en-AU")) +
+                " — auto-applied 'no response' code cleared.";
+
+            using (var cn = new OleDbConnection(ConnectionString))
+            {
+                cn.Open();
+                using (var tx = cn.BeginTransaction())
+                {
+                    try
+                    {
+                        // 1) History row for every RC-NR review we are about
+                        //    to clear. ReasonCodeID = NULL on the history row
+                        //    captures the new state ("undecided again").
+                        ExecTx(cn, tx, @"
+INSERT INTO dbo.tblLPPI_ReviewHistory
+    (DocumentID, PackageID, ReasonCodeID, Comments,
+     ObjectiveReference, ChangedByUserId, ChangedByName, ChangedDate)
+SELECT r.DocumentID, @p, NULL, @cm,
+       NULL, @uid, @uname, @nv
+  FROM dbo.tblLPPI_Reviews r
+ INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = r.DocumentID
+ WHERE pd.PackageID    = @p
+   AND r.ReasonCodeID  = @rc;",
+                            P("@p",     packageId),
+                            P("@cm",    clearComment),
+                            P("@uid",   userId),
+                            P("@uname", userName),
+                            P("@nv",    nowIso),
+                            P("@rc",    noRespId.Value));
+
+                        // 2) Wipe the RC-NR review rows themselves. Hard
+                        //    delete (option (i) — clean intent). The history
+                        //    insert above preserved the audit trail.
+                        int cleared = ExecTx(cn, tx, @"
+DELETE r
+  FROM dbo.tblLPPI_Reviews r
+ INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = r.DocumentID
+ WHERE pd.PackageID    = @p
+   AND r.ReasonCodeID  = @rc;",
+                            P("@p",  packageId),
+                            P("@rc", noRespId.Value));
+
+                        // 3) Flip status back. Race-safe — if it has moved on
+                        //    to Exported (impossible legitimately, but defence
+                        //    in depth), this affects 0 rows.
+                        int statusUpdated = ExecTx(cn, tx, @"
+UPDATE dbo.tblLPPI_ReviewPackages
+   SET Status        = 'InReview',
+       FinalisedDate = NULL,
+       FinalisedBy   = NULL
+ WHERE PackageID = @p
+   AND Status    = 'Finalised';",
+                            P("@p", packageId));
+
+                        if (statusUpdated == 0)
+                        {
+                            tx.Rollback();
+                            result.Success = false;
+                            result.ErrorMessage = "Package status changed during unfinalise — please reload.";
+                            return result;
+                        }
+
+                        tx.Commit();
+                        result.Success = true;
+                        result.AutoClearedCount = cleared;
+                        return result;
+                    }
+                    catch (Exception ex)
+                    {
+                        try { tx.Rollback(); } catch { /* swallow */ }
+                        result.Success = false;
+                        result.ErrorMessage = "Unfinalise failed: " + ex.Message;
+                        return result;
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Internal — execute SQL inside a caller-owned transaction.
+        // Same parameter rewrite as BuildCommand. Used by FinalisePackage /
+        // UnfinalisePackage so all their statements share a single tx.
+        // -------------------------------------------------------------------
+        private static int ExecTx(OleDbConnection cn, OleDbTransaction tx, string sql, params OleDbParameter[] parameters)
+        {
+            using (var cmd = BuildTxCommand(cn, tx, sql, parameters))
+            {
+                return cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static int ExecScalarTx(OleDbConnection cn, OleDbTransaction tx, string sql, params OleDbParameter[] parameters)
+        {
+            using (var cmd = BuildTxCommand(cn, tx, sql, parameters))
+            {
+                object o = cmd.ExecuteScalar();
+                if (o == null || o == DBNull.Value) return 0;
+                return Convert.ToInt32(o);
+            }
+        }
+
+        private static OleDbCommand BuildTxCommand(OleDbConnection cn, OleDbTransaction tx,
+                                                    string sql, OleDbParameter[] parameters)
+        {
+            var byName = new Dictionary<string, OleDbParameter>(StringComparer.OrdinalIgnoreCase);
+            if (parameters != null)
+            {
+                foreach (var p in parameters)
+                {
+                    if (p == null || string.IsNullOrEmpty(p.ParameterName)) continue;
+                    byName[p.ParameterName] = p;
+                }
+            }
+
+            var rewritten = new System.Text.StringBuilder(sql.Length);
+            var ordered = new List<OleDbParameter>();
+            int i = 0;
+            while (i < sql.Length)
+            {
+                char c = sql[i];
+
+                if (c == '\'')
+                {
+                    int end = i + 1;
+                    while (end < sql.Length)
+                    {
+                        if (sql[end] == '\'')
+                        {
+                            if (end + 1 < sql.Length && sql[end + 1] == '\'') { end += 2; continue; }
+                            end++;
+                            break;
+                        }
+                        end++;
+                    }
+                    rewritten.Append(sql, i, end - i);
+                    i = end;
+                    continue;
+                }
+
+                if (c == '@' && i + 1 < sql.Length && (char.IsLetter(sql[i + 1]) || sql[i + 1] == '_'))
+                {
+                    int j = i + 1;
+                    while (j < sql.Length && (char.IsLetterOrDigit(sql[j]) || sql[j] == '_')) j++;
+                    string name = sql.Substring(i, j - i);
+
+                    OleDbParameter src;
+                    if (!byName.TryGetValue(name, out src))
+                        throw new InvalidOperationException(
+                            "LPPI: SQL references parameter " + name + " but no value was supplied.");
+
+                    var clone = new OleDbParameter();
+                    clone.ParameterName = "?";
+                    clone.OleDbType     = src.OleDbType;
+                    clone.Size          = src.Size;
+                    clone.Precision     = src.Precision;
+                    clone.Scale         = src.Scale;
+                    clone.Value         = src.Value ?? DBNull.Value;
+                    ordered.Add(clone);
+                    rewritten.Append('?');
+                    i = j;
+                    continue;
+                }
+
+                rewritten.Append(c);
+                i++;
+            }
+
+            var cmd = new OleDbCommand(rewritten.ToString(), cn, tx);
+            cmd.CommandType = CommandType.Text;
+            foreach (var p in ordered) { cmd.Parameters.Add(p); }
+            return cmd;
+        }
     }
 }

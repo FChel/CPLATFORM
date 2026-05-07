@@ -4,6 +4,16 @@ using System.Web.UI.WebControls;
 
 namespace CPlatform.LPPI
 {
+    /// <summary>
+    /// Load batches admin page. Lists every file load and lets the operator
+    /// drill into one to see the lines it brought in.
+    ///
+    /// May 2026 update: line detail now surfaces ExportBatchID alongside
+    /// ExportedDate so admins can trace which payment file shipped each
+    /// payable line. NULL means the line has not been exported (either it
+    /// has not been finalised, it was reviewed as Not Payable, or it is
+    /// still queued in a Finalised package awaiting export).
+    /// </summary>
     public partial class LPPI_Batches : LPPIBasePage
     {
         protected void Page_Load(object sender, EventArgs e)
@@ -47,8 +57,8 @@ namespace CPlatform.LPPI
             // Columns required by rptDocs in LPPI_Batches.aspx:
             //   DocNoAccounting, ItemSequence, VendorName, PoNumber,
             //   CapabilityManagerProgram, InvoiceDate, PaymentRunDate,
-            //   DaysVariance, InterestPayable, ExportedDate, ReasonCode,
-            //   CompanyCode, FiscalYear
+            //   DaysVariance, InterestPayable, ExportedDate, ExportBatchID,
+            //   ReasonCode, CompanyCode, FiscalYear
             //
             // ItemSequence model: tblLPPI_Documents now holds one row per
             // LINE. The reviewer codes each DOCUMENT once, with the review
@@ -65,12 +75,16 @@ namespace CPlatform.LPPI
             //
             // FiscalYear is projected so the doc-number deep link in the
             // markup can pass it to SapFiNumberHtml.
+            //
+            // ExportBatchID is added (May 2026) so admins can trace lines
+            // back to the payment file they shipped in. NULL indicates the
+            // line has not (yet) been exported.
             const string sql = @"
                 SELECT d.DocNoAccounting, d.ItemSequence,
                        d.VendorName, d.PoNumber, d.CapabilityManagerProgram,
                        d.CompanyCode, d.FiscalYear,
                        d.InvoiceDate, d.PaymentRunDate, d.DaysVariance, d.InterestPayable,
-                       d.ExportedDate,
+                       d.ExportedDate, d.ExportBatchID,
                        rc.Code AS ReasonCode
                 FROM tblLPPI_Documents d
                 LEFT JOIN tblLPPI_Reviews r

@@ -95,6 +95,7 @@
                                     <th class="num">Days late</th>
                                     <th class="num">Interest</th>
                                     <th>Status</th>
+                                    <th>Export</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -114,6 +115,11 @@
                                 <%# Eval("ReasonCode") == DBNull.Value
                                     ? "<span class=\"pill pill-pending\">Pending</span>"
                                     : "<span class=\"pill pill-reviewed\">" + LPPIHelper.Enc(Eval("ReasonCode")) + "</span>" %>
+                            </td>
+                            <td>
+                                <%# Eval("ExportBatchID") == DBNull.Value
+                                    ? "<span class=\"muted\">&mdash;</span>"
+                                    : "<a href=\"LPPI_Export.aspx\" title=\"Exported on " + LPPIHelper.FormatDate(Eval("ExportedDate"), "dd/MM/yyyy HH:mm") + "\">#" + Eval("ExportBatchID") + "</a>" %>
                             </td>
                         </tr>
                     </ItemTemplate>
