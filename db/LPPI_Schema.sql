@@ -1,6 +1,6 @@
 /* =============================================================================
-   LPPI Review — PRODUCTION schema (final consolidated)
-   File: LPPI_Schema_PROD.sql
+   LPPI Review — PRODUCTION schema
+   File: LPPI_Schema.sql
    Database: CPlatform
    -----------------------------------------------------------------------------
    Idempotent: safe to re-run. Each object is guarded by an existence
@@ -14,7 +14,7 @@
 
    Run order on a fresh database:
      1. LPPI_Drop.sql        (DEV / UAT reset only — NOT for PROD)
-     2. LPPI_Schema_PROD.sql (this file)
+     2. LPPI_Schema.sql      (this file)
      3. LPPI_AdminSeed.sql   (set usernames in that file before running)
    ============================================================================= */
 
@@ -179,10 +179,10 @@ END
 GO
 
 /* ----------------------------- tblLPPI_Documents ----------------------------
-   One row per LINE. BODS now supplies ITEM_SEQUENCE so a single
-   DocNoAccounting may have many lines. The reviewer codes the DOCUMENT
-   once (review row stored against the smallest-ItemSequence DocumentID),
-   and joins inherit that code at read time.
+   One row per LINE. BODS supplies ITEM_SEQUENCE so a single DocNoAccounting
+   may have many lines. The reviewer codes the DOCUMENT once (review row
+   stored against the smallest-ItemSequence DocumentID), and joins inherit
+   that code at read time.
 
    ExportedDate / ExportedBy / ExportBatchID are populated when the line is
    shipped in an ERP payment file. NULL = not (yet) exported.
@@ -289,8 +289,8 @@ GO
                    in this package become eligible for repackaging on the
                    next load.
 
-   ClosedDate is repurposed as "package became terminal" — Cancelled or
-   Exported flows can stamp it; not used for Finalised (which is reversible).
+   ClosedDate stamps the moment a package becomes terminal — Cancelled or
+   Exported flows set it; not used for Finalised (which is reversible).
 
    FinalisedBy: Windows display name of whoever clicked Finalise. Captured
    even though the reviewer page is token-gated (IIS Windows auth still
@@ -478,7 +478,7 @@ GO
        dropdown. Looked up by Code at runtime by the finalise flow and applied
        to any document that has not been coded by the AS Fin team at finalise
        time. Outcome = Payable per RMG-417 default position. */
-    SELECT 'RC-NR', N'Interest Payable – No response received',           'Payable',  9999, 0, 0
+    SELECT 'RC-NR', N'Interest Payable – Default per RMG-417 (no review decision recorded at finalise)',           'Payable',  9999, 0, 0
 )
 INSERT INTO dbo.tblLPPI_ReasonCodes (Code, Description, Outcome, DisplayOrder, RequiresComments, IsActive)
 SELECT s.Code, s.Description, s.Outcome, s.DisplayOrder, s.RequiresComments, s.IsActive
