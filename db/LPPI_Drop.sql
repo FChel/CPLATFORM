@@ -10,13 +10,14 @@
      2.  tblLPPI_EmailLog                  (FK -> ReviewPackages)
      3.  tblLPPI_ReviewHistory             (FK -> Documents, ReviewPackages, ReasonCodes)
      4.  tblLPPI_ReviewPackageDocuments    (FK -> ReviewPackages, Documents)
-     5.  tblLPPI_ReviewPackages            (FK -> CapabilityManagers)
+     5.  tblLPPI_ReviewPackages            (FK -> CapabilityManagers, ExportBatches)
      6.  tblLPPI_Reviews                   (FK -> Documents, ReasonCodes)
      7.  tblLPPI_CapabilityManagerEmails   (FK -> CapabilityManagers)
      8.  tblLPPI_CapabilityManagers
      9.  tblLPPI_ReasonCodes
-     10. tblLPPI_Documents                 (FK -> LoadBatches)
-     11. tblLPPI_LoadBatches
+     10. tblLPPI_Documents                 (FK -> LoadBatches, ExportBatches)
+     11. tblLPPI_ExportBatches             (no incoming FKs left at this point)
+     12. tblLPPI_LoadBatches
    ============================================================================= */
 
 SET NOCOUNT ON;
@@ -97,6 +98,13 @@ IF OBJECT_ID(N'dbo.tblLPPI_Documents', N'U') IS NOT NULL
 BEGIN
     DROP TABLE dbo.tblLPPI_Documents;
     PRINT '  dropped tblLPPI_Documents';
+END
+GO
+
+IF OBJECT_ID(N'dbo.tblLPPI_ExportBatches', N'U') IS NOT NULL
+BEGIN
+    DROP TABLE dbo.tblLPPI_ExportBatches;
+    PRINT '  dropped tblLPPI_ExportBatches';
 END
 GO
 

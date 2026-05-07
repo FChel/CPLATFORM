@@ -16,15 +16,16 @@
      - tblLPPI_Reviews                   (every reason code / comment / objref)
      - tblLPPI_Documents                 (every loaded document line)
      - tblLPPI_LoadBatches               (every load batch header)
+     - tblLPPI_ExportBatches             (every ERP export file header)
 
    IDENTITY columns are reseeded so PackageID / DocumentID / BatchID /
-   HistoryID start from 1 again on the next load.
+   HistoryID / ExportBatchID start from 1 again on the next load.
 
    ----------------------------------------------------------------------
    WHAT IS PRESERVED
    ----------------------------------------------------------------------
      - tblLPPI_AdminUsers                (admin access list)
-     - tblLPPI_ReasonCodes               (RC01-RC16 and any custom codes)
+     - tblLPPI_ReasonCodes               (RC01-RC16, RC-NR, and any custom codes)
      - tblLPPI_CapabilityManagers        (ARMY, NAVY, etc.)
      - tblLPPI_CapabilityManagerEmails   (recipient configurations)
 
@@ -91,16 +92,19 @@ DECLARE @cnt_Packages          INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPac
 DECLARE @cnt_Reviews           INT = (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews);
 DECLARE @cnt_Documents         INT = (SELECT COUNT(*) FROM dbo.tblLPPI_Documents);
 DECLARE @cnt_LoadBatches       INT = (SELECT COUNT(*) FROM dbo.tblLPPI_LoadBatches);
+DECLARE @cnt_ExportBatches     INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ExportBatches);
 
 /* ----------------------------------------------------------------------
    Delete order respects FK dependencies:
      1. EmailLog              -> ReviewPackages
      2. ReviewHistory         -> Documents, ReviewPackages, ReasonCodes (kept)
      3. ReviewPackageDocuments-> ReviewPackages, Documents
-     4. ReviewPackages        -> CapabilityManagers (kept)
+     4. ReviewPackages        -> CapabilityManagers (kept), ExportBatches
      5. Reviews               -> Documents, ReasonCodes (kept)
-     6. Documents             -> LoadBatches
-     7. LoadBatches           (no incoming FKs left)
+     6. Documents             -> LoadBatches, ExportBatches
+     7. ExportBatches         (no incoming FKs left after Documents and
+                               ReviewPackages cleared)
+     8. LoadBatches           (no incoming FKs left)
    ---------------------------------------------------------------------- */
 
 DELETE FROM dbo.tblLPPI_EmailLog;
@@ -121,6 +125,9 @@ PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_Reviews', @cnt_Reviews);
 DELETE FROM dbo.tblLPPI_Documents;
 PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_Documents', @cnt_Documents);
 
+DELETE FROM dbo.tblLPPI_ExportBatches;
+PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_ExportBatches', @cnt_ExportBatches);
+
 DELETE FROM dbo.tblLPPI_LoadBatches;
 PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_LoadBatches', @cnt_LoadBatches);
 
@@ -136,6 +143,7 @@ DBCC CHECKIDENT (N'dbo.tblLPPI_Reviews',        RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_ReviewHistory',  RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_ReviewPackages', RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_EmailLog',       RESEED, 0);
+DBCC CHECKIDENT (N'dbo.tblLPPI_ExportBatches',  RESEED, 0);
 
 PRINT '  Identity columns reseeded.';
 
