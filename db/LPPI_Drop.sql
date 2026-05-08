@@ -6,18 +6,19 @@
    are dropped before their parents. Idempotent via IF OBJECT_ID checks.
 
    Drop order:
-     1.  tblLPPI_AdminUsers                (no FK dependencies)
-     2.  tblLPPI_EmailLog                  (FK -> ReviewPackages)
-     3.  tblLPPI_ReviewHistory             (FK -> Documents, ReviewPackages, ReasonCodes)
-     4.  tblLPPI_ReviewPackageDocuments    (FK -> ReviewPackages, Documents)
-     5.  tblLPPI_ReviewPackages            (FK -> CapabilityManagers, ExportBatches)
-     6.  tblLPPI_Reviews                   (FK -> Documents, ReasonCodes)
-     7.  tblLPPI_CapabilityManagerEmails   (FK -> CapabilityManagers)
-     8.  tblLPPI_CapabilityManagers
-     9.  tblLPPI_ReasonCodes
-     10. tblLPPI_Documents                 (FK -> LoadBatches, ExportBatches)
-     11. tblLPPI_ExportBatches             (no incoming FKs left at this point)
-     12. tblLPPI_LoadBatches
+      1. tblLPPI_AdminUsers                (no FK dependencies)
+      2. tblLPPI_EmailLog                  (FK -> ReviewPackages)
+      3. tblLPPI_ReviewHistory             (FK -> Documents, ReviewPackages, ReasonCodes)
+      4. tblLPPI_ReviewPackageDocuments    (FK -> ReviewPackages, Documents)
+      5. tblLPPI_PackagePocs               (FK -> ReviewPackages)
+      6. tblLPPI_ReviewPackages            (FK -> CapabilityManagers, ExportBatches)
+      7. tblLPPI_Reviews                   (FK -> Documents, ReasonCodes)
+      8. tblLPPI_CapabilityManagerEmails   (legacy table — dropped if still present)
+      9. tblLPPI_CapabilityManagers
+     10. tblLPPI_ReasonCodes
+     11. tblLPPI_Documents                 (FK -> LoadBatches, ExportBatches)
+     12. tblLPPI_ExportBatches             (no incoming FKs left at this point)
+     13. tblLPPI_LoadBatches
    ============================================================================= */
 
 SET NOCOUNT ON;
@@ -59,6 +60,13 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.tblLPPI_PackagePocs', N'U') IS NOT NULL
+BEGIN
+    DROP TABLE dbo.tblLPPI_PackagePocs;
+    PRINT '  dropped tblLPPI_PackagePocs';
+END
+GO
+
 IF OBJECT_ID(N'dbo.tblLPPI_ReviewPackages', N'U') IS NOT NULL
 BEGIN
     DROP TABLE dbo.tblLPPI_ReviewPackages;
@@ -73,10 +81,13 @@ BEGIN
 END
 GO
 
+/* Legacy table — collapsed into tblLPPI_CapabilityManagers.Email +
+   EmailDisplayName. Drop is idempotent against a fresh DB; only fires
+   on databases that still have the old table. */
 IF OBJECT_ID(N'dbo.tblLPPI_CapabilityManagerEmails', N'U') IS NOT NULL
 BEGIN
     DROP TABLE dbo.tblLPPI_CapabilityManagerEmails;
-    PRINT '  dropped tblLPPI_CapabilityManagerEmails';
+    PRINT '  dropped tblLPPI_CapabilityManagerEmails (legacy)';
 END
 GO
 

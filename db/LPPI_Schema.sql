@@ -7,7 +7,9 @@
    check; reason-code seed inserts only codes that do not already exist.
 
    Access model:
-     Reviewer page  = token-based (no Windows identity check).
+     Reviewer page  = token-based (no Windows identity check). Two token
+                      types: AS Fin token (full package, can finalise) and
+                      POC token (POC-scoped view, no finalise).
      Everything else = gated by tblLPPI_AdminUsers.
      Admin           = full access to all LPPI admin pages and actions.
      Non-admin       = LPPI_Review.aspx only (via token link received by email).
@@ -57,40 +59,34 @@ GO
 
 /* ----------------------------- tblLPPI_CapabilityManagers -------------------
    One row per Capability Manager program (e.g. ARMY, NAVY).
+
+   Email / EmailDisplayName: the AS Fin team mailbox for this CM.
+     - TO recipient on the AS Fin review email.
+     - From address on POC review emails (so POC replies land in the
+       AS Fin team mailbox by design — they want to field "why am I
+       getting this" questions directly).
+   Both nullable. The application gate refuses to send / mark-as-sent
+   unless both are populated. Format check (defence-in-depth) below; the
+   application enforces a stricter regex with a useful error message.
    ============================================================================= */
 IF OBJECT_ID(N'dbo.tblLPPI_CapabilityManagers', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.tblLPPI_CapabilityManagers
     (
-        CmID          INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_CapabilityManagers PRIMARY KEY CLUSTERED,
-        Program       NVARCHAR(200)  NOT NULL,
-        DisplayName   NVARCHAR(200)  NULL,
-        IsActive      BIT            NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagers_IsActive DEFAULT (1),
-        CreatedDate   DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagers_CreatedDate DEFAULT (SYSDATETIME()),
-        ModifiedDate  DATETIME2(3)   NULL,
-        CONSTRAINT UQ_tblLPPI_CapabilityManagers_Program UNIQUE (Program)
+        CmID              INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_CapabilityManagers PRIMARY KEY CLUSTERED,
+        Program           NVARCHAR(200)  NOT NULL,
+        DisplayName       NVARCHAR(200)  NULL,
+        Email             NVARCHAR(200)  NULL,
+        EmailDisplayName  NVARCHAR(200)  NULL,
+        IsActive          BIT            NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagers_IsActive DEFAULT (1),
+        CreatedDate       DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagers_CreatedDate DEFAULT (SYSDATETIME()),
+        ModifiedDate      DATETIME2(3)   NULL,
+        CONSTRAINT UQ_tblLPPI_CapabilityManagers_Program UNIQUE (Program),
+        CONSTRAINT CK_tblLPPI_CapabilityManagers_Email
+            CHECK (Email IS NULL
+                OR (Email LIKE '%_@_%.[a-z]%'
+                    AND Email LIKE '%@defence.gov.au'))
     );
-END
-GO
-
-/* ----------------------------- tblLPPI_CapabilityManagerEmails --------------
-   Recipients per CM program. Each recipient is either TO or CC.
-   ============================================================================= */
-IF OBJECT_ID(N'dbo.tblLPPI_CapabilityManagerEmails', N'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.tblLPPI_CapabilityManagerEmails
-    (
-        CmEmailID    INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_CapabilityManagerEmails PRIMARY KEY CLUSTERED,
-        CmID         INT            NOT NULL,
-        Email        NVARCHAR(200)  NOT NULL,
-        DisplayName  NVARCHAR(200)  NULL,
-        IsCC         BIT            NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagerEmails_IsCC DEFAULT (0),
-        CreatedDate  DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagerEmails_CreatedDate DEFAULT (SYSDATETIME()),
-        CONSTRAINT FK_tblLPPI_CapabilityManagerEmails_Cm FOREIGN KEY (CmID) REFERENCES dbo.tblLPPI_CapabilityManagers(CmID)
-    );
-
-    CREATE NONCLUSTERED INDEX IX_tblLPPI_CapabilityManagerEmails_CmID
-        ON dbo.tblLPPI_CapabilityManagerEmails(CmID);
 END
 GO
 
@@ -262,6 +258,13 @@ BEGIN
     CREATE NONCLUSTERED INDEX IX_tblLPPI_Documents_ExportBatchID
         ON dbo.tblLPPI_Documents(ExportBatchID)
         WHERE ExportBatchID IS NOT NULL;
+
+    /* PocEmail index — supports the per-POC document filter on the reviewer
+       page (POC token resolves to a PocEmail; reviewer query filters by it)
+       and the per-POC outstanding-count subquery used by reminder builds. */
+    CREATE NONCLUSTERED INDEX IX_tblLPPI_Documents_PocEmail
+        ON dbo.tblLPPI_Documents(PocEmail)
+        WHERE PocEmail IS NOT NULL;
 END
 GO
 
@@ -269,22 +272,16 @@ GO
    Status lifecycle (driven entirely by app code):
 
      'NotSent'   — created at file-load time; reviewer link works but nobody
-                   has been notified. Doc set may still be added to (only
-                   another file load can do that).
-     'Sent'      — initial email has been sent. Doc set is FROZEN. Subsequent
-                   sends to the same package are reminders and do not change
-                   status.
-     'InReview'  — at least one document in the package has been reviewed.
-                   Doc set still frozen. Reminders still allowed.
-     'Finalised' — AS Fin team has clicked Finalise. FinalisedDate / FinalisedBy
-                   stamped. Any documents without a reason code are auto-
-                   stamped with system reason code RC-NR (Payable, no response
-                   received). Form fields locked but reviewer page remains
-                   accessible. Reversible: AS Fin can click Unfinalise to
-                   return to InReview (auto-applied RC-NR rows are wiped).
-     'Exported'  — included in an ERP payment file. ExportBatchID points to
-                   the tblLPPI_ExportBatches row. Terminal — no further
-                   changes. Form fields locked.
+                   has been notified. Reviewer page is editable for admin QA.
+                   Document set may still grow on subsequent loads.
+     'Sent'      — initial email dispatched. Document set frozen. Reminders
+                   allowed.
+     'InReview'  — at least one document has a reason code. Reminders allowed.
+     'Finalised' — AS Fin clicked Finalise on the reviewer page. Form fields
+                   locked. Reversible — Unfinalise wipes auto-applied RC-NR
+                   rows and returns to InReview.
+     'Exported'  — admin included the package in an ERP export run. Terminal
+                   — no further changes. Form fields locked.
      'Cancelled' — admin-cancelled side branch. ClosedDate is set. Documents
                    in this package become eligible for repackaging on the
                    next load.
@@ -329,6 +326,42 @@ BEGIN
     CREATE NONCLUSTERED INDEX IX_tblLPPI_ReviewPackages_ExportBatchID
         ON dbo.tblLPPI_ReviewPackages(ExportBatchID)
         WHERE ExportBatchID IS NOT NULL;
+END
+GO
+
+/* ----------------------------- tblLPPI_PackagePocs --------------------------
+   One row per (PackageID, PocEmail) pair. Each POC referenced by a
+   document in the package gets their own unguessable Token, used to
+   build a per-POC reviewer URL that filters the page to docs assigned
+   to that POC's email.
+
+   Populated by the file-load reconcile (LPPIFileParser.ReconcilePocs)
+   for any package in NotSent status. Once a package transitions to
+   Sent, its POC set is frozen alongside its document set — new POCs
+   on subsequent loads do not retroactively get added to a Sent
+   package.
+
+   InitialSentDate / LastReminderDate mirror the package-level audit
+   so the Send-outs page can show per-POC contact history if needed.
+   ============================================================================= */
+IF OBJECT_ID(N'dbo.tblLPPI_PackagePocs', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.tblLPPI_PackagePocs
+    (
+        PackagePocID      INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_PackagePocs PRIMARY KEY CLUSTERED,
+        PackageID         INT            NOT NULL,
+        PocEmail          NVARCHAR(200)  NOT NULL,
+        Token             NVARCHAR(100)  NOT NULL,
+        CreatedDate       DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_PackagePocs_CreatedDate DEFAULT (SYSDATETIME()),
+        InitialSentDate   DATETIME2(3)   NULL,
+        LastReminderDate  DATETIME2(3)   NULL,
+        CONSTRAINT UQ_tblLPPI_PackagePocs_PackagePoc UNIQUE (PackageID, PocEmail),
+        CONSTRAINT UQ_tblLPPI_PackagePocs_Token      UNIQUE (Token),
+        CONSTRAINT FK_tblLPPI_PackagePocs_Package    FOREIGN KEY (PackageID) REFERENCES dbo.tblLPPI_ReviewPackages(PackageID)
+    );
+
+    CREATE NONCLUSTERED INDEX IX_tblLPPI_PackagePocs_PackageID
+        ON dbo.tblLPPI_PackagePocs(PackageID);
 END
 GO
 
@@ -422,6 +455,14 @@ GO
 
 /* ----------------------------- tblLPPI_EmailLog -----------------------------
    Audit log of every email send (real or mark-as-sent simulated).
+
+   Audience: 'ASFIN' = the per-package send to the CM's AS Fin team
+   mailbox; 'POC' = a per-POC send (one row per POC dispatched).
+   PocEmail is populated only on Audience = 'POC' rows. NULL Audience is
+   not expected post-schema-change but tolerated for forward compatibility.
+
+   RecipientEmail keeps the full "to | CC: ... | BCC: ..." string for
+   AS Fin sends; for POC sends it is just the single TO address.
    ============================================================================= */
 IF OBJECT_ID(N'dbo.tblLPPI_EmailLog', N'U') IS NULL
 BEGIN
@@ -430,14 +471,18 @@ BEGIN
         EmailLogID     INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_EmailLog PRIMARY KEY CLUSTERED,
         PackageID      INT            NULL,
         RecipientEmail NVARCHAR(500)  NOT NULL,
-        EmailType      NVARCHAR(20)   NOT NULL,
+        EmailType      NVARCHAR(40)   NOT NULL,
+        Audience       NVARCHAR(10)   NULL,
+        PocEmail       NVARCHAR(200)  NULL,
         Subject        NVARCHAR(500)  NULL,
         Body           NVARCHAR(MAX)  NULL,
         SentDate       DATETIME2(3)   NOT NULL CONSTRAINT DF_tblLPPI_EmailLog_SentDate DEFAULT (SYSDATETIME()),
         SentBy         NVARCHAR(200)  NULL,
         Success        BIT            NOT NULL CONSTRAINT DF_tblLPPI_EmailLog_Success DEFAULT (0),
         ErrorMessage   NVARCHAR(MAX)  NULL,
-        CONSTRAINT FK_tblLPPI_EmailLog_Package FOREIGN KEY (PackageID) REFERENCES dbo.tblLPPI_ReviewPackages(PackageID)
+        CONSTRAINT FK_tblLPPI_EmailLog_Package FOREIGN KEY (PackageID) REFERENCES dbo.tblLPPI_ReviewPackages(PackageID),
+        CONSTRAINT CK_tblLPPI_EmailLog_Audience
+            CHECK (Audience IS NULL OR Audience IN ('ASFIN','POC'))
     );
 
     CREATE NONCLUSTERED INDEX IX_tblLPPI_EmailLog_PackageID
@@ -486,5 +531,5 @@ FROM Seed s
 WHERE NOT EXISTS (SELECT 1 FROM dbo.tblLPPI_ReasonCodes rc WHERE rc.Code = s.Code);
 GO
 
-PRINT 'LPPI_Schema_PROD.sql complete.';
+PRINT 'LPPI_Schema.sql complete.';
 GO
