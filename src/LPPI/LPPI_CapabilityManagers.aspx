@@ -21,7 +21,7 @@
             font-weight: 500;
         }
 
-        /* Display-name sub-section inside the Manage panel */
+        /* Manage panel sub-section divider */
         .panel-section {
             padding: 14px 0 18px;
             border-bottom: 1px solid var(--line);
@@ -36,17 +36,58 @@
             color: var(--ink-3);
             margin-bottom: 10px;
         }
-        .display-name-row {
+
+        /* Pair: input + Save button on one row */
+        .form-row-inline {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        /* Ensure the display-name input inherits the app font stack, not the
-           browser default. The .input class in lppi.css covers this, but an
-           explicit font-family here guards against any specificity collision. */
-        .display-name-row .input {
+        .form-row-inline .input {
             flex: 1;
             font-family: var(--font);
+        }
+
+        /* Two-column grid for the email + display name pair */
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 14px;
+            margin-bottom: 12px;
+        }
+        @media (max-width: 720px) {
+            .config-grid { grid-template-columns: 1fr; }
+        }
+        .config-grid label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--ink-3);
+            margin-bottom: 4px;
+        }
+        .config-grid .input {
+            width: 100%;
+            font-family: var(--font);
+        }
+
+        .help-line {
+            font-size: 12px;
+            color: var(--ink-3);
+            margin: 6px 0 14px;
+            line-height: 1.55;
+        }
+
+        /* Pill that reflects per-row email-configured state. Reuses the
+           existing colour primitives in lppi.css. */
+        .pill-config-ok {
+            background: var(--ok-bg);
+            color: var(--ok);
+            border: 1px solid var(--ok);
+        }
+        .pill-config-missing {
+            background: var(--warn-bg);
+            color: var(--warn);
+            border: 1px solid var(--warn);
         }
     </style>
 </head>
@@ -60,102 +101,78 @@
             <div>
                 <div class="crumb">LPPI Review</div>
                 <h1>Capability Managers</h1>
-                <p class="lead">Capability Manager groups are created automatically when an ERP export file is loaded. Edit the display name or manage recipients for each group using the Manage button.</p>
+                <p class="lead">Capability Manager groups are created automatically when an ERP file is loaded. Configure the AS Fin email and display name for each group below; both are required before review packages can be sent.</p>
             </div>
         </div>
+
+        <%-- Banner: count of CMs missing email configuration. Server-rendered
+             via litMissingBanner from code-behind. Hidden when count is 0. --%>
+        <asp:PlaceHolder ID="phMissingBanner" runat="server" />
 
         <asp:PlaceHolder ID="phMessage" runat="server" />
 
         <%-- ================================================================
-             Manage panel — surfaces above the list when operator clicks Manage.
-             Contains display-name editing AND recipient management in one card.
+             Manage panel — surfaces above the list when operator clicks
+             Manage. Single combined form: display name, AS Fin email, AS
+             Fin display name.
              ================================================================ --%>
-        <asp:Panel ID="pnlEmails" runat="server" Visible="false" CssClass="card">
+        <asp:Panel ID="pnlManage" runat="server" Visible="false" CssClass="card">
             <div class="page-head" style="margin-bottom: 1rem;">
                 <div>
                     <h2 style="margin: 0;">
-                        Recipients for
-                        <asp:Literal ID="litCmProgram" runat="server" /> —
+                        Manage
+                        <asp:Literal ID="litCmProgram" runat="server" />
                         <asp:Literal ID="litCmDisplayName" runat="server" />
                     </h2>
                 </div>
                 <div>
-                    <asp:Button ID="btnCloseEmails" runat="server" CssClass="btn btn-ghost"
-                        Text="Done" OnClick="btnCloseEmails_Click" CausesValidation="false" />
+                    <asp:Button ID="btnCloseManage" runat="server" CssClass="btn btn-ghost"
+                        Text="Done" OnClick="btnCloseManage_Click" CausesValidation="false" />
                 </div>
             </div>
 
             <%-- Display name section --%>
             <div class="panel-section">
                 <div class="panel-section-title">Display name</div>
-                <div class="display-name-row">
+                <p class="help-line">Friendly name shown in send-outs and the Manage header. Optional — when blank, the program code is used.</p>
+                <div class="form-row-inline">
                     <asp:TextBox ID="txtDisplayName" runat="server" CssClass="input" MaxLength="200"
-                        placeholder="Friendly name shown in send-outs (optional)" />
+                        placeholder="Friendly name (optional)" />
                     <asp:Button ID="btnSaveDisplayName" runat="server" CssClass="btn btn-secondary"
                         Text="Save name" OnClick="btnSaveDisplayName_Click" CausesValidation="false" />
                     <asp:HiddenField ID="hfCmId" runat="server" />
                 </div>
             </div>
 
-            <%-- Add recipients section --%>
+            <%-- AS Fin email section --%>
             <div class="panel-section">
-                <div class="panel-section-title">Add recipient(s)</div>
-                <p class="muted" style="margin-bottom: 10px;">
-                    Enter one or more addresses separated by commas or semicolons.
-                    Tick <strong>CC</strong> to add all of them as CC recipients instead of TO.
+                <div class="panel-section-title">AS Fin email</div>
+                <p class="help-line">
+                    The AS Fin team mailbox for this group. Receives the group-summary review email.
+                    Also used as the <em>From</em> address on per-POC review emails so POC replies
+                    land in this mailbox. Both fields are required &mdash; or leave both blank to clear.
+                    Only <code>@defence.gov.au</code> addresses are accepted.
                 </p>
-                <div class="form-grid">
-                    <div class="form-row form-row-wide">
-                        <label for="txtEmail">Email address(es)</label>
-                        <asp:TextBox ID="txtEmail" runat="server" CssClass="input" MaxLength="2000"
-                            placeholder="name@defence.gov.au, other@defence.gov.au" />
+                <div class="config-grid">
+                    <div>
+                        <label for="txtEmail">Email address</label>
+                        <asp:TextBox ID="txtEmail" runat="server" CssClass="input" MaxLength="200"
+                            placeholder="as.fin.&lt;cm&gt;@defence.gov.au" />
                     </div>
-                    <div class="form-row form-row-check">
-                        <label><asp:CheckBox ID="chkCc" runat="server" /> CC (otherwise TO)</label>
-                    </div>
-                    <div class="form-row form-row-actions">
-                        <asp:Button ID="btnAddEmail" runat="server" CssClass="btn btn-primary"
-                            Text="Add recipient(s)" OnClick="btnAddEmail_Click" />
+                    <div>
+                        <label for="txtEmailDisplayName">Display name</label>
+                        <asp:TextBox ID="txtEmailDisplayName" runat="server" CssClass="input" MaxLength="200"
+                            placeholder="AS Fin &lt;CM Program&gt;" />
                     </div>
                 </div>
-            </div>
-
-            <%-- Recipients table --%>
-            <div class="panel-section">
-                <div class="panel-section-title">Current recipients</div>
-                <div class="tbl-wrap">
-                    <asp:Repeater ID="rptEmails" runat="server" OnItemCommand="rptEmails_ItemCommand">
-                        <HeaderTemplate>
-                            <table class="tbl">
-                                <thead>
-                                    <tr>
-                                        <th>Email</th>
-                                        <th>Role</th>
-                                        <th class="num"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                        </HeaderTemplate>
-                        <ItemTemplate>
-                            <tr>
-                                <td><%# LPPIHelper.Enc(Eval("Email")) %></td>
-                                <td><%# (bool)Eval("IsCC") ? "CC" : "TO" %></td>
-                                <td class="num">
-                                    <asp:LinkButton runat="server" CssClass="btn btn-sm btn-ghost btn-danger"
-                                        Text="Delete"
-                                        CommandName="Delete" CommandArgument='<%# Eval("CmEmailID") %>'
-                                        OnClientClick="return confirm('Delete this email address permanently?');" />
-                                </td>
-                            </tr>
-                        </ItemTemplate>
-                        <FooterTemplate>
-                                </tbody>
-                            </table>
-                        </FooterTemplate>
-                    </asp:Repeater>
+                <div>
+                    <asp:Button ID="btnSaveEmail" runat="server" CssClass="btn btn-primary"
+                        Text="Save email" OnClick="btnSaveEmail_Click" CausesValidation="false" />
+                    <asp:Button ID="btnClearEmail" runat="server" CssClass="btn btn-ghost"
+                        Text="Clear email" OnClick="btnClearEmail_Click" CausesValidation="false"
+                        OnClientClick="return confirm('Clear the configured AS Fin email and display name? Sends to this group will be blocked until reconfigured.');" />
                 </div>
             </div>
-
         </asp:Panel>
 
         <%-- ================================================================
@@ -173,8 +190,9 @@
                                 <tr>
                                     <th>Program</th>
                                     <th>Display name</th>
-                                    <th>Recipients (TO)</th>
-                                    <th>Recipients (CC)</th>
+                                    <th>AS Fin email</th>
+                                    <th>AS Fin display name</th>
+                                    <th>Status</th>
                                     <th class="num">Open docs</th>
                                     <th></th>
                                 </tr>
@@ -188,8 +206,13 @@
                                 <asp:Literal runat="server" ID="litEditFlag" />
                             </td>
                             <td><%# LPPIHelper.Enc(Eval("DisplayName")) %></td>
-                            <td><%# LPPIHelper.Enc(Eval("ToList")) %></td>
-                            <td><%# LPPIHelper.Enc(Eval("CcList")) %></td>
+                            <td><%# LPPIHelper.Enc(Eval("Email")) %></td>
+                            <td><%# LPPIHelper.Enc(Eval("EmailDisplayName")) %></td>
+                            <td>
+                                <%# Convert.ToInt32(Eval("EmailConfigured")) == 1
+                                    ? "<span class=\"pill pill-config-ok\">Configured</span>"
+                                    : "<span class=\"pill pill-config-missing\">Not configured</span>" %>
+                            </td>
                             <td class="num"><%# Eval("OpenDocs") %></td>
                             <td class="num">
                                 <asp:LinkButton runat="server" CssClass="btn btn-sm btn-ghost"

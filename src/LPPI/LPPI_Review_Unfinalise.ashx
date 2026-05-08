@@ -20,17 +20,24 @@ namespace CPlatform.LPPI
     /// ReasonCodeID = NULL so the audit trail captures the rollback.
     ///
     /// AUTHENTICATION
-    ///   Same model as LPPI_Review_Save.ashx and LPPI_Review_Finalise.ashx
-    ///   — token-auth via the package Token. No Windows-identity gate; the
-    ///   token-holder population (the CM/AS Fin team for that program) is
+    ///   Token-auth via the package Token. No Windows-identity gate; the
+    ///   token-holder population (the AS Fin team for that program) is
     ///   trusted to manage their own review state.
     ///
     ///   Refused server-side if the package is Exported (terminal). The
     ///   button is also hidden client-side in that state, but this is the
     ///   authoritative check.
     ///
+    /// May 2026 — POC tokens refused
+    /// -------------------------------------------------------------------
+    /// Like Finalise, Unfinalise is an AS Fin-only action. POC tokens are
+    /// recognised by LPPIHelper.ResolveReviewToken and rejected here. The
+    /// reviewer page itself does not render the Unfinalise button in POC
+    /// view (ShowActionButton is gated on !IsPocView); this is the
+    /// authoritative server-side guard.
+    ///
     /// POSTED FORM FIELDS
-    ///   token   the package token (required)
+    ///   token   the package or POC token (required)
     ///   action  "unfinalise" (sanity check)
     ///
     /// RESPONSE
@@ -59,17 +66,24 @@ namespace CPlatform.LPPI
                     return;
                 }
 
-                // Resolve PackageID from token. Status guards live inside
-                // UnfinalisePackage so we just need the id here.
-                object pidObj = LPPIHelper.ExecuteScalar(
-                    "SELECT PackageID FROM dbo.tblLPPI_ReviewPackages WHERE Token = @t",
-                    LPPIHelper.P("@t", token));
-                if (pidObj == null || pidObj == DBNull.Value)
+                // Resolve the token. Both AS Fin and POC tokens land here,
+                // but only AS Fin is allowed to unfinalise.
+                LPPIHelper.ReviewTokenInfo tokenInfo = LPPIHelper.ResolveReviewToken(token);
+                if (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.None)
                 {
                     Write(ctx, false, "Invalid link.", null, 0);
                     return;
                 }
-                int packageId = Convert.ToInt32(pidObj);
+
+                if (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.Poc)
+                {
+                    Write(ctx, false,
+                        "Reopening the package is AS Fin's responsibility — only the AS Fin link can unfinalise.",
+                        null, 0);
+                    return;
+                }
+
+                int packageId = tokenInfo.PackageID;
 
                 // Run the unfinalise transaction. Refuses unless status is
                 // Finalised; refuses if package is Exported.

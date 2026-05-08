@@ -20,6 +20,14 @@ namespace CPlatform.LPPI
     /// Reference, Reviewed By, Reviewed Date) so reviewers can recompute
     /// baseline date, interest accrual etc. independently of the system.
     ///
+    /// May 2026 — POC token support
+    /// -------------------------------------------------------------------
+    /// Accepts both AS Fin (package-level) and POC (POC-scoped) tokens.
+    /// POC-token exports are filtered to documents whose first-line
+    /// PocEmail matches the POC's email — same filter the reviewer page
+    /// uses for the on-screen lines tab. The Excel file therefore mirrors
+    /// what the POC sees, not the whole package.
+    ///
     /// The reason code lives at DOCUMENT level (the reviewer codes only
     /// the first/dominant line, via the smallest-ItemSequence row), and
     /// every line of the same document inherits that code — driven via a
@@ -49,24 +57,34 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            // Resolve the package from the token. Any non-invalid token is
-            // accepted — the reviewer page already renders for every status,
-            // and read-only export is harmless on Complete/Cancelled.
-            DataTable pkg = LPPIHelper.ExecuteTable(@"
-                SELECT p.PackageID, p.Status, cm.Program
-                FROM tblLPPI_ReviewPackages p
-                INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
-                WHERE p.Token = @t",
-                LPPIHelper.P("@t", token));
-
-            if (pkg.Rows.Count != 1)
+            // Resolve the token. Both AS Fin and POC tokens are accepted —
+            // read-only export is harmless on every status, and a POC
+            // export is just a filtered version of the same data.
+            LPPIHelper.ReviewTokenInfo tokenInfo = LPPIHelper.ResolveReviewToken(token);
+            if (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.None)
             {
                 WriteError(ctx, "Invalid link.");
                 return;
             }
 
-            int    packageId = Convert.ToInt32(pkg.Rows[0]["PackageID"]);
-            string program   = Convert.ToString(pkg.Rows[0]["Program"]);
+            int    packageId = tokenInfo.PackageID;
+            bool   isPocView = (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.Poc);
+            string pocEmail  = isPocView ? (tokenInfo.PocEmail ?? "") : null;
+
+            // Look up the program name for the file name. Independent of
+            // token kind.
+            object progObj = LPPIHelper.ExecuteScalar(@"
+                SELECT cm.Program
+                FROM tblLPPI_ReviewPackages p
+                INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
+                WHERE p.PackageID = @p",
+                LPPIHelper.P("@p", packageId));
+            if (progObj == null || progObj == DBNull.Value)
+            {
+                WriteError(ctx, "Invalid link.");
+                return;
+            }
+            string program = Convert.ToString(progObj);
 
             // -----------------------------------------------------------------
             // Pull every column on tblLPPI_Documents for every line in the
@@ -74,8 +92,13 @@ namespace CPlatform.LPPI
             // DocumentID) and the reason code lookup. ORDER BY total
             // interest DESC then DocNoAccounting/ItemSequence so the export
             // mirrors the screen ordering.
+            //
+            // POC view: an EXISTS clause restricts to documents whose
+            // first-line PocEmail matches the POC. This filters at
+            // document granularity — every line of an in-scope document
+            // is included.
             // -----------------------------------------------------------------
-            DataTable detail = LPPIHelper.ExecuteTable(@"
+            string sql = @"
                 SELECT
                     -- Identity
                     d.DocumentID,
@@ -165,20 +188,40 @@ namespace CPlatform.LPPI
                                             WHERE d3.DocNoAccounting = d.DocNoAccounting)
                 LEFT  JOIN tblLPPI_ReasonCodes rc
                         ON rc.ReasonCodeID = r.ReasonCodeID
-                WHERE pd.PackageID = @p
+                WHERE pd.PackageID = @p"
+                + (isPocView
+                    ? "  AND EXISTS (SELECT 1 FROM tblLPPI_Documents dPoc " +
+                      "WHERE dPoc.DocNoAccounting = d.DocNoAccounting " +
+                      "  AND dPoc.ItemSequence = 1 " +
+                      "  AND LTRIM(RTRIM(dPoc.PocEmail)) = LTRIM(RTRIM(@poc)))"
+                    : "")
+                + @"
                 ORDER BY
                     (SELECT SUM(d4.InterestPayable)
                        FROM tblLPPI_Documents d4
                       WHERE d4.DocNoAccounting = d.DocNoAccounting) DESC,
                     d.DocNoAccounting,
-                    d.ItemSequence",
-                LPPIHelper.P("@p", packageId));
+                    d.ItemSequence";
+
+            DataTable detail;
+            if (isPocView)
+                detail = LPPIHelper.ExecuteTable(sql,
+                    LPPIHelper.P("@p",   packageId),
+                    LPPIHelper.P("@poc", pocEmail));
+            else
+                detail = LPPIHelper.ExecuteTable(sql, LPPIHelper.P("@p", packageId));
 
             byte[] bytes = BuildWorkbook(detail);
 
+            // File name reflects the scope so a POC's download does not
+            // collide with the AS Fin one in the user's downloads folder.
+            string scopeToken = isPocView
+                ? SafeFileToken(program) + "_POC_" + SafeFileToken(pocEmail)
+                : SafeFileToken(program);
+
             string fileName = string.Format(CultureInfo.InvariantCulture,
                 "LPPI_Review_{0}_{1}.xlsx",
-                SafeFileToken(program),
+                scopeToken,
                 DateTime.Now.ToString("yyyyMMdd_HHmm", CultureInfo.InvariantCulture));
 
             ctx.Response.Clear();
@@ -396,7 +439,10 @@ namespace CPlatform.LPPI
 
                 // Auto-fit columns. Cap the width so a stray long comment
                 // does not blow the layout out to hundreds of pixels.
-                ws.Cells[ws.Dimension.Address].AutoFitColumns(8, 60);
+                if (ws.Dimension != null)
+                {
+                    ws.Cells[ws.Dimension.Address].AutoFitColumns(8, 60);
+                }
 
                 // AutoFilter on the header row so reviewers can sort/filter
                 // any column natively in Excel.
@@ -468,9 +514,10 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // Filename helper — sanitise the program name for use in the file
-        // name. Strips anything that is not alphanumeric / dash / underscore
-        // and trims to 32 chars. "AIR FORCE" -> "AIRFORCE", etc.
+        // Filename helper — sanitise the program / email for use in the
+        // file name. Strips anything that is not alphanumeric / dash /
+        // underscore and trims to 32 chars. "AIR FORCE" -> "AIRFORCE",
+        // "name@defence.gov.au" -> "name_defence_gov_au".
         // -------------------------------------------------------------------
         private static string SafeFileToken(string raw)
         {

@@ -5,6 +5,7 @@ using System.Data;
 using System.Data.OleDb;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace CPlatform.LPPI
@@ -14,6 +15,16 @@ namespace CPlatform.LPPI
     /// Parameterised SQL only. No ORM. Connection string read from web.config
     /// appSetting "LPPI.ConnectionString" (falls back to a UDL under
     /// ~/Database/CPlatform.udl, matching CPLATFORM convention).
+    ///
+    /// May 2026 changes:
+    ///   - tblLPPI_CapabilityManagerEmails removed; recipient model collapsed
+    ///     to a single Email + EmailDisplayName on tblLPPI_CapabilityManagers.
+    ///     GetCmEmails / GetActiveRecipients are gone, replaced by
+    ///     GetCmEmail returning a single CmEmail struct (or null).
+    ///   - Reviewer page now supports two token types: AS Fin token (the
+    ///     existing tblLPPI_ReviewPackages.Token) and POC token (new
+    ///     tblLPPI_PackagePocs.Token). ResolveReviewToken inspects both
+    ///     tables and returns a typed result so callers can dispatch on it.
     /// </summary>
     public static class LPPIHelper
     {
@@ -154,6 +165,8 @@ namespace CPlatform.LPPI
         //   Reviewer page  = token-based; admin gate disabled. IIS Windows
         //                    auth still captures the identity though, and we
         //                    use it for audit (ChangedByName etc.).
+        //                    Two token types: AS Fin (full package) and POC
+        //                    (POC-scoped); see ResolveReviewToken.
         //   Everything else = gated by tblLPPI_AdminUsers.
         //   Admin           = full access to all LPPI admin pages and actions.
         //   Non-admin       = LPPI_Review.aspx only (via token link).
@@ -207,6 +220,8 @@ namespace CPlatform.LPPI
         // -------------------------------------------------------------------
         // Token generation — cryptographically strong, URL-safe, opaque.
         // ~22 chars of base64url (16 random bytes). Not a sequential ID.
+        // Same generator is used for both AS Fin tokens (on tblLPPI_ReviewPackages)
+        // and POC tokens (on tblLPPI_PackagePocs).
         // -------------------------------------------------------------------
 
         public static string GenerateToken()
@@ -220,6 +235,68 @@ namespace CPlatform.LPPI
                 .Replace('/', '_')
                 .TrimEnd('=');
             return b64;
+        }
+
+        // -------------------------------------------------------------------
+        // Reviewer-token resolution
+        //
+        // The reviewer page accepts a single ?t=<token> querystring. The token
+        // can be either an AS Fin token (full package, can save and finalise)
+        // or a POC token (POC-scoped view, can save but not finalise). We
+        // look in tblLPPI_ReviewPackages first because that lookup is by the
+        // primary unique-key on Token; on miss, we look in tblLPPI_PackagePocs.
+        //
+        // Returns a struct describing what was found. Callers dispatch on
+        // TokenKind:
+        //   AsFin -> proceed as before; full package view, finalise allowed.
+        //   Poc   -> filter docs to PocEmail; suppress finalise button.
+        //   None  -> show the generic "invalid link" page.
+        // -------------------------------------------------------------------
+
+        public enum ReviewTokenKind { None = 0, AsFin = 1, Poc = 2 }
+
+        public class ReviewTokenInfo
+        {
+            public ReviewTokenKind Kind;
+            public int             PackageID;
+            public string          PocEmail;     // POC tokens only — null otherwise
+            public int             PackagePocID; // POC tokens only — 0 otherwise
+        }
+
+        public static ReviewTokenInfo ResolveReviewToken(string token)
+        {
+            var info = new ReviewTokenInfo { Kind = ReviewTokenKind.None };
+            if (string.IsNullOrWhiteSpace(token)) return info;
+            string t = token.Trim();
+
+            // 1) AS Fin token
+            object pidObj = ExecuteScalar(
+                "SELECT PackageID FROM dbo.tblLPPI_ReviewPackages WHERE Token = @t",
+                P("@t", t));
+            if (pidObj != null && pidObj != DBNull.Value)
+            {
+                info.Kind      = ReviewTokenKind.AsFin;
+                info.PackageID = Convert.ToInt32(pidObj);
+                return info;
+            }
+
+            // 2) POC token
+            DataTable dt = ExecuteTable(
+                @"SELECT PackagePocID, PackageID, PocEmail
+                    FROM dbo.tblLPPI_PackagePocs
+                   WHERE Token = @t",
+                P("@t", t));
+            if (dt.Rows.Count == 1)
+            {
+                DataRow r = dt.Rows[0];
+                info.Kind         = ReviewTokenKind.Poc;
+                info.PackagePocID = Convert.ToInt32(r["PackagePocID"]);
+                info.PackageID    = Convert.ToInt32(r["PackageID"]);
+                info.PocEmail     = Convert.ToString(r["PocEmail"]);
+                return info;
+            }
+
+            return info;
         }
 
         // -------------------------------------------------------------------
@@ -431,6 +508,44 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
+        // Email validation — Defence-only, app-side gate.
+        //
+        // The CK_tblLPPI_CapabilityManagers_Email constraint catches anything
+        // that bypasses the UI; this helper is the user-facing gate. Returns
+        // the cleaned address (lowercased) on success, or null when the
+        // address is malformed or not a defence.gov.au address. errorMessage
+        // is set to a UI-suitable message on failure.
+        //
+        // Used by the CM admin page when saving Email, and by the email send
+        // pipeline to filter out malformed POC addresses pulled from BODS.
+        // -------------------------------------------------------------------
+
+        private static readonly Regex EmailShape =
+            new Regex(@"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$",
+                      RegexOptions.Compiled);
+
+        public static string ValidateDefenceEmail(string raw, out string errorMessage)
+        {
+            errorMessage = null;
+            string s = (raw ?? "").Trim();
+            if (s.Length == 0) { errorMessage = "Email is required."; return null; }
+
+            if (!EmailShape.IsMatch(s))
+            {
+                errorMessage = "Email is not a valid address.";
+                return null;
+            }
+
+            if (!s.EndsWith("@defence.gov.au", StringComparison.OrdinalIgnoreCase))
+            {
+                errorMessage = "Only @defence.gov.au addresses are accepted.";
+                return null;
+            }
+
+            return s.ToLowerInvariant();
+        }
+
+        // -------------------------------------------------------------------
         // Reason codes
         // -------------------------------------------------------------------
 
@@ -462,55 +577,101 @@ namespace CPlatform.LPPI
 
         // -------------------------------------------------------------------
         // Capability managers
+        //
+        // The recipient model collapsed (May 2026): each CM has a single
+        // Email + EmailDisplayName on the row itself. There is no
+        // tblLPPI_CapabilityManagerEmails any more.
+        //
+        //   - GetCapabilityManagers — list view with per-CM email projected
+        //     in line. EmailConfigured is a bit so the CM admin page can
+        //     render a status pill without reading the address itself.
+        //   - GetCmEmail — single-row lookup for a CM, returns null when
+        //     not configured.
+        //   - UpsertCapabilityManager / SaveCmEmail — write paths.
         // -------------------------------------------------------------------
+
+        public class CmEmail
+        {
+            public int    CmID;
+            public string Program;
+            public string DisplayName;
+            public string Email;
+            public string EmailDisplayName;
+            /// <summary>True iff Email AND EmailDisplayName are both populated.</summary>
+            public bool   IsConfigured
+            {
+                get
+                {
+                    return !string.IsNullOrWhiteSpace(Email)
+                        && !string.IsNullOrWhiteSpace(EmailDisplayName);
+                }
+            }
+        }
 
         public static DataTable GetCapabilityManagers(bool includeInactive = false)
         {
-            // Note: tblLPPI_CapabilityManagerEmails no longer carries an
-            // IsActive column — the UI moved to an add/delete model. Group-
-            // level IsActive on tblLPPI_CapabilityManagers still applies.
-            var sql = @"SELECT cm.CmID, cm.Program, cm.DisplayName, cm.IsActive,
-                               cm.CreatedDate, cm.ModifiedDate,
-                               (SELECT COUNT(*) FROM dbo.tblLPPI_CapabilityManagerEmails e
-                                  WHERE e.CmID = cm.CmID) AS EmailCount
+            var sql = @"SELECT cm.CmID, cm.Program, cm.DisplayName,
+                               cm.Email, cm.EmailDisplayName,
+                               cm.IsActive, cm.CreatedDate, cm.ModifiedDate,
+                               CASE WHEN cm.Email IS NOT NULL
+                                     AND LTRIM(RTRIM(cm.Email)) <> ''
+                                     AND cm.EmailDisplayName IS NOT NULL
+                                     AND LTRIM(RTRIM(cm.EmailDisplayName)) <> ''
+                                    THEN 1 ELSE 0 END AS EmailConfigured
                         FROM dbo.tblLPPI_CapabilityManagers cm
                         WHERE (@IncludeInactive = 1 OR cm.IsActive = 1)
                         ORDER BY cm.Program";
             return ExecuteTable(sql, P("@IncludeInactive", includeInactive ? 1 : 0));
         }
 
-        public static DataTable GetCmEmails(int cmId)
+        /// <summary>
+        /// Returns the configured CM email + display name for sending.
+        /// Returns null if the CM does not exist, or if either field is
+        /// missing — the send pipeline checks IsConfigured to gate dispatch.
+        /// </summary>
+        public static CmEmail GetCmEmail(int cmId)
         {
-            var sql = @"SELECT CmEmailID, CmID, Email, DisplayName, IsCC
-                        FROM dbo.tblLPPI_CapabilityManagerEmails
-                        WHERE CmID = @CmID
-                        ORDER BY IsCC, Email";
-            return ExecuteTable(sql, P("@CmID", cmId));
+            const string sql = @"
+SELECT CmID, Program, DisplayName, Email, EmailDisplayName
+  FROM dbo.tblLPPI_CapabilityManagers
+ WHERE CmID = @CmID";
+            var dt = ExecuteTable(sql, P("@CmID", cmId));
+            if (dt.Rows.Count != 1) return null;
+            DataRow r = dt.Rows[0];
+            return new CmEmail
+            {
+                CmID             = Convert.ToInt32(r["CmID"]),
+                Program          = AsStr(r["Program"]),
+                DisplayName      = AsStr(r["DisplayName"]),
+                Email            = AsStr(r["Email"]),
+                EmailDisplayName = AsStr(r["EmailDisplayName"])
+            };
         }
 
         /// <summary>
-        /// Returns the TO and CC recipient lists for a CM group. Name is kept
-        /// as GetActiveRecipients for compatibility with existing callers
-        /// (LPPIEmail.cs etc.); all recipients are "active" now that the
-        /// per-recipient IsActive flag is gone.
+        /// Returns the count of active CM groups missing email configuration.
+        /// Used by the CM admin page to render a single banner at the top
+        /// of the list.
         /// </summary>
-        public static List<string> GetActiveRecipients(int cmId, out List<string> ccList)
+        public static int CountCmsMissingEmail()
         {
-            var to = new List<string>();
-            var cc = new List<string>();
-            var dt = GetCmEmails(cmId);
-            foreach (DataRow r in dt.Rows)
-            {
-                var em = Convert.ToString(r["Email"]);
-                if (string.IsNullOrWhiteSpace(em)) continue;
-                if (Convert.ToBoolean(r["IsCC"])) cc.Add(em); else to.Add(em);
-            }
-            ccList = cc;
-            return to;
+            object o = ExecuteScalar(@"
+SELECT COUNT(*)
+  FROM dbo.tblLPPI_CapabilityManagers cm
+ WHERE cm.IsActive = 1
+   AND (cm.Email IS NULL
+        OR LTRIM(RTRIM(cm.Email)) = ''
+        OR cm.EmailDisplayName IS NULL
+        OR LTRIM(RTRIM(cm.EmailDisplayName)) = '')");
+            return o == null ? 0 : Convert.ToInt32(o);
         }
 
         public static int UpsertCapabilityManager(string program, string displayName, bool isActive)
         {
+            // NOTE: deliberately does NOT touch Email / EmailDisplayName.
+            // File-load auto-create cannot populate those (BODS does not
+            // supply them), and admin edits to the existing email must not
+            // be wiped by a re-load.
             var sql = @"
 MERGE dbo.tblLPPI_CapabilityManagers AS target
 USING (SELECT @Program AS Program) AS src
@@ -528,20 +689,72 @@ OUTPUT inserted.CmID;";
             return Convert.ToInt32(o);
         }
 
+        /// <summary>
+        /// Save the CM email + display name. Validates that the address is a
+        /// defence.gov.au address. Allows clearing both fields by passing
+        /// null/empty for both. If only one is supplied, returns false with
+        /// errorMessage describing the gap.
+        /// </summary>
+        public static bool SaveCmEmail(int cmId, string emailRaw, string displayName, out string errorMessage)
+        {
+            errorMessage = null;
+            string em = (emailRaw ?? "").Trim();
+            string dn = (displayName ?? "").Trim();
+
+            // Both blank — clear the configuration.
+            if (em.Length == 0 && dn.Length == 0)
+            {
+                ExecuteNonQuery(@"
+UPDATE dbo.tblLPPI_CapabilityManagers
+   SET Email = NULL,
+       EmailDisplayName = NULL,
+       ModifiedDate = SYSDATETIME()
+ WHERE CmID = @CmID",
+                    P("@CmID", cmId));
+                return true;
+            }
+
+            // Either set: both must be set, and the email must validate.
+            if (em.Length == 0 || dn.Length == 0)
+            {
+                errorMessage = "Both email and display name are required (or leave both blank to clear).";
+                return false;
+            }
+
+            string cleaned = ValidateDefenceEmail(em, out errorMessage);
+            if (cleaned == null) return false;
+
+            ExecuteNonQuery(@"
+UPDATE dbo.tblLPPI_CapabilityManagers
+   SET Email = @Email,
+       EmailDisplayName = @Dn,
+       ModifiedDate = SYSDATETIME()
+ WHERE CmID = @CmID",
+                P("@Email", cleaned),
+                P("@Dn",    dn),
+                P("@CmID",  cmId));
+            return true;
+        }
+
+        /// <summary>
+        /// Returns the list of active CM Programs whose Email or
+        /// EmailDisplayName is not configured — i.e. would be refused at
+        /// send time. Used by the Send-outs warning banner and the file-load
+        /// reconcile follow-up message.
+        /// </summary>
         public static List<string> GetUnconfiguredPrograms()
         {
             var sql = @"
-SELECT DISTINCT d.CapabilityManagerProgram
-FROM dbo.tblLPPI_Documents d
-WHERE d.CapabilityManagerProgram IS NOT NULL
-  AND LTRIM(RTRIM(d.CapabilityManagerProgram)) <> ''
-  AND NOT EXISTS (
-        SELECT 1 FROM dbo.tblLPPI_CapabilityManagers cm
-        INNER JOIN dbo.tblLPPI_CapabilityManagerEmails e
-            ON e.CmID = cm.CmID
-        WHERE cm.Program = d.CapabilityManagerProgram
-          AND cm.IsActive = 1
-  );";
+SELECT cm.Program
+  FROM dbo.tblLPPI_CapabilityManagers cm
+ WHERE cm.IsActive = 1
+   AND (cm.Email IS NULL
+        OR LTRIM(RTRIM(cm.Email)) = ''
+        OR cm.EmailDisplayName IS NULL
+        OR LTRIM(RTRIM(cm.EmailDisplayName)) = '')
+   AND EXISTS (SELECT 1 FROM dbo.tblLPPI_Documents d
+                WHERE d.CapabilityManagerProgram = cm.Program)
+ ORDER BY cm.Program";
             var dt = ExecuteTable(sql);
             var list = new List<string>();
             foreach (DataRow r in dt.Rows) list.Add(Convert.ToString(r[0]));
@@ -622,13 +835,13 @@ WITH DocTotals AS (
      GROUP BY d.DocNoAccounting
 )
 SELECT
-    ISNULL(SUM(dt.DocInterest), 0)                                   AS TotalExposure,
-    ISNULL(SUM(CASE WHEN rc.Outcome = 'Payable'    THEN dt.DocInterest ELSE 0 END), 0) AS PayableExposure,
-    ISNULL(SUM(CASE WHEN rc.Outcome = 'NotPayable' THEN dt.DocInterest ELSE 0 END), 0) AS NotPayableExposure,
-    ISNULL(SUM(CASE WHEN rc.ReasonCodeID IS NULL   THEN dt.DocInterest ELSE 0 END), 0) AS AwaitingExposure,
+    ISNULL(SUM(dt.DocInterest), 0)                                                          AS TotalExposure,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'Payable'    THEN dt.DocInterest ELSE 0 END), 0)      AS PayableExposure,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'NotPayable' THEN dt.DocInterest ELSE 0 END), 0)      AS NotPayableExposure,
+    ISNULL(SUM(CASE WHEN rc.ReasonCodeID IS NULL   THEN dt.DocInterest ELSE 0 END), 0)      AS AwaitingExposure,
     COUNT(*) AS DocCount
 FROM DocTotals dt
-LEFT JOIN dbo.tblLPPI_Reviews r       ON r.DocumentID   = dt.FirstLineDocumentID
+LEFT JOIN dbo.tblLPPI_Reviews r       ON r.DocumentID    = dt.FirstLineDocumentID
 LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
             var dt = ExecuteTable(sql);
             return dt.Rows.Count > 0 ? dt.Rows[0] : null;
@@ -812,6 +1025,9 @@ LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
         //
         // The reviewer page only ever calls FinalisePackage; admin-side
         // UnfinalisePackage lives behind the admin gate.
+        //
+        // POC tokens cannot drive either transition — the .ashx handlers
+        // refuse POC-token calls before reaching here.
         // -------------------------------------------------------------------
 
         public class LifecycleResult
@@ -832,13 +1048,13 @@ LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
         {
             var result = new LifecycleResult();
 
-            // Look up RC-NR id once. If it's missing the migration didn't run.
+            // Look up RC-NR id once. If it's missing the schema is corrupt.
             int? noRespId = GetReasonCodeIdByCode(NoResponseReasonCode);
             if (!noRespId.HasValue)
             {
                 result.Success = false;
                 result.ErrorMessage = "System reason code '" + NoResponseReasonCode +
-                    "' is missing — finalise cannot proceed. Re-run the lifecycle migration.";
+                    "' is missing — finalise cannot proceed. Re-run the schema script.";
                 return result;
             }
 
@@ -1246,6 +1462,15 @@ UPDATE dbo.tblLPPI_ReviewPackages
             cmd.CommandType = CommandType.Text;
             foreach (var p in ordered) { cmd.Parameters.Add(p); }
             return cmd;
+        }
+
+        // -------------------------------------------------------------------
+        // Tiny string helper — DataRow column to non-null string.
+        // -------------------------------------------------------------------
+        private static string AsStr(object o)
+        {
+            if (o == null || o == DBNull.Value) return "";
+            return Convert.ToString(o);
         }
     }
 }

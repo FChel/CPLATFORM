@@ -14,6 +14,22 @@ namespace CPlatform.LPPI
     /// Packages are NOT created here — they are created by the file-load
     /// reconcile step.
     ///
+    /// May 2026 — POC fan-out
+    /// -------------------------------------------------------------------
+    /// Each Send / Reminder click now dispatches:
+    ///   1. AS Fin email (group summary, sent to the CM team mailbox)
+    ///   2. One per-POC email per distinct invoice POC in the package
+    /// LPPIEmail.SendResult carries the per-package fan-out outcome
+    /// (PocsDispatched / PocsSkipped / PocsFailed + WarningMessage), which
+    /// is surfaced in the per-package result line.
+    ///
+    /// The "AS Fin recipient" column shows the single CM email + display
+    /// name configured on tblLPPI_CapabilityManagers, or a "Not configured"
+    /// pill when the CM has no email yet. The picker checkbox is gated on
+    /// EmailConfigured, not on POC count — empty-POC packages can still be
+    /// sent (AS Fin gets the group summary; the send pipeline reports the
+    /// missing fan-out as a warning).
+    ///
     /// Lifecycle visibility:
     ///   - NotSent / Sent / InReview show in Open packages and are
     ///     actionable (can be sent / reminded).
@@ -26,14 +42,13 @@ namespace CPlatform.LPPI
     ///   - Exported / Cancelled are out of scope and only surface on the
     ///     dashboard / batches page.
     ///
-    /// In UAT (LPPIEmail.ProductionMode = false), an additional
-    /// "Mark as sent (UAT)" button is visible. It performs the same status
-    /// transition as a real initial send (NotSent -> Sent, stamps SentDate)
-    /// without dispatching any email, so the lifecycle can be tested
-    /// end-to-end without relying on email delivery. The two buttons are
-    /// mutually exclusive: in PROD only Send is visible, in UAT only
-    /// Mark as sent is enabled. The single LPPIEmail.ProductionMode flag
-    /// drives both.
+    /// In test mode (LPPIEmail.ProductionMode = false), a "Mark as sent"
+    /// button is visible. It performs the same status transition as a real
+    /// initial send (NotSent -> Sent, stamps SentDate) plus per-audience
+    /// audit rows (one for AS Fin, one per POC) without dispatching any
+    /// email. The two buttons are mutually exclusive: in PROD only Send is
+    /// enabled, in test mode only Mark as sent is. The single
+    /// LPPIEmail.ProductionMode flag drives both.
     /// </summary>
     public partial class LPPI_SendOuts : LPPIBasePage
     {
@@ -50,7 +65,7 @@ namespace CPlatform.LPPI
 
             // Mutually exclusive button visibility, gated on ProductionMode:
             //   PROD: btnSend enabled, btnMarkSent hidden.
-            //   UAT:  btnSend disabled (kept visible so its presence is obvious),
+            //   Test: btnSend disabled (kept visible so its presence is obvious),
             //         btnMarkSent visible and enabled.
             btnSend.Enabled    = LPPIEmail.ProductionMode;
             btnMarkSent.Visible = !LPPIEmail.ProductionMode;
@@ -59,7 +74,7 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // UAT banner
+        // Test-mode banner
         // -------------------------------------------------------------------
 
         private void RenderUatBanner()
@@ -70,7 +85,7 @@ namespace CPlatform.LPPI
             phUatBanner.Controls.Add(new LiteralControl(
                 "<div class=\"alert alert-warn\">" +
                 "<div><strong>Test mode.</strong> Real email sending is disabled. " +
-                "Use <em>Preview email</em> to see the formatted email and " +
+                "Use <em>Preview AS Fin</em> or <em>Preview POC</em> to see the formatted email and " +
                 "<em>Mark as sent (test)</em> to simulate email sending " +
                 "and set package(s) status to [Sent]." +
                 "</div>" +
@@ -79,6 +94,9 @@ namespace CPlatform.LPPI
 
         // -------------------------------------------------------------------
         // Unconfigured-CM warning
+        //
+        // Driven from LPPIHelper.GetUnconfiguredPrograms() which now reads
+        // the new single-email model on tblLPPI_CapabilityManagers.
         // -------------------------------------------------------------------
 
         private void BindUnconfigured()
@@ -90,7 +108,7 @@ namespace CPlatform.LPPI
 
             var msg = "<div class=\"alert alert-warn\"><div><strong>" + unconfigured.Count +
                       " Capability Manager program" + (unconfigured.Count == 1 ? "" : "s") +
-                      "</strong> in your loaded data have no recipient email configured. " +
+                      "</strong> in your loaded data have no AS Fin email configured. " +
                       "You will not be able to send these out for review until they are added.<br/>" +
                       "Missing: " + string.Join(", ", unconfigured.Select(p => "<code>" + System.Web.HttpUtility.HtmlEncode(p) + "</code>")) +
                       " &nbsp; <a href=\"LPPI_CapabilityManagers.aspx\">Configure now &rarr;</a></div></div>";
@@ -105,13 +123,22 @@ namespace CPlatform.LPPI
         // dashboard. Finalised rows are visually distinct (green pill) and
         // their checkbox is suppressed in the markup since they have no
         // valid send/remind action.
+        //
+        // May 2026 — single CM email + POC count.
+        //   Replaces the legacy join to tblLPPI_CapabilityManagerEmails
+        //   (dropped) with a direct projection of cm.Email and
+        //   cm.EmailDisplayName, plus an EmailConfigured bit derived in SQL
+        //   so the markup can data-bind to it via Eval("EmailConfigured").
+        //   Also surfaces PocCount from tblLPPI_PackagePocs so the operator
+        //   sees the fan-out scope at a glance.
         // -------------------------------------------------------------------
 
         private void BindPackages()
         {
             // Columns required by rptPackages Eval():
-            //   PackageID, Token, Program, ToCount, ToList,
-            //   DocCount, ReviewedCount, Status, DueDate, LastEmailDate
+            //   PackageID, Token, Program, Status, DueDate, SentDate,
+            //   Email, EmailDisplayName, EmailConfigured (bit),
+            //   PocCount, DocCount, ReviewedCount, LastEmailDate
             const string sql = @"
                 SELECT p.PackageID,
                        p.Token,
@@ -120,13 +147,17 @@ namespace CPlatform.LPPI
                        p.SentDate,
                        cm.CmID,
                        cm.Program,
+                       cm.Email,
+                       cm.EmailDisplayName,
+                       CASE
+                           WHEN cm.Email             IS NOT NULL AND LEN(LTRIM(RTRIM(cm.Email))) > 0
+                            AND cm.EmailDisplayName IS NOT NULL AND LEN(LTRIM(RTRIM(cm.EmailDisplayName))) > 0
+                           THEN CAST(1 AS BIT)
+                           ELSE CAST(0 AS BIT)
+                       END AS EmailConfigured,
                        (SELECT COUNT(*)
-                          FROM tblLPPI_CapabilityManagerEmails e
-                         WHERE e.CmID = cm.CmID AND e.IsCC = 0) AS ToCount,
-                       ISNULL(STUFF((SELECT ', ' + e.Email
-                                       FROM tblLPPI_CapabilityManagerEmails e
-                                      WHERE e.CmID = cm.CmID AND e.IsCC = 0
-                                      FOR XML PATH('')), 1, 2, ''), '') AS ToList,
+                          FROM tblLPPI_PackagePocs pp
+                         WHERE pp.PackageID = p.PackageID) AS PocCount,
                        (SELECT COUNT(*)
                           FROM tblLPPI_ReviewPackageDocuments pd
                          WHERE pd.PackageID = p.PackageID) AS DocCount,
@@ -257,11 +288,40 @@ namespace CPlatform.LPPI
         }
 
         /// <summary>
+        /// AS Fin recipient cell. Shows the single CM email and display name
+        /// when configured, or a "Not configured" pill linking to the
+        /// Capability Managers page when blank.
+        /// </summary>
+        protected string RenderRecipientCell(object dataItem)
+        {
+            var row = (DataRowView)dataItem;
+            bool configured = row["EmailConfigured"] != DBNull.Value
+                              && Convert.ToBoolean(row["EmailConfigured"]);
+
+            if (!configured)
+            {
+                return "<a href=\"LPPI_CapabilityManagers.aspx\" class=\"pill-not-configured\" " +
+                       "title=\"Click to configure\">Not configured</a>";
+            }
+
+            string email = row["Email"]             == DBNull.Value ? "" : Convert.ToString(row["Email"]);
+            string name  = row["EmailDisplayName"] == DBNull.Value ? "" : Convert.ToString(row["EmailDisplayName"]);
+
+            var sb = new StringBuilder();
+            sb.Append("<div class=\"recipient-cell\">");
+            sb.Append("<div class=\"recipient-email\">").Append(LPPIHelper.Enc(email)).Append("</div>");
+            if (name.Length > 0)
+                sb.Append("<div class=\"recipient-name\">").Append(LPPIHelper.Enc(name)).Append("</div>");
+            sb.Append("</div>");
+            return sb.ToString();
+        }
+
+        /// <summary>
         /// Actions cell on the Open packages table. Every package gets an
         /// "Open review" link (admin QA / visibility into Finalised packages).
-        /// Preview email is offered for any non-terminal package — pointless
-        /// on Finalised since the email cycle is over, so we suppress it
-        /// there to reduce clutter.
+        /// Preview buttons (AS Fin and POC) are offered for any non-terminal
+        /// package — pointless on Finalised since the email cycle is over,
+        /// so we suppress them there to reduce clutter.
         /// </summary>
         protected string RenderPackageActions(object packageIdObj, object tokenObj, object statusObj)
         {
@@ -284,9 +344,11 @@ namespace CPlatform.LPPI
                     token, baseUrl);
             }
 
-            // Preview email — useful while the email cycle is still
+            // Preview buttons — useful while the email cycle is still
             // relevant. Suppressed on Finalised since reminders have no
-            // meaning at that point.
+            // meaning at that point. POC preview uses placeholder values
+            // (handled in LPPIEmail.BuildEmailHtml) so no per-POC selection
+            // is needed at the UI level.
             bool isFinalised = string.Equals(status, "Finalised", StringComparison.OrdinalIgnoreCase);
             if (!isFinalised)
             {
@@ -294,7 +356,11 @@ namespace CPlatform.LPPI
                                    ? "Initial" : "Reminder";
                 sb.AppendFormat(
                     "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
-                    "onclick=\"openPreview({0},'{1}')\">Preview email</button>",
+                    "onclick=\"openPreview({0},'{1}','asfin')\">Preview AS Fin</button> ",
+                    packageId, emailType);
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
+                    "onclick=\"openPreview({0},'{1}','poc')\">Preview POC</button>",
                     packageId, emailType);
             }
 
@@ -303,7 +369,7 @@ namespace CPlatform.LPPI
 
         /// <summary>
         /// Actions column for rptRecent rows — same model: review link
-        /// available for any package, preview suppressed on Finalised.
+        /// available for any package, previews suppressed on terminal states.
         /// </summary>
         protected string RenderRecentActions(object packageIdObj, object tokenObj, object statusObj)
         {
@@ -335,7 +401,11 @@ namespace CPlatform.LPPI
                                    ? "Initial" : "Reminder";
                 sb.AppendFormat(
                     "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
-                    "onclick=\"openPreview({0},'{1}')\">Preview email</button>",
+                    "onclick=\"openPreview({0},'{1}','asfin')\">Preview AS Fin</button> ",
+                    packageId, emailType);
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
+                    "onclick=\"openPreview({0},'{1}','poc')\">Preview POC</button>",
                     packageId, emailType);
             }
 
@@ -346,9 +416,9 @@ namespace CPlatform.LPPI
         // Selection helper — shared between Send and Mark-as-sent.
         //
         // The picker only enables the checkbox on rows whose status is one
-        // of NotSent / Sent / InReview (markup gates this via Eval). Even
-        // so, the server re-checks status at action time so a Finalised
-        // package racing through cannot get sent.
+        // of NotSent / Sent / InReview AND whose CM has email configured
+        // (markup gates this via Eval). Even so, the server re-checks at
+        // action time so a Finalised package racing through cannot get sent.
         // -------------------------------------------------------------------
 
         private List<int> CollectSelectedPackageIds()
@@ -373,6 +443,20 @@ namespace CPlatform.LPPI
 
         // -------------------------------------------------------------------
         // Send / remind selected packages — real send (PROD only)
+        //
+        // Each LPPIEmail.SendInitial / SendReminder call dispatches to two
+        // audiences (AS Fin + per-POC). The SendResult carries the per-package
+        // outcome:
+        //   Success         — true when the AS Fin send succeeded
+        //   ErrorMessage    — populated when Success is false
+        //   WarningMessage  — non-fatal note about the POC fan-out (e.g.
+        //                     "12 POCs sent, 1 skipped" or "No POCs configured")
+        //   PocsDispatched / PocsSkipped / PocsFailed — counts used to build
+        //                     the per-package result line below.
+        //
+        // Per-POC failures do NOT roll the overall result to failure — AS Fin
+        // still has visibility via the reviewer page, and the per-POC issues
+        // are surfaced as a warning so the operator can chase them up.
         // -------------------------------------------------------------------
 
         protected void btnSend_Click(object sender, EventArgs e)
@@ -398,7 +482,8 @@ namespace CPlatform.LPPI
             }
 
             int initialOk = 0, reminderOk = 0, failed = 0;
-            var failNotes = new StringBuilder();
+            int totalPocsDispatched = 0, totalPocsSkipped = 0, totalPocsFailed = 0;
+            var perPackageNotes = new StringBuilder();
 
             foreach (int pid in selectedPackageIds)
             {
@@ -418,51 +503,86 @@ namespace CPlatform.LPPI
                         LPPIHelper.P("@P", pid));
 
                     var res = LPPIEmail.SendInitial(pid);
-                    if (res.Success) initialOk++;
-                    else
-                    {
-                        failed++;
-                        failNotes.Append("<li>Package #").Append(pid).Append(" (initial): ")
-                                 .Append(LPPIHelper.Enc(res.ErrorMessage)).Append("</li>");
-                    }
+                    AccumulateResult(res, perPackageNotes, pid, "initial",
+                        ref initialOk, ref failed,
+                        ref totalPocsDispatched, ref totalPocsSkipped, ref totalPocsFailed);
                 }
                 else if (string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase))
                 {
                     var res = LPPIEmail.SendReminder(pid);
-                    if (res.Success) reminderOk++;
-                    else
-                    {
-                        failed++;
-                        failNotes.Append("<li>Package #").Append(pid).Append(" (reminder): ")
-                                 .Append(LPPIHelper.Enc(res.ErrorMessage)).Append("</li>");
-                    }
+                    AccumulateResult(res, perPackageNotes, pid, "reminder",
+                        ref reminderOk, ref failed,
+                        ref totalPocsDispatched, ref totalPocsSkipped, ref totalPocsFailed);
                 }
                 else
                 {
                     failed++;
-                    failNotes.Append("<li>Package #").Append(pid)
-                             .Append(": skipped — status is ").Append(LPPIHelper.Enc(status))
-                             .Append(", which is not eligible for send/remind.</li>");
+                    perPackageNotes.Append("<li>Package #").Append(pid)
+                                    .Append(": skipped — status is ").Append(LPPIHelper.Enc(status))
+                                    .Append(", which is not eligible for send/remind.</li>");
                 }
             }
 
             string kind = (failed == 0) ? "ok" : "warn";
             var msg = new StringBuilder();
-            msg.Append(initialOk).Append(" initial email").Append(initialOk == 1 ? "" : "s").Append(" sent, ")
-               .Append(reminderOk).Append(" reminder").Append(reminderOk == 1 ? "" : "s").Append(" sent.");
+            msg.Append(initialOk).Append(" initial email").Append(initialOk == 1 ? "" : "s")
+               .Append(" sent, ")
+               .Append(reminderOk).Append(" reminder").Append(reminderOk == 1 ? "" : "s")
+               .Append(" sent.");
+            if (totalPocsDispatched + totalPocsSkipped + totalPocsFailed > 0)
+            {
+                msg.Append(" POC fan-out: ")
+                   .Append(totalPocsDispatched).Append(" sent");
+                if (totalPocsSkipped > 0) msg.Append(", ").Append(totalPocsSkipped).Append(" skipped");
+                if (totalPocsFailed  > 0) msg.Append(", ").Append(totalPocsFailed).Append(" failed");
+                msg.Append(".");
+            }
             if (failed > 0)
-                msg.Append(" ").Append(failed).Append(" failure").Append(failed == 1 ? "" : "s").Append(".");
-            if (failNotes.Length > 0)
-                msg.Append("<ul>").Append(failNotes).Append("</ul>");
+                msg.Append(" ").Append(failed).Append(" package failure").Append(failed == 1 ? "" : "s").Append(".");
+            if (perPackageNotes.Length > 0)
+                msg.Append("<ul>").Append(perPackageNotes).Append("</ul>");
 
             ShowMessageRaw(msg.ToString(), kind);
             BindPackages();
             BindRecent();
         }
 
+        /// <summary>
+        /// Folds one SendResult into the running totals and per-package note
+        /// list. Shared between btnSend_Click's initial and reminder branches.
+        /// </summary>
+        private void AccumulateResult(LPPIEmail.SendResult res, StringBuilder perPackageNotes,
+                                      int pid, string label,
+                                      ref int okCounter, ref int failed,
+                                      ref int totalPocsDispatched, ref int totalPocsSkipped, ref int totalPocsFailed)
+        {
+            totalPocsDispatched += res.PocsDispatched;
+            totalPocsSkipped    += res.PocsSkipped;
+            totalPocsFailed     += res.PocsFailed;
+
+            if (res.Success)
+            {
+                okCounter++;
+                if (!string.IsNullOrEmpty(res.WarningMessage))
+                {
+                    perPackageNotes.Append("<li>Package #").Append(pid)
+                                    .Append(" (").Append(label).Append("): ")
+                                    .Append(LPPIHelper.Enc(res.WarningMessage)).Append("</li>");
+                }
+            }
+            else
+            {
+                failed++;
+                perPackageNotes.Append("<li>Package #").Append(pid)
+                                .Append(" (").Append(label).Append("): ")
+                                .Append(LPPIHelper.Enc(res.ErrorMessage ?? "(unknown error)"))
+                                .Append("</li>");
+            }
+        }
+
         // -------------------------------------------------------------------
-        // Mark as sent (UAT only) — drive the lifecycle without sending email
+        // Mark as sent (test mode only) — drive the lifecycle without sending email
         // -------------------------------------------------------------------
 
         protected void btnMarkSent_Click(object sender, EventArgs e)
@@ -490,7 +610,8 @@ namespace CPlatform.LPPI
             }
 
             int markedOk = 0, skipped = 0, failed = 0;
-            var failNotes = new StringBuilder();
+            int totalPocsDispatched = 0, totalPocsSkipped = 0, totalPocsFailed = 0;
+            var perPackageNotes = new StringBuilder();
 
             foreach (int pid in selectedPackageIds)
             {
@@ -505,26 +626,40 @@ namespace CPlatform.LPPI
                 if (!string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
                 {
                     skipped++;
-                    failNotes.Append("<li>Package #").Append(pid)
-                             .Append(": skipped — already ").Append(LPPIHelper.Enc(status)).Append(".</li>");
+                    perPackageNotes.Append("<li>Package #").Append(pid)
+                                    .Append(": skipped — already ").Append(LPPIHelper.Enc(status)).Append(".</li>");
                     continue;
                 }
 
                 // Apply the chosen due date before marking — same as the real
                 // send. Mark-as-sent is the operator's last chance to set the
-                // due date in UAT.
+                // due date in test mode.
                 LPPIHelper.ExecuteNonQuery(
                     "UPDATE tblLPPI_ReviewPackages SET DueDate = @D WHERE PackageID = @P AND Status = 'NotSent'",
                     LPPIHelper.P("@D", due),
                     LPPIHelper.P("@P", pid));
 
                 var res = LPPIEmail.MarkAsSent(pid);
-                if (res.Success) markedOk++;
+
+                totalPocsDispatched += res.PocsDispatched;
+                totalPocsSkipped    += res.PocsSkipped;
+                totalPocsFailed     += res.PocsFailed;
+
+                if (res.Success)
+                {
+                    markedOk++;
+                    if (!string.IsNullOrEmpty(res.WarningMessage))
+                    {
+                        perPackageNotes.Append("<li>Package #").Append(pid).Append(": ")
+                                        .Append(LPPIHelper.Enc(res.WarningMessage)).Append("</li>");
+                    }
+                }
                 else
                 {
                     failed++;
-                    failNotes.Append("<li>Package #").Append(pid).Append(": ")
-                             .Append(LPPIHelper.Enc(res.ErrorMessage)).Append("</li>");
+                    perPackageNotes.Append("<li>Package #").Append(pid).Append(": ")
+                                    .Append(LPPIHelper.Enc(res.ErrorMessage ?? "(unknown error)"))
+                                    .Append("</li>");
                 }
             }
 
@@ -532,12 +667,20 @@ namespace CPlatform.LPPI
             var msg = new StringBuilder();
             msg.Append(markedOk).Append(" package").Append(markedOk == 1 ? "" : "s")
                .Append(" marked as sent (test mode — no email dispatched).");
+            if (totalPocsDispatched + totalPocsSkipped + totalPocsFailed > 0)
+            {
+                msg.Append(" Simulated POC fan-out: ")
+                   .Append(totalPocsDispatched).Append(" logged");
+                if (totalPocsSkipped > 0) msg.Append(", ").Append(totalPocsSkipped).Append(" skipped");
+                if (totalPocsFailed  > 0) msg.Append(", ").Append(totalPocsFailed).Append(" failed");
+                msg.Append(".");
+            }
             if (skipped > 0)
-                msg.Append(" ").Append(skipped).Append(" skipped (not NotSent).");
+                msg.Append(" ").Append(skipped).Append(" not NotSent.");
             if (failed > 0)
                 msg.Append(" ").Append(failed).Append(" failure").Append(failed == 1 ? "" : "s").Append(".");
-            if (failNotes.Length > 0)
-                msg.Append("<ul>").Append(failNotes).Append("</ul>");
+            if (perPackageNotes.Length > 0)
+                msg.Append("<ul>").Append(perPackageNotes).Append("</ul>");
 
             ShowMessageRaw(msg.ToString(), kind);
             BindPackages();

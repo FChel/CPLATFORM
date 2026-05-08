@@ -8,14 +8,22 @@ namespace CPlatform.LPPI
     /// Loaded inside the preview modal iframe on LPPI_SendOuts.aspx.
     ///
     /// Query string:
-    ///   id   — PackageID (required)
-    ///   type — "Initial" or "Reminder" (optional, defaults to Initial)
+    ///   id        — PackageID (required for the package preview path)
+    ///   type      — "Initial" or "Reminder" (optional, defaults to Initial)
+    ///   audience  — "asfin" (default) or "poc"
+    ///   poc       — optional POC email when audience=poc; if omitted, the
+    ///               POC template is rendered with placeholder values so the
+    ///               operator can see the template shape without picking a
+    ///               specific POC. Real per-POC sends always use real data.
+    ///
+    ///   cm        — alternate path for previewing for a CM with no package
+    ///               yet. Mutually exclusive with id; AS Fin template only.
     /// </summary>
     public partial class LPPI_EmailPreview : LPPIBasePage
     {
         protected void Page_Load(object sender, EventArgs e)
         {
-            // ?cm=<CmID> — preview for a group with no open package yet
+            // ?cm=<CmID> — preview for a group with no open package yet.
             string cmParam = Request.QueryString["cm"];
             if (!string.IsNullOrEmpty(cmParam))
             {
@@ -26,7 +34,7 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            // ?id=<PackageID>&type=Initial|Reminder
+            // ?id=<PackageID>&type=Initial|Reminder&audience=asfin|poc[&poc=email]
             int packageId;
             if (!int.TryParse(Request.QueryString["id"], out packageId))
             {
@@ -41,7 +49,19 @@ namespace CPlatform.LPPI
                 type = "Initial";
             }
 
-            WriteHtml(LPPIEmail.BuildEmailHtml(packageId, type));
+            string audience = (Request.QueryString["audience"] ?? "asfin").Trim();
+            if (!audience.Equals("asfin", StringComparison.OrdinalIgnoreCase) &&
+                !audience.Equals("poc",   StringComparison.OrdinalIgnoreCase))
+            {
+                audience = "asfin";
+            }
+
+            string pocEmail = Request.QueryString["poc"];
+            // null/blank pocEmail with audience=poc is the placeholder path —
+            // BuildEmailHtml handles it and renders with <POC_EMAIL> in place
+            // of a real address.
+
+            WriteHtml(LPPIEmail.BuildEmailHtml(packageId, type, audience, pocEmail));
         }
 
         private void WriteHtml(string html)

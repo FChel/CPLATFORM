@@ -6,26 +6,39 @@ using System.Text;
 
 namespace CPlatform.LPPI
 {
+    /// <summary>
+    /// Reviewer page. Token-authenticated; opts out of admin gate.
+    ///
+    /// May 2026 — POC token support
+    /// -------------------------------------------------------------------
+    /// The page now accepts TWO token types via ?t=&lt;token&gt;:
+    ///
+    ///   - AS Fin token (from tblLPPI_ReviewPackages.Token) — full package
+    ///     view. Can save, can finalise, can unfinalise.
+    ///
+    ///   - POC token (from tblLPPI_PackagePocs.Token) — POC-scoped view.
+    ///     Filters every visible row to documents where d.PocEmail matches
+    ///     the POC's email. Can save (the save handler enforces the same
+    ///     scope guard server-side), but CANNOT finalise or unfinalise —
+    ///     those actions belong to AS Fin.
+    ///
+    /// LPPIHelper.ResolveReviewToken inspects both tables and returns a
+    /// typed result. From the user's perspective the URL works the same
+    /// regardless of token kind; the page reshapes itself based on which
+    /// kind of token resolved.
+    ///
+    /// IIS Windows Authentication is still active so HttpContext carries
+    /// the SSO identity, recorded as ChangedByName / FinalisedBy in the
+    /// audit tables.
+    ///
+    /// Note on roles for AS Fin tokens: there is no separate "reviewer"
+    /// vs "AS Fin" role. The token-holder population for the AS Fin link
+    /// IS the AS Fin team responsible for that CM program. They review,
+    /// finalise and unfinalise self-service. The admin-only checkpoint
+    /// is the ERP export.
+    /// </summary>
     public partial class LPPI_Review : LPPIBasePage
     {
-        // This page authenticates via an unguessable token, not the admin
-        // gate. It opts out of LPPIBasePage's admin-access check so the CM /
-        // AS Fin team for the program can reach it without being on the
-        // admin allow-list.
-        //
-        // IIS Windows Authentication is still active on the page though,
-        // so HttpContext.Current.User.Identity carries the SSO identity.
-        // LPPIHelper.CurrentUserId() / CurrentUserDisplayName() pick that
-        // up and we record it as ChangedByName / FinalisedBy in the audit
-        // tables — answering the question "who clicked Finalise" even
-        // though the page itself is token-gated.
-        //
-        // Note on roles: there is no separate "reviewer" vs "AS Fin" role.
-        // The token-holder population for a package IS the AS Fin team
-        // responsible for that CM program (e.g. AS Fin ARMY for the ARMY
-        // package). They review, finalise and unfinalise self-service.
-        // The admin-only checkpoint is the ERP export — once a package is
-        // included in an export run, it is locked.
         protected override bool RequiresAdminAccess { get { return false; } }
 
         protected string TokenForClient = "";
@@ -49,12 +62,25 @@ namespace CPlatform.LPPI
         protected string StatusBannerHtml = "";
         protected string CurrentStatus    = "";
 
+        // POC-view flag. True when the resolved token is a POC token. The
+        // markup uses this to:
+        //   - render the "POC view" banner above the review header
+        //   - hide the Finalise / Unfinalise action button (POCs cannot
+        //     finalise or unfinalise; that is AS Fin's responsibility)
+        //
+        // Document-list, exposure and detail queries are all filtered by
+        // PocEmail when this flag is set.
+        protected bool   IsPocView;
+        protected string PocEmail = "";
+        protected string PocBannerHtml = "";
+
         // Toolbar action button gating. There is one button slot in the
         // toolbar; its label and colour depend on status.
         //
-        //   Editable (NotSent / Sent / InReview) -> green "Finalise"
-        //   Finalised                            -> orange "Unfinalise"
-        //   Exported / Cancelled                 -> no button (terminal)
+        //   AS Fin token, editable (NotSent / Sent / InReview) -> green "Finalise"
+        //   AS Fin token, Finalised                            -> orange "Unfinalise"
+        //   AS Fin token, Exported / Cancelled                 -> no button (terminal)
+        //   POC token, any status                              -> no button
         //
         // The empty-package case (TotalCount == 0) suppresses the button
         // in all states — there is nothing to finalise.
@@ -63,11 +89,12 @@ namespace CPlatform.LPPI
 
         // "Ready to finalise" hint banner — shown when every doc has been
         // coded but the package is still in flight (NotSent/Sent/InReview).
+        // Suppressed in POC view (POC cannot finalise).
         protected bool IsAllReviewed;
 
-        // Exposure (dollar) figures — scoped to this package only. Driven into
-        // the head-row "Exposure" cell. The three component values sum to the
-        // total so the stacked bar reconciles.
+        // Exposure (dollar) figures — scoped to this package only (or to
+        // the POC's subset in POC view). Driven into the head-row
+        // "Exposure" cell. The three component values sum to the total.
         protected string ExposureTotalText            = "0.00";
         protected string ExposurePayableTextShort     = "0";
         protected string ExposureNotPayableTextShort  = "0";
@@ -84,17 +111,27 @@ namespace CPlatform.LPPI
             string token = (Request.QueryString["t"] ?? "").Trim();
             if (token.Length == 0) { ShowError(); return; }
 
+            // Resolve the token — could be an AS Fin (package-level) token
+            // or a POC (POC-scoped) token. ResolveReviewToken queries both
+            // tables and returns a kind discriminator.
+            LPPIHelper.ReviewTokenInfo tokenInfo = LPPIHelper.ResolveReviewToken(token);
+            if (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.None) { ShowError(); return; }
+
+            IsPocView = (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.Poc);
+            PocEmail  = IsPocView ? (tokenInfo.PocEmail ?? "") : "";
+            int packageId = tokenInfo.PackageID;
+
+            // Fetch package metadata (status, due date, program, etc.) —
+            // shared between both token kinds.
             DataTable pkg = LPPIHelper.ExecuteTable(@"
                 SELECT p.PackageID, p.CmID, p.DueDate, p.Status,
                        p.FinalisedDate, p.FinalisedBy,
                        cm.Program, cm.DisplayName
                 FROM tblLPPI_ReviewPackages p
                 INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
-                WHERE p.Token = @t",
-                LPPIHelper.P("@t", token));
+                WHERE p.PackageID = @p",
+                LPPIHelper.P("@p", packageId));
 
-            // The ONLY hard reject is a missing/invalid token. Every other
-            // status renders the page; the save handler enforces write rules.
             if (pkg.Rows.Count != 1) { ShowError(); return; }
 
             DataRow pr     = pkg.Rows[0];
@@ -121,7 +158,12 @@ namespace CPlatform.LPPI
                 : Convert.ToDateTime(pr["FinalisedDate"]);
             StatusBannerHtml = BuildStatusBanner(status, finalisedBy, finalisedAt);
 
-            int packageId  = Convert.ToInt32(pr["PackageID"]);
+            // POC-view banner — rendered above the review header so the
+            // person knows immediately that they are looking at their own
+            // scoped subset, not the whole package.
+            if (IsPocView)
+                PocBannerHtml = BuildPocBanner(PocEmail);
+
             TokenForClient = token;
             string dispName = pr["DisplayName"] == DBNull.Value ? "" : Convert.ToString(pr["DisplayName"]);
             ProgramName    = Convert.ToString(pr["Program"]);
@@ -139,16 +181,21 @@ namespace CPlatform.LPPI
             // Toolbar action-button gating, computed after LoadDocuments so
             // we have ReviewedCount / TotalCount available.
             //
-            //   - Editable states show Finalise.
-            //   - Finalised shows Unfinalise.
-            //   - Exported / Cancelled show no button.
+            //   - AS Fin token, editable states show Finalise.
+            //   - AS Fin token, Finalised shows Unfinalise.
+            //   - AS Fin token, Exported / Cancelled show no button.
+            //   - POC token, any status shows no button.
             //   - Empty package suppresses the button entirely.
+            //
+            // POC view never shows the action button — finalise/unfinalise
+            // are AS Fin's call. The save handler enforces this server-side
+            // too; this is just the UX layer.
             bool editable =
                 string.Equals(status, LPPIHelper.StatusNotSent,  StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(status, LPPIHelper.StatusSent,     StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(status, LPPIHelper.StatusInReview, StringComparison.OrdinalIgnoreCase);
-            ShowActionButton = (editable || IsFinalised) && TotalCount > 0;
-            IsAllReviewed    = editable && TotalCount > 0 && ReviewedCount >= TotalCount;
+            ShowActionButton = !IsPocView && (editable || IsFinalised) && TotalCount > 0;
+            IsAllReviewed    = !IsPocView && editable && TotalCount > 0 && ReviewedCount >= TotalCount;
         }
 
         /// <summary>
@@ -220,6 +267,24 @@ namespace CPlatform.LPPI
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Banner displayed above the review header in POC view. Tells the
+        /// person they are looking at their own subset of the package, not
+        /// the full thing.
+        /// </summary>
+        private static string BuildPocBanner(string pocEmail)
+        {
+            var sb = new StringBuilder();
+            sb.Append("<div class=\"alert alert-info\" style=\"margin:0 0 16px 0;\">")
+              .Append("<div><strong>POC view</strong> &mdash; ")
+              .Append("Showing only documents assigned to ")
+              .Append(LPPIHelper.Enc(pocEmail))
+              .Append(". Reason codes recorded here apply to the same documents in the AS Fin view. ")
+              .Append("Finalising the package is AS Fin's responsibility.")
+              .Append("</div></div>");
+            return sb.ToString();
+        }
+
         // -------------------------------------------------------------------
         // Exposure totals — scoped to this package
         //
@@ -227,10 +292,47 @@ namespace CPlatform.LPPI
         // package via tblLPPI_ReviewPackageDocuments. Per-document totals are
         // computed from every line of each DocNoAccounting (BODS multi-line),
         // then classified by the first-line review's outcome.
+        //
+        // POC view: documents are further filtered to those whose first-line
+        // record's PocEmail matches the POC's address. The dollar totals
+        // therefore reconcile against the POC's filtered document list, not
+        // the full package.
         // -------------------------------------------------------------------
         private void LoadExposure(int packageId)
         {
-            const string sql = @"
+            string sql;
+            if (IsPocView)
+            {
+                sql = @"
+WITH PkgDocs AS (
+    SELECT pd.DocumentID AS FirstLineDocumentID,
+           dx.DocNoAccounting,
+           dx.PocEmail
+      FROM tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN tblLPPI_Documents dx ON dx.DocumentID = pd.DocumentID
+     WHERE pd.PackageID = @p
+       AND LTRIM(RTRIM(dx.PocEmail)) = LTRIM(RTRIM(@poc))
+),
+DocTotals AS (
+    SELECT pkd.FirstLineDocumentID,
+           SUM(d.InterestPayable) AS DocInterest
+      FROM PkgDocs pkd
+      INNER JOIN tblLPPI_Documents d
+              ON d.DocNoAccounting = pkd.DocNoAccounting
+     GROUP BY pkd.FirstLineDocumentID
+)
+SELECT
+    ISNULL(SUM(dt.DocInterest), 0)                                                        AS TotalExposure,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'Payable'    THEN dt.DocInterest ELSE 0 END), 0) AS PayableExposure,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'NotPayable' THEN dt.DocInterest ELSE 0 END), 0) AS NotPayableExposure,
+    ISNULL(SUM(CASE WHEN rc.ReasonCodeID IS NULL   THEN dt.DocInterest ELSE 0 END), 0) AS AwaitingExposure
+FROM DocTotals dt
+LEFT JOIN tblLPPI_Reviews r       ON r.DocumentID    = dt.FirstLineDocumentID
+LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
+            }
+            else
+            {
+                sql = @"
 WITH PkgDocs AS (
     SELECT pd.DocumentID AS FirstLineDocumentID,
            (SELECT MIN(d2.DocumentID)
@@ -260,8 +362,16 @@ SELECT
 FROM DocTotals dt
 LEFT JOIN tblLPPI_Reviews r       ON r.DocumentID    = dt.FirstLineDocumentID
 LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
+            }
 
-            DataTable dt = LPPIHelper.ExecuteTable(sql, LPPIHelper.P("@p", packageId));
+            DataTable dt;
+            if (IsPocView)
+                dt = LPPIHelper.ExecuteTable(sql,
+                    LPPIHelper.P("@p",   packageId),
+                    LPPIHelper.P("@poc", PocEmail));
+            else
+                dt = LPPIHelper.ExecuteTable(sql, LPPIHelper.P("@p", packageId));
+
             if (dt.Rows.Count == 0) return;
 
             DataRow r = dt.Rows[0];
@@ -323,12 +433,14 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
         // lines. This matches the BODS extract convention where line 1 carries
         // the primary account assignment for the document.
         //
+        // POC view: an extra WHERE clause filters d1.PocEmail to the POC's
+        // address. d1 is the first-line record for each document, so this
+        // filters at document granularity even though tblLPPI_Documents has
+        // one row per line.
+        //
         // Capability Manager fields (CapabilityManager number + Name) are
         // projected so the reviewer page can show the LPPI Charge Cost Centre
-        // column. Within a single CM_program package (e.g. ARMY) different
-        // documents can have different individual CMs (e.g. 50001580 "Dir Gen
-        // Land Operations"), so this column varies row by row even though the
-        // package is grouped by CM_program.
+        // column.
         //
         // The review MERGE target is pd.DocumentID, which the reconcile
         // step writes as the package-time first-line DocumentID. The save
@@ -343,7 +455,7 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
         // -------------------------------------------------------------------
         private void LoadDocuments(int packageId)
         {
-            DataTable main = LPPIHelper.ExecuteTable(@"
+            string mainSql = @"
                 SELECT
                     pd.DocumentID                           AS FirstLineDocumentID,
                     d.DocNoAccounting,
@@ -400,7 +512,9 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                 LEFT  JOIN tblLPPI_ReasonCodes rc
                         ON rc.ReasonCodeID = r.ReasonCodeID
 
-                WHERE pd.PackageID = @p
+                WHERE pd.PackageID = @p"
+                + (IsPocView ? "  AND LTRIM(RTRIM(d1.PocEmail)) = LTRIM(RTRIM(@poc))" : "")
+                + @"
 
                 GROUP BY
                     pd.DocumentID, d.DocNoAccounting,
@@ -411,8 +525,15 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     r.ReasonCodeID, r.Comments, r.ObjectiveReference, r.ReviewedDate,
                     rc.Code, rc.Outcome, rc.RequiresComments
 
-                ORDER BY SUM(d.InterestPayable) DESC",
-                LPPIHelper.P("@p", packageId));
+                ORDER BY SUM(d.InterestPayable) DESC";
+
+            DataTable main;
+            if (IsPocView)
+                main = LPPIHelper.ExecuteTable(mainSql,
+                    LPPIHelper.P("@p",   packageId),
+                    LPPIHelper.P("@poc", PocEmail));
+            else
+                main = LPPIHelper.ExecuteTable(mainSql, LPPIHelper.P("@p", packageId));
 
             if (!main.Columns.Contains("SearchBlob"))
                 main.Columns.Add("SearchBlob", typeof(string));
@@ -448,11 +569,18 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
 
             // ------------------------------------------------------------------
             // DETAIL VIEW QUERY — one row per line, read-only.
+            //
+            // Same POC filter applies: in POC view, only documents whose
+            // PocEmail matches the POC. The filter applies at document
+            // granularity — every line of an in-scope document is shown,
+            // because that is consistent with how the document-level review
+            // applies to all its lines.
+            //
             // FiscalYear projected for the SapFiNumberHtml deep link.
             // CapabilityManager / Name / Program projected so the All Lines tab
             // and the per-row expand panel can show the LPPI Charge Cost Centre.
             // ------------------------------------------------------------------
-            DataTable detail = LPPIHelper.ExecuteTable(@"
+            string detailSql = @"
                 SELECT
                     d.DocumentID,
                     d.DocNoAccounting,
@@ -491,14 +619,28 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                         ON r.DocumentID = pd.DocumentID
                 LEFT  JOIN tblLPPI_ReasonCodes rc
                         ON rc.ReasonCodeID = r.ReasonCodeID
-                WHERE pd.PackageID = @p
+                WHERE pd.PackageID = @p"
+                + (IsPocView
+                    ? "  AND EXISTS (SELECT 1 FROM tblLPPI_Documents dPoc " +
+                      "WHERE dPoc.DocNoAccounting = d.DocNoAccounting " +
+                      "  AND dPoc.ItemSequence = 1 " +
+                      "  AND LTRIM(RTRIM(dPoc.PocEmail)) = LTRIM(RTRIM(@poc)))"
+                    : "")
+                + @"
                 ORDER BY
                     (SELECT SUM(d3.InterestPayable)
                        FROM tblLPPI_Documents d3
                       WHERE d3.DocNoAccounting = d.DocNoAccounting) DESC,
                     d.DocNoAccounting,
-                    d.ItemSequence",
-                LPPIHelper.P("@p", packageId));
+                    d.ItemSequence";
+
+            DataTable detail;
+            if (IsPocView)
+                detail = LPPIHelper.ExecuteTable(detailSql,
+                    LPPIHelper.P("@p",   packageId),
+                    LPPIHelper.P("@poc", PocEmail));
+            else
+                detail = LPPIHelper.ExecuteTable(detailSql, LPPIHelper.P("@p", packageId));
 
             if (!detail.Columns.Contains("SearchBlob"))
                 detail.Columns.Add("SearchBlob", typeof(string));
@@ -568,6 +710,10 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
         /// option label combines the CM number and name (e.g. "50001289 — DG
         /// Air Cbt Cap-AF") so reviewers can recognise either; the option value
         /// is the bare CM number to match the data-cm attribute on rows.
+        ///
+        /// In POC view, the POC facet is generally degenerate (one entry —
+        /// the POC themselves) but is harmless to render; the markup keeps
+        /// it for layout consistency.
         /// </summary>
         protected string BuildFacetOptions(string kind)
         {

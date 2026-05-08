@@ -18,22 +18,31 @@ namespace CPlatform.LPPI
     /// FinalisedBy.
     ///
     /// AUTHENTICATION
-    ///   Same model as LPPI_Review_Save.ashx — token-auth via the package
-    ///   Token query/form value. The reviewer page lives outside the
-    ///   admin gate (it is reached via an unguessable URL), and the
-    ///   Finalise button does the same. Per the design discussion, IIS
-    ///   Windows authentication captures the user's identity even on the
-    ///   anonymous reviewer page, and that identity is recorded as
-    ///   FinalisedBy / ChangedByName so the audit trail names the actual
-    ///   AS Fin person who clicked the button.
+    ///   Token-auth via the package Token form value. The reviewer page
+    ///   lives outside the admin gate (it is reached via an unguessable
+    ///   URL), and the Finalise button does the same. Per the design
+    ///   discussion, IIS Windows authentication captures the user's
+    ///   identity even on the anonymous reviewer page, and that identity
+    ///   is recorded as FinalisedBy / ChangedByName so the audit trail
+    ///   names the actual AS Fin person who clicked the button.
     ///
     ///   The button is gated on the client by a confirm dialog that
     ///   re-states the action and the default code. The client also
     ///   refuses to call this endpoint when the page is in read-only
     ///   mode (Finalised / Exported / Cancelled).
     ///
+    /// May 2026 — POC tokens refused
+    /// -------------------------------------------------------------------
+    /// Finalise is an AS Fin-only action. POC tokens are recognised by
+    /// LPPIHelper.ResolveReviewToken and rejected here with a clear
+    /// error so the client can surface the right message. The reviewer
+    /// page itself does not render the Finalise button in POC view
+    /// (ShowActionButton is gated on !IsPocView) so a normal client
+    /// never hits this branch — this is the authoritative server-side
+    /// guard.
+    ///
     /// POSTED FORM FIELDS
-    ///   token   the package token (required)
+    ///   token   the package or POC token (required)
     ///   action  "finalise" (sanity check)
     ///
     /// RESPONSE
@@ -46,10 +55,10 @@ namespace CPlatform.LPPI
     ///     "finalisedDate":   "2026-05-06 14:32:11.123"
     ///   }
     ///
-    /// All status guards are enforced server-side in
-    /// LPPIHelper.FinalisePackage. This handler is just a thin token-auth
-    /// wrapper that translates the helper's result into JSON for the
-    /// client.
+    /// All status guards (the package being in an editable state etc.)
+    /// are enforced server-side in LPPIHelper.FinalisePackage. This
+    /// handler is just a thin token-auth wrapper that translates the
+    /// helper's result into JSON for the client.
     /// </summary>
     public class LPPI_Review_Finalise : IHttpHandler
     {
@@ -69,17 +78,24 @@ namespace CPlatform.LPPI
                     return;
                 }
 
-                // Resolve PackageID from token. Status guards live inside
-                // FinalisePackage so we just need the id here.
-                object pidObj = LPPIHelper.ExecuteScalar(
-                    "SELECT PackageID FROM dbo.tblLPPI_ReviewPackages WHERE Token = @t",
-                    LPPIHelper.P("@t", token));
-                if (pidObj == null || pidObj == DBNull.Value)
+                // Resolve the token. Both AS Fin and POC tokens land here,
+                // but only AS Fin is allowed to finalise.
+                LPPIHelper.ReviewTokenInfo tokenInfo = LPPIHelper.ResolveReviewToken(token);
+                if (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.None)
                 {
                     Write(ctx, false, "Invalid link.", null, 0, null, null);
                     return;
                 }
-                int packageId = Convert.ToInt32(pidObj);
+
+                if (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.Poc)
+                {
+                    Write(ctx, false,
+                        "Finalising the package is AS Fin's responsibility — only the AS Fin link can finalise.",
+                        null, 0, null, null);
+                    return;
+                }
+
+                int packageId = tokenInfo.PackageID;
 
                 // Run the finalise transaction. All status checks, history
                 // writes and the status flip happen inside this call.

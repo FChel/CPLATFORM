@@ -13,6 +13,15 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Save handler for the reviewer page.
     ///
+    /// May 2026 — POC token support
+    /// -------------------------------------------------------------------
+    /// Accepts both AS Fin (package-level) and POC (POC-scoped) tokens.
+    /// POC tokens are subject to an additional server-side scope guard:
+    /// the document being saved must be assigned to the POC (i.e. its
+    /// first-line PocEmail must match the POC's email). Saves outside
+    /// the POC's scope are refused with a "notInPackage" result code so
+    /// the client surfaces them as a row-level error.
+    ///
     /// Behaviour:
     ///   * BATCH save model. Client posts every dirty row in a single
     ///     request when the user clicks Save. Each row is processed
@@ -34,23 +43,24 @@ namespace CPlatform.LPPI
     ///
     /// Authoritative gate: writes are rejected when the package is in any
     /// of these states: Finalised, Exported, Cancelled. Editable states
-    /// are NotSent, Sent and InReview — the same set covered by the
-    /// LPPIHelper.ActivePackageStatusList constant minus Finalised.
+    /// are NotSent, Sent and InReview.
     ///
     /// Lifecycle transition:
     ///   * If the package was Sent and any row in this batch saved, flip
     ///     Sent -> InReview. Editing a NotSent package does NOT flip
     ///     its status — the package only becomes Sent when the operator
     ///     hits Send on the Send-outs page, which stamps SentDate at the
-    ///     same time.
+    ///     same time. POC-token saves participate in this flip identically;
+    ///     the first POC who saves any row flips Sent -> InReview just
+    ///     like an AS Fin save would.
     ///
     /// There is NO automatic flip to Finalised. Reaching Finalised is an
     /// explicit AS Fin action via the Finalise button on the reviewer page
-    /// (separate handler — LPPIHelper.FinalisePackage). The reviewer can
-    /// keep editing right up to the moment Finalise is clicked.
+    /// (separate handler — LPPIHelper.FinalisePackage), and POC tokens are
+    /// refused there.
     ///
     /// Posted form fields:
-    ///   token              the package token (required)
+    ///   token              the package or POC token (required)
     ///   action             "save" (required)
     ///   rowCount           number of rows posted, e.g. "3"
     ///   rows[i].docNo      DocNoAccounting for row i
@@ -100,18 +110,29 @@ namespace CPlatform.LPPI
                     return;
                 }
 
-                // Resolve package + status from the token.
-                DataTable pkg = LPPIHelper.ExecuteTable(
-                    "SELECT PackageID, Status FROM tblLPPI_ReviewPackages WHERE Token = @t",
-                    LPPIHelper.P("@t", token));
-                if (pkg.Rows.Count != 1)
+                // Resolve the token — could be AS Fin or POC. POC tokens
+                // get an extra scope guard inside ProcessRow.
+                LPPIHelper.ReviewTokenInfo tokenInfo = LPPIHelper.ResolveReviewToken(token);
+                if (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.None)
                 {
                     WriteTopLevel(ctx, false, "Invalid link.", null, null);
                     return;
                 }
 
-                int    packageId = Convert.ToInt32(pkg.Rows[0]["PackageID"]);
-                string status    = Convert.ToString(pkg.Rows[0]["Status"]);
+                int    packageId = tokenInfo.PackageID;
+                bool   isPocView = (tokenInfo.Kind == LPPIHelper.ReviewTokenKind.Poc);
+                string pocEmail  = isPocView ? (tokenInfo.PocEmail ?? "") : null;
+
+                // Fetch package status for the read-only gate.
+                object stObj = LPPIHelper.ExecuteScalar(
+                    "SELECT Status FROM tblLPPI_ReviewPackages WHERE PackageID = @p",
+                    LPPIHelper.P("@p", packageId));
+                if (stObj == null || stObj == DBNull.Value)
+                {
+                    WriteTopLevel(ctx, false, "Invalid link.", null, null);
+                    return;
+                }
+                string status = Convert.ToString(stObj);
 
                 // Read-only gate: Finalised, Exported and Cancelled all
                 // reject writes. Reviewer page renders these with a banner
@@ -164,7 +185,8 @@ namespace CPlatform.LPPI
                         continue;
                     }
 
-                    RowResult rr = ProcessRow(packageId, docNo, reasonRaw, comments, objref, loadedVer);
+                    RowResult rr = ProcessRow(packageId, isPocView, pocEmail,
+                        docNo, reasonRaw, comments, objref, loadedVer);
                     results.Add(rr);
                     if (rr.Ok && rr.ErrorCode != "noChange") anyRowSaved = true;
                 }
@@ -175,6 +197,10 @@ namespace CPlatform.LPPI
                 // First save by reviewer flips Sent -> InReview. The
                 // WHERE Status = 'Sent' guard means editing a NotSent
                 // package will NOT trip this update.
+                //
+                // POC saves participate identically — the first POC who
+                // saves any row flips Sent -> InReview, the same as if
+                // AS Fin had saved the row themselves.
                 //
                 // There is NO automatic flip to Finalised — that is an
                 // explicit AS Fin action via the Finalise button (handled
@@ -218,8 +244,16 @@ namespace CPlatform.LPPI
         // -------------------------------------------------------------------
         // Process a single posted row. Returns the per-row result object.
         // Does not throw — any exception is captured into RowResult.
+        //
+        // POC scope: when isPocView is true, the document's first-line
+        // PocEmail must match pocEmail. Otherwise the row is rejected with
+        // errorCode "notInPackage". This is the authoritative server-side
+        // scope guard; the reviewer page already filters its visible rows
+        // by POC, so a normal client never hits this — but a hostile or
+        // out-of-sync client cannot bypass it.
         // -------------------------------------------------------------------
-        private static RowResult ProcessRow(int packageId, string docNo, string reasonRaw,
+        private static RowResult ProcessRow(int packageId, bool isPocView, string pocEmail,
+                                            string docNo, string reasonRaw,
                                             string comments, string objref, string loadedVersion)
         {
             var rr = new RowResult { DocNo = docNo };
@@ -228,21 +262,45 @@ namespace CPlatform.LPPI
             {
                 // 1) Resolve first-line DocumentID from the package itself.
                 //    This single query both confirms the document is in
-                //    this package AND returns the correct id.
-                object flObj = LPPIHelper.ExecuteScalar(@"
-                    SELECT pd.DocumentID
-                    FROM   tblLPPI_ReviewPackageDocuments pd
-                    INNER JOIN tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
-                    WHERE  pd.PackageID     = @p
-                    AND    d.DocNoAccounting = @dn",
-                    LPPIHelper.P("@p",  packageId),
-                    LPPIHelper.P("@dn", docNo));
+                //    this package AND returns the correct id. In POC view,
+                //    we additionally constrain by the first-line PocEmail
+                //    so a POC token cannot save documents outside their
+                //    own scope.
+                object flObj;
+                if (isPocView)
+                {
+                    flObj = LPPIHelper.ExecuteScalar(@"
+                        SELECT pd.DocumentID
+                        FROM   tblLPPI_ReviewPackageDocuments pd
+                        INNER JOIN tblLPPI_Documents d  ON d.DocumentID = pd.DocumentID
+                        INNER JOIN tblLPPI_Documents d1 ON d1.DocNoAccounting = d.DocNoAccounting
+                                                       AND d1.ItemSequence    = 1
+                        WHERE  pd.PackageID     = @p
+                        AND    d.DocNoAccounting = @dn
+                        AND    LTRIM(RTRIM(d1.PocEmail)) = LTRIM(RTRIM(@poc))",
+                        LPPIHelper.P("@p",   packageId),
+                        LPPIHelper.P("@dn",  docNo),
+                        LPPIHelper.P("@poc", pocEmail ?? ""));
+                }
+                else
+                {
+                    flObj = LPPIHelper.ExecuteScalar(@"
+                        SELECT pd.DocumentID
+                        FROM   tblLPPI_ReviewPackageDocuments pd
+                        INNER JOIN tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+                        WHERE  pd.PackageID     = @p
+                        AND    d.DocNoAccounting = @dn",
+                        LPPIHelper.P("@p",  packageId),
+                        LPPIHelper.P("@dn", docNo));
+                }
 
                 if (flObj == null || flObj == DBNull.Value)
                 {
                     rr.Ok = false;
                     rr.ErrorCode = "notInPackage";
-                    rr.Error = "Document is not in this package.";
+                    rr.Error = isPocView
+                        ? "Document is not in your assigned scope."
+                        : "Document is not in this package.";
                     return rr;
                 }
                 int firstLineDocId = Convert.ToInt32(flObj);

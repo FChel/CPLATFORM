@@ -49,6 +49,21 @@
             width: 100%;
             min-height: 520px;
         }
+
+        /* Recipient cell — keep the single email + display name compact. */
+        .recipient-cell { line-height: 1.35; }
+        .recipient-cell .recipient-email { font-size: 13px; color: var(--ink-1); word-break: break-all; }
+        .recipient-cell .recipient-name  { font-size: 12px; color: var(--ink-3); }
+        .pill-not-configured {
+            background: #fff4e0;
+            color: #8a4500;
+            border: 1px solid #f3c89d;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
     </style>
     <script>
         function openReviewLink(token, baseUrl) {
@@ -57,12 +72,17 @@
         }
 
         // --- Preview modal ---
-        function openPreview(packageId, emailType) {
+        // audience is "asfin" or "poc". POC previews use placeholder values
+        // (see LPPIEmail.BuildEmailHtml) so no per-POC selection is needed.
+        function openPreview(packageId, emailType, audience) {
             var overlay = document.getElementById('previewOverlay');
             var frame   = document.getElementById('previewFrame');
             var label   = document.getElementById('previewLabel');
-            label.textContent = 'Email preview — Package #' + packageId + ' (' + emailType + ')';
-            frame.src = 'LPPI_EmailPreview.aspx?id=' + packageId + '&type=' + encodeURIComponent(emailType);
+            var aud = (audience === 'poc') ? 'POC' : 'AS Fin';
+            label.textContent = 'Email preview — Package #' + packageId + ' · ' + aud + ' · ' + emailType;
+            frame.src = 'LPPI_EmailPreview.aspx?id=' + packageId
+                      + '&type=' + encodeURIComponent(emailType)
+                      + '&audience=' + encodeURIComponent(audience || 'asfin');
             overlay.classList.add('open');
         }
         function closePreview() {
@@ -87,6 +107,7 @@
                 <h1>Send for review</h1>
                 <p class="lead">
                     Packages are created automatically when a file is loaded. Pick the packages you want to send (or remind) and issue them here.
+                    Each send dispatches a group summary to AS Fin and a per-POC email to every distinct invoice contact in the package.
                     Finalised packages remain in the list for visibility but cannot be re-sent.
                 </p>
             </div>
@@ -103,7 +124,7 @@
             <p style="color:var(--ink-3);font-size:13px;">
                 NotSent packages can be issued for the first time. Sent and InReview packages can be reminded.
                 Finalised packages are read-only here — they are visible for monitoring and proceed to Export when ready.
-                Use Preview email at any time to see what the recipients will receive.
+                Use Preview AS Fin or Preview POC at any time to see what the recipients will receive.
             </p>
             <div class="form-grid">
                 <div class="form-row">
@@ -138,7 +159,8 @@
                                     <th><input type="checkbox" id="chkAll" onclick="document.querySelectorAll('.pkgPick').forEach(function(c){c.checked=this.checked}.bind(this))" /></th>
                                     <th>Package</th>
                                     <th>Capability Manager</th>
-                                    <th>Recipients</th>
+                                    <th>AS Fin recipient</th>
+                                    <th class="num">POCs</th>
                                     <th class="num">Docs</th>
                                     <th class="num">Reviewed</th>
                                     <th>Status</th>
@@ -162,14 +184,18 @@
                                      The disabled attribute is data-bound — runat=server
                                      makes ASP.NET bind to HtmlInputCheckBox.Disabled which
                                      is a bool property, NOT a passthrough HTML attribute.
-                                     The expression here is the negation of "is actionable",
-                                     i.e. true => disabled, false => enabled. The actionable
-                                     criteria are:
-                                       - the package has at least one configured recipient (ToCount > 0), AND
-                                       - the status is one of NotSent / Sent / InReview (i.e. actionable
-                                         for send/remind). Finalised rows show but cannot be picked. --%>
+                                     Actionable criteria (May 2026):
+                                       - the CM has its AS Fin email configured
+                                         (EmailConfigured = 1 from the SQL projection), AND
+                                       - the status is one of NotSent / Sent / InReview.
+                                       Finalised rows show but cannot be picked.
+
+                                     Note: POC count is NOT part of the gate — empty-POC
+                                     packages still send (AS Fin gets the group summary;
+                                     POC fan-out is skipped with a warning). The send
+                                     pipeline handles it. --%>
                                 <input type="checkbox" runat="server" id="chkPick" class="pkgPick"
-                                       disabled='<%# !( (int)Eval("ToCount") > 0
+                                       disabled='<%# !( (bool)Eval("EmailConfigured")
                                                     && ( string.Equals(Convert.ToString(Eval("Status")), "NotSent",  System.StringComparison.OrdinalIgnoreCase)
                                                       || string.Equals(Convert.ToString(Eval("Status")), "Sent",     System.StringComparison.OrdinalIgnoreCase)
                                                       || string.Equals(Convert.ToString(Eval("Status")), "InReview", System.StringComparison.OrdinalIgnoreCase) ) ) %>' />
@@ -178,11 +204,9 @@
                             <td>#<%# Eval("PackageID") %></td>
                             <td>
                                 <strong><%# LPPIHelper.Enc(Eval("Program")) %></strong>
-                                <%# (int)Eval("ToCount") == 0
-                                    ? " <span class=\"pill overdue\">no recipients</span>"
-                                    : "" %>
                             </td>
-                            <td><%# LPPIHelper.Enc(Eval("ToList")) %></td>
+                            <td><%# RenderRecipientCell(Container.DataItem) %></td>
+                            <td class="num"><%# Eval("PocCount") %></td>
                             <td class="num"><%# Eval("DocCount") %></td>
                             <td class="num"><%# Eval("ReviewedCount") %></td>
                             <td><%# RenderStatusPill(Container.DataItem) %></td>

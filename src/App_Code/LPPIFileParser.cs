@@ -16,6 +16,13 @@ namespace CPlatform.LPPI
     /// FISCAL_YEAR were added by BODS so one DOC_NO_ACCOUNTING may now have
     /// multiple rows (one per item/line). The unique key on tblLPPI_Documents
     /// is (DocNoAccounting, ItemSequence).
+    ///
+    /// May 2026: after package reconciliation, ReconcilePocs populates
+    /// tblLPPI_PackagePocs with one row per (PackageID, PocEmail) pair
+    /// across the new package's documents, so every distinct POC has their
+    /// own unguessable reviewer token. Only acts on NotSent packages —
+    /// once a package transitions to Sent its POC set is frozen alongside
+    /// its document set.
     /// </summary>
     public static class LPPIFileParser
     {
@@ -115,7 +122,9 @@ namespace CPlatform.LPPI
         // Commit parsed rows into tblLPPI_Documents and create a load batch.
         // Skip-and-warn duplicates by (DOC_NO_ACCOUNTING, ITEM_SEQUENCE).
         // Auto-creates any CM groups seen in the file that do not yet exist.
-        // After insert, reconciles documents into review packages.
+        // After insert, reconciles documents into review packages, then
+        // populates POC token rows for any NotSent package whose document
+        // set just changed.
         // -------------------------------------------------------------------
 
         public class CommitResult
@@ -133,6 +142,9 @@ namespace CPlatform.LPPI
             // Package reconciliation outcomes.
             public int PackagesCreated;
             public int DocumentsAddedToExistingPackages;
+            // POC token rows created during ReconcilePocs. New rows only —
+            // pre-existing (PackageID, PocEmail) pairs are not counted.
+            public int PocTokensCreated;
         }
 
         public static CommitResult Commit(ParseResult parsed, string fileName, string sourcePath,
@@ -234,6 +246,15 @@ UPDATE dbo.tblLPPI_LoadBatches
             // ------------------------------------------------------------------
             ReconcilePackages(res);
 
+            // ------------------------------------------------------------------
+            // Reconcile POC tokens — for every NotSent package, ensure there
+            // is a tblLPPI_PackagePocs row for each distinct PocEmail across
+            // its documents. Idempotent and additive: only inserts new
+            // (PackageID, PocEmail) pairs. Sent / InReview / Finalised /
+            // Exported / Cancelled packages are left alone.
+            // ------------------------------------------------------------------
+            ReconcilePocs(res);
+
             return res;
         }
 
@@ -309,47 +330,43 @@ UPDATE dbo.tblLPPI_LoadBatches
             //
             // cm.Program is projected so the dispatch loop can iterate
             // alphabetically by Program name.
-            const string candidateSql = @"
-SELECT cm.CmID, cm.Program, MIN(d.DocumentID) AS FirstLineDocumentID
-  FROM dbo.tblLPPI_Documents d
-  INNER JOIN dbo.tblLPPI_CapabilityManagers cm
-          ON cm.Program = d.CapabilityManagerProgram
- WHERE NOT EXISTS (
-        SELECT 1
-          FROM dbo.tblLPPI_Reviews r
-         WHERE r.DocumentID = (SELECT MIN(d2.DocumentID)
-                                 FROM dbo.tblLPPI_Documents d2
-                                WHERE d2.DocNoAccounting = d.DocNoAccounting)
-           AND r.ReasonCodeID IS NOT NULL
-   )
-   AND NOT EXISTS (
-        SELECT 1
-          FROM dbo.tblLPPI_ReviewPackageDocuments pd
-          INNER JOIN dbo.tblLPPI_ReviewPackages p ON p.PackageID = pd.PackageID
-         WHERE pd.DocumentID = (SELECT MIN(d3.DocumentID)
-                                  FROM dbo.tblLPPI_Documents d3
-                                 WHERE d3.DocNoAccounting = d.DocNoAccounting)
-           AND p.Status <> 'Cancelled'
-   )
- GROUP BY cm.CmID, cm.Program, d.DocNoAccounting";
+            const string sql = @"
+SELECT cm.CmID,
+       cm.Program,
+       (SELECT MIN(d.DocumentID)
+          FROM dbo.tblLPPI_Documents d
+         WHERE d.DocNoAccounting = dn.DocNoAccounting) AS FirstLineDocId
+  FROM dbo.tblLPPI_CapabilityManagers cm
+  INNER JOIN (
+        SELECT DISTINCT d2.CapabilityManagerProgram, d2.DocNoAccounting
+          FROM dbo.tblLPPI_Documents d2
+       ) dn ON dn.CapabilityManagerProgram = cm.Program
+  WHERE cm.IsActive = 1
+    AND NOT EXISTS (
+            SELECT 1 FROM dbo.tblLPPI_Reviews r
+            INNER JOIN dbo.tblLPPI_Documents dx ON dx.DocumentID = r.DocumentID
+            WHERE dx.DocNoAccounting = dn.DocNoAccounting
+              AND r.ReasonCodeID IS NOT NULL)
+    AND NOT EXISTS (
+            SELECT 1 FROM dbo.tblLPPI_ReviewPackageDocuments pd
+            INNER JOIN dbo.tblLPPI_ReviewPackages p ON p.PackageID = pd.PackageID
+            INNER JOIN dbo.tblLPPI_Documents dx2 ON dx2.DocumentID = pd.DocumentID
+            WHERE dx2.DocNoAccounting = dn.DocNoAccounting
+              AND p.Status <> 'Cancelled')";
+            var dt = LPPIHelper.ExecuteTable(sql);
 
-            DataTable candidates = LPPIHelper.ExecuteTable(candidateSql);
-            if (candidates.Rows.Count == 0) return;
-
-            // Build the per-CM bucket. Use a small helper class so we can
-            // sort by Program name when iterating, while still carrying the
-            // CmID needed for the package INSERT.
+            // Group by CmID, preserving Program for ordering.
             var byCm = new Dictionary<int, CmBucket>();
-            foreach (DataRow r in candidates.Rows)
+            foreach (DataRow r in dt.Rows)
             {
-                int    cmId    = Convert.ToInt32(r["CmID"]);
-                string program = Convert.ToString(r["Program"]);
-                int    docId   = Convert.ToInt32(r["FirstLineDocumentID"]);
+                int cmId   = Convert.ToInt32(r["CmID"]);
+                string prog = Convert.ToString(r["Program"]);
+                int docId  = Convert.ToInt32(r["FirstLineDocId"]);
 
                 CmBucket bucket;
                 if (!byCm.TryGetValue(cmId, out bucket))
                 {
-                    bucket = new CmBucket { CmID = cmId, Program = program ?? "" };
+                    bucket = new CmBucket { CmID = cmId, Program = prog ?? "" };
                     byCm[cmId] = bucket;
                 }
                 bucket.DocIds.Add(docId);
@@ -427,6 +444,68 @@ SELECT @pkg, @doc
                     res.DocumentsAddedToExistingPackages += added;
                 }
             }
+        }
+
+        // -------------------------------------------------------------------
+        // POC token reconciliation
+        //
+        // For every NotSent package, ensure there is a tblLPPI_PackagePocs
+        // row for each distinct non-blank PocEmail across the package's
+        // documents. New rows get a freshly generated unguessable Token.
+        //
+        // Idempotent: looks up existing (PackageID, PocEmail) pairs and
+        // skips them. Safe to re-run; a re-load of the same file does not
+        // create duplicate POC rows.
+        //
+        // Frozen-set rule: Sent / InReview / Finalised / Exported / Cancelled
+        // packages are deliberately untouched. Their POC set is whatever was
+        // committed at first send time — POCs that turn up on a later load
+        // do not retroactively get added to a package that has already been
+        // dispatched.
+        //
+        // POC email format is not validated here. The send pipeline filters
+        // out malformed addresses at dispatch time and logs them; row-level
+        // validation at load would be too heavy-handed since BODS occasionally
+        // emits placeholder values like "TBA" that do not parse.
+        // -------------------------------------------------------------------
+
+        private static void ReconcilePocs(CommitResult res)
+        {
+            // One-shot SQL: insert POC rows that don't already exist for any
+            // NotSent package, generating a token in T-SQL via NEWID-derived
+            // hex (URL-safe, ~32 chars). Single round-trip.
+            //
+            // Why not loop in C# and call GenerateToken()? Because for a
+            // 30-CM x 30-POC load that's 900 round-trips. The token shape
+            // here is the same character class as GenerateToken() output
+            // and the unique constraint catches the (statistically
+            // impossible) collision case.
+            const string sql = @"
+INSERT INTO dbo.tblLPPI_PackagePocs (PackageID, PocEmail, Token)
+SELECT n.PackageID,
+       n.PocEmail,
+       LOWER(REPLACE(REPLACE(REPLACE(
+           CONVERT(NVARCHAR(40),
+               CAST(CAST(NEWID() AS BINARY(16)) AS VARBINARY(16)), 2),
+           '+', '-'), '/', '_'), '=', ''))
+  FROM (
+        SELECT DISTINCT
+               p.PackageID,
+               LTRIM(RTRIM(d.PocEmail)) AS PocEmail
+          FROM dbo.tblLPPI_ReviewPackages       p
+          INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.PackageID = p.PackageID
+          INNER JOIN dbo.tblLPPI_Documents             d  ON d.DocumentID = pd.DocumentID
+         WHERE p.Status = 'NotSent'
+           AND d.PocEmail IS NOT NULL
+           AND LTRIM(RTRIM(d.PocEmail)) <> ''
+       ) n
+ WHERE NOT EXISTS (
+       SELECT 1 FROM dbo.tblLPPI_PackagePocs ex
+        WHERE ex.PackageID = n.PackageID
+          AND ex.PocEmail  = n.PocEmail);";
+
+            int created = LPPIHelper.ExecuteNonQuery(sql);
+            res.PocTokensCreated = created;
         }
 
         /// <summary>
