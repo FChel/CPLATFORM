@@ -37,17 +37,6 @@
             margin-bottom: 10px;
         }
 
-        /* Pair: input + Save button on one row */
-        .form-row-inline {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .form-row-inline .input {
-            flex: 1;
-            font-family: var(--font);
-        }
-
         /* Two-column grid for the email + display name pair */
         .config-grid {
             display: grid;
@@ -113,8 +102,7 @@
 
         <%-- ================================================================
              Manage panel — surfaces above the list when operator clicks
-             Manage. Single combined form: display name, AS Fin email, AS
-             Fin display name.
+             Manage. One section: AS Fin email + display name.
              ================================================================ --%>
         <asp:Panel ID="pnlManage" runat="server" Visible="false" CssClass="card">
             <div class="page-head" style="margin-bottom: 1rem;">
@@ -122,7 +110,6 @@
                     <h2 style="margin: 0;">
                         Manage
                         <asp:Literal ID="litCmProgram" runat="server" />
-                        <asp:Literal ID="litCmDisplayName" runat="server" />
                     </h2>
                 </div>
                 <div>
@@ -131,18 +118,7 @@
                 </div>
             </div>
 
-            <%-- Display name section --%>
-            <div class="panel-section">
-                <div class="panel-section-title">Display name</div>
-                <p class="help-line">Friendly name shown in send-outs and the Manage header. Optional — when blank, the program code is used.</p>
-                <div class="form-row-inline">
-                    <asp:TextBox ID="txtDisplayName" runat="server" CssClass="input" MaxLength="200"
-                        placeholder="Friendly name (optional)" />
-                    <asp:Button ID="btnSaveDisplayName" runat="server" CssClass="btn btn-secondary"
-                        Text="Save name" OnClick="btnSaveDisplayName_Click" CausesValidation="false" />
-                    <asp:HiddenField ID="hfCmId" runat="server" />
-                </div>
-            </div>
+            <asp:HiddenField ID="hfCmId" runat="server" />
 
             <%-- AS Fin email section --%>
             <div class="panel-section">
@@ -189,7 +165,6 @@
                             <thead>
                                 <tr>
                                     <th>Program</th>
-                                    <th>Display name</th>
                                     <th>AS Fin email</th>
                                     <th>AS Fin display name</th>
                                     <th>Status</th>
@@ -205,7 +180,6 @@
                                 <strong><%# LPPIHelper.Enc(Eval("Program")) %></strong>
                                 <asp:Literal runat="server" ID="litEditFlag" />
                             </td>
-                            <td><%# LPPIHelper.Enc(Eval("DisplayName")) %></td>
                             <td><%# LPPIHelper.Enc(Eval("Email")) %></td>
                             <td><%# LPPIHelper.Enc(Eval("EmailDisplayName")) %></td>
                             <td>

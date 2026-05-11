@@ -1,8 +1,10 @@
 # CPLATFORM — FinHub
 
-CPLATFORM (externally branded **FinHub**) is the Defence Finance Group internal intranet platform. It hosts a small set of finance modules that bridge SAP S/4HANA and BODS-driven workflows.
+CAPS PLATFORM (externally branded **FinHub**) hosts a small set of finance modules incluidng CAPS itself as well as and modules that bridge SAP S/4HANA and BODS-driven workflows.
 
-This repository contains the platform shell plus the **LPPI Review** module — currently the primary active module. The rest of this README focuses on LPPI Review.
+This repository contains the platform shell plus the **LPPI Review** module.
+
+The rest of this README focuses on LPPI Review.
 
 ---
 
@@ -23,11 +25,10 @@ For functional documentation — page-by-page guides, package lifecycle, configu
 
 ## Stack
 
-- ASP.NET WebForms .NET Framework 4.8, C#. App_Code is C# 5 compatible — no pattern matching like `is decimal d`; use `TryParse` + explicit casts.
-- SQL Server (CPLATFORM database). Connection is via OLE DB using a UDL file (HTTP access blocked at IIS). Long-term plan: migrate to encrypted `connectionStrings`.
+- ASP.NET WebForms .NET Framework 4.8, C#. App_Code is C# 5 compatible.
+- SQL Server (CPLATFORM database). Connection is via OLE DB using a UDL file (HTTP access blocked at IIS).
 - Vanilla JavaScript (no frameworks), plain CSS.
-- EPPlus 4.5.3.3 LGPL for Excel. Do not introduce ClosedXML or anything that wants newer `System.Runtime` — the older EPPlus has been stable on the CPLATFORM server.
-- SMTP (production) or `mailto:` to the Outlook client (UAT), gated by a single config flag.
+- EPPlus 4.5.3.3 LGPL for Excel.
 
 ---
 
@@ -39,35 +40,6 @@ For functional documentation — page-by-page guides, package lifecycle, configu
 - **Read the `.aspx` `Eval()` bindings before rewriting code-behind SQL** — the markup is the source of truth for column aliases.
 - Design tokens live in CSS custom properties at the top of the stylesheet (DFG palette: orange, black, white).
 - **en-AU spelling everywhere** (`organisation`, `centre`, `colour`). Globalisation is set in `web.config`.
-
----
-
-## Setup
-
-- IIS Site.
->>> only windows 
-
-
-1. IIS application pointing at the repo root. Integrated app pool, .NET CLR v4.0.
-2. Enable Windows Authentication in IIS Manager (Anonymous + Windows both on). The reviewer page works anonymous + token; admin pages need Windows for identity resolution.
-3. Run the schema scripts under `db/` against your DEV database.
-4. Create a UDL file pointing at your DEV SQL Server (match the format of the UAT UDL that's already in the repo).
-5. Copy `web.config` and replace placeholder values per `web_config_private-values.md`.
-6. Recycle the app pool after any edit to App_Code (touching `web.config` is the easy way) — a stale `bin\App_Code.dll` can mask code changes.
-
-`web.config` ships with placeholders for everything environment-specific. Real values are documented in `web_config_private-values.md`. **Any new `web.config` setting requires both** — the placeholder in the public file and the real value in the private one. Do not ship one without the other.
-
----
-
-## Deploy order
-
-Schema scripts are idempotent and guarded — safe to re-run; each object is checked before create.
-
-Code deploys as a single unit — replace files under `src/` and IIS picks them up. If C# changes appear not to take effect, touch `web.config` to force a recompile.
-
-`web.config` edits trigger an app pool restart automatically.
-
-The destructive scripts (full drop, data refresh) refuse to run in PROD by design — both have a guard that must be commented out before they'll execute.
 
 ---
 
@@ -87,19 +59,25 @@ Full key list is in the in-app Help page. `web.config` itself has comments next 
 
 **PROD checklist:** environment label = PROD, production mode = true, real SMTP host configured, base URL matches the public hostname. Otherwise reviewer email links will be wrong.
 
+### UAT vs PROD differences
+
+The same `web.config` will not work in both environments. Per-environment differences:
+
+- **`CPlatform.Environment`** — `UAT` vs `PROD`. Drives the chip colour and label on every page.
+- **`LPPI.ProductionMode`** — `false` in UAT (shows the "Mark as sent (test)" button, real send disabled), `true` in PROD (real send enabled, mark-as-sent hidden and server-side refused).
+- **`LPPI.BaseUrl`** — the UAT host vs the PROD host. Reviewer email links are built from this; getting it wrong sends recipients to the wrong server.
+- **SMTP host / mailboxes** — UAT and PROD typically point at different mail relays and may use different `LPPI.MailFrom` / `LPPI.SupportMailboxTo` values. Confirm at cutover.
+- **UDL** — different DEV / UAT / PROD `.udl` files under `Database/`. The active one is selected by `web.config`.
+- **Anonymous Authentication** — UAT needs `<anonymousAuthentication enabled="false" />` declared in `web.config`. PROD has anonymous auth locked at the `applicationHost` level, so the same element in `web.config` causes a 500.19 — it must be removed in the PROD `web.config`. This is the one piece of `web.config` markup that genuinely differs between the two environments rather than just appSettings values.
+
+Real values for both environments are tracked in `web_config_private-values.md`.
+
 ---
 
 ## Database
 
-SQL Server, database name `CPlatform`, table prefix `tblLPPI_*` for everything in this module. Schema covers loaded files, the document detail (one row per line, since the BODS extract may have multiple lines per accounting document), the lookup tables (Capability Managers, recipient lists, reason codes), the package + review structures, and three audit logs (review history, email log, admin user list).
+SQL Server, database name `CPlatform`, table prefix `tblLPPI_*` for everything in this module. Schema covers loaded files, the document detail (one row per line, since the BODS extract may have multiple lines per accounting document), the lookup tables (Capability Managers, reason codes), the package + review structures, and three audit logs (review history, email log, admin user list).
 
-Schema scripts live under `db/`:
-- A create script (idempotent, safe to re-run).
-- A data-refresh script (DEV / UAT only — keeps schema and config rows, wipes transactional data).
-- A full-drop script (DEV / UAT only — drops every `tblLPPI_*` object).
-- An admin user seed script.
-
-Both destructive scripts have a `RAISERROR` guard at the top that must be commented out before they'll run. Do not bypass that guard in PROD.
 
 A few data model decisions worth knowing about up front:
 - **One row per line.** A single accounting document may have multiple lines in the source BODS file. The reviewer codes the document once; the review row is stored against the smallest DocumentID for that document, and joins at read time use a correlated sub-query so every line of the same document inherits the single review.

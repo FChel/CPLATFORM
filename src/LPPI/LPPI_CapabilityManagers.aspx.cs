@@ -10,11 +10,11 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Capability Managers admin page.
     ///
-    /// May 2026 rework — the recipient model collapsed from a TO/CC list to
-    /// a single AS Fin email + display name on tblLPPI_CapabilityManagers.
-    /// This page is rebuilt to match: one Manage panel with three fields
-    /// (display name, AS Fin email, AS Fin display name) and a Save button
-    /// per section.
+    /// May 2026 — recipient model is a single AS Fin email + display name
+    /// on tblLPPI_CapabilityManagers. The legacy free-text DisplayName
+    /// column on tblLPPI_CapabilityManagers has been retired pre-launch:
+    /// the AS Fin display name is the only name now, the program code is
+    /// the user-facing identifier everywhere else.
     ///
     /// A banner across the top of the page surfaces the count of CMs that
     /// are missing email configuration, with a deep-link to the first one
@@ -77,7 +77,7 @@ namespace CPlatform.LPPI
         private void BindCms()
         {
             // Columns consumed by rptCms Eval() bindings:
-            //   CmID, Program, DisplayName, Email, EmailDisplayName,
+            //   CmID, Program, Email, EmailDisplayName,
             //   EmailConfigured (bit), OpenDocs.
             //
             // EmailConfigured is the gate the Send page relies on. It is
@@ -86,7 +86,6 @@ namespace CPlatform.LPPI
             const string sql = @"
                 SELECT cm.CmID,
                        cm.Program,
-                       ISNULL(cm.DisplayName, '')      AS DisplayName,
                        ISNULL(cm.Email, '')            AS Email,
                        ISNULL(cm.EmailDisplayName, '') AS EmailDisplayName,
                        CASE WHEN cm.Email IS NOT NULL
@@ -162,12 +161,7 @@ namespace CPlatform.LPPI
             var cm = LPPIHelper.GetCmEmail(cmId);
             if (cm != null)
             {
-                litCmProgram.Text     = LPPIHelper.Enc(cm.Program);
-                litCmDisplayName.Text = string.IsNullOrEmpty(cm.DisplayName)
-                    ? ""
-                    : " — " + LPPIHelper.Enc(cm.DisplayName);
-
-                txtDisplayName.Text      = cm.DisplayName ?? "";
+                litCmProgram.Text        = LPPIHelper.Enc(cm.Program);
                 txtEmail.Text            = cm.Email ?? "";
                 txtEmailDisplayName.Text = cm.EmailDisplayName ?? "";
             }
@@ -175,8 +169,6 @@ namespace CPlatform.LPPI
             {
                 // Defensive — should not happen given the row was just clicked.
                 litCmProgram.Text        = "";
-                litCmDisplayName.Text    = "";
-                txtDisplayName.Text      = "";
                 txtEmail.Text            = "";
                 txtEmailDisplayName.Text = "";
             }
@@ -190,35 +182,9 @@ namespace CPlatform.LPPI
         {
             pnlManage.Visible        = false;
             hfCmId.Value             = "";
-            txtDisplayName.Text      = "";
             txtEmail.Text            = "";
             txtEmailDisplayName.Text = "";
             BindCms();
-            BindMissingBanner();
-        }
-
-        // -------------------------------------------------------------------
-        // Display-name save
-        // -------------------------------------------------------------------
-
-        protected void btnSaveDisplayName_Click(object sender, EventArgs e)
-        {
-            int cmId;
-            if (!int.TryParse(hfCmId.Value, out cmId))
-            {
-                ShowMessage("No group selected.", "err");
-                return;
-            }
-
-            string displayName = (txtDisplayName.Text ?? "").Trim();
-
-            LPPIHelper.ExecuteNonQuery(
-                "UPDATE tblLPPI_CapabilityManagers SET DisplayName = @dn, ModifiedDate = SYSDATETIME() WHERE CmID = @id",
-                LPPIHelper.P("@dn", displayName.Length > 0 ? (object)displayName : DBNull.Value),
-                LPPIHelper.P("@id", cmId));
-
-            ShowMessage("Display name saved.", "ok");
-            ShowManagePanel(cmId);
             BindMissingBanner();
         }
 

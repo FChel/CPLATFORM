@@ -325,17 +325,15 @@ UPDATE dbo.tblLPPI_LoadBatches
 
                 if (existing == null || existing == DBNull.Value)
                 {
-                    // Brand-new — derive a display name from the program code if
-                    // CAPABILITY_MANAGER_NAME is present in the same row.
-                    string displayName = LPPIHelper.CleanString(
-                        row.Fields.ContainsKey("CAPABILITY_MANAGER_NAME")
-                            ? row.Fields["CAPABILITY_MANAGER_NAME"] : null) ?? "";
-
-                    LPPIHelper.UpsertCapabilityManager(prog, displayName, true);
+                    LPPIHelper.UpsertCapabilityManager(prog, true);
                     res.NewPrograms.Add(prog);
                 }
-                // If it already exists, leave it alone — do not overwrite the
-                // admin-maintained display name or active flag.
+                // If it already exists, leave it alone — do not overwrite
+                // the admin-maintained email or active flag. The per-line
+                // CAPABILITY_MANAGER_NAME from BODS still goes onto
+                // tblLPPI_Documents.CapabilityManagerName for the reviewer
+                // page's cost-centre tooltip; only the unused
+                // tblLPPI_CapabilityManagers.DisplayName has been retired.
             }
         }
 

@@ -612,7 +612,6 @@ namespace CPlatform.LPPI
         {
             public int    CmID;
             public string Program;
-            public string DisplayName;
             public string Email;
             public string EmailDisplayName;
             /// <summary>True iff Email AND EmailDisplayName are both populated.</summary>
@@ -628,7 +627,7 @@ namespace CPlatform.LPPI
 
         public static DataTable GetCapabilityManagers(bool includeInactive = false)
         {
-            var sql = @"SELECT cm.CmID, cm.Program, cm.DisplayName,
+            var sql = @"SELECT cm.CmID, cm.Program
                                cm.Email, cm.EmailDisplayName,
                                cm.IsActive, cm.CreatedDate, cm.ModifiedDate,
                                CASE WHEN cm.Email IS NOT NULL
@@ -650,7 +649,7 @@ namespace CPlatform.LPPI
         public static CmEmail GetCmEmail(int cmId)
         {
             const string sql = @"
-SELECT CmID, Program, DisplayName, Email, EmailDisplayName
+SELECT CmID, Program, Email, EmailDisplayName
   FROM dbo.tblLPPI_CapabilityManagers
  WHERE CmID = @CmID";
             var dt = ExecuteTable(sql, P("@CmID", cmId));
@@ -660,7 +659,6 @@ SELECT CmID, Program, DisplayName, Email, EmailDisplayName
             {
                 CmID             = Convert.ToInt32(r["CmID"]),
                 Program          = AsStr(r["Program"]),
-                DisplayName      = AsStr(r["DisplayName"]),
                 Email            = AsStr(r["Email"]),
                 EmailDisplayName = AsStr(r["EmailDisplayName"])
             };
@@ -684,25 +682,25 @@ SELECT COUNT(*)
             return o == null ? 0 : Convert.ToInt32(o);
         }
 
-        public static int UpsertCapabilityManager(string program, string displayName, bool isActive)
+        public static int UpsertCapabilityManager(string program, bool isActive)
         {
-            // NOTE: deliberately does NOT touch Email / EmailDisplayName.
-            // File-load auto-create cannot populate those (BODS does not
-            // supply them), and admin edits to the existing email must not
-            // be wiped by a re-load.
+            // Inserts a new CM row keyed by Program, or updates the active
+            // flag on an existing one. Deliberately does NOT touch Email /
+            // EmailDisplayName — file-load auto-create cannot populate
+            // those (BODS does not supply them), and admin edits to the
+            // existing email must not be wiped by a re-load.
             var sql = @"
 MERGE dbo.tblLPPI_CapabilityManagers AS target
 USING (SELECT @Program AS Program) AS src
    ON target.Program = src.Program
 WHEN MATCHED THEN
-   UPDATE SET DisplayName = @DisplayName, IsActive = @IsActive, ModifiedDate = SYSDATETIME()
+   UPDATE SET IsActive = @IsActive, ModifiedDate = SYSDATETIME()
 WHEN NOT MATCHED THEN
-   INSERT (Program, DisplayName, IsActive) VALUES (@Program, @DisplayName, @IsActive)
+   INSERT (Program, IsActive) VALUES (@Program, @IsActive)
 OUTPUT inserted.CmID;";
 
             var o = ExecuteScalar(sql,
                 P("@Program", program),
-                P("@DisplayName", displayName),
                 P("@IsActive", isActive ? 1 : 0));
             return Convert.ToInt32(o);
         }
