@@ -126,7 +126,7 @@ namespace CPlatform.LPPI
             DataTable pkg = LPPIHelper.ExecuteTable(@"
                 SELECT p.PackageID, p.CmID, p.DueDate, p.Status,
                        p.FinalisedDate, p.FinalisedBy,
-                       cm.Program, cm.DisplayName
+                       cm.Program
                 FROM tblLPPI_ReviewPackages p
                 INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
                 WHERE p.PackageID = @p",
@@ -165,9 +165,7 @@ namespace CPlatform.LPPI
                 PocBannerHtml = BuildPocBanner(PocEmail);
 
             TokenForClient = token;
-            string dispName = pr["DisplayName"] == DBNull.Value ? "" : Convert.ToString(pr["DisplayName"]);
             ProgramName    = Convert.ToString(pr["Program"]);
-            if (!string.IsNullOrEmpty(dispName)) ProgramName = ProgramName + " \u2014 " + dispName;
             DueDate        = Convert.ToDateTime(pr["DueDate"]);
             SetDueCountdown();
 

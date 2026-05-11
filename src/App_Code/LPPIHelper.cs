@@ -627,7 +627,7 @@ namespace CPlatform.LPPI
 
         public static DataTable GetCapabilityManagers(bool includeInactive = false)
         {
-            var sql = @"SELECT cm.CmID, cm.Program
+            var sql = @"SELECT cm.CmID, cm.Program,
                                cm.Email, cm.EmailDisplayName,
                                cm.IsActive, cm.CreatedDate, cm.ModifiedDate,
                                CASE WHEN cm.Email IS NOT NULL

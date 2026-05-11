@@ -1,6 +1,6 @@
 # CPLATFORM — FinHub
 
-CAPS PLATFORM (externally branded **FinHub**) hosts a small set of finance modules incluidng CAPS itself as well as and modules that bridge SAP S/4HANA and BODS-driven workflows.
+CAPS PLATFORM (externally branded **FinHub**) hosts a set of finance modules incluidng CAPS as well as and modules that bridge SAP S/4HANA and BODS-driven workflows.
 
 This repository contains the platform shell plus the **LPPI Review** module.
 

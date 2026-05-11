@@ -247,7 +247,7 @@ namespace CPlatform.LPPI
         public static string BuildEmailHtmlByCm(int cmId)
         {
             const string sql = @"
-SELECT cm.Program, cm.DisplayName,
+SELECT cm.Program,
        (SELECT COUNT(DISTINCT d.DocNoAccounting)
           FROM dbo.tblLPPI_Documents d
           LEFT JOIN dbo.tblLPPI_Reviews r
@@ -1046,7 +1046,7 @@ VALUES (@P, @R, @T, @A, @PE, @S, @B, @U, @OK, @E);";
         {
             const string sql = @"
 SELECT p.PackageID, p.Token, p.DueDate, p.CreatedDate, p.SentDate, p.Status,
-       cm.CmID, cm.Program, cm.DisplayName,
+       cm.CmID, cm.Program,
        (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments d WHERE d.PackageID = p.PackageID) AS DocCount,
        (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments d
           INNER JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
