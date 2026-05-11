@@ -205,12 +205,56 @@ VALUES (@FileName, @SourcePath, @FileSize, @Modified, @UserId, @UserName, @RowsI
                     continue;
                 }
 
-                object exists = LPPIHelper.ExecuteScalar(
-                    "SELECT 1 FROM dbo.tblLPPI_Documents WHERE DocNoAccounting = @D AND ItemSequence = @Seq",
+                // Check whether a row with the same (DocNoAccounting, ItemSequence)
+                // exists. If so, either:
+                //   (a) it is reload-eligible (IsDeactivated = 1, not yet
+                //       superseded) — load the new row and stamp the old
+                //       one with the new row's DocumentID as its successor; or
+                //   (b) anything else — duplicate, skip and warn.
+                DataTable existsRow = LPPIHelper.ExecuteTable(
+                    @"SELECT DocumentID, IsDeactivated, SupersededByDocumentID
+                        FROM dbo.tblLPPI_Documents
+                       WHERE DocNoAccounting = @D AND ItemSequence = @Seq",
                     LPPIHelper.P("@D",   docNo),
                     LPPIHelper.P("@Seq", seq.Value));
-                if (exists != null)
+
+                if (existsRow.Rows.Count > 0)
                 {
+                    DataRow er = existsRow.Rows[0];
+                    int  existingId    = Convert.ToInt32(er["DocumentID"]);
+                    bool isDeactivated = (er["IsDeactivated"] != DBNull.Value)
+                                         && Convert.ToBoolean(er["IsDeactivated"]);
+                    bool isSuperseded  = er["SupersededByDocumentID"] != DBNull.Value;
+
+                    if (isDeactivated && !isSuperseded)
+                    {
+                        // (a) Reload-eligible — let the new row load. Then
+                        //     stamp the old row's SupersededByDocumentID
+                        //     to point at the new row so the chain is
+                        //     navigable from older to newer.
+                        try
+                        {
+                            int newDocId = InsertDocument(res.BatchID, docNo, seq.Value, row);
+                            res.RowsInserted++;
+
+                            LPPIHelper.ExecuteNonQuery(
+                                @"UPDATE dbo.tblLPPI_Documents
+                                     SET SupersededByDocumentID = @new
+                                   WHERE DocumentID = @old",
+                                LPPIHelper.P("@new", newDocId),
+                                LPPIHelper.P("@old", existingId));
+                        }
+                        catch (Exception ex)
+                        {
+                            res.RowsFailed++;
+                            res.FailedRows.Add(string.Format(
+                                "Line {0} (doc {1} / {2:000}): superseding reload-eligible row failed: {3}",
+                                row.LineNumber, docNo, seq.Value, ex.Message));
+                        }
+                        continue;
+                    }
+
+                    // (b) Plain duplicate — skip and warn as before.
                     res.RowsSkipped++;
                     res.SkippedDocNumbers.Add(string.Format("{0} / {1:000}", docNo, seq.Value));
                     continue;
@@ -520,7 +564,7 @@ SELECT n.PackageID,
             public List<int> DocIds = new List<int>();
         }
 
-        private static void InsertDocument(int batchId, string docNo, int itemSequence, ParsedRow row)
+        private static int InsertDocument(int batchId, string docNo, int itemSequence, ParsedRow row)
         {
             const string sql = @"
 INSERT INTO dbo.tblLPPI_Documents
@@ -535,7 +579,7 @@ INSERT INTO dbo.tblLPPI_Documents
   PossiblePayment, PossibleDuplicateClearing, ContractValueLocExGst,
   PaymentRunDate, BodsPaymtBaselineDate, DaysVariance, DailyRate,
   InvoiceInterestAmount, InterestPayable, SourceSystem, PaymentChannel,
-  DocumentType, VendorInvoiceNo, ClearingMonth, FiscalYear )
+  DocumentType, VendorInvoiceNo, ClearingMonth, FiscalYear ) OUTPUT inserted.DocumentID
 VALUES
 ( @DocNo, @ItemSequence, @BatchID, @CompanyCode, @PoNumber, @VendorNum, @VendorName, @VendorAcct,
   @WbsElement, @WbsDesc, @Capex, @ProfitCentre,
@@ -555,7 +599,7 @@ VALUES
             Func<string, decimal?>  M = k => LPPIHelper.ParseDecimal(S(k));
             Func<string, int?>      I = k => LPPIHelper.ParseInt(S(k));
 
-            LPPIHelper.ExecuteNonQuery(sql,
+            object newId = LPPIHelper.ExecuteScalar(sql,
                 LPPIHelper.P("@DocNo",                     docNo),
                 LPPIHelper.P("@ItemSequence",              itemSequence),
                 LPPIHelper.P("@BatchID",                   batchId),
@@ -605,6 +649,7 @@ VALUES
                 LPPIHelper.P("@VendorInvoiceNo",           (object)S("VENDOR_INVOICE_NO")            ?? DBNull.Value),
                 LPPIHelper.P("@ClearingMonth",             (object)S("CLEARING_MONTH")               ?? DBNull.Value),
                 LPPIHelper.P("@FiscalYear",                (object)S("FISCAL_YEAR")                  ?? DBNull.Value));
+	return Convert.ToInt32(newId);
         }
     }
 }

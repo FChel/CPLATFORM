@@ -33,20 +33,26 @@ namespace CPlatform.LPPI
 
         /// <summary>
         /// Render the standard LPPI page header. Pass the active nav key:
-        /// "dashboard","help","load","batches","cm","reasons","sendouts","export","adminusers".
+        /// "dashboard","help","load","batches","sendouts","cm","reasons",
+        /// "export","deactivated","adminusers".
         /// </summary>
         public string RenderHeader(string active)
         {
+            // "deactivated" sits between "reasons" and "export" — it is a
+            // by-product of the reason-code workflow (RC-RL) and a
+            // pre-export watch-list, so the nav order reflects that flow:
+            //   reasons -> deactivated -> export
             var nav = new[] {
-                new { Key="dashboard",  Label="Dashboard",           Url="LPPI_Admin.aspx" },
-                new { Key="help",       Label="Help",                Url="LPPI_Help.aspx" },
-                new { Key="load",       Label="Load file",           Url="LPPI_Load.aspx" },
-                new { Key="batches",    Label="Batches",             Url="LPPI_Batches.aspx" },
-                new { Key="sendouts",   Label="Send-outs",           Url="LPPI_SendOuts.aspx" },
-                new { Key="cm",         Label="Capability Managers", Url="LPPI_CapabilityManagers.aspx" },
-                new { Key="reasons",    Label="Reason Codes",        Url="LPPI_ReasonCodes.aspx" },
-                new { Key="export",     Label="Export",              Url="LPPI_Export.aspx" },
-                new { Key="adminusers", Label="Admin users",         Url="LPPI_AdminUsers.aspx" }
+                new { Key="dashboard",   Label="Dashboard",            Url="LPPI_Admin.aspx" },
+                new { Key="help",        Label="Help",                 Url="LPPI_Help.aspx" },
+                new { Key="load",        Label="Load file",            Url="LPPI_Load.aspx" },
+                new { Key="batches",     Label="Batches",              Url="LPPI_Batches.aspx" },
+                new { Key="sendouts",    Label="Send-outs",            Url="LPPI_SendOuts.aspx" },
+                new { Key="cm",          Label="Capability Managers",  Url="LPPI_CapabilityManagers.aspx" },
+                new { Key="reasons",     Label="Reason Codes",         Url="LPPI_ReasonCodes.aspx" },
+                new { Key="deactivated", Label="Deactivated",          Url="LPPI_Deactivated.aspx" },
+                new { Key="export",      Label="Export",               Url="LPPI_Export.aspx" },
+                new { Key="adminusers",  Label="Admin users",          Url="LPPI_AdminUsers.aspx" }
             };
 
             // Support mailto — To: LPPI inbox, CC: DFSPI

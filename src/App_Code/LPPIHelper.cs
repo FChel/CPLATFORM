@@ -71,6 +71,15 @@ namespace CPlatform.LPPI
         // tblLPPI_ReasonCodes so it does NOT appear in the reviewer dropdown.
         public const string NoResponseReasonCode = "RC-NR";
 
+        // The reload-eligible reason code. Outcome = NotPayable, but with
+        // a side effect: when the package is finalised, every line of any
+        // document carrying RC-RL gets IsDeactivated = 1, which excludes
+        // it from ERP exports and exempts the same (DocNoAccounting,
+        // ItemSequence) from the load-time duplicate skip — the next file
+        // load that contains a corrected row supersedes the deactivated
+        // one. IsActive = 1 (visible in the reviewer dropdown).
+        public const string ReloadReasonCode = "RC-RL";
+
         // -------------------------------------------------------------------
         // Config helpers
         // -------------------------------------------------------------------
@@ -536,13 +545,22 @@ namespace CPlatform.LPPI
                 return null;
             }
 
-            if (!s.EndsWith("@defence.gov.au", StringComparison.OrdinalIgnoreCase))
+            // Accept @defence.gov.au and any @<sub>.defence.gov.au address.
+            // Some Defence entities use subdomains
+            // and their addresses are legitimate AS Fin / POC contacts.
+            string lower = s.ToLowerInvariant();
+            int atIdx = lower.LastIndexOf('@');
+            string domain = atIdx >= 0 ? lower.Substring(atIdx + 1) : "";
+
+            bool ok = domain == "defence.gov.au"
+                   || domain.EndsWith(".defence.gov.au", StringComparison.Ordinal);
+            if (!ok)
             {
-                errorMessage = "Only @defence.gov.au addresses are accepted.";
+                errorMessage = "Only defence.gov.au addresses are accepted (including @<sub>.defence.gov.au).";
                 return null;
             }
 
-            return s.ToLowerInvariant();
+            return lower;
         }
 
         // -------------------------------------------------------------------
@@ -1209,7 +1227,45 @@ SELECT COUNT(*)
                             P("@nv2",   nowIso2),
                             P("@rc",    noRespId.Value));
 
-                        // 3) Flip status. Race-safe — if another finalise call
+                        // RC-RL stamping (must happen INSIDE the transaction,
+                        // BEFORE the status flip).
+                        //
+                        // For every line of every document in this package
+                        // whose first-line review carries the reload-eligible
+                        // reason code, set IsDeactivated = 1. The whole
+                        // DocNoAccounting is stamped (not just the first
+                        // line) so multi-line documents are handled
+                        // uniformly; the export filter and the deactivated
+                        // watch-list both query at line granularity.
+                        //
+                        // Rows already deactivated (e.g. from a prior
+                        // finalise → unfinalise → re-finalise round-trip on
+                        // the same data) are left as-is. Rows already
+                        // superseded by a later load are not in this
+                        // package, so the join would not pick them up.
+                        int? rlId = GetReasonCodeIdByCode(ReloadReasonCode);
+                        if (rlId.HasValue)
+                        {
+                            ExecTx(cn, tx, @"
+UPDATE d
+   SET d.IsDeactivated = 1
+  FROM dbo.tblLPPI_Documents d
+ INNER JOIN dbo.tblLPPI_Documents fl
+         ON fl.DocNoAccounting = d.DocNoAccounting
+ INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd
+         ON pd.DocumentID = (SELECT MIN(d2.DocumentID)
+                               FROM dbo.tblLPPI_Documents d2
+                              WHERE d2.DocNoAccounting = d.DocNoAccounting)
+ INNER JOIN dbo.tblLPPI_Reviews r
+         ON r.DocumentID = pd.DocumentID
+ WHERE pd.PackageID    = @p
+   AND r.ReasonCodeID  = @rl
+   AND d.IsDeactivated = 0;",
+                                P("@p",  packageId),
+                                P("@rl", rlId.Value));
+                        }
+
+                        // Race-safe — if another finalise call
                         //    won, this UPDATE affects 0 rows and we surface a
                         //    generic message.
                         int statusUpdated = ExecTx(cn, tx, @"
@@ -1332,6 +1388,26 @@ DELETE r
    AND r.ReasonCodeID  = @rc;",
                             P("@p",  packageId),
                             P("@rc", noRespId.Value));
+
+                        // 2b) Reverse RC-RL deactivation for any line in this
+                        //     package that is not yet superseded. If a
+                        //     subsequent file load already replaced the line
+                        //     (SupersededByDocumentID IS NOT NULL) the
+                        //     supersession chain is committed and we leave
+                        //     the row alone — the corrected row in the next
+                        //     package is the live one.
+                        ExecTx(cn, tx, @"
+UPDATE d
+   SET d.IsDeactivated = 0
+  FROM dbo.tblLPPI_Documents d
+ INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd
+         ON pd.DocumentID = (SELECT MIN(d2.DocumentID)
+                               FROM dbo.tblLPPI_Documents d2
+                              WHERE d2.DocNoAccounting = d.DocNoAccounting)
+ WHERE pd.PackageID                 = @p
+   AND d.IsDeactivated               = 1
+   AND d.SupersededByDocumentID IS NULL;",
+                            P("@p", packageId));
 
                         // 3) Flip status back. Race-safe — if it has moved on
                         //    to Exported (impossible legitimately, but defence

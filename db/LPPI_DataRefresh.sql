@@ -12,6 +12,7 @@
      - tblLPPI_EmailLog                  (every send / mark-as-sent record)
      - tblLPPI_ReviewHistory             (every reviewer-side change snapshot)
      - tblLPPI_ReviewPackageDocuments    (every package <-> document link)
+     - tblLPPI_PackagePocs               (every per-POC token row)
      - tblLPPI_ReviewPackages            (every package, every status)
      - tblLPPI_Reviews                   (every reason code / comment / objref)
      - tblLPPI_Documents                 (every loaded document line)
@@ -26,8 +27,8 @@
    ----------------------------------------------------------------------
      - tblLPPI_AdminUsers                (admin access list)
      - tblLPPI_ReasonCodes               (RC01-RC16, RC-NR, and any custom codes)
-     - tblLPPI_CapabilityManagers        (ARMY, NAVY, etc.)
-     - tblLPPI_CapabilityManagerEmails   (recipient configurations)
+     - tblLPPI_CapabilityManagers        (ARMY, NAVY, etc., with their
+                                          configured Email + EmailDisplayName)
 
    ----------------------------------------------------------------------
    SAFETY
@@ -88,6 +89,7 @@ BEGIN TRANSACTION;
 DECLARE @cnt_EmailLog          INT = (SELECT COUNT(*) FROM dbo.tblLPPI_EmailLog);
 DECLARE @cnt_History           INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewHistory);
 DECLARE @cnt_PackageDocs       INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments);
+DECLARE @cnt_PackagePocs       INT = (SELECT COUNT(*) FROM dbo.tblLPPI_PackagePocs);
 DECLARE @cnt_Packages          INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages);
 DECLARE @cnt_Reviews           INT = (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews);
 DECLARE @cnt_Documents         INT = (SELECT COUNT(*) FROM dbo.tblLPPI_Documents);
@@ -99,12 +101,13 @@ DECLARE @cnt_ExportBatches     INT = (SELECT COUNT(*) FROM dbo.tblLPPI_ExportBat
      1. EmailLog              -> ReviewPackages
      2. ReviewHistory         -> Documents, ReviewPackages, ReasonCodes (kept)
      3. ReviewPackageDocuments-> ReviewPackages, Documents
-     4. ReviewPackages        -> CapabilityManagers (kept), ExportBatches
-     5. Reviews               -> Documents, ReasonCodes (kept)
-     6. Documents             -> LoadBatches, ExportBatches
-     7. ExportBatches         (no incoming FKs left after Documents and
+     4. PackagePocs           -> ReviewPackages
+     5. ReviewPackages        -> CapabilityManagers (kept), ExportBatches
+     6. Reviews               -> Documents, ReasonCodes (kept)
+     7. Documents             -> LoadBatches, ExportBatches
+     8. ExportBatches         (no incoming FKs left after Documents and
                                ReviewPackages cleared)
-     8. LoadBatches           (no incoming FKs left)
+     9. LoadBatches           (no incoming FKs left)
    ---------------------------------------------------------------------- */
 
 DELETE FROM dbo.tblLPPI_EmailLog;
@@ -115,6 +118,9 @@ PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_ReviewHistory', @cnt_Histo
 
 DELETE FROM dbo.tblLPPI_ReviewPackageDocuments;
 PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_ReviewPackageDocuments', @cnt_PackageDocs);
+
+DELETE FROM dbo.tblLPPI_PackagePocs;
+PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_PackagePocs', @cnt_PackagePocs);
 
 DELETE FROM dbo.tblLPPI_ReviewPackages;
 PRINT FORMATMESSAGE('  Deleted %d row(s) from tblLPPI_ReviewPackages', @cnt_Packages);
@@ -142,6 +148,7 @@ DBCC CHECKIDENT (N'dbo.tblLPPI_Documents',      RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_Reviews',        RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_ReviewHistory',  RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_ReviewPackages', RESEED, 0);
+DBCC CHECKIDENT (N'dbo.tblLPPI_PackagePocs',    RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_EmailLog',       RESEED, 0);
 DBCC CHECKIDENT (N'dbo.tblLPPI_ExportBatches',  RESEED, 0);
 
@@ -151,8 +158,7 @@ COMMIT TRANSACTION;
 
 PRINT '------------------------------------------------------------';
 PRINT 'LPPI_DataRefresh complete.';
-PRINT 'Preserved: tblLPPI_AdminUsers, tblLPPI_ReasonCodes,';
-PRINT '           tblLPPI_CapabilityManagers, tblLPPI_CapabilityManagerEmails.';
+PRINT 'Preserved: tblLPPI_AdminUsers, tblLPPI_ReasonCodes, tblLPPI_CapabilityManagers.';
 PRINT 'Finished at: ' + CONVERT(NVARCHAR(40), SYSDATETIME(), 121);
 PRINT '------------------------------------------------------------';
 GO

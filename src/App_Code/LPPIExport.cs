@@ -172,7 +172,8 @@ namespace CPlatform.LPPI
                 "  INNER JOIN dbo.tblLPPI_ReasonCodes rc " +
                 "          ON rc.ReasonCodeID = r.ReasonCodeID " +
                 " WHERE pd.PackageID IN (" + inPlaceholders.ToString() + ") " +
-                "   AND rc.Outcome = 'Payable' " +
+                "   AND rc.Outcome      = 'Payable' " +
+                "   AND d.IsDeactivated = 0 " +     // RC-RL — deactivated lines never ship
                 " ORDER BY pd.PackageID, d.DocNoAccounting, d.ItemSequence;";
 
             var parms = new List<OleDbParameter>(packageIds.Count);

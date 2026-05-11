@@ -85,15 +85,17 @@ BEGIN
         CONSTRAINT CK_tblLPPI_CapabilityManagers_Email
             CHECK (Email IS NULL
                 OR (Email LIKE '%_@_%.[a-z]%'
-                    AND Email LIKE '%@defence.gov.au'))
+                    AND (Email LIKE '%@defence.gov.au'
+                      OR Email LIKE '%@%.defence.gov.au')))
     );
 END
 GO
 
 /* ----------------------------- tblLPPI_ReasonCodes --------------------------
    Reviewer-facing reason codes with Outcome (Payable / NotPayable).
-   Seed at the bottom of this file inserts the 16 canonical RC01-RC16 plus
-   the system code RC-NR (inactive — set automatically on AS Fin finalise).
+   Seed at the bottom of this file inserts the 16 canonical RC01-RC16, plus
+   RC-RL (Reload-eligible / incorrect data) and the system code RC-NR
+   (inactive — set automatically on AS Fin finalise).
    ============================================================================= */
 IF OBJECT_ID(N'dbo.tblLPPI_ReasonCodes', N'U') IS NULL
 BEGIN
@@ -182,6 +184,11 @@ GO
 
    ExportedDate / ExportedBy / ExportBatchID are populated when the line is
    shipped in an ERP payment file. NULL = not (yet) exported.
+
+   IsDeactivated / SupersededByDocumentID: support the RC-RL reload-eligible
+   workflow. When a document is deactivated (incorrect data, needs reload),
+   IsDeactivated is set to 1 and SupersededByDocumentID points to the
+   replacement DocumentID once the corrected line arrives in a later load.
    ============================================================================= */
 IF OBJECT_ID(N'dbo.tblLPPI_Documents', N'U') IS NULL
 BEGIN
@@ -241,9 +248,12 @@ BEGIN
         ExportedDate                DATETIME2(3)  NULL,
         ExportedBy                  NVARCHAR(200) NULL,
         ExportBatchID               INT           NULL,
+        IsDeactivated               BIT           NOT NULL CONSTRAINT DF_tblLPPI_Documents_IsDeactivated DEFAULT (0),
+        SupersededByDocumentID      INT           NULL,
         CONSTRAINT UQ_tblLPPI_Documents_DocNoAccounting_ItemSequence UNIQUE (DocNoAccounting, ItemSequence),
-        CONSTRAINT FK_tblLPPI_Documents_Batch       FOREIGN KEY (BatchID)       REFERENCES dbo.tblLPPI_LoadBatches(BatchID),
-        CONSTRAINT FK_tblLPPI_Documents_ExportBatch FOREIGN KEY (ExportBatchID) REFERENCES dbo.tblLPPI_ExportBatches(ExportBatchID)
+        CONSTRAINT FK_tblLPPI_Documents_Batch        FOREIGN KEY (BatchID)                REFERENCES dbo.tblLPPI_LoadBatches(BatchID),
+        CONSTRAINT FK_tblLPPI_Documents_ExportBatch  FOREIGN KEY (ExportBatchID)          REFERENCES dbo.tblLPPI_ExportBatches(ExportBatchID),
+        CONSTRAINT FK_tblLPPI_Documents_SupersededBy FOREIGN KEY (SupersededByDocumentID) REFERENCES dbo.tblLPPI_Documents(DocumentID)
     );
 
     CREATE NONCLUSTERED INDEX IX_tblLPPI_Documents_BatchID
@@ -265,6 +275,14 @@ BEGIN
     CREATE NONCLUSTERED INDEX IX_tblLPPI_Documents_PocEmail
         ON dbo.tblLPPI_Documents(PocEmail)
         WHERE PocEmail IS NOT NULL;
+
+    /* Deactivated index — supports the deactivated-watchlist admin page and
+       the load-time supersession lookup. Filtered to the small subset of
+       rows where IsDeactivated = 1, so it stays cheap on the hot path. */
+    CREATE NONCLUSTERED INDEX IX_tblLPPI_Documents_Deactivated
+        ON dbo.tblLPPI_Documents(DocNoAccounting, ItemSequence)
+        INCLUDE (DocumentID, SupersededByDocumentID, CapabilityManagerProgram)
+        WHERE IsDeactivated = 1;
 END
 GO
 
@@ -494,8 +512,8 @@ GO
    3. SEED DATA — REASON CODES
       ------------------------
       The 16 canonical RC01-RC16 codes from the RMG-417 LPPI process, plus
-      the system code RC-NR used for auto-applied "no response" reviews
-      written when AS Fin clicks Finalise.
+      RC-RL (Reload-eligible / incorrect data) and the system code RC-NR used
+      for auto-applied "no response" reviews written when AS Fin clicks Finalise.
 
       Re-runnable: only inserts codes that do not already exist. Existing
       rows are NOT updated by the seed — operations team can edit codes
@@ -503,27 +521,32 @@ GO
    ============================================================================= */
 ;WITH Seed(Code, Description, Outcome, DisplayOrder, RequiresComments, IsActive) AS
 (
-    SELECT 'RC01', N'Interest Payable – ERP Technical/Migration/Access or other ERP related issues', 'Payable',     1, 0, 1 UNION ALL
-    SELECT 'RC02', N'Interest Payable – POC issues (incorrect/unavailable)',                          'Payable',     2, 0, 1 UNION ALL
-    SELECT 'RC03', N'Interest Payable – Problems with Purchase Order',                                 'Payable',     3, 0, 1 UNION ALL
-    SELECT 'RC04', N'Interest Payable – Problems with Account Assignment (cost centre, WBS etc)',     'Payable',     4, 0, 1 UNION ALL
-    SELECT 'RC05', N'Interest Payable – Account payable processing delays',                            'Payable',     5, 0, 1 UNION ALL
-    SELECT 'RC06', N'Interest Payable – Incorrect Baseline date used in calculation',                  'Payable',     6, 0, 1 UNION ALL
-    SELECT 'RC07', N'Interest Payable – Other',                                                        'Payable',     7, 1, 1 UNION ALL
-    SELECT 'RC08', N'Interest Not Payable – Contract older than RMG 417 Key date (1 July 2022)',      'NotPayable',  8, 0, 1 UNION ALL
-    SELECT 'RC09', N'Interest Not Payable – Goods not received when invoiced',                         'NotPayable',  9, 0, 1 UNION ALL
-    SELECT 'RC10', N'Interest Not Payable – Goods not accepted (broken / faulty)',                     'NotPayable', 10, 0, 1 UNION ALL
-    SELECT 'RC11', N'Interest Not Payable – Invoice submitted prior to delivery of goods / services',  'NotPayable', 11, 0, 1 UNION ALL
-    SELECT 'RC12', N'Interest Not Payable – Delayed due to invoice dispute',                           'NotPayable', 12, 0, 1 UNION ALL
-    SELECT 'RC13', N'Interest Not Payable – Commonwealth or State entity',                             'NotPayable', 13, 0, 1 UNION ALL
-    SELECT 'RC14', N'Interest Not Payable – It''s a lease, Forex or GST Invoice',                     'NotPayable', 14, 0, 1 UNION ALL
-    SELECT 'RC15', N'Interest Not Payable – Services delivered overseas',                              'NotPayable', 15, 0, 1 UNION ALL
-    SELECT 'RC16', N'Interest Not Payable – Other',                                                    'NotPayable', 16, 1, 1 UNION ALL
+    SELECT 'RC01',  N'Interest Payable – ERP Technical/Migration/Access or other ERP related issues',                                          'Payable',      1, 0, 1 UNION ALL
+    SELECT 'RC02',  N'Interest Payable – POC issues (incorrect/unavailable)',                                                                   'Payable',      2, 0, 1 UNION ALL
+    SELECT 'RC03',  N'Interest Payable – Problems with Purchase Order',                                                                         'Payable',      3, 0, 1 UNION ALL
+    SELECT 'RC04',  N'Interest Payable – Problems with Account Assignment (cost centre, WBS etc)',                                              'Payable',      4, 0, 1 UNION ALL
+    SELECT 'RC05',  N'Interest Payable – Account payable processing delays',                                                                    'Payable',      5, 0, 1 UNION ALL
+    SELECT 'RC06',  N'Interest Payable – Incorrect Baseline date used in calculation',                                                          'Payable',      6, 0, 1 UNION ALL
+    SELECT 'RC07',  N'Interest Payable – Other',                                                                                                'Payable',      7, 1, 1 UNION ALL
+    SELECT 'RC08',  N'Interest Not Payable – Contract older than RMG 417 Key date (1 July 2022)',                                               'NotPayable',   8, 0, 1 UNION ALL
+    SELECT 'RC09',  N'Interest Not Payable – Goods not received when invoiced',                                                                 'NotPayable',   9, 0, 1 UNION ALL
+    SELECT 'RC10',  N'Interest Not Payable – Goods not accepted (broken / faulty)',                                                             'NotPayable',  10, 0, 1 UNION ALL
+    SELECT 'RC11',  N'Interest Not Payable – Invoice submitted prior to delivery of goods / services',                                          'NotPayable',  11, 0, 1 UNION ALL
+    SELECT 'RC12',  N'Interest Not Payable – Delayed due to invoice dispute',                                                                   'NotPayable',  12, 0, 1 UNION ALL
+    SELECT 'RC13',  N'Interest Not Payable – Commonwealth or State entity',                                                                     'NotPayable',  13, 0, 1 UNION ALL
+    SELECT 'RC14',  N'Interest Not Payable – It''s a lease, Forex or GST Invoice',                                                             'NotPayable',  14, 0, 1 UNION ALL
+    SELECT 'RC15',  N'Interest Not Payable – Services delivered overseas',                                                                      'NotPayable',  15, 0, 1 UNION ALL
+    SELECT 'RC16',  N'Interest Not Payable – Other',                                                                                            'NotPayable',  16, 1, 1 UNION ALL
+    /* RC-RL — Reload-eligible. Outcome is NotPayable (the line, as it stands,
+       is not payable). RequiresComments = 1 (justification mandatory; the
+       existing NotPayable validation also requires an Objective Reference).
+       IsActive = 1 — visible in the reviewer dropdown for both POC and AS Fin. */
+    SELECT 'RC-RL', N'Interest Not Payable – Incorrect data, document eligible for reload (e.g. baseline date dispute, line-level error)',      'NotPayable',  17, 1, 1 UNION ALL
     /* RC-NR — system code, IsActive=0 so it does not appear in the reviewer
        dropdown. Looked up by Code at runtime by the finalise flow and applied
        to any document that has not been coded by the AS Fin team at finalise
        time. Outcome = Payable per RMG-417 default position. */
-    SELECT 'RC-NR', N'Interest Payable – Default per RMG-417 (no review decision recorded at finalise)',           'Payable',  9999, 0, 0
+    SELECT 'RC-NR', N'Interest Payable – Default per RMG-417 (no review decision recorded at finalise)',                                       'Payable',   9999, 0, 0
 )
 INSERT INTO dbo.tblLPPI_ReasonCodes (Code, Description, Outcome, DisplayOrder, RequiresComments, IsActive)
 SELECT s.Code, s.Description, s.Outcome, s.DisplayOrder, s.RequiresComments, s.IsActive

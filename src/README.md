@@ -42,9 +42,13 @@ For functional documentation — page-by-page guides, package lifecycle, configu
 
 ---
 
-## Getting set up (DEV)
+## Setup
 
-1. Create an IIS application pointing at the repo root. Integrated app pool, .NET CLR v4.0.
+- IIS Site.
+>>> only windows 
+
+
+1. IIS application pointing at the repo root. Integrated app pool, .NET CLR v4.0.
 2. Enable Windows Authentication in IIS Manager (Anonymous + Windows both on). The reviewer page works anonymous + token; admin pages need Windows for identity resolution.
 3. Run the schema scripts under `db/` against your DEV database.
 4. Create a UDL file pointing at your DEV SQL Server (match the format of the UAT UDL that's already in the repo).
@@ -57,7 +61,7 @@ For functional documentation — page-by-page guides, package lifecycle, configu
 
 ## Deploy order
 
-**SQL before code, every time.** Schema scripts are idempotent and guarded — safe to re-run; each object is checked before create.
+Schema scripts are idempotent and guarded — safe to re-run; each object is checked before create.
 
 Code deploys as a single unit — replace files under `src/` and IIS picks them up. If C# changes appear not to take effect, touch `web.config` to force a recompile.
 
@@ -100,7 +104,7 @@ Both destructive scripts have a `RAISERROR` guard at the top that must be commen
 A few data model decisions worth knowing about up front:
 - **One row per line.** A single accounting document may have multiple lines in the source BODS file. The reviewer codes the document once; the review row is stored against the smallest DocumentID for that document, and joins at read time use a correlated sub-query so every line of the same document inherits the single review.
 - **Capability Manager vs. CM Program.** A CM Program (e.g. ARMY) groups many individual Capability Managers. Packages are scoped per Program, but each document carries its specific CM — that CM is the LPPI Charge Cost Centre that will be charged with interest if the outcome is Payable.
-- **Tax code.** Always exported as `P5` regardless of the source value — Finance has confirmed interest payments are not tax-input or tax-output relevant.
+- **Tax code.** Always exported as `P5` regardless of the source value, interest payments are not tax-output relevant.
 
 ---
 
@@ -117,12 +121,6 @@ A few data model decisions worth knowing about up front:
 Outlook on Windows uses the Word HTML rendering engine which does **not** inherit `font-family` from a parent element. Anything without an inline font declaration falls back to Times New Roman. The fix in the email body builder is two-fold: a `<head><style>` block as a defence-in-depth fallback (Outlook web, dark mode, mobile clients), and inline `font-family` on every text-bearing element in the body (Outlook desktop, the strict case).
 
 If a future change introduces a new text-bearing element in the email builder, declare `font-family` on its inline style or it will render as Times New Roman in Outlook desktop. This is the single most likely regression after a UI change to the email template.
-
----
-
-## Reporting
-
-For stakeholder / executive reporting, **Power BI** is the preferred tool — connect it to SQL views over the LPPI tables. The application itself is the operational tool, not the reporting tool; do not extend the dashboard with bespoke reporting widgets when Power BI can do it natively.
 
 ---
 
