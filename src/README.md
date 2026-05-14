@@ -1,6 +1,6 @@
 # CPLATFORM — FinHub
 
-CAPS PLATFORM (externally branded **FinHub**) hosts a set of finance modules incluidng CAPS as well as and modules that bridge SAP S/4HANA and BODS-driven workflows.
+CAPS PLATFORM (externally branded **FinHub**) hosts a set of finance modules including CAPS and other modules that bridge SAP S/4HANA and BODS-driven workflows.
 
 This repository contains the platform shell plus the **LPPI Review** module.
 
@@ -29,6 +29,45 @@ For functional documentation — page-by-page guides, package lifecycle, configu
 - SQL Server (CPLATFORM database). Connection is via OLE DB using a UDL file (HTTP access blocked at IIS).
 - Vanilla JavaScript (no frameworks), plain CSS.
 - EPPlus 4.5.3.3 LGPL for Excel.
+
+---
+
+## Repository layout
+
+```
+src/
+  Default.aspx              CPLATFORM landing page (FinHub tiles & hero CTAs)
+  web.config                Single config file; values differ UAT vs PROD
+  README.md                 This file
+  App_Code/                 Shared C# (compiled on-the-fly)
+    LPPIBasePage.cs         Base for admin pages (header + admin gate)
+    LPPIHelper.cs           OLE DB access, parameter rewrite, helpers
+    LPPIEmail.cs            AS Fin / POC email builders (Outlook-safe)
+    LPPIExport.cs           ERP Payment Request bulk-upload builder
+    LPPIFileParser.cs       BODS extract parser + commit reconcile
+  LPPI/                     Module pages (.aspx + .aspx.cs)
+    LPPI_Admin.aspx           Dashboard
+    LPPI_Help.aspx            In-app admin help
+    LPPI_Load.aspx            Monthly file load
+    LPPI_Batches.aspx         Load batch history
+    LPPI_SendOuts.aspx        Issue / remind / preview
+    LPPI_CapabilityManagers   AS Fin email config
+    LPPI_ReasonCodes.aspx     Reason code admin
+    LPPI_Deactivated.aspx     RC-RL watch-list
+    LPPI_Export.aspx          ERP export picker
+    LPPI_AdminUsers.aspx      Admin allow-list
+    LPPI_Review.aspx          Token-gated reviewer page (AS Fin + POC)
+    LPPI_Review_*.ashx        Reviewer endpoints (Save, Finalise, etc.)
+  css/lppi.css              All LPPI styles + design tokens
+  js/lppi.js                Reviewer-page interactions (vanilla JS)
+sql/
+  LPPI_Schema.sql           Canonical fresh-install schema + seeds
+  LPPI_DataRefresh.sql      Guarded data-only reset (DEV/UAT only)
+- Other useful scripts
+
+Database/
+  CPlatform.udl             OLE DB connection file (blocked at IIS)
+```
 
 ---
 
@@ -76,12 +115,13 @@ Real values for both environments are tracked in `web_config_private-values.md`.
 
 ## Database
 
-SQL Server, database name `CPlatform`, table prefix `tblLPPI_*` for everything in this module. Schema covers loaded files, the document detail (one row per line, since the BODS extract may have multiple lines per accounting document), the lookup tables (Capability Managers, reason codes), the package + review structures, and three audit logs (review history, email log, admin user list).
+SQL Server, database name `CPlatform`, table prefix `tblLPPI_*` for everything in this module. Schema covers loaded files, the document detail (one row per line, since the BODS extract may have multiple lines per accounting document), the lookup tables (Capability Managers, reason codes), the package + review structures, the per-POC token set, and three audit logs (review history, email log, admin user list).
 
 
 A few data model decisions worth knowing about up front:
 - **One row per line.** A single accounting document may have multiple lines in the source BODS file. The reviewer codes the document once; the review row is stored against the smallest DocumentID for that document, and joins at read time use a correlated sub-query so every line of the same document inherits the single review.
 - **Capability Manager vs. CM Program.** A CM Program (e.g. ARMY) groups many individual Capability Managers. Packages are scoped per Program, but each document carries its specific CM — that CM is the LPPI Charge Cost Centre that will be charged with interest if the outcome is Payable.
+- **Per-POC tokens (`tblLPPI_PackagePocs`).** Each invoice POC in a package gets their own unguessable token row, populated at file-load time alongside the package. POC tokens scope the reviewer page to that POC's documents (filtered by `PocEmail`), as opposed to the package-level AS Fin token which sees everything. The set of POCs for a package is frozen once the package leaves NotSent — later loads do not add POCs to an in-flight package.
 - **Tax code.** Always exported as `P5` regardless of the source value, interest payments are not tax-output relevant.
 
 ---

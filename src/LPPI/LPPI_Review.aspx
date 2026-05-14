@@ -372,6 +372,7 @@
                     <li><a href="#instr-howto">How to complete your review</a></li>
                     <li><a href="#instr-columns">Columns explained</a></li>
                     <li><a href="#instr-alllines">The All lines tab</a></li>
+                    <li><a href="#instr-faq">Frequently asked questions</a></li>
                     <li><a href="#instr-help">Need help?</a></li>
                 </ol>
             </nav>
@@ -449,6 +450,100 @@
                         the document level applies to every line of that document &mdash; one decision per document, applied uniformly.
                         Use the <em>Export to Excel</em> button on that tab to download the complete dataset.
                     </p>
+                </section>
+
+                <section id="instr-faq">
+                    <h2>Frequently asked questions</h2>
+
+                    <dl class="instr-faq">
+
+                        <dt>What is LPPI Review?</dt>
+                        <dd>LPPI Review is a DFG-built module within FinHub that gives Capability Manager groups and invoice POCs a central place to perform monthly Late Payment Penalty Interest reviews in accordance with the
+                            <a href="https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417" target="_blank" rel="noopener">Supplier Pay On-Time or Pay Interest Policy (RMG&nbsp;417)</a>.
+                            Data is extracted from ERP each month and surfaced here for review.</dd>
+
+                        <dt>Why am I receiving emails to complete LPPI Review actions?</dt>
+                        <dd>You were identified as the invoice POC for a late payment, or you are part of the AS Fin team accountable for the group review. An initial email is sent at the start of each review period. POCs have two weeks to complete their review actions. If actions are not completed in time, the LPPI Administrator will issue reminders on Day&nbsp;7 and Day&nbsp;13. AS Fin receives both the initial email and every reminder regardless of progress.</dd>
+
+                        <dt>How was I identified as the POC?</dt>
+                        <dd>POC determination is based on ERP logic &mdash; Purchase Order (PO) Requisition details for PO-based invoices, or the name on the invoice for non-PO (direct) invoices.</dd>
+
+                        <dt>What action is required to complete my LPPI review?</dt>
+                        <dd>Refer to the <em>How to complete your review</em> section above. You must review each document and select the appropriate Reason Code to indicate whether the LPPI is payable or not payable. Comments and Evidence (Objective Reference) are required where the outcome is Not&nbsp;payable.</dd>
+
+                        <dt>What happens if I do not complete my actions?</dt>
+                        <dd>You will receive reminder emails from the LPPI Administrator on Day&nbsp;7 and Day&nbsp;13 of the review window. If no decision is recorded by the due date, the LPPI charge will be processed automatically against the responsible cost centre.</dd>
+
+                        <dt>What if I receive an email but I am not the correct POC?</dt>
+                        <dd>If you are not the POC, or you would like someone else to complete the review on your behalf, forward the LPPI review email to the nominated alternate POC. They can access LPPI Review directly from the link in the forwarded email.</dd>
+
+                        <dt>How are late payments identified?</dt>
+                        <dd>Automated logic identifies late payments using a priority-based rule set for each payment. See the LPPI Logic reference for the conditions in order of priority.</dd>
+
+                        <dt>What do each of the dates mean?</dt>
+                        <dd>Automated logic is used to calculate the due date. See the Glossary of Dates reference for definitions of each date field.</dd>
+
+                        <dt>How are the days late calculated?</dt>
+                        <dd>Automated logic calculates the due date and days late from the source ERP data. See the Due Date Calculation Logic and worked examples reference for the calculation in detail.</dd>
+
+                        <dt>I rejected the invoice off-system (e.g. email to supplier) &mdash; why has the invoice incurred LPPI?</dt>
+                        <dd>LPPI determination is driven by ERP data and cannot capture actions performed outside of ERP. Record the relevant Reason Code and supporting Evidence in LPPI Review.</dd>
+
+                        <dt>The invoice was paid late due to reasons outside of my control &mdash; what should I do?</dt>
+                        <dd>Review the document in LPPI Review and select the appropriate Reason Code to indicate whether the LPPI is payable or not payable. Comments and Evidence (Objective Reference) are required where the outcome is Not&nbsp;payable.</dd>
+
+                        <dt>I approved an invoice late &mdash; why isn't it in LPPI Review?</dt>
+                        <dd>Automated logic identifies late payments using a priority-based rule set. Not every late approval triggers an LPPI charge &mdash; see the LPPI Logic reference for the conditions that apply.</dd>
+
+                        <dt>I confirmed interest has already been paid for an invoice paid late &mdash; what should I do?</dt>
+                        <dd>Review the document in LPPI Review and select the appropriate Reason Code. Comments and Evidence (Objective Reference) are required where the outcome is Not&nbsp;payable.</dd>
+
+                        <dt>The invoice was paid late due to Accounts Payable processing delays or ERP issues &mdash; is interest still payable?</dt>
+                        <dd>POCs should take a commercial view on LPPI &mdash; apply practical judgement to maintain a positive ongoing relationship with the Business Partner. No dispute or cost transfer (ERP or DFG) will be considered by AS Fin.</dd>
+
+                        <dt>What account assignment is used for late payment interest?</dt>
+                        <dd>LPPI is processed and charged to the responsible business unit (the LPPI Charge Cost Centre shown in the Capability Manager column).</dd>
+
+                        <dt>What can I do to avoid LPPI in the future?</dt>
+                        <dd>See the Best Practice tips below for preventative controls at the contract, supplier, and process level.</dd>
+
+                    </dl>
+
+                    <h3 class="instr-faq-h3">Best practice: preventing Late Payment Penalty Interest</h3>
+                    <p>
+                        To minimise the risk of LPPI, Defence must ensure invoices are valid, correctly timed, and processed in accordance with contractual requirements. Preventative controls at the contract, supplier, and process level are essential.
+                    </p>
+
+                    <p><strong>Invoicing and contract requirements</strong></p>
+                    <ul class="instr-list">
+                        <li>Invoices must only be issued after goods are delivered and/or services are formally accepted.</li>
+                        <li>The payment period commences only upon receipt of a valid invoice and confirmation of delivery / acceptance.</li>
+                        <li>Contracts must specify mandatory invoice requirements, including correct PO number, delivery and/or acceptance date, and relevant contact details.</li>
+                        <li>Invoices should be sent directly to <a href="mailto:invoices@defence.gov.au">invoices@defence.gov.au</a> by the supplier.</li>
+                        <li>Invoices that are early, incomplete, or incorrect are invalid and must be rejected through VIM, resetting the payment clock.</li>
+                        <li>Contracts should include clauses stating that LPPI is not payable where payment delays are caused by supplier error.</li>
+                    </ul>
+
+                    <p><strong>Contract manager accountability</strong></p>
+                    <ul class="instr-list">
+                        <li>Contract managers are responsible for preventing early or incorrect invoicing and ensuring acceptance and receipting occur promptly once delivery is complete.</li>
+                        <li>Contract managers must actively monitor invoicing patterns and address recurring issues early to avoid LPPI, noting that LPPI costs are borne by their budgets.</li>
+                        <li>For new contracts, standard invoicing and LPPI-related clauses must be included to reinforce compliance and supplier accountability.</li>
+                    </ul>
+
+                    <p><strong>Supplier accountability</strong></p>
+                    <ul class="instr-list">
+                        <li>Suppliers must comply with contractual invoicing requirements and only submit invoices when entitled.</li>
+                        <li>Repeated invoicing non-compliance should be addressed through supplier performance management and corrective action.</li>
+                    </ul>
+
+                    <p><strong>Process and system controls</strong></p>
+                    <ul class="instr-list">
+                        <li>Goods receipts and service confirmations must be completed promptly in ERP upon delivery.</li>
+                        <li>Invoice queues and ageing must be regularly monitored using VIM dashboards, with priority given to invoices approaching due dates.</li>
+                        <li>Incorrect or premature invoices must be rejected immediately, rather than held, to avoid unnecessary LPPI risk.</li>
+                        <li>Automation, exception reporting, and duplicate detection within VIM should be leveraged to reduce manual handling and delays.</li>
+                    </ul>
                 </section>
 
                 <section id="instr-help">

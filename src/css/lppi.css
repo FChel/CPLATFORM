@@ -1552,14 +1552,56 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 }
 
 /* Body — wrapper around the section blocks. Matches the .help-body card
-   on LPPI_Help.aspx for visual consistency. */
+   on LPPI_Help.aspx for visual consistency. Slightly wider than 900px
+   and pushed in from the TOC so the empty space on the right does not
+   feel quite so vacant on wide screens. Still left-anchored next to the
+   sticky TOC — fully centring inside the grid cell would visually
+   detach the body from the TOC, so we only nudge it. */
 .review-shell .instructions-body {
     background: var(--white);
     border: 1px solid var(--line);
     border-radius: var(--r-lg);
     padding: 28px 32px;
     box-shadow: var(--shadow-sm);
-    max-width: 900px;
+    max-width: 980px;
+    margin-left: 16px;
+}
+
+/* FAQ definition list. Each question (dt) is a tight orange-tinted band,
+   answers (dd) sit underneath in normal body type. Mirrors the table-style
+   FAQ block in the source FAQ document. */
+.review-shell .instructions-body dl.instr-faq {
+    margin: 0 0 16px;
+    padding: 0;
+    border-top: 1px solid var(--line);
+}
+.review-shell .instructions-body dl.instr-faq dt {
+    font-weight: 700;
+    color: var(--ink);
+    background: var(--orange-tint);
+    padding: 10px 14px;
+    border-left: 3px solid var(--orange);
+    margin-top: 8px;
+}
+.review-shell .instructions-body dl.instr-faq dt:first-child { margin-top: 0; }
+.review-shell .instructions-body dl.instr-faq dd {
+    margin: 0;
+    padding: 10px 14px 14px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink-2);
+}
+.review-shell .instructions-body dl.instr-faq dd a {
+    color: var(--orange);
+}
+
+.review-shell .instructions-body h3.instr-faq-h3 {
+    font-size: 14px;
+    color: var(--ink);
+    margin-top: 24px;
+    margin-bottom: 10px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--orange-tint);
+    font-weight: 700;
 }
 .review-shell .instructions-body section {
     margin-bottom: 24px;

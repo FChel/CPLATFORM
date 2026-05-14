@@ -75,7 +75,6 @@ BEGIN
     (
         CmID              INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_tblLPPI_CapabilityManagers PRIMARY KEY CLUSTERED,
         Program           NVARCHAR(200)  NOT NULL,
-        DisplayName       NVARCHAR(200)  NULL,
         Email             NVARCHAR(200)  NULL,
         EmailDisplayName  NVARCHAR(200)  NULL,
         IsActive          BIT            NOT NULL CONSTRAINT DF_tblLPPI_CapabilityManagers_IsActive DEFAULT (1),
