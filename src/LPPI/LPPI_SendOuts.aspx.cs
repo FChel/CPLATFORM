@@ -486,6 +486,7 @@ namespace CPlatform.LPPI
 
             int initialOk = 0, reminderOk = 0, failed = 0;
             int totalPocsDispatched = 0, totalPocsSkipped = 0, totalPocsFailed = 0;
+            int totalControlDispatched = 0, totalControlFailed = 0;
             var perPackageNotes = new StringBuilder();
 
             foreach (int pid in selectedPackageIds)
@@ -508,7 +509,8 @@ namespace CPlatform.LPPI
                     var res = LPPIEmail.SendInitial(pid);
                     AccumulateResult(res, perPackageNotes, pid, "initial",
                         ref initialOk, ref failed,
-                        ref totalPocsDispatched, ref totalPocsSkipped, ref totalPocsFailed);
+                        ref totalPocsDispatched, ref totalPocsSkipped, ref totalPocsFailed,
+                        ref totalControlDispatched, ref totalControlFailed);
                 }
                 else if (string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase))
@@ -516,7 +518,8 @@ namespace CPlatform.LPPI
                     var res = LPPIEmail.SendReminder(pid);
                     AccumulateResult(res, perPackageNotes, pid, "reminder",
                         ref reminderOk, ref failed,
-                        ref totalPocsDispatched, ref totalPocsSkipped, ref totalPocsFailed);
+                        ref totalPocsDispatched, ref totalPocsSkipped, ref totalPocsFailed,
+                        ref totalControlDispatched, ref totalControlFailed);
                 }
                 else
                 {
@@ -541,6 +544,13 @@ namespace CPlatform.LPPI
                 if (totalPocsFailed  > 0) msg.Append(", ").Append(totalPocsFailed).Append(" failed");
                 msg.Append(".");
             }
+            if (totalControlDispatched + totalControlFailed > 0)
+            {
+                msg.Append(" Control notice: ")
+                   .Append(totalControlDispatched).Append(" sent");
+                if (totalControlFailed > 0) msg.Append(", ").Append(totalControlFailed).Append(" failed");
+                msg.Append(".");
+            }
             if (failed > 0)
                 msg.Append(" ").Append(failed).Append(" package failure").Append(failed == 1 ? "" : "s").Append(".");
             if (perPackageNotes.Length > 0)
@@ -558,11 +568,14 @@ namespace CPlatform.LPPI
         private void AccumulateResult(LPPIEmail.SendResult res, StringBuilder perPackageNotes,
                                       int pid, string label,
                                       ref int okCounter, ref int failed,
-                                      ref int totalPocsDispatched, ref int totalPocsSkipped, ref int totalPocsFailed)
+                                      ref int totalPocsDispatched, ref int totalPocsSkipped, ref int totalPocsFailed,
+                                      ref int totalControlDispatched, ref int totalControlFailed)
         {
-            totalPocsDispatched += res.PocsDispatched;
-            totalPocsSkipped    += res.PocsSkipped;
-            totalPocsFailed     += res.PocsFailed;
+            totalPocsDispatched    += res.PocsDispatched;
+            totalPocsSkipped       += res.PocsSkipped;
+            totalPocsFailed        += res.PocsFailed;
+            totalControlDispatched += res.ControlDispatched;
+            totalControlFailed     += res.ControlFailed;
 
             if (res.Success)
             {
@@ -614,6 +627,7 @@ namespace CPlatform.LPPI
 
             int markedOk = 0, skipped = 0, failed = 0;
             int totalPocsDispatched = 0, totalPocsSkipped = 0, totalPocsFailed = 0;
+            int totalControlDispatched = 0, totalControlFailed = 0;
             var perPackageNotes = new StringBuilder();
 
             foreach (int pid in selectedPackageIds)
@@ -644,9 +658,11 @@ namespace CPlatform.LPPI
 
                 var res = LPPIEmail.MarkAsSent(pid);
 
-                totalPocsDispatched += res.PocsDispatched;
-                totalPocsSkipped    += res.PocsSkipped;
-                totalPocsFailed     += res.PocsFailed;
+                totalPocsDispatched    += res.PocsDispatched;
+                totalPocsSkipped       += res.PocsSkipped;
+                totalPocsFailed        += res.PocsFailed;
+                totalControlDispatched += res.ControlDispatched;
+                totalControlFailed     += res.ControlFailed;
 
                 if (res.Success)
                 {
@@ -676,6 +692,13 @@ namespace CPlatform.LPPI
                    .Append(totalPocsDispatched).Append(" logged");
                 if (totalPocsSkipped > 0) msg.Append(", ").Append(totalPocsSkipped).Append(" skipped");
                 if (totalPocsFailed  > 0) msg.Append(", ").Append(totalPocsFailed).Append(" failed");
+                msg.Append(".");
+            }
+            if (totalControlDispatched + totalControlFailed > 0)
+            {
+                msg.Append(" Simulated control notice: ")
+                   .Append(totalControlDispatched).Append(" logged");
+                if (totalControlFailed > 0) msg.Append(", ").Append(totalControlFailed).Append(" failed");
                 msg.Append(".");
             }
             if (skipped > 0)

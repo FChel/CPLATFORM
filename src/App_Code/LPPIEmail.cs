@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
+using System.Data.OleDb;
 using System.Globalization;
+using System.Linq;
 using System.Net.Mail;
 using System.Text;
 using System.Web;
@@ -16,7 +18,7 @@ namespace CPlatform.LPPI
     /// May 2026 changes — POC fan-out
     /// -------------------------------------------------------------------
     /// A single SendInitial / SendReminder call now dispatches to TWO
-    /// audiences:
+    /// audiences (plus an optional THIRD — see Control notice below):
     ///
     ///   1. AS Fin (the CM team mailbox configured on tblLPPI_CapabilityManagers)
     ///      — receives the existing "group summary" email with the AS Fin
@@ -45,6 +47,30 @@ namespace CPlatform.LPPI
     /// Reminder-skipping: on a reminder, POCs whose docs are all reviewed
     /// are skipped. AS Fin always gets the reminder regardless of progress
     /// because they can chase up the gaps on the reviewer page directly.
+    ///
+    /// Control notice (vendor of interest)
+    /// -------------------------------------------------------------------
+    /// When a package contains any document from a vendor listed in the
+    /// LPPI.ControlVendorNumbers config setting, a heads-up email is also
+    /// dispatched to LPPI.ControlMailboxTo. Purpose: the listed vendors
+    /// (currently the CALLIDA / CALLEO entities) are the suppliers that
+    /// built this tool, so a contract-manager-side sighting confirms no
+    /// payments to the build vendor have slipped through unnoticed.
+    /// POC and AS Fin still do the substantive LPPI review; this is an
+    /// extra pair of eyes for conflict-of-interest hygiene only.
+    ///
+    /// Trigger: initial send and mark-as-sent ONLY. Skipped on reminders
+    /// (the contract manager only needs to sight a package once; reminders
+    /// are chase-ups for AS Fin and POCs, not for control).
+    /// From:    LPPI.MailFrom (system mailbox — this is a system notice,
+    ///          not part of the AS Fin conversation).
+    /// To:      LPPI.ControlMailboxTo (comma-separated allowed).
+    /// BCC:     LPPI.SupportMailboxTo (consistent with AS Fin/POC sends).
+    /// Logged:  tblLPPI_EmailLog with Audience = 'CONTROL'.
+    /// Failure: does NOT roll back the AS Fin status transition. Logged
+    /// and surfaced as a warning on the Send-outs result line.
+    /// Feature off when either config key is blank — no row written, no
+    /// match query run.
     ///
     /// Malformed POC emails (BODS occasionally emits "TBA" etc.): caught
     /// at dispatch time by ValidateDefenceEmail. The whole-system POC fan-out
@@ -118,6 +144,7 @@ namespace CPlatform.LPPI
         // Audience constants — written to tblLPPI_EmailLog.Audience.
         private const string AudAsFin = "ASFIN";
         private const string AudPoc   = "POC";
+        private const string AudControl = "CONTROL";
 
         // Support mailbox addresses — read from config.
         private static string SupportMailboxTo
@@ -158,6 +185,17 @@ namespace CPlatform.LPPI
             public int    PocsDispatched;
             public int    PocsSkipped;
             public int    PocsFailed;
+            /// <summary>
+            /// 1 when the vendor-of-interest control notice was dispatched
+            /// (or simulated in mark-as-sent), 0 otherwise. Only ever set
+            /// on Initial / Initial-MarkedSent — never on reminders.
+            /// </summary>
+            public int    ControlDispatched;
+            /// <summary>
+            /// 1 when the control notice was triggered (matching vendors
+            /// present + recipients configured) but the SMTP send failed.
+            /// </summary>
+            public int    ControlFailed;
         }
 
         // -------------------------------------------------------------------
@@ -384,6 +422,11 @@ WHERE cm.CmID = @CmID;";
                 result.PocsDispatched++;
             }
 
+            // 3) Control notice — simulated audit row only, no SMTP.
+            DispatchControlIfApplicable(packageId, "Initial", program, dueDate,
+                                        asFinToken, docCount, reviewedAll,
+                                        simulate: true, result: result);
+
             // Status transition — same race-safe guard as the real send.
             LPPIHelper.ExecuteNonQuery(@"
 UPDATE dbo.tblLPPI_ReviewPackages
@@ -552,6 +595,16 @@ UPDATE dbo.tblLPPI_ReviewPackages
                 {
                     result.PocsFailed++;
                 }
+            }
+
+            // 3) Control notice fan-out. Initial only — reminders do not
+            //    re-notify the contract manager. Failure does not roll the
+            //    overall result; logged and surfaced as a warning.
+            if (isInitial)
+            {
+                DispatchControlIfApplicable(packageId, type, program, dueDate,
+                                            asFinToken, docCount, reviewedAll,
+                                            simulate: false, result: result);
             }
 
             // Status transition — only on a successful initial send. Done
@@ -1160,6 +1213,182 @@ UPDATE dbo.tblLPPI_PackagePocs
             if (r.PocsFailed > 0)
                 parts.Add(r.PocsFailed + " failed");
             return string.Join(", ", parts) + ".";
+        }
+
+        // -------------------------------------------------------------------
+        // Control notice — vendor-of-interest heads-up
+        //
+        // Fires when the package contains any document with VendorNum in
+        // LPPI.ControlVendorNumbers AND LPPI.ControlMailboxTo is configured.
+        // Feature is off when either config value is blank — short-circuit
+        // returns without touching the database.
+        //
+        // Called from SendForPackage for Initial sends only (skipped on
+        // reminders) and from MarkAsSent in simulate mode.
+        // -------------------------------------------------------------------
+        private static void DispatchControlIfApplicable(int packageId, string type,
+                                                       string program, DateTime dueDate,
+                                                       string asFinToken,
+                                                       int docCount, int reviewedCount,
+                                                       bool simulate, SendResult result)
+        {
+            string vendorList   = LPPIHelper.Setting("LPPI.ControlVendorNumbers", "");
+            string controlToRaw = LPPIHelper.Setting("LPPI.ControlMailboxTo", "");
+            if (string.IsNullOrWhiteSpace(vendorList) || string.IsNullOrWhiteSpace(controlToRaw))
+                return; // feature off
+
+            var vendorNums = vendorList.Split(',')
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (vendorNums.Count == 0) return;
+
+            DataTable matches = LoadMatchedControlVendors(packageId, vendorNums);
+            if (matches.Rows.Count == 0)
+                return; // no triggering vendors in this package — nothing to do
+
+            string subject = BuildSubjectControl(type, program);
+            string body    = BuildBodyControl(type, program, dueDate, asFinToken,
+                                              docCount, reviewedCount, matches);
+
+            string controlTo = controlToRaw.Trim();
+            string recipientsLogged = FormatRecipientsForLog(controlTo, SupportMailboxTo);
+
+            if (simulate)
+            {
+                LogSend(packageId, recipientsLogged, "Initial-MarkedSent", AudControl, null,
+                    subject,
+                    "(no body — marked as sent in test mode, no email dispatched)",
+                    true,
+                    "MARK-AS-SENT (test mode) — no control notice dispatched. ProductionMode=false.");
+                result.ControlDispatched = 1;
+                return;
+            }
+
+            string error;
+            bool ok = SendOne(
+                fromAddress:  LPPIHelper.Setting("LPPI.MailFrom", "noreply@defence.gov.au"),
+                fromName:     LPPIHelper.Setting("LPPI.MailFromName", "LPPI Review"),
+                toAddress:    controlTo,
+                bccAddress:   SupportMailboxTo,
+                subject:      subject,
+                htmlBody:     body,
+                error:        out error);
+
+            LogSend(packageId, recipientsLogged, type, AudControl, null,
+                    subject, body, ok, error);
+
+            if (ok) result.ControlDispatched = 1;
+            else    result.ControlFailed     = 1;
+        }
+
+        /// <summary>
+        /// Returns distinct (VendorNum, VendorName, LineCount) for documents
+        /// in the package whose VendorNum matches the configured trigger list.
+        /// Exact match, trimmed.
+        /// </summary>
+        private static DataTable LoadMatchedControlVendors(int packageId, List<string> vendorNums)
+        {
+            var sb = new StringBuilder();
+            sb.Append(@"
+SELECT LTRIM(RTRIM(d.VendorNum)) AS VendorNum,
+       MAX(d.VendorName)         AS VendorName,
+       COUNT(*)                  AS LineCount
+FROM dbo.tblLPPI_Documents d
+INNER JOIN dbo.tblLPPI_ReviewPackageDocuments rpd
+        ON rpd.DocumentID = d.DocumentID
+WHERE rpd.PackageID = @P
+  AND d.VendorNum IS NOT NULL
+  AND LTRIM(RTRIM(d.VendorNum)) IN (");
+
+            var paramList = new List<OleDbParameter>();
+            paramList.Add(LPPIHelper.P("@P", packageId));
+            for (int i = 0; i < vendorNums.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                string pname = "@V" + i;
+                sb.Append(pname);
+                paramList.Add(LPPIHelper.P(pname, vendorNums[i]));
+            }
+            sb.Append(@")
+GROUP BY LTRIM(RTRIM(d.VendorNum))
+ORDER BY VendorName;");
+
+            return LPPIHelper.ExecuteTable(sb.ToString(), paramList.ToArray());
+        }
+
+        private static string BuildSubjectControl(string type, string program)
+        {
+            return "[CONTROL] LPPI vendor-of-interest sighting — " + program;
+        }
+
+        private static string BuildBodyControl(string type, string program, DateTime dueDate,
+                                               string asFinToken,
+                                               int docCount, int reviewedCount,
+                                               DataTable matches)
+        {
+            string reviewUrl = BuildReviewUrl(asFinToken);
+            var auCulture    = CultureInfo.GetCultureInfo("en-AU");
+            string dueLong   = dueDate.ToString("dddd, d MMMM yyyy", auCulture);
+            int outstanding  = Math.Max(0, docCount - reviewedCount);
+
+            var sb = new StringBuilder();
+            sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>");
+            sb.Append("body, p, td, th, li, div, span, a { font-family: ").Append(FontStack).Append("; }");
+            sb.Append("</style></head><body style=\"margin:0;padding:0;background:#f4f4f4;").Append(FontInline).Append("\">");
+
+            sb.Append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background:#f4f4f4;").Append(FontInline).Append("\"><tr><td align=\"center\" style=\"padding:24px;").Append(FontInline).Append("\">");
+            sb.Append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"640\" style=\"background:#ffffff;border:1px solid #e3e3e3;").Append(FontInline).Append("\">");
+
+            // Header band.
+            sb.Append("<tr><td style=\"background:").Append(OrangeHex).Append(";color:#ffffff;padding:16px 20px;").Append(FontInline).Append("\">");
+            sb.Append("<div style=\"font-size:18px;font-weight:600;").Append(FontInline).Append("\">LPPI vendor-of-interest sighting</div>");
+            sb.Append("<div style=\"font-size:13px;opacity:0.95;").Append(FontInline).Append("\">Programme: ").Append(LPPIHelper.Enc(program)).Append("</div>");
+            sb.Append("</td></tr>");
+
+            // Body.
+            sb.Append("<tr><td style=\"padding:20px;color:#222;font-size:14px;line-height:1.5;").Append(FontInline).Append("\">");
+            sb.Append("<p style=\"margin:0 0 12px 0;").Append(FontInline).Append("\">An LPPI review package has been issued that contains documents from a vendor on the control-sighting list. This notice is a heads-up so the contract manager team can spot-check the package.</p>");
+            sb.Append("<p style=\"margin:0 0 12px 0;").Append(FontInline).Append("\">AS Fin and the document POCs are running the substantive review — this is an extra sighting only, recorded for governance.</p>");
+
+            // Matched vendors block.
+            sb.Append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"margin:12px 0;border-collapse:collapse;").Append(FontInline).Append("\">");
+            sb.Append("<tr><th align=\"left\" style=\"border-bottom:2px solid #e3e3e3;padding:6px 8px;font-size:13px;").Append(FontInline).Append("\">Vendor number</th>");
+            sb.Append("<th align=\"left\" style=\"border-bottom:2px solid #e3e3e3;padding:6px 8px;font-size:13px;").Append(FontInline).Append("\">Vendor name</th>");
+            sb.Append("<th align=\"right\" style=\"border-bottom:2px solid #e3e3e3;padding:6px 8px;font-size:13px;").Append(FontInline).Append("\">Lines</th></tr>");
+            foreach (DataRow r in matches.Rows)
+            {
+                sb.Append("<tr><td style=\"border-bottom:1px solid #f0f0f0;padding:6px 8px;font-size:13px;").Append(FontInline).Append("\">")
+                  .Append(LPPIHelper.Enc(r["VendorNum"])).Append("</td>");
+                sb.Append("<td style=\"border-bottom:1px solid #f0f0f0;padding:6px 8px;font-size:13px;").Append(FontInline).Append("\">")
+                  .Append(LPPIHelper.Enc(r["VendorName"])).Append("</td>");
+                sb.Append("<td align=\"right\" style=\"border-bottom:1px solid #f0f0f0;padding:6px 8px;font-size:13px;").Append(FontInline).Append("\">")
+                  .Append(LPPIHelper.Enc(r["LineCount"])).Append("</td></tr>");
+            }
+            sb.Append("</table>");
+
+            // Package summary.
+            sb.Append("<p style=\"margin:12px 0 6px 0;font-weight:600;").Append(FontInline).Append("\">Package summary</p>");
+            sb.Append("<ul style=\"margin:0 0 12px 18px;padding:0;").Append(FontInline).Append("\">");
+            sb.Append("<li style=\"").Append(FontInline).Append("\">Documents in package: ").Append(docCount).Append("</li>");
+            sb.Append("<li style=\"").Append(FontInline).Append("\">Outstanding (not yet reviewed): ").Append(outstanding).Append("</li>");
+            sb.Append("<li style=\"").Append(FontInline).Append("\">Due date: ").Append(LPPIHelper.Enc(dueLong)).Append("</li>");
+            sb.Append("</ul>");
+
+            // Link.
+            sb.Append("<p style=\"margin:16px 0;").Append(FontInline).Append("\"><a href=\"").Append(HttpUtility.HtmlAttributeEncode(reviewUrl)).Append("\" style=\"background:").Append(OrangeHex).Append(";color:#ffffff;padding:10px 16px;text-decoration:none;display:inline-block;border-radius:4px;").Append(FontInline).Append("\">Open package in LPPI Review</a></p>");
+            sb.Append("<p style=\"margin:0;font-size:12px;color:#666;").Append(FontInline).Append("\">This link opens the full package via the AS Fin token.</p>");
+
+            sb.Append("</td></tr>");
+
+            // Footer band.
+            sb.Append("<tr><td style=\"background:#fafafa;border-top:1px solid #e3e3e3;padding:12px 20px;font-size:12px;color:#666;").Append(FontInline).Append("\">");
+            sb.Append("LPPI Review — automated control notice. Reply to this email or contact the LPPI administrator if anything looks off.");
+            sb.Append("</td></tr>");
+
+            sb.Append("</table></td></tr></table></body></html>");
+            return sb.ToString();
         }
     }
 }
