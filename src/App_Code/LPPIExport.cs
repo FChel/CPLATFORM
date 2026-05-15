@@ -149,6 +149,14 @@ namespace CPlatform.LPPI
             //    clause manually with one placeholder per package id and
             //    pass the parameter list in matching order — same pattern
             //    used elsewhere in the codebase for variable-length lists.
+            //
+            //    May 2026 — supersession model: the WHERE clause has carried
+            //    d.IsDeactivated = 0 since RC-RL launched (deactivated lines
+            //    never ship to ERP). The INNER JOIN to d now also asserts
+            //    d.IsDeactivated = 0 — defence in depth, plus it makes the
+            //    intent explicit. The two are redundant by design: if a
+            //    future edit ever removes one, the other still keeps
+            //    deactivated rows out of the export.
             // -----------------------------------------------------------------
             var inPlaceholders = new StringBuilder();
             for (int i = 0; i < packageIds.Count; i++)
@@ -167,13 +175,14 @@ namespace CPlatform.LPPI
                 "          ON d.DocNoAccounting = (SELECT d2.DocNoAccounting " +
                 "                                    FROM dbo.tblLPPI_Documents d2 " +
                 "                                   WHERE d2.DocumentID = pd.DocumentID) " +
+                "         AND d.IsDeactivated  = 0 " +
                 "  INNER JOIN dbo.tblLPPI_Reviews r " +
                 "          ON r.DocumentID = pd.DocumentID " +
                 "  INNER JOIN dbo.tblLPPI_ReasonCodes rc " +
                 "          ON rc.ReasonCodeID = r.ReasonCodeID " +
                 " WHERE pd.PackageID IN (" + inPlaceholders.ToString() + ") " +
                 "   AND rc.Outcome      = 'Payable' " +
-                "   AND d.IsDeactivated = 0 " +     // RC-RL — deactivated lines never ship
+                "   AND d.IsDeactivated = 0 " +     // RC-RL — deactivated lines never ship (kept here as belt-and-braces)
                 " ORDER BY pd.PackageID, d.DocNoAccounting, d.ItemSequence;";
 
             var parms = new List<OleDbParameter>(packageIds.Count);

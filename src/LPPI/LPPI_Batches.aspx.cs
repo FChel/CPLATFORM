@@ -79,6 +79,13 @@ namespace CPlatform.LPPI
             // ExportBatchID is added (May 2026) so admins can trace lines
             // back to the payment file they shipped in. NULL indicates the
             // line has not (yet) been exported.
+            //
+            // May 2026 — supersession model: tblLPPI_Documents can now hold
+            // multiple historical rows for the same (DocNoAccounting,
+            // ItemSequence) after RC-RL → reload cycles. The MIN(DocumentID)
+            // first-line lookup is filtered to live rows (IsDeactivated = 0)
+            // so the reason-code join lands on the CURRENT first-line review,
+            // not a long-superseded predecessor.
             const string sql = @"
                 SELECT d.DocNoAccounting, d.ItemSequence,
                        d.VendorName, d.PoNumber, d.CapabilityManagerProgram,
@@ -90,7 +97,8 @@ namespace CPlatform.LPPI
                 LEFT JOIN tblLPPI_Reviews r
                        ON r.DocumentID = (SELECT MIN(d2.DocumentID)
                                             FROM tblLPPI_Documents d2
-                                           WHERE d2.DocNoAccounting = d.DocNoAccounting)
+                                           WHERE d2.DocNoAccounting = d.DocNoAccounting
+                                             AND d2.IsDeactivated   = 0)
                 LEFT JOIN tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID
                 WHERE d.BatchID = @b
                 ORDER BY d.CapabilityManagerProgram, d.DocNoAccounting, d.ItemSequence";

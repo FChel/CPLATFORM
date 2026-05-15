@@ -39,6 +39,13 @@ namespace CPlatform.LPPI
     /// it has caused dependency problems on the CPLATFORM server in the
     /// past.
     ///
+    /// May 2026 — supersession model: tblLPPI_Documents can now hold
+    /// multiple historical rows for the same (DocNoAccounting,
+    /// ItemSequence) after RC-RL → reload cycles. The data-line INNER
+    /// JOIN, the first-line MIN(DocumentID) review lookup, and the
+    /// ORDER BY per-doc total subquery are all filtered to live rows
+    /// (IsDeactivated = 0) so the export reflects current data only.
+    ///
     /// Usage from client: window.location = 'LPPI_Review_Export.ashx?t=' + token;
     /// </summary>
     public class LPPI_Review_Export : IHttpHandler
@@ -182,10 +189,12 @@ namespace CPlatform.LPPI
                         ON d.DocNoAccounting = (SELECT d2.DocNoAccounting
                                                   FROM tblLPPI_Documents d2
                                                  WHERE d2.DocumentID = pd.DocumentID)
+                       AND d.IsDeactivated  = 0
                 LEFT  JOIN tblLPPI_Reviews r
                         ON r.DocumentID = (SELECT MIN(d3.DocumentID)
                                              FROM tblLPPI_Documents d3
-                                            WHERE d3.DocNoAccounting = d.DocNoAccounting)
+                                            WHERE d3.DocNoAccounting = d.DocNoAccounting
+                                              AND d3.IsDeactivated   = 0)
                 LEFT  JOIN tblLPPI_ReasonCodes rc
                         ON rc.ReasonCodeID = r.ReasonCodeID
                 WHERE pd.PackageID = @p"
@@ -199,7 +208,8 @@ namespace CPlatform.LPPI
                 ORDER BY
                     (SELECT SUM(d4.InterestPayable)
                        FROM tblLPPI_Documents d4
-                      WHERE d4.DocNoAccounting = d.DocNoAccounting) DESC,
+                      WHERE d4.DocNoAccounting = d.DocNoAccounting
+                        AND d4.IsDeactivated   = 0) DESC,
                     d.DocNoAccounting,
                     d.ItemSequence";
 

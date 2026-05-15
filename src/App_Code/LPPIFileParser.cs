@@ -663,26 +663,32 @@ SELECT n.PackageID,
         private static int InsertDocumentSupersedingExisting(
             int batchId, string docNo, int itemSequence, ParsedRow row, int oldDocumentId)
         {
-            // The OUTPUT clause sends the new DocumentID into a table
-            // variable; the UPDATE then reads it back to set
-            // SupersededByDocumentID on the old row; the trailing SELECT
-            // emits it as the scalar result for ExecuteScalar.
+            // SCOPE_IDENTITY() captures the new row's DocumentID without
+            // needing a T-SQL table variable. We can't use a DECLARE @x
+            // table or scalar variable here because LPPIHelper.BuildCommand
+            // scans the SQL for @-prefixed tokens and treats every one as
+            // an OleDbParameter reference — DECLARE @foo would throw a
+            // "no value supplied" error at parameter-rewrite time.
+            //
+            // SCOPE_IDENTITY() returns the most recent identity generated
+            // in the current batch / scope. The INSERT is the only
+            // identity-generating statement here; the subsequent UPDATE
+            // does not reset it, so it is safe to reference after the
+            // UPDATE.
             string sql = @"
 SET XACT_ABORT ON;
-DECLARE @new TABLE (DocumentID INT NOT NULL);
 BEGIN TRAN;
 
 INSERT INTO dbo.tblLPPI_Documents " + DocumentInsertColumns + @"
-OUTPUT inserted.DocumentID INTO @new(DocumentID)
 VALUES " + DocumentInsertValues + @";
 
 UPDATE dbo.tblLPPI_Documents
-   SET SupersededByDocumentID = (SELECT TOP 1 DocumentID FROM @new)
+   SET SupersededByDocumentID = SCOPE_IDENTITY()
  WHERE DocumentID = @OldDocId;
 
 COMMIT;
 
-SELECT TOP 1 DocumentID FROM @new;";
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
             // Append @OldDocId to the parameter list built for the INSERT.
             var insertParams = BuildDocumentParams(batchId, docNo, itemSequence, row);

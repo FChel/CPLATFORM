@@ -61,6 +61,13 @@ namespace CPlatform.LPPI
             // thinks in. The actual file row count may be higher if
             // multi-line documents are included — that's surfaced later in
             // the audit row's LineCount.
+            //
+            // May 2026 — supersession model: the PayableInterest sum joins
+            // tblLPPI_Documents d on DocNoAccounting to aggregate every line
+            // for each document. Without an IsDeactivated = 0 filter on that
+            // join, deactivated history rows from prior RC-RL cycles would
+            // be added to the total, inflating the figure shown next to each
+            // finalised package. The filter ensures only live lines count.
             const string sql = @"
 SELECT p.PackageID,
        p.Token,
@@ -83,6 +90,7 @@ SELECT p.PackageID,
                         ON d.DocNoAccounting = (SELECT d2.DocNoAccounting
                                                   FROM dbo.tblLPPI_Documents d2
                                                  WHERE d2.DocumentID = pd.DocumentID)
+                       AND d.IsDeactivated   = 0
                 WHERE pd.PackageID = p.PackageID
                   AND rc.Outcome  = 'Payable'), 0) AS PayableInterest
   FROM dbo.tblLPPI_ReviewPackages p

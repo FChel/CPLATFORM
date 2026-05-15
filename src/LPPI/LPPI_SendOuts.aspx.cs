@@ -211,7 +211,10 @@ namespace CPlatform.LPPI
                   FROM tblLPPI_ReviewPackages p
                  INNER JOIN tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
                  WHERE p.SentDate IS NOT NULL
-                 ORDER BY p.CreatedDate DESC";
+                 ORDER BY (SELECT MAX(el.SentDate)
+                            FROM tblLPPI_EmailLog el
+                           WHERE el.PackageID = p.PackageID) DESC,
+                          p.PackageID DESC";
             rptRecent.DataSource = LPPIHelper.ExecuteTable(sql);
             rptRecent.DataBind();
         }

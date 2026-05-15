@@ -800,9 +800,11 @@ SELECT cm.Program
 
             var sql = @"
 SELECT
-   (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents)           AS TotalDocs,
+   (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents
+     WHERE IsDeactivated = 0)                                                    AS TotalDocs,
    (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL)     AS TotalReviewed,
-   (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents)
+   (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents
+     WHERE IsDeactivated = 0)
      - (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL) AS TotalOutstanding,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
        WHERE Status IN (" + activeIn + @"))                                      AS OpenPackages,
@@ -845,9 +847,11 @@ WITH DocTotals AS (
         d.DocNoAccounting,
         (SELECT MIN(d2.DocumentID)
            FROM dbo.tblLPPI_Documents d2
-          WHERE d2.DocNoAccounting = d.DocNoAccounting) AS FirstLineDocumentID,
+          WHERE d2.DocNoAccounting = d.DocNoAccounting
+            AND d2.IsDeactivated   = 0) AS FirstLineDocumentID,
         SUM(d.InterestPayable) AS DocInterest
       FROM dbo.tblLPPI_Documents d
+     WHERE d.IsDeactivated = 0
      GROUP BY d.DocNoAccounting
 )
 SELECT

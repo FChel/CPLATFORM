@@ -1098,7 +1098,8 @@ WITH PkgDocs AS (
     SELECT DISTINCT d.DocNoAccounting,
            (SELECT MIN(d2.DocumentID)
               FROM dbo.tblLPPI_Documents d2
-             WHERE d2.DocNoAccounting = d.DocNoAccounting) AS FirstLineDocumentID
+             WHERE d2.DocNoAccounting = d.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID
       FROM dbo.tblLPPI_ReviewPackageDocuments pd
       INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
      WHERE pd.PackageID = @P

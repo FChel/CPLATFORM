@@ -60,6 +60,17 @@ namespace CPlatform.LPPI
             //
             // Sort: CM group (alpha), then DocNoAccounting, then ItemSequence
             // — same convention as the rest of the codebase.
+            //
+            // May 2026 — supersession model: after multiple RC-RL → reload
+            // cycles, the table can hold several historical rows for the
+            // same (DocNoAccounting, ItemSequence). The MIN(DocumentID)
+            // first-line lookups are pinned to the CURRENT deactivated,
+            // not-yet-superseded group via the same WHERE filters as the
+            // outer query. Without these filters, MIN would return the
+            // OLDEST DocumentID for the document number — typically a
+            // long-superseded predecessor — and the review / package join
+            // would surface the wrong reviewer attribution and the wrong
+            // finalised package.
             const string sql = @"
 SELECT  d.DocumentID,
         d.DocNoAccounting,
@@ -77,11 +88,15 @@ SELECT  d.DocumentID,
   LEFT JOIN dbo.tblLPPI_Reviews r
          ON r.DocumentID = (SELECT MIN(d2.DocumentID)
                               FROM dbo.tblLPPI_Documents d2
-                             WHERE d2.DocNoAccounting = d.DocNoAccounting)
+                             WHERE d2.DocNoAccounting          = d.DocNoAccounting
+                               AND d2.IsDeactivated             = 1
+                               AND d2.SupersededByDocumentID IS NULL)
   LEFT JOIN dbo.tblLPPI_ReviewPackageDocuments pd
          ON pd.DocumentID = (SELECT MIN(d3.DocumentID)
                                FROM dbo.tblLPPI_Documents d3
-                              WHERE d3.DocNoAccounting = d.DocNoAccounting)
+                              WHERE d3.DocNoAccounting          = d.DocNoAccounting
+                                AND d3.IsDeactivated             = 1
+                                AND d3.SupersededByDocumentID IS NULL)
   LEFT JOIN dbo.tblLPPI_ReviewPackages p
          ON p.PackageID = pd.PackageID
         AND p.Status   IN ('Finalised','Exported')

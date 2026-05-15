@@ -317,6 +317,7 @@ DocTotals AS (
       FROM PkgDocs pkd
       INNER JOIN tblLPPI_Documents d
               ON d.DocNoAccounting = pkd.DocNoAccounting
+             AND d.IsDeactivated   = 0
      GROUP BY pkd.FirstLineDocumentID
 )
 SELECT
@@ -337,7 +338,8 @@ WITH PkgDocs AS (
               FROM tblLPPI_Documents d2
              WHERE d2.DocNoAccounting = (SELECT d3.DocNoAccounting
                                            FROM tblLPPI_Documents d3
-                                          WHERE d3.DocumentID = pd.DocumentID)) AS NormalisedFirstLine,
+                                          WHERE d3.DocumentID = pd.DocumentID)
+               AND d2.IsDeactivated   = 0) AS NormalisedFirstLine,
            (SELECT d4.DocNoAccounting
               FROM tblLPPI_Documents d4
              WHERE d4.DocumentID = pd.DocumentID) AS DocNoAccounting
@@ -350,6 +352,7 @@ DocTotals AS (
       FROM PkgDocs pkd
       INNER JOIN tblLPPI_Documents d
               ON d.DocNoAccounting = pkd.DocNoAccounting
+             AND d.IsDeactivated   = 0
      GROUP BY pkd.FirstLineDocumentID
 )
 SELECT
@@ -500,10 +503,12 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                         ON d.DocNoAccounting = (SELECT d2.DocNoAccounting
                                                   FROM tblLPPI_Documents d2
                                                  WHERE d2.DocumentID = pd.DocumentID)
+                       AND d.IsDeactivated  = 0
 
                 INNER JOIN tblLPPI_Documents d1
                         ON d1.DocNoAccounting = d.DocNoAccounting
                        AND d1.ItemSequence    = 1
+                       AND d1.IsDeactivated   = 0
 
                 LEFT  JOIN tblLPPI_Reviews r
                         ON r.DocumentID = pd.DocumentID
@@ -613,6 +618,7 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                         ON d.DocNoAccounting = (SELECT d2.DocNoAccounting
                                                   FROM tblLPPI_Documents d2
                                                  WHERE d2.DocumentID = pd.DocumentID)
+                       AND d.IsDeactivated  = 0
                 LEFT  JOIN tblLPPI_Reviews r
                         ON r.DocumentID = pd.DocumentID
                 LEFT  JOIN tblLPPI_ReasonCodes rc
@@ -628,7 +634,8 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                 ORDER BY
                     (SELECT SUM(d3.InterestPayable)
                        FROM tblLPPI_Documents d3
-                      WHERE d3.DocNoAccounting = d.DocNoAccounting) DESC,
+                      WHERE d3.DocNoAccounting = d.DocNoAccounting
+                        AND d3.IsDeactivated   = 0) DESC,
                     d.DocNoAccounting,
                     d.ItemSequence";
 
