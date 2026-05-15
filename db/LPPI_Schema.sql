@@ -249,7 +249,12 @@ BEGIN
         ExportBatchID               INT           NULL,
         IsDeactivated               BIT           NOT NULL CONSTRAINT DF_tblLPPI_Documents_IsDeactivated DEFAULT (0),
         SupersededByDocumentID      INT           NULL,
-        CONSTRAINT UQ_tblLPPI_Documents_DocNoAccounting_ItemSequence UNIQUE (DocNoAccounting, ItemSequence),
+        /* Uniqueness on (DocNoAccounting, ItemSequence) is enforced by a
+           FILTERED unique index over live rows only — see the
+           UX_tblLPPI_Documents_Live_DocNoAccounting_ItemSequence definition
+           after this CREATE TABLE block. The RC-RL reload-eligible workflow
+           keeps the deactivated predecessor row in place while the corrected
+           replacement loads, so a hard constraint here would block reloads. */
         CONSTRAINT FK_tblLPPI_Documents_Batch        FOREIGN KEY (BatchID)                REFERENCES dbo.tblLPPI_LoadBatches(BatchID),
         CONSTRAINT FK_tblLPPI_Documents_ExportBatch  FOREIGN KEY (ExportBatchID)          REFERENCES dbo.tblLPPI_ExportBatches(ExportBatchID),
         CONSTRAINT FK_tblLPPI_Documents_SupersededBy FOREIGN KEY (SupersededByDocumentID) REFERENCES dbo.tblLPPI_Documents(DocumentID)
@@ -282,6 +287,16 @@ BEGIN
         ON dbo.tblLPPI_Documents(DocNoAccounting, ItemSequence)
         INCLUDE (DocumentID, SupersededByDocumentID, CapabilityManagerProgram)
         WHERE IsDeactivated = 1;
+
+    /* Filtered unique index — replaces the hard
+       UQ_tblLPPI_Documents_DocNoAccounting_ItemSequence constraint. Enforces
+       "at most one LIVE row per (DocNoAccounting, ItemSequence)". Deactivated
+       history rows are exempt from the uniqueness check, allowing the
+       RC-RL reload workflow to keep the deactivated predecessor in place
+       while the corrected replacement loads. */
+    CREATE UNIQUE NONCLUSTERED INDEX UX_tblLPPI_Documents_Live_DocNoAccounting_ItemSequence
+        ON dbo.tblLPPI_Documents(DocNoAccounting, ItemSequence)
+     WHERE IsDeactivated = 0;
 END
 GO
 
