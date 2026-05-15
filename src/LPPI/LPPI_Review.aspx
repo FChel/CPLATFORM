@@ -621,6 +621,7 @@
                         data-poc='<%# LPPIHelper.Enc(Eval("PocEmail")) %>'
                         data-wbs='<%# LPPIHelper.Enc(Eval("WbsElement")) %>'
                         data-cm='<%# LPPIHelper.Enc(Eval("CapabilityManager")) %>'
+                        data-reviewed='<%# Eval("SelectedReasonCodeID") != DBNull.Value ? "1" : "0" %>'
                         data-outcome='<%# LPPIHelper.Enc(Eval("ReasonOutcome")) %>'
                         data-requires='<%# Convert.ToBoolean(Eval("RequiresComments")) ? "1" : "0" %>'>
                         <td class="col-sel">

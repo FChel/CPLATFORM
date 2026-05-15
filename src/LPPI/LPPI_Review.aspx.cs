@@ -692,6 +692,8 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
             }
             var sb = new StringBuilder();
             if (_reasonCodes == null) return "";
+
+            bool selectedFound = false;
             foreach (DataRow r in _reasonCodes.Rows)
             {
                 int    id      = Convert.ToInt32(r["ReasonCodeID"]);
@@ -702,10 +704,50 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                 sb.Append("<option value=\"").Append(id).Append("\"")
                   .Append(" data-outcome=\"").Append(LPPIHelper.Enc(outcome)).Append("\"")
                   .Append(" data-requires=\"").Append(req ? "1" : "0").Append("\"");
-                if (sel.HasValue && sel.Value == id) sb.Append(" selected");
+                if (sel.HasValue && sel.Value == id)
+                {
+                    sb.Append(" selected");
+                    selectedFound = true;
+                }
                 string label = string.IsNullOrEmpty(desc) ? code : desc;
                 sb.Append(">").Append(LPPIHelper.Enc(label)).Append("</option>");
             }
+
+            // Special case: the row's currently-selected reason code is not
+            // in the active list (e.g. RC-NR auto-applied at finalise; RC-NR
+            // is IsActive=0 so it never appears in the dropdown). Without
+            // this, the <select> would have no matching <option> and would
+            // fall back to the placeholder "—", which is confusing — the row
+            // *is* coded, the dropdown just can not show it.
+            //
+            // Look up the inactive code by ID and append it as a disabled,
+            // pre-selected option. Disabled so a user (or bulk apply) cannot
+            // pick it intentionally for some other row — RC-NR is system-
+            // only and only ever applied via the finalise flow.
+            if (sel.HasValue && !selectedFound)
+            {
+                DataTable inactive = LPPIHelper.ExecuteTable(@"
+                    SELECT TOP 1 ReasonCodeID, Code, Description, Outcome, RequiresComments
+                      FROM dbo.tblLPPI_ReasonCodes
+                     WHERE ReasonCodeID = @id",
+                    LPPIHelper.P("@id", sel.Value));
+                if (inactive.Rows.Count > 0)
+                {
+                    DataRow r = inactive.Rows[0];
+                    string code    = Convert.ToString(r["Code"]);
+                    string desc    = Convert.ToString(r["Description"]);
+                    string outcome = Convert.ToString(r["Outcome"]);
+                    bool   req     = Convert.ToBoolean(r["RequiresComments"]);
+                    string label   = string.IsNullOrEmpty(desc) ? code : desc;
+                    sb.Append("<option value=\"").Append(Convert.ToInt32(r["ReasonCodeID"])).Append("\"")
+                      .Append(" data-outcome=\"").Append(LPPIHelper.Enc(outcome)).Append("\"")
+                      .Append(" data-requires=\"").Append(req ? "1" : "0").Append("\"")
+                      .Append(" disabled selected>")
+                      .Append(LPPIHelper.Enc(label))
+                      .Append("</option>");
+                }
+            }
+
             return sb.ToString();
         }
 

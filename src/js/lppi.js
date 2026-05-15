@@ -88,8 +88,17 @@
 
         // Seed reviewed class from pre-selected reason codes.
         allMain.forEach(function (row) {
+            // A row counts as reviewed if EITHER:
+            //   (a) the server stamped it reviewed via data-reviewed='1' — the
+            //       authoritative source, especially in read-only mode where
+            //       auto-applied RC-NR isn't in the dropdown option list
+            //       (IsActive=0), OR
+            //   (b) the dropdown has a value — needed in editable mode where
+            //       the user has just made a selection that hasn't been saved
+            //       yet (no data-reviewed update until reload).
             var sel = row.querySelector('.reason-select');
-            if (sel && sel.value) row.classList.add('reviewed');
+            var serverReviewed = row.getAttribute('data-reviewed') === '1';
+            if (serverReviewed || (sel && sel.value)) row.classList.add('reviewed');
         });
         reviewedDocs = allMain.filter(function (r) { return r.classList.contains('reviewed'); }).length;
         updateProgress();
