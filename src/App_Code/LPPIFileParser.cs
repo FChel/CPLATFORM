@@ -14,8 +14,14 @@ namespace CPlatform.LPPI
     ///
     /// File format v2 (April 2026): 48 columns. TAX_CODE, ITEM_SEQUENCE and
     /// FISCAL_YEAR were added by BODS so one DOC_NO_ACCOUNTING may now have
-    /// multiple rows (one per item/line). The unique key on tblLPPI_Documents
-    /// is (DocNoAccounting, ItemSequence).
+    /// multiple rows (one per item/line).
+    ///
+    /// Line-level uniqueness model (May 2026): tblLPPI_Documents allows
+    /// multiple historical rows for the same (DocNoAccounting, ItemSequence)
+    /// as long as only one is live. The filtered unique index
+    /// UX_tblLPPI_Documents_Live_DocNoAccounting_ItemSequence enforces:
+    /// at most one row per (DocNoAccounting, ItemSequence) where
+    /// IsDeactivated = 0. Deactivated history rows are exempt.
     ///
     /// May 2026: after package reconciliation, ReconcilePocs populates
     /// tblLPPI_PackagePocs with one row per (PackageID, PocEmail) pair
@@ -145,6 +151,11 @@ namespace CPlatform.LPPI
             // POC token rows created during ReconcilePocs. New rows only —
             // pre-existing (PackageID, PocEmail) pairs are not counted.
             public int PocTokensCreated;
+            // Rows that superseded a previously-deactivated line via the
+            // RC-RL reload path. Subset of RowsInserted; surfaced separately
+            // so the load-result panel can tell the operator how many
+            // corrections came through.
+            public int RowsSuperseded;
         }
 
         public static CommitResult Commit(ParseResult parsed, string fileName, string sourcePath,
@@ -175,8 +186,9 @@ VALUES (@FileName, @SourcePath, @FileSize, @Modified, @UserId, @UserName, @RowsI
                 LPPIHelper.P("@RowsInFile", parsed.Rows.Count));
             res.BatchID = Convert.ToInt32(newId);
 
-            // Insert each row, skipping duplicates by the (DocNoAccounting, ItemSequence)
-            // composite key.
+            // Insert each row, skipping plain duplicates by the
+            // (DocNoAccounting, ItemSequence) live key and superseding
+            // reload-eligible (RC-RL) deactivated rows where they exist.
             foreach (var row in parsed.Rows)
             {
                 var docNo = LPPIHelper.CleanString(row.DocNoAccounting);
@@ -187,10 +199,10 @@ VALUES (@FileName, @SourcePath, @FileSize, @Modified, @UserId, @UserName, @RowsI
                     continue;
                 }
 
-                // ITEM_SEQUENCE is NOT NULL in tblLPPI_Documents and now forms
-                // part of the composite key. If it is blank or non-numeric the
-                // row cannot be inserted — fail it up-front with a clear message
-                // rather than letting the INSERT crash downstream.
+                // ITEM_SEQUENCE is NOT NULL in tblLPPI_Documents. If it is
+                // blank or non-numeric the row cannot be inserted — fail it
+                // up-front with a clear message rather than letting the
+                // INSERT crash downstream.
                 string rawSeq = null;
                 if (row.Fields.ContainsKey("ITEM_SEQUENCE"))
                     rawSeq = LPPIHelper.CleanString(row.Fields["ITEM_SEQUENCE"]);
@@ -205,16 +217,25 @@ VALUES (@FileName, @SourcePath, @FileSize, @Modified, @UserId, @UserName, @RowsI
                     continue;
                 }
 
-                // Check whether a row with the same (DocNoAccounting, ItemSequence)
-                // exists. If so, either:
-                //   (a) it is reload-eligible (IsDeactivated = 1, not yet
-                //       superseded) — load the new row and stamp the old
-                //       one with the new row's DocumentID as its successor; or
-                //   (b) anything else — duplicate, skip and warn.
+                // Look up the current state of (DocNoAccounting, ItemSequence).
+                // We want the row at the END of the supersession chain
+                // (SupersededByDocumentID IS NULL). That is at most one row:
+                //   - the only matching live row, OR
+                //   - the most recently deactivated row that has not yet been
+                //     superseded by a later load.
+                //
+                // Why filter on SupersededByDocumentID IS NULL? After multiple
+                // RC-RL → reload cycles, several historical rows can exist for
+                // the same (DocNoAccounting, ItemSequence). Without the filter,
+                // SQL Server is free to return any of them. With the filter,
+                // we always get the chain-terminating row, which is the only
+                // one the load logic should make decisions against.
                 DataTable existsRow = LPPIHelper.ExecuteTable(
                     @"SELECT DocumentID, IsDeactivated, SupersededByDocumentID
                         FROM dbo.tblLPPI_Documents
-                       WHERE DocNoAccounting = @D AND ItemSequence = @Seq",
+                       WHERE DocNoAccounting          = @D
+                         AND ItemSequence             = @Seq
+                         AND SupersededByDocumentID IS NULL",
                     LPPIHelper.P("@D",   docNo),
                     LPPIHelper.P("@Seq", seq.Value));
 
@@ -224,25 +245,25 @@ VALUES (@FileName, @SourcePath, @FileSize, @Modified, @UserId, @UserName, @RowsI
                     int  existingId    = Convert.ToInt32(er["DocumentID"]);
                     bool isDeactivated = (er["IsDeactivated"] != DBNull.Value)
                                          && Convert.ToBoolean(er["IsDeactivated"]);
-                    bool isSuperseded  = er["SupersededByDocumentID"] != DBNull.Value;
 
-                    if (isDeactivated && !isSuperseded)
+                    if (isDeactivated)
                     {
-                        // (a) Reload-eligible — let the new row load. Then
-                        //     stamp the old row's SupersededByDocumentID
-                        //     to point at the new row so the chain is
-                        //     navigable from older to newer.
+                        // (a) Reload-eligible. Insert the new row AND stamp
+                        //     the old one's SupersededByDocumentID in a
+                        //     single atomic SQL batch so the two writes
+                        //     either both commit or both roll back.
+                        //
+                        //     The filtered unique index on (DocNoAccounting,
+                        //     ItemSequence) WHERE IsDeactivated = 0 permits
+                        //     this insert — the existing row is deactivated
+                        //     and therefore exempt from the live uniqueness
+                        //     check.
                         try
                         {
-                            int newDocId = InsertDocument(res.BatchID, docNo, seq.Value, row);
+                            int newDocId = InsertDocumentSupersedingExisting(
+                                res.BatchID, docNo, seq.Value, row, existingId);
                             res.RowsInserted++;
-
-                            LPPIHelper.ExecuteNonQuery(
-                                @"UPDATE dbo.tblLPPI_Documents
-                                     SET SupersededByDocumentID = @new
-                                   WHERE DocumentID = @old",
-                                LPPIHelper.P("@new", newDocId),
-                                LPPIHelper.P("@old", existingId));
+                            res.RowsSuperseded++;
                         }
                         catch (Exception ex)
                         {
@@ -254,12 +275,14 @@ VALUES (@FileName, @SourcePath, @FileSize, @Modified, @UserId, @UserName, @RowsI
                         continue;
                     }
 
-                    // (b) Plain duplicate — skip and warn as before.
+                    // (b) Plain live duplicate — skip and warn. This is the
+                    //     normal "the same file was loaded twice" path.
                     res.RowsSkipped++;
                     res.SkippedDocNumbers.Add(string.Format("{0} / {1:000}", docNo, seq.Value));
                     continue;
                 }
 
+                // No existing row at the end of the chain — insert fresh.
                 try
                 {
                     InsertDocument(res.BatchID, docNo, seq.Value, row);
@@ -332,8 +355,7 @@ UPDATE dbo.tblLPPI_LoadBatches
                 // the admin-maintained email or active flag. The per-line
                 // CAPABILITY_MANAGER_NAME from BODS still goes onto
                 // tblLPPI_Documents.CapabilityManagerName for the reviewer
-                // page's cost-centre tooltip; only the unused
-                // tblLPPI_CapabilityManagers.DisplayName has been retired.
+                // page's cost-centre tooltip.
             }
         }
 
@@ -372,28 +394,42 @@ UPDATE dbo.tblLPPI_LoadBatches
             //
             // cm.Program is projected so the dispatch loop can iterate
             // alphabetically by Program name.
+            //
+            // Restricted to LIVE rows (IsDeactivated = 0). Deactivated history
+            // rows must never be packaged — they live in tblLPPI_Documents only
+            // for the audit chain and the deactivated watch-list.
             const string sql = @"
 SELECT cm.CmID,
        cm.Program,
        (SELECT MIN(d.DocumentID)
           FROM dbo.tblLPPI_Documents d
-         WHERE d.DocNoAccounting = dn.DocNoAccounting) AS FirstLineDocId
+         WHERE d.DocNoAccounting = dn.DocNoAccounting
+           AND d.IsDeactivated   = 0) AS FirstLineDocId
   FROM dbo.tblLPPI_CapabilityManagers cm
   INNER JOIN (
         SELECT DISTINCT d2.CapabilityManagerProgram, d2.DocNoAccounting
           FROM dbo.tblLPPI_Documents d2
+         WHERE d2.IsDeactivated = 0
        ) dn ON dn.CapabilityManagerProgram = cm.Program
   WHERE cm.IsActive = 1
     AND NOT EXISTS (
+            -- A review on a DEACTIVATED (RC-RL-stamped) row in a prior cycle
+            -- must not block the corrected live row from being packaged.
+            -- Filter the join target to live rows only.
             SELECT 1 FROM dbo.tblLPPI_Reviews r
             INNER JOIN dbo.tblLPPI_Documents dx ON dx.DocumentID = r.DocumentID
             WHERE dx.DocNoAccounting = dn.DocNoAccounting
+              AND dx.IsDeactivated   = 0
               AND r.ReasonCodeID IS NOT NULL)
     AND NOT EXISTS (
+            -- Package membership of the OLD (deactivated) row in an earlier
+            -- Finalised package must not block the NEW corrected row from
+            -- being packaged. Filter the join target to live rows only.
             SELECT 1 FROM dbo.tblLPPI_ReviewPackageDocuments pd
             INNER JOIN dbo.tblLPPI_ReviewPackages p ON p.PackageID = pd.PackageID
             INNER JOIN dbo.tblLPPI_Documents dx2 ON dx2.DocumentID = pd.DocumentID
             WHERE dx2.DocNoAccounting = dn.DocNoAccounting
+              AND dx2.IsDeactivated   = 0
               AND p.Status <> 'Cancelled')";
             var dt = LPPIHelper.ExecuteTable(sql);
 
@@ -403,6 +439,7 @@ SELECT cm.CmID,
             {
                 int cmId   = Convert.ToInt32(r["CmID"]);
                 string prog = Convert.ToString(r["Program"]);
+                if (r["FirstLineDocId"] == DBNull.Value) continue;
                 int docId  = Convert.ToInt32(r["FirstLineDocId"]);
 
                 CmBucket bucket;
@@ -562,10 +599,12 @@ SELECT n.PackageID,
             public List<int> DocIds = new List<int>();
         }
 
-        private static int InsertDocument(int batchId, string docNo, int itemSequence, ParsedRow row)
-        {
-            const string sql = @"
-INSERT INTO dbo.tblLPPI_Documents
+        // -------------------------------------------------------------------
+        // INSERT INTO tblLPPI_Documents — column list shared by both the
+        // simple-insert and the supersede-and-insert paths. Defined here as
+        // a constant so the two callers can not drift apart.
+        // -------------------------------------------------------------------
+        private const string DocumentInsertColumns = @"
 ( DocNoAccounting, ItemSequence, BatchID, CompanyCode, PoNumber, VendorNum, VendorName, VendorAcct,
   WbsElement, WbsDesc, Capex, ProfitCentre,
   CapabilityManager, CapabilityManagerName, CapabilityManagerProgram,
@@ -577,8 +616,9 @@ INSERT INTO dbo.tblLPPI_Documents
   PossiblePayment, PossibleDuplicateClearing, ContractValueLocExGst,
   PaymentRunDate, BodsPaymtBaselineDate, DaysVariance, DailyRate,
   InvoiceInterestAmount, InterestPayable, SourceSystem, PaymentChannel,
-  DocumentType, VendorInvoiceNo, ClearingMonth, FiscalYear ) OUTPUT inserted.DocumentID
-VALUES
+  DocumentType, VendorInvoiceNo, ClearingMonth, FiscalYear )";
+
+        private const string DocumentInsertValues = @"
 ( @DocNo, @ItemSequence, @BatchID, @CompanyCode, @PoNumber, @VendorNum, @VendorName, @VendorAcct,
   @WbsElement, @WbsDesc, @Capex, @ProfitCentre,
   @CapabilityManager, @CapabilityManagerName, @CapabilityManagerProgram,
@@ -590,14 +630,84 @@ VALUES
   @PossiblePayment, @PossibleDuplicateClearing, @ContractValueLocExGst,
   @PaymentRunDate, @BodsPaymtBaselineDate, @DaysVariance, @DailyRate,
   @InvoiceInterestAmount, @InterestPayable, @SourceSystem, @PaymentChannel,
-  @DocumentType, @VendorInvoiceNo, @ClearingMonth, @FiscalYear );";
+  @DocumentType, @VendorInvoiceNo, @ClearingMonth, @FiscalYear )";
 
+        /// <summary>
+        /// Simple insert. Returns the new DocumentID. Used when there is no
+        /// existing row at the end of the supersession chain for this
+        /// (DocNoAccounting, ItemSequence).
+        /// </summary>
+        private static int InsertDocument(int batchId, string docNo, int itemSequence, ParsedRow row)
+        {
+            string sql =
+                "INSERT INTO dbo.tblLPPI_Documents " + DocumentInsertColumns +
+                " OUTPUT inserted.DocumentID VALUES " + DocumentInsertValues + ";";
+
+            object newId = LPPIHelper.ExecuteScalar(sql, BuildDocumentParams(batchId, docNo, itemSequence, row));
+            return Convert.ToInt32(newId);
+        }
+
+        /// <summary>
+        /// Insert a corrected row AND stamp the deactivated predecessor's
+        /// SupersededByDocumentID, in a single atomic batch.
+        ///
+        /// Why atomic? If the INSERT succeeded but the UPDATE failed, the
+        /// chain would be broken: a live row exists with no back-pointer
+        /// from the deactivated predecessor. The next load would then
+        /// treat the new (live) row as a plain duplicate and skip the
+        /// corrected data on subsequent files. SET XACT_ABORT ON +
+        /// explicit BEGIN TRAN/COMMIT gives us all-or-nothing semantics
+        /// in one ExecuteScalar round-trip without needing to plumb a
+        /// transaction object out from LPPIHelper.
+        /// </summary>
+        private static int InsertDocumentSupersedingExisting(
+            int batchId, string docNo, int itemSequence, ParsedRow row, int oldDocumentId)
+        {
+            // The OUTPUT clause sends the new DocumentID into a table
+            // variable; the UPDATE then reads it back to set
+            // SupersededByDocumentID on the old row; the trailing SELECT
+            // emits it as the scalar result for ExecuteScalar.
+            string sql = @"
+SET XACT_ABORT ON;
+DECLARE @new TABLE (DocumentID INT NOT NULL);
+BEGIN TRAN;
+
+INSERT INTO dbo.tblLPPI_Documents " + DocumentInsertColumns + @"
+OUTPUT inserted.DocumentID INTO @new(DocumentID)
+VALUES " + DocumentInsertValues + @";
+
+UPDATE dbo.tblLPPI_Documents
+   SET SupersededByDocumentID = (SELECT TOP 1 DocumentID FROM @new)
+ WHERE DocumentID = @OldDocId;
+
+COMMIT;
+
+SELECT TOP 1 DocumentID FROM @new;";
+
+            // Append @OldDocId to the parameter list built for the INSERT.
+            var insertParams = BuildDocumentParams(batchId, docNo, itemSequence, row);
+            var all = new OleDbParameter[insertParams.Length + 1];
+            Array.Copy(insertParams, all, insertParams.Length);
+            all[insertParams.Length] = LPPIHelper.P("@OldDocId", oldDocumentId);
+
+            object newId = LPPIHelper.ExecuteScalar(sql, all);
+            return Convert.ToInt32(newId);
+        }
+
+        /// <summary>
+        /// Build the OleDbParameter[] for the document INSERT column set.
+        /// Shared between the simple-insert and supersede-and-insert paths
+        /// so the two cannot drift.
+        /// </summary>
+        private static OleDbParameter[] BuildDocumentParams(int batchId, string docNo, int itemSequence, ParsedRow row)
+        {
             Func<string, string>    S = k => LPPIHelper.CleanString(row.Fields.ContainsKey(k) ? row.Fields[k] : null);
             Func<string, DateTime?> D = k => LPPIHelper.ParseDate(S(k));
             Func<string, decimal?>  M = k => LPPIHelper.ParseDecimal(S(k));
             Func<string, int?>      I = k => LPPIHelper.ParseInt(S(k));
 
-            object newId = LPPIHelper.ExecuteScalar(sql,
+            return new[]
+            {
                 LPPIHelper.P("@DocNo",                     docNo),
                 LPPIHelper.P("@ItemSequence",              itemSequence),
                 LPPIHelper.P("@BatchID",                   batchId),
@@ -646,8 +756,8 @@ VALUES
                 LPPIHelper.P("@DocumentType",              (object)S("DOCUMENT_TYPE")                ?? DBNull.Value),
                 LPPIHelper.P("@VendorInvoiceNo",           (object)S("VENDOR_INVOICE_NO")            ?? DBNull.Value),
                 LPPIHelper.P("@ClearingMonth",             (object)S("CLEARING_MONTH")               ?? DBNull.Value),
-                LPPIHelper.P("@FiscalYear",                (object)S("FISCAL_YEAR")                  ?? DBNull.Value));
-	return Convert.ToInt32(newId);
+                LPPIHelper.P("@FiscalYear",                (object)S("FISCAL_YEAR")                  ?? DBNull.Value)
+            };
         }
     }
 }
