@@ -693,8 +693,9 @@
                             <tr><td>Due Date Calculated</td><td>Payment Terms 20 days</td><td><strong>05/05/2026</strong></td><td><strong>05/05/2026</strong></td><td><strong>27/04/2026</strong></td></tr>
                         </tbody>
                     </table>
+                    
+                    <h3 id="instr-faq-best-practice" class="instr-faq-h3">Best practice: preventing Late Payment Penalty Interest</h3>
 
-                    <h3 class="instr-faq-h3">Best practice: preventing Late Payment Penalty Interest</h3>
                     <p>
                         To minimise the risk of LPPI, Defence must ensure invoices are valid, correctly timed, and processed in accordance with contractual requirements. Preventative controls at the contract, supplier, and process level are essential.
                     </p>
