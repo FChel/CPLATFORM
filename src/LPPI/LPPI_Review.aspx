@@ -458,15 +458,14 @@
                     <dl class="instr-faq">
 
                         <dt>What is LPPI Review?</dt>
-                        <dd>LPPI Review is a DFG-built module within FinHub that gives Capability Manager groups and invoice POCs a central place to perform monthly Late Payment Penalty Interest reviews in accordance with the
+                        <dd>LPPI Review is a DFG initiative driven by automated monthly data extraction and date calculations, giving Capability Manager groups and invoice POCs a central hub to perform monthly LPPI reviews in accordance with the
                             <a href="https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417" target="_blank" rel="noopener">Supplier Pay On-Time or Pay Interest Policy (RMG&nbsp;417)</a>.
-                            Data is extracted from ERP each month and surfaced here for review.</dd>
 
                         <dt>Why am I receiving emails to complete LPPI Review actions?</dt>
-                        <dd>You were identified as the invoice POC for a late payment, or you are part of the AS Fin team accountable for the group review. An initial email is sent at the start of each review period. POCs have two weeks to complete their review actions. If actions are not completed in time, the LPPI Administrator will issue reminders on Day&nbsp;7 and Day&nbsp;13. AS Fin receives both the initial email and every reminder regardless of progress.</dd>
+                        <dd>You were identified as the invoice POC for a late payment, or you are part of the AS Fin team accountable for the group review. An initial email is sent to all late-payment POCs and their AS Fin at Day&nbsp;1, when the LPPI review period commences. POCs have two weeks to complete their review actions. Failure to complete the review in a timely manner will trigger reminders to you and your AS Fin at Day&nbsp;7 and Day&nbsp;13. AS Fin receives emails at Day&nbsp;1, Day&nbsp;7, and Day&nbsp;13 regardless of progress, to support timely completion.</dd>
 
                         <dt>How was I identified as the POC?</dt>
-                        <dd>POC determination is based on ERP logic &mdash; Purchase Order (PO) Requisition details for PO-based invoices, or the name on the invoice for non-PO (direct) invoices.</dd>
+                        <dd>POC determination is based on the POC recorded in Vendor Invoice Management (VIM). If there is no VIM POC, the POC comes from the Purchase Order (PO).</dd>
 
                         <dt>What action is required to complete my LPPI review?</dt>
                         <dd>Refer to the <em>How to complete your review</em> section above. You must review each document and select the appropriate Reason Code to indicate whether the LPPI is payable or not payable. Comments and Evidence (Objective Reference) are required where the outcome is Not&nbsp;payable.</dd>
@@ -478,13 +477,13 @@
                         <dd>If you are not the POC, or you would like someone else to complete the review on your behalf, forward the LPPI review email to the nominated alternate POC. They can access LPPI Review directly from the link in the forwarded email.</dd>
 
                         <dt>How are late payments identified?</dt>
-                        <dd>Automated logic identifies late payments using a priority-based rule set for each payment. See the LPPI Logic reference for the conditions in order of priority.</dd>
+                        <dd>Automated logic identifies late payments using a priority-based rule set for each payment. See <a href="#instr-faq-logic">LPPI Logic</a> for the conditions in order of priority.</dd>
 
                         <dt>What do each of the dates mean?</dt>
-                        <dd>Automated logic is used to calculate the due date. See the Glossary of Dates reference for definitions of each date field.</dd>
+                        <dd>Automated logic is used to calculate the due date. See the <a href="#instr-faq-dates">Glossary of Dates</a> for definitions of each date field.</dd>
 
                         <dt>How are the days late calculated?</dt>
-                        <dd>Automated logic calculates the due date and days late from the source ERP data. See the Due Date Calculation Logic and worked examples reference for the calculation in detail.</dd>
+                        <dd>Automated logic calculates the due date and days late from the source ERP data. See <a href="#instr-faq-duedate">Due Date Calculation Logic</a> and the <a href="#instr-faq-duedate-examples">worked examples</a> for the calculation in detail.</dd>
 
                         <dt>The baseline date in the LPPI Report is incorrect &mdash; what should I do?</dt>
                         <dd>
@@ -510,7 +509,7 @@
                         <dd>Review the document in LPPI Review and select the appropriate Reason Code to indicate whether the LPPI is payable or not payable. Comments and Evidence (Objective Reference) are required where the outcome is Not&nbsp;payable.</dd>
 
                         <dt>I approved an invoice late &mdash; why isn't it in LPPI Review?</dt>
-                        <dd>Automated logic identifies late payments using a priority-based rule set. Not every late approval triggers an LPPI charge &mdash; see the LPPI Logic reference for the conditions that apply.</dd>
+                        <dd>Automated logic identifies late payments using a priority-based rule set. Not every late approval triggers an LPPI charge &mdash; see <a href="#instr-faq-logic">LPPI Logic</a> for the conditions that apply.</dd>
 
                         <dt>I confirmed interest has already been paid for an invoice paid late &mdash; what should I do?</dt>
                         <dd>Review the document in LPPI Review and select the appropriate Reason Code. Comments and Evidence (Objective Reference) are required where the outcome is Not&nbsp;payable.</dd>
@@ -522,9 +521,177 @@
                         <dd>LPPI is processed and charged to the responsible business unit (the LPPI Charge Cost Centre shown in the Capability Manager column).</dd>
 
                         <dt>What can I do to avoid LPPI in the future?</dt>
-                        <dd>See the Best Practice tips below for preventative controls at the contract, supplier, and process level.</dd>
+                        <dd>See the <a href="#instr-faq-best-practice">Best Practice</a> tips below for preventative controls at the contract, supplier, and process level.</dd>
 
                     </dl>
+
+                    <%-- ============================================================
+                         FAQ reference: LPPI Logic
+                         Priority-based rule set that determines which late payments
+                         are surfaced for LPPI review. Mirrors the "LPPI Logic"
+                         reference in the source FAQ document.
+                         ============================================================ --%>
+                    <h3 id="instr-faq-logic" class="instr-faq-h3">LPPI Logic &mdash; priority-based rule set</h3>
+                    <p>Automated logic identifies late payments using a priority-based rule set for each payment. The following conditions are evaluated in order of priority. Any payment matching an <em>Exclude</em> rule drops out at that point; remaining payments are reported for LPPI review.</p>
+                    <ol class="instr-logic">
+                        <li><span class="instr-logic-tag">Exclude</span> OA / PO created before 1 July 2022 <span class="instr-logic-note">(contract value below $1,000,000 and PO not starting with 48&hellip;)</span></li>
+                        <li><span class="instr-logic-tag">Exclude</span> FOREX transactions <span class="instr-logic-note">(non-AUD currency)</span></li>
+                        <li><span class="instr-logic-tag">Exclude</span> Employee Vendor Group</li>
+                        <li><span class="instr-logic-tag">Exclude</span> Government and State Entity based organisation <span class="instr-logic-note">(using CASG Unified Supplier Identifier (USI) hierarchy)</span></li>
+                        <li><span class="instr-logic-tag">Exclude</span> Grants and Non-procurement payments <span class="instr-logic-note">(Document types NP and GP)</span></li>
+                        <li><span class="instr-logic-tag">Exclude</span> Real Estate, Rent and Leases <span class="instr-logic-note">(Document types E1 and E3)</span></li>
+                        <li><span class="instr-logic-tag">Exclude</span> Recipient Created Tax Invoices <span class="instr-logic-note">(RCTI)</span></li>
+                        <li><span class="instr-logic-tag">Exclude</span> GST on Foreign POs <span class="instr-logic-note">(PO account assignment GL is GST GL &mdash; although paid in AUD, relates to procuring foreign services)</span></li>
+                        <li><span class="instr-logic-tag">Exclude</span> Credit Notes and Reversals</li>
+                        <li><span class="instr-logic-tag instr-logic-tag-apply">Apply</span> 20 days to invoices with Non-Standard Payment Terms <span class="instr-logic-note">(except invoices with 5 days for PEPPOL or 20 days or higher)</span></li>
+                        <li><span class="instr-logic-tag">Exclude</span> Calculated LPPI that is less than or equal to $100</li>
+                    </ol>
+                    <p class="instr-logic-outcome"><strong>LPPI Report</strong> &mdash; identified late payments and calculated LPPI for review by the business POC.</p>
+
+                    <%-- ============================================================
+                         FAQ reference: Glossary of Dates
+                         Definitions of the date fields used in LPPI calculations.
+                         ============================================================ --%>
+                    <h3 id="instr-faq-dates" class="instr-faq-h3">Glossary of Dates</h3>
+                    <table class="instr-ref-table">
+                        <thead>
+                            <tr><th>Date name</th><th>Description</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Invoice Date</strong></td>
+                                <td>The date the supplier generates the invoice. This is the date printed on the invoice.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Invoice Received Date (IR)</strong></td>
+                                <td>The date the invoice is received into <a href="mailto:invoices@defence.gov.au">invoices@defence.gov.au</a>, or the earliest date in the email chain where the invoice was received by a Defence POC.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Goods Receipt Document Date</strong></td>
+                                <td>The date the goods or services were actually received by the Defence representative. This does not impact financial postings &mdash; the expense is recognised at the Goods Receipt Entry Date.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Goods Receipt Entry Date (GR)</strong></td>
+                                <td>The date the Defence representative records the receipt of goods (posts the GR) in the system, and the date the expense is recognised. This may be days or weeks after the actual receipt of goods, but this date cannot be backdated in the system.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Baseline Date</strong></td>
+                                <td>
+                                    ERP calculates baseline date as the latter of the Invoice Received Date or the Goods Receipt Entry Date.
+                                    DFG propose an interim process to recognise material and non-material purchases with separate baseline date logic:
+                                    <ul class="instr-list" style="margin:6px 0 0;">
+                                        <li><strong>Material PO</strong> &mdash; later of IR or GR dates</li>
+                                        <li><strong>Non-material PO</strong> &mdash; later of IR or Invoice Date</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Due Date</strong></td>
+                                <td>Calculated as Baseline Date plus the Payment Terms specified on the PO or Vendor.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <%-- ============================================================
+                         FAQ reference: Due Date Calculation Logic
+                         Diagram showing how baseline date + payment terms combine
+                         under the interim (1A Material, 1B Non-Material) and
+                         future ERP (2) rules.
+                         ============================================================ --%>
+                    <h3 id="instr-faq-duedate" class="instr-faq-h3">Due Date Calculation Logic</h3>
+                    <p>The due date is calculated from the relevant baseline date plus payment terms. The baseline date differs by purchase type and ERP rule version:</p>
+                    <div class="instr-duedate">
+                        <div class="instr-duedate-row">
+                            <div class="instr-duedate-rule">
+                                <span class="instr-duedate-rule-num">1A</span>
+                                <span class="instr-duedate-rule-label">Interim<br />Material</span>
+                            </div>
+                            <div class="instr-duedate-eqn">
+                                <span class="instr-duedate-cell instr-duedate-result">Due Date</span>
+                                <span class="instr-duedate-op">=</span>
+                                <span class="instr-duedate-cell instr-duedate-baseline"><em>Latter of</em><br />IR Date or<br />GE date</span>
+                                <span class="instr-duedate-op">+</span>
+                                <span class="instr-duedate-cell">Payment<br />Terms</span>
+                            </div>
+                        </div>
+                        <div class="instr-duedate-row">
+                            <div class="instr-duedate-rule">
+                                <span class="instr-duedate-rule-num">1B</span>
+                                <span class="instr-duedate-rule-label">Interim<br />Non-Material</span>
+                            </div>
+                            <div class="instr-duedate-eqn">
+                                <span class="instr-duedate-cell instr-duedate-result">Due Date</span>
+                                <span class="instr-duedate-op">=</span>
+                                <span class="instr-duedate-cell instr-duedate-baseline">IR Date</span>
+                                <span class="instr-duedate-op">+</span>
+                                <span class="instr-duedate-cell">Payment<br />Terms</span>
+                            </div>
+                        </div>
+                        <div class="instr-duedate-row">
+                            <div class="instr-duedate-rule">
+                                <span class="instr-duedate-rule-num">2</span>
+                                <span class="instr-duedate-rule-label">Future ERP<br />(Aug&nbsp;26)</span>
+                            </div>
+                            <div class="instr-duedate-eqn">
+                                <span class="instr-duedate-cell instr-duedate-result">Due Date</span>
+                                <span class="instr-duedate-op">=</span>
+                                <span class="instr-duedate-cell instr-duedate-baseline"><em>Latter of</em><br />IR Date or<br />GR date</span>
+                                <span class="instr-duedate-op">+</span>
+                                <span class="instr-duedate-cell">Payment<br />Terms</span>
+                            </div>
+                        </div>
+                        <p class="instr-duedate-caption">The dashed column above is the <strong>Baseline Date</strong> &mdash; the date from which payment terms are counted.</p>
+                    </div>
+
+                    <%-- ============================================================
+                         FAQ reference: Due Date Calculation Examples
+                         Two worked scenarios contrasting GR-before-invoice vs
+                         GR-after-invoice timing.
+                         ============================================================ --%>
+                    <h3 id="instr-faq-duedate-examples" class="instr-faq-h3">Due Date Calculation Examples</h3>
+                    <p>Two worked examples below, contrasting how the due date is calculated when the Goods Receipt is posted before the invoice is received versus after the invoice is received. Payment Terms are 20 days in both scenarios.</p>
+
+                    <table class="instr-ref-table instr-ref-table-examples">
+                        <colgroup>
+                            <col style="width:24%" />
+                            <col style="width:18%" />
+                            <col style="width:20%" />
+                            <col style="width:19%" />
+                            <col style="width:19%" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th rowspan="2">Key dates</th>
+                                <th rowspan="2"></th>
+                                <th>ERP current</th>
+                                <th colspan="2" class="instr-ref-th-group">Interim &mdash; Baseline Date Calculation</th>
+                            </tr>
+                            <tr>
+                                <th>Baseline Date</th>
+                                <th>Material</th>
+                                <th>Non-Material</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="instr-ref-scenario-row instr-ref-scenario-ok">
+                                <td colspan="5"><strong>Scenario 1</strong> &mdash; Goods Receipt is done at time of delivery or before the invoice is received.</td>
+                            </tr>
+                            <tr><td>Invoice Date</td><td>01/04/2026</td><td rowspan="4" class="instr-ref-shaded">Later of GR or IR<br /><strong>07/04/2026</strong></td><td rowspan="4">Per ERP<br />Later of GR &amp; IR<br /><strong>07/04/2026</strong></td><td rowspan="4">(Automation)<br />Later of Invoice Date or IR Date<br /><strong>07/04/2026</strong></td></tr>
+                            <tr><td>Invoice Received Date (IR)</td><td>07/04/2026</td></tr>
+                            <tr><td>Goods Received Date</td><td>31/03/2026</td></tr>
+                            <tr><td>Goods Received Entry Date (GR)</td><td>31/03/2026</td></tr>
+                            <tr><td>Due Date Calculated</td><td>Payment Terms 20 days</td><td><strong>27/04/2026</strong></td><td><strong>27/04/2026</strong></td><td><strong>27/04/2026</strong></td></tr>
+
+                            <tr class="instr-ref-scenario-row instr-ref-scenario-warn">
+                                <td colspan="5"><strong>Scenario 2</strong> &mdash; Goods Receipt is done after the invoice is received.</td>
+                            </tr>
+                            <tr><td>Invoice Date</td><td>01/04/2026</td><td rowspan="4" class="instr-ref-shaded">Later of GR or IR<br /><strong>15/04/2026</strong></td><td rowspan="4">Per ERP<br />Later of GR &amp; IR<br /><strong>15/04/2026</strong></td><td rowspan="4">(Automation)<br />Later of Invoice Date or IR Date<br /><strong>07/04/2026</strong></td></tr>
+                            <tr><td>Invoice Received Date (IR)</td><td>07/04/2026</td></tr>
+                            <tr><td>Goods Received Date</td><td>31/03/2026</td></tr>
+                            <tr><td>Goods Received Entry Date (GR)</td><td>15/04/2026</td></tr>
+                            <tr><td>Due Date Calculated</td><td>Payment Terms 20 days</td><td><strong>05/05/2026</strong></td><td><strong>05/05/2026</strong></td><td><strong>27/04/2026</strong></td></tr>
+                        </tbody>
+                    </table>
 
                     <h3 class="instr-faq-h3">Best practice: preventing Late Payment Penalty Interest</h3>
                     <p>
