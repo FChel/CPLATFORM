@@ -460,6 +460,7 @@
                         <dt>What is LPPI Review?</dt>
                         <dd>LPPI Review is a DFG initiative driven by automated monthly data extraction and date calculations, giving Capability Manager groups and invoice POCs a central hub to perform monthly LPPI reviews in accordance with the
                             <a href="https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417" target="_blank" rel="noopener">Supplier Pay On-Time or Pay Interest Policy (RMG&nbsp;417)</a>.
+                            Data is extracted from ERP each month and surfaced here for review.</dd>
 
                         <dt>Why am I receiving emails to complete LPPI Review actions?</dt>
                         <dd>You were identified as the invoice POC for a late payment, or you are part of the AS Fin team accountable for the group review. An initial email is sent to all late-payment POCs and their AS Fin at Day&nbsp;1, when the LPPI review period commences. POCs have two weeks to complete their review actions. Failure to complete the review in a timely manner will trigger reminders to you and your AS Fin at Day&nbsp;7 and Day&nbsp;13. AS Fin receives emails at Day&nbsp;1, Day&nbsp;7, and Day&nbsp;13 regardless of progress, to support timely completion.</dd>
