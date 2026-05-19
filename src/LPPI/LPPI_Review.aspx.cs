@@ -89,8 +89,13 @@ namespace CPlatform.LPPI
 
         // "Ready to finalise" hint banner — shown when every doc has been
         // coded but the package is still in flight (NotSent/Sent/InReview).
-        // Suppressed in POC view (POC cannot finalise).
+        // AS Fin only — POCs get IsPocAllReviewed instead.
         protected bool IsAllReviewed;
+
+        // POC "all done" banner — POC equivalent of IsAllReviewed. Same
+        // banner slot, different copy: confirms completion without
+        // referencing a Finalise button the POC does not have.
+        protected bool IsPocAllReviewed;
 
         // Exposure (dollar) figures — scoped to this package only (or to
         // the POC's subset in POC view). Driven into the head-row
@@ -194,6 +199,10 @@ namespace CPlatform.LPPI
                 string.Equals(status, LPPIHelper.StatusInReview, StringComparison.OrdinalIgnoreCase);
             ShowActionButton = !IsPocView && (editable || IsFinalised) && TotalCount > 0;
             IsAllReviewed    = !IsPocView && editable && TotalCount > 0 && ReviewedCount >= TotalCount;
+            // POC equivalent of the "ready" state: every doc assigned to the
+            // POC is coded, but the POC has no Finalise button (and must not
+            // be told to click one — that is AS Fin's job).
+            IsPocAllReviewed = IsPocView && editable && TotalCount > 0 && ReviewedCount >= TotalCount;
         }
 
         /// <summary>

@@ -127,7 +127,7 @@
                     The AS Fin team mailbox for this group. Receives the group-summary review email.
                     Also used as the <em>From</em> address on per-POC review emails so POC replies
                     land in this mailbox. Both fields are required &mdash; or leave both blank to clear.
-                    Only <code>@defence.gov.au</code> addresses are accepted.
+                    Only <code>@defence.gov.au</code> or <code>@annpsr.gov.au</code> addresses are accepted.
                 </p>
                 <div class="config-grid">
                     <div>

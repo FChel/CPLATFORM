@@ -248,7 +248,8 @@ namespace CPlatform.LPPI
 
             if (!wantsPoc)
             {
-                return BuildBodyAsFin(type, program, dueDate, asFinToken, docCount, reviewedAll);
+                return BuildBodyAsFin(type, program, dueDate, asFinToken, docCount, reviewedAll,
+                    BuildPeriodLabel(packageId, null, dueDate));
             }
 
             // POC placeholder preview path — pocEmail not supplied. Render the
@@ -260,7 +261,8 @@ namespace CPlatform.LPPI
             if (string.IsNullOrWhiteSpace(pocEmail))
             {
                 return BuildBodyPoc(type, program, dueDate, asFinToken,
-                    "<POC_EMAIL>", docCount, reviewedAll);
+                    "<POC_EMAIL>", docCount, reviewedAll,
+                    BuildPeriodLabel(packageId, null, dueDate));
             }
 
             // POC specific preview path — resolve the POC's row and counts.
@@ -273,7 +275,8 @@ namespace CPlatform.LPPI
             int pocTotal, pocReviewed;
             ComputePocCounts(packageId, pocEmail, out pocTotal, out pocReviewed);
 
-            return BuildBodyPoc(type, program, dueDate, pocToken, pocEmail, pocTotal, pocReviewed);
+            return BuildBodyPoc(type, program, dueDate, pocToken, pocEmail, pocTotal, pocReviewed,
+                BuildPeriodLabel(packageId, pocEmail, dueDate));
         }
 
         /// <summary>
@@ -307,7 +310,12 @@ WHERE cm.CmID = @CmID;";
             var due   = DateTime.Today.AddDays(LPPIHelper.DefaultDueDays);
             var token = "PREVIEW";
 
-            return BuildBodyAsFin("Initial", program, due, token, docCount, 0);
+            // No package exists yet for this CM, so there are no documents to
+            // derive a ClearingMonth span from — fall back to the due-date
+            // month for the period label.
+            string period = due.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("en-AU"));
+
+            return BuildBodyAsFin("Initial", program, due, token, docCount, 0, period);
         }
 
         /// <summary>
@@ -371,8 +379,9 @@ WHERE cm.CmID = @CmID;";
             }
 
             // 1) AS Fin audit row — what the real send would have dispatched.
+            string asFinPeriod = BuildPeriodLabel(packageId, null, dueDate);
             string subject = BuildSubjectAsFin("Initial", program, dueDate);
-            string body    = BuildBodyAsFin("Initial", program, dueDate, asFinToken, docCount, reviewedAll);
+            string body    = BuildBodyAsFin("Initial", program, dueDate, asFinToken, docCount, reviewedAll, asFinPeriod);
             string asFinRecipientsLogged = FormatRecipientsForLog(cmEmail.Email, SupportMailboxTo);
             LogSend(packageId,
                     asFinRecipientsLogged,
@@ -406,8 +415,9 @@ WHERE cm.CmID = @CmID;";
                 int pocTotal, pocReviewed;
                 ComputePocCounts(packageId, cleaned, out pocTotal, out pocReviewed);
 
+                string pocPeriod  = BuildPeriodLabel(packageId, cleaned, dueDate);
                 string pocSubject = BuildSubjectPoc("Initial", program, dueDate);
-                string pocBody    = BuildBodyPoc("Initial", program, dueDate, pocToken, cleaned, pocTotal, pocReviewed);
+                string pocBody    = BuildBodyPoc("Initial", program, dueDate, pocToken, cleaned, pocTotal, pocReviewed, pocPeriod);
 
                 LogSend(packageId,
                         FormatRecipientsForLog(cleaned, SupportMailboxTo),
@@ -496,8 +506,9 @@ UPDATE dbo.tblLPPI_ReviewPackages
             }
 
             // 1) AS Fin send — From = LPPI mailbox, To = CM team mailbox.
+            string asFinPeriod  = BuildPeriodLabel(packageId, null, dueDate);
             string asFinSubject = BuildSubjectAsFin(type, program, dueDate);
-            string asFinBody    = BuildBodyAsFin(type, program, dueDate, asFinToken, docCount, reviewedAll);
+            string asFinBody    = BuildBodyAsFin(type, program, dueDate, asFinToken, docCount, reviewedAll, asFinPeriod);
 
             string asFinError;
             bool asFinOk = SendOne(
@@ -562,8 +573,9 @@ UPDATE dbo.tblLPPI_ReviewPackages
                     continue;
                 }
 
+                string pocPeriod  = BuildPeriodLabel(packageId, cleaned, dueDate);
                 string pocSubject = BuildSubjectPoc(type, program, dueDate);
-                string pocBody    = BuildBodyPoc(type, program, dueDate, pocToken, cleaned, pocTotal, pocReviewed);
+                string pocBody    = BuildBodyPoc(type, program, dueDate, pocToken, cleaned, pocTotal, pocReviewed, pocPeriod);
 
                 string pocError;
                 bool pocOk = SendOne(
@@ -720,14 +732,15 @@ UPDATE dbo.tblLPPI_ReviewPackages
         // -------------------------------------------------------------------
 
         private static string BuildBodyAsFin(string type, string program, DateTime due,
-                                             string token, int docCount, int reviewedCount)
+                                             string token, int docCount, int reviewedCount,
+                                             string periodLabel)
         {
             string reviewUrl   = BuildReviewUrl(token);
             bool   isReminder  = string.Equals(type, "Reminder", StringComparison.OrdinalIgnoreCase);
             int    outstanding = Math.Max(0, docCount - reviewedCount);
 
             var auCulture     = CultureInfo.GetCultureInfo("en-AU");
-            string monthYear  = due.ToString("MMMM yyyy", auCulture);
+            string monthYear  = periodLabel;
             string dueLong    = due.ToString("dddd, d MMMM yyyy", auCulture);
 
             string preheader  = isReminder
@@ -814,14 +827,15 @@ UPDATE dbo.tblLPPI_ReviewPackages
 
         private static string BuildBodyPoc(string type, string program, DateTime due,
                                            string token, string pocEmail,
-                                           int pocTotal, int pocReviewed)
+                                           int pocTotal, int pocReviewed,
+                                           string periodLabel)
         {
             string reviewUrl  = BuildReviewUrl(token);
             bool   isReminder = string.Equals(type, "Reminder", StringComparison.OrdinalIgnoreCase);
             int    outstanding = Math.Max(0, pocTotal - pocReviewed);
 
             var auCulture     = CultureInfo.GetCultureInfo("en-AU");
-            string monthYear  = due.ToString("MMMM yyyy", auCulture);
+            string monthYear  = periodLabel;
             string dueLong    = due.ToString("dddd, d MMMM yyyy", auCulture);
 
             string preheader = isReminder
@@ -966,19 +980,29 @@ UPDATE dbo.tblLPPI_ReviewPackages
         }
 
         /// <summary>
-        /// Big orange "Begin Review" button. Built as a table cell so it
-        /// renders consistently in Outlook (which does not respect padding
-        /// on inline-block anchors).
+        /// Big orange "Begin Review" button, centred. Outlook (Word engine)
+        /// will not centre an inline-block and ignores margin:auto, so the
+        /// button is wrapped in a full-width table whose cell is
+        /// align="center" + text-align:center. The button itself is a fixed
+        /// inner table so padding renders consistently. align attribute is
+        /// duplicated as a style for non-Outlook clients to match the
+        /// browser preview exactly.
         /// </summary>
         private static void AppendBeginReviewButton(StringBuilder sb, string reviewUrl)
         {
             string href = HttpUtility.HtmlAttributeEncode(reviewUrl);
-            sb.Append("<table cellspacing=\"0\" cellpadding=\"0\" style=\"margin:18px 0;border-collapse:collapse;\">")
-              .Append("<tr><td style=\"background:").Append(OrangeHex).Append(";border-radius:6px;").Append(FontInline).Append("\">")
+            sb.Append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" ")
+              .Append("style=\"width:100%;border-collapse:collapse;margin:18px 0;\">")
+              .Append("<tr><td align=\"center\" style=\"text-align:center;").Append(FontInline).Append("\">")
+              .Append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" ")
+              .Append("style=\"border-collapse:collapse;margin:0 auto;\">")
+              .Append("<tr><td align=\"center\" bgcolor=\"").Append(OrangeHex).Append("\" ")
+              .Append("style=\"background:").Append(OrangeHex).Append(";border-radius:6px;text-align:center;").Append(FontInline).Append("\">")
               .Append("<a href=\"").Append(href).Append("\" target=\"_blank\" rel=\"noopener\" ")
               .Append("style=\"display:inline-block;padding:12px 28px;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;").Append(FontInline).Append("\">")
               .Append("Begin Review")
-              .Append("</a></td></tr></table>");
+              .Append("</a></td></tr></table>")
+              .Append("</td></tr></table>");
         }
 
         /// <summary>
@@ -1094,6 +1118,85 @@ VALUES (@P, @R, @T, @A, @PE, @S, @B, @U, @OK, @E);";
         // -------------------------------------------------------------------
         // Data loaders — shared between Send and Preview
         // -------------------------------------------------------------------
+
+        // -------------------------------------------------------------------
+        // Period label — derived from the data, not the due date.
+        //
+        // tblLPPI_Documents.ClearingMonth is stored as the BODS text form
+        // "M.YYYY" (e.g. "7.2025", "12.2025", "4.2026"). The period a package
+        // covers is the span from the earliest to the latest ClearingMonth
+        // across that package's LIVE first-line documents.
+        //
+        //   - First (catch-up) file:   July 2025 to April 2026
+        //   - Subsequent monthly file: a single month, e.g. May 2026
+        //
+        // POC-scoped callers pass a non-null pocEmail to constrain the span
+        // to that POC's documents.
+        //
+        // Returns a display string. Falls back to the package DueDate month
+        // when no ClearingMonth can be parsed for the package (defensive —
+        // the real BODS extract always populates it).
+        // -------------------------------------------------------------------
+        private static string BuildPeriodLabel(int packageId, string pocEmail, DateTime dueFallback)
+        {
+            // Parse "M.YYYY" -> sortable yyyymm integer, take MIN and MAX over
+            // the package's live first-line docs. POC filter applied when
+            // pocEmail is supplied. The first-line correlated subquery keeps
+            // this consistent with every other review query in the codebase.
+            string sql = @"
+SELECT MIN(ym) AS MinYm, MAX(ym) AS MaxYm
+FROM (
+    SELECT TRY_CONVERT(int,
+             RIGHT(d.ClearingMonth, 4)) * 100
+         + TRY_CONVERT(int,
+             LEFT(d.ClearingMonth, CHARINDEX('.', d.ClearingMonth) - 1)) AS ym
+    FROM dbo.tblLPPI_ReviewPackageDocuments rpd
+    INNER JOIN dbo.tblLPPI_Documents d
+            ON d.DocumentID = rpd.DocumentID
+    WHERE rpd.PackageID = @P
+      AND d.IsDeactivated = 0
+      AND d.ClearingMonth IS NOT NULL
+      AND CHARINDEX('.', d.ClearingMonth) > 1
+      AND (@E IS NULL OR EXISTS (
+            SELECT 1
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = d.DocNoAccounting
+               AND d2.IsDeactivated   = 0
+               AND d2.PocEmail        = @E))
+) q
+WHERE ym IS NOT NULL;";
+
+            DataTable dt = LPPIHelper.ExecuteTable(sql,
+                LPPIHelper.P("@P", packageId),
+                LPPIHelper.P("@E", (object)(string.IsNullOrWhiteSpace(pocEmail) ? null : pocEmail) ?? DBNull.Value));
+
+            int? minYm = null, maxYm = null;
+            if (dt.Rows.Count == 1)
+            {
+                if (dt.Rows[0]["MinYm"] != DBNull.Value) minYm = Convert.ToInt32(dt.Rows[0]["MinYm"]);
+                if (dt.Rows[0]["MaxYm"] != DBNull.Value) maxYm = Convert.ToInt32(dt.Rows[0]["MaxYm"]);
+            }
+
+            if (!minYm.HasValue || !maxYm.HasValue)
+            {
+                // Defensive fallback — never ship a blank period.
+                return dueFallback.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("en-AU"));
+            }
+
+            string start = YmToText(minYm.Value);
+            string end   = YmToText(maxYm.Value);
+            return start == end ? start : (start + " to " + end);
+        }
+
+        private static string YmToText(int ym)
+        {
+            int year  = ym / 100;
+            int month = ym % 100;
+            if (month < 1 || month > 12)
+                return ym.ToString(CultureInfo.InvariantCulture);
+            return new DateTime(year, month, 1)
+                .ToString("MMMM yyyy", CultureInfo.GetCultureInfo("en-AU"));
+        }
 
         private static DataRow LoadPackageRow(int packageId)
         {

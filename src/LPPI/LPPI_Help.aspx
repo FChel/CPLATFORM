@@ -340,7 +340,7 @@
                         <li>Open <strong>Capability Managers</strong>. The banner at the top counts programs that have no AS Fin email configured yet.</li>
                         <li>Click <em>Manage</em> on a program to open the configuration panel.</li>
                         <li>Enter the AS Fin email address and a display name (both are required &mdash; the display name is what POCs see as the From-name on their email). Click <em>Save</em>.</li>
-                        <li>The page validates that the email ends in <code>@defence.gov.au</code>.</li>
+                        <li>The page validates that the email is an <code>@defence.gov.au</code> or <code>@annpsr.gov.au</code> address (subdomains allowed).</li>
                     </ol>
 
                     <h3>Issuing review packages</h3>

@@ -545,18 +545,21 @@ namespace CPlatform.LPPI
                 return null;
             }
 
-            // Accept @defence.gov.au and any @<sub>.defence.gov.au address.
-            // Some Defence entities use subdomains
-            // and their addresses are legitimate AS Fin / POC contacts.
+            // Accept @defence.gov.au / @<sub>.defence.gov.au and
+            // @annpsr.gov.au / @<sub>.annpsr.gov.au. Both are legitimate
+            // Defence-agency domains for AS Fin / POC contacts. Mirrors the
+            // CK_tblLPPI_CapabilityManagers_Email DB constraint.
             string lower = s.ToLowerInvariant();
             int atIdx = lower.LastIndexOf('@');
             string domain = atIdx >= 0 ? lower.Substring(atIdx + 1) : "";
 
             bool ok = domain == "defence.gov.au"
-                   || domain.EndsWith(".defence.gov.au", StringComparison.Ordinal);
+                   || domain.EndsWith(".defence.gov.au", StringComparison.Ordinal)
+                   || domain == "annpsr.gov.au"
+                   || domain.EndsWith(".annpsr.gov.au", StringComparison.Ordinal);
             if (!ok)
             {
-                errorMessage = "Only defence.gov.au addresses are accepted (including @<sub>.defence.gov.au).";
+                errorMessage = "Only defence.gov.au or annpsr.gov.au addresses are accepted (subdomains allowed).";
                 return null;
             }
 

@@ -342,11 +342,19 @@
          Distinct from the green Finalised status banner at the top of
          the page; this one is a call-to-action while the page is
          editable. JS toggles the .show class based on dirty state. --%>
-    <div id="readyBanner" class="ready-banner<%= IsAllReviewed ? " show" : "" %>" role="status">
+    <div id="readyBanner" class="ready-banner<%= (IsAllReviewed || IsPocAllReviewed) ? " show" : "" %>"
+         data-poc="<%= IsPocView ? "1" : "0" %>" role="status">
+      <% if (IsPocView) { %>
+        <div class="ready-text">
+            <strong>All done.</strong>
+            <span>Every document assigned to you has a reason code. Your selections are saved automatically — you can close this window. AS Fin will finalise the package.</span>
+        </div>
+      <% } else { %>
         <div class="ready-text">
             <strong>All reviewed — ready to finalise.</strong>
             <span>Every document in this package has a reason code. Click Finalise above when you are ready to close it off; you can unfinalise later if you need to make changes.</span>
         </div>
+      <% } %>
     </div>
 
     <%-- ================================================================

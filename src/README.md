@@ -35,7 +35,7 @@ For functional documentation — page-by-page guides, package lifecycle, configu
 ## Repository layout
 
 ```
-src/
+<<<CPLATFORM root/>>>
   Default.aspx              CPLATFORM landing page (FinHub tiles & hero CTAs)
   web.config                Single config file; values differ UAT vs PROD
   README.md                 This file
@@ -60,13 +60,13 @@ src/
     LPPI_Review_*.ashx        Reviewer endpoints (Save, Finalise, etc.)
   css/lppi.css              All LPPI styles + design tokens
   js/lppi.js                Reviewer-page interactions (vanilla JS)
-sql/
-  LPPI_Schema.sql           Canonical fresh-install schema + seeds
-  LPPI_DataRefresh.sql      Guarded data-only reset (DEV/UAT only)
-- Other useful scripts
+  Database/
+    CPlatform.udl             OLE DB connection file (blocked at IIS)
 
-Database/
-  CPlatform.udl             OLE DB connection file (blocked at IIS)
+  sql/
+    LPPI_Schema.sql           Canonical fresh-install schema + seeds
+    LPPI_AdminAdd.sql         Admin Admin
+    LPPI_DeleteAdmin.sql      Delete Admin
 ```
 
 ---
