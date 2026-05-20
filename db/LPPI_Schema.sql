@@ -85,7 +85,9 @@ BEGIN
             CHECK (Email IS NULL
                 OR (Email LIKE '%_@_%.[a-z]%'
                     AND (Email LIKE '%@defence.gov.au'
-                      OR Email LIKE '%@%.defence.gov.au')))
+                      OR Email LIKE '%@%.defence.gov.au'
+                      OR Email LIKE '%@annpsr.gov.au'
+                      OR Email LIKE '%@%.annpsr.gov.au')))
     );
 END
 GO
