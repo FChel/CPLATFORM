@@ -194,6 +194,7 @@
                     <li><a href="#lifecycle">Package lifecycle</a></li>
                     <li><a href="#roles">Who does what</a></li>
                     <li><a href="#emails">How send-outs work</a></li>
+                    <li><a href="#summary-page">In-flight Summary view</a></li>
                     <li><a href="#pages">Page-by-page guide</a></li>
                     <li><a href="#operations">Common operations</a></li>
                     <li><a href="#support">Support</a></li>
@@ -291,11 +292,39 @@
                     </div>
                 </section>
 
+                <section id="summary-page">
+                    <h2>In-flight Summary view</h2>
+                    <p>
+                        The <strong>Summary</strong> page is a read-only operational view of the current review cycle &mdash;
+                        complementary to the Dashboard's at-a-glance exec view. Use it to see, in flight:
+                    </p>
+                    <ul>
+                        <li>The reason-code split across in-scope documents (with an <strong>Awaiting</strong> pseudo-row for unreviewed docs).</li>
+                        <li>A Not Payable sub-cut, useful for spotting clusters &mdash; e.g. lots of RC-RL signalling upstream data issues.</li>
+                        <li>Progress by Capability Manager program (reviewed / total bars per program).</li>
+                        <li>Exposure by Capability Manager number (LPPI Charge Cost Centre).</li>
+                        <li>The top 10 outstanding POCs by interest exposure, for chase-up triage.</li>
+                    </ul>
+                    <p>
+                        The scope picker at the top defaults to <strong>Current cycle</strong> (every in-flight package).
+                        Past load batches are listed below and let you focus on a specific monthly file's documents.
+                        The <strong>Export full data</strong> button generates a 53-column xlsx covering every line of every
+                        in-scope document &mdash; same layout as the reviewer page's export, but cycle-wide rather than per package.
+                    </p>
+                    <div class="callout">
+                        <strong>Reporting note.</strong> For trend analysis, CFO-level visibility, and cycle-over-cycle reporting,
+                        the Summary page is intentionally lightweight &mdash; deeper analytics live in Power BI.
+                    </div>
+                </section>
+
                 <section id="pages">
                     <h2>Page-by-page guide</h2>
                     <dl class="help-pages">
                         <dt>Dashboard</dt>
                         <dd>Read-only overview. LPPI exposure (dollar headlines), counts, open packages (NotSent/Sent/InReview/Finalised), recent loads.</dd>
+
+                        <dt>Summary</dt>
+                        <dd>Operational in-flight view of the current cycle. Reason-code split (with Awaiting), non-payment cluster view, by-program and by-CM-number cuts, top-10 outstanding POCs, plus a full 53-column xlsx export of every in-scope line.</dd>
 
                         <dt>Load file</dt>
                         <dd>Upload an LPPI file (<code>LATEPMT_INTEREST_REVIEW_*.xls</code>), preview, then commit. The reconcile step creates new packages and adds documents to existing NotSent packages.</dd>

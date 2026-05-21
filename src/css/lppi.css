@@ -2093,3 +2093,270 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 
 .pill.duesoon   { background: var(--warn-bg);     color: var(--warn); }
 /* .pill.overdue is already defined earlier in this file — leave alone. */
+
+/* =============================================================================
+   SUMMARY PAGE
+
+   All styles scoped under .summary-shell so they cannot leak into the
+   shared header / other pages. Reuses the .tbl, .pill and .stat
+   building blocks from the main stylesheet — only the bits that are
+   genuinely Summary-specific live here.
+
+   Layout cadence (mobile-first then desktop):
+     - Scope bar:          full width, label + select + meta caption
+     - Cycle overview:     4-up grid, single column on narrow
+     - By reason code:     full-width table
+     - Non-payment:        full-width table
+     - By program / By CM: side-by-side on wide, stacked on narrow
+     - By POC:             full-width table
+   ============================================================================= */
+
+/* Scope picker bar ---------------------------------------------------------- */
+.summary-shell .summary-scope-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 12px 16px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.summary-shell .summary-scope-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    font-weight: 700;
+    margin-right: 2px;
+}
+.summary-shell .summary-scope-select {
+    flex: 0 0 auto;
+    min-width: 320px;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--white);
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--ink);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.summary-shell .summary-scope-select:focus {
+    outline: none;
+    border-color: var(--orange);
+    box-shadow: 0 0 0 3px rgba(215,91,7,0.15);
+}
+.summary-shell .summary-scope-meta {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--ink-3);
+    line-height: 1.4;
+}
+@media (max-width: 700px) {
+    .summary-shell .summary-scope-select { min-width: 0; width: 100%; }
+    .summary-shell .summary-scope-meta   { width: 100%; }
+}
+
+/* Section wrappers ---------------------------------------------------------- */
+.summary-shell .summary-section {
+    margin-bottom: 24px;
+}
+.summary-shell .summary-section .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    font-weight: 700;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.summary-shell .summary-section .section-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+}
+/* The toggle pill sits inside the section-label and shouldn't push the
+   underline rule away — order it AFTER the ::after pseudo so the rule
+   continues to fill the remainder. */
+.summary-shell .summary-section .section-label .summary-toggle {
+    order: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink-3);
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.summary-shell .summary-section .section-label .summary-toggle input {
+    accent-color: var(--orange);
+    cursor: pointer;
+}
+.summary-shell .summary-section .section-label::after { order: 2; }
+.summary-shell .summary-section .section-label > span:first-child { order: 1; }
+
+/* Cycle overview cards ------------------------------------------------------ */
+.summary-shell .summary-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+@media (max-width: 1000px) {
+    .summary-shell .summary-overview-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+    .summary-shell .summary-overview-grid { grid-template-columns: 1fr; }
+}
+.summary-shell .overview-card {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 14px 18px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 96px;
+}
+.summary-shell .overview-card .lbl {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-3);
+    font-weight: 600;
+}
+.summary-shell .overview-card .val {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 4px;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+.summary-shell .overview-card .val .sub {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-3);
+    margin-left: 6px;
+}
+.summary-shell .overview-card .val .currency {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-3);
+    margin-right: 1px;
+    vertical-align: 3px;
+}
+.summary-shell .overview-card.exposure {
+    background: linear-gradient(135deg, var(--orange-soft) 0%, var(--white) 70%);
+    border-color: var(--orange-tint);
+}
+.summary-shell .overview-card.exposure .val { color: var(--orange-deep); }
+
+/* Reviewed-progress bar inside the overview card */
+.summary-shell .overview-bar { margin-top: 10px; }
+.summary-shell .overview-bar .track {
+    height: 5px;
+    background: var(--line-2);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.summary-shell .overview-bar .fill {
+    height: 100%;
+    background: var(--orange);
+    border-radius: 999px;
+    transition: width 0.4s ease;
+}
+.summary-shell .overview-bar .pct {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-3);
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Side-by-side block for By program + By CM number ------------------------- */
+.summary-shell .summary-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+@media (max-width: 1100px) {
+    .summary-shell .summary-split { grid-template-columns: 1fr; }
+}
+.summary-shell .summary-split .summary-section { margin-bottom: 0; }
+
+/* Table styling ------------------------------------------------------------- */
+.summary-shell .summary-tbl tbody tr:hover { background: var(--orange-soft); }
+.summary-shell .summary-tbl .num { font-variant-numeric: tabular-nums; }
+
+/* Awaiting pseudo-row: subtle grey background so it reads as distinct
+   from a real reason code without being alarming. */
+.summary-shell .summary-row-awaiting {
+    background: var(--line-2);
+}
+.summary-shell .summary-row-awaiting:hover {
+    background: var(--bg);
+}
+
+/* Awaiting pill — neutral grey so it does not compete with Payable
+   (orange-tinted) or Not Payable (cool grey). */
+.summary-shell .pill-awaiting {
+    background: #ececef;
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+}
+
+/* Inline progress bar used inside the By-program table. Two-row stack:
+   bar on top, "reviewed / total" caption underneath. Caps to a sensible
+   width so the column does not stretch across half the table. */
+.summary-shell .summary-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 180px;
+}
+.summary-shell .summary-progress .track {
+    height: 6px;
+    background: var(--line-2);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.summary-shell .summary-progress .fill {
+    height: 100%;
+    background: var(--orange);
+    border-radius: 999px;
+    transition: width 0.4s ease;
+}
+.summary-shell .summary-progress .lbl {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Empty-state cells inside table wrappers. */
+.summary-shell .empty-state {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--ink-3);
+    font-size: 13px;
+    font-style: italic;
+}
+
+/* Footnote under the POC table and at the page foot. */
+.summary-shell .summary-foot-note {
+    margin: 8px 4px 24px;
+    color: var(--ink-3);
+    font-size: 12px;
+    line-height: 1.5;
+}

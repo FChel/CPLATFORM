@@ -1553,5 +1553,465 @@ UPDATE dbo.tblLPPI_ReviewPackages
             if (o == null || o == DBNull.Value) return "";
             return Convert.ToString(o);
         }
+
+        // -------------------------------------------------------------------
+        // Summary scope — three named scopes driving the Summary page.
+        //
+        //   Active : packages whose Status IN ActivePackageStatusList
+        //            (NotSent / Sent / InReview / Finalised). The default
+        //            "current cycle" view.
+        //   All    : same set today. Kept as a distinct option for clarity
+        //            and forward-proofing if the lifecycle changes.
+        //   Batch  : packages that contain at least one (live) document
+        //            from a specific load batch. BatchID is required.
+        //
+        // A scope resolves to a SQL fragment of the form "pd.PackageID IN
+        // (<subquery>)" plus its bound parameters, via
+        // ResolveScopeFilter() below. All six aggregations call that
+        // helper so the scope semantics stay consistent.
+        // -------------------------------------------------------------------
+        public enum SummaryScopeKind
+        {
+            Active = 0,
+            All    = 1,
+            Batch  = 2
+        }
+
+        public sealed class SummaryScope
+        {
+            public SummaryScopeKind Kind;
+            public int? BatchID;
+
+            public static SummaryScope CurrentCycle() { return new SummaryScope { Kind = SummaryScopeKind.Active }; }
+            public static SummaryScope AllActive()    { return new SummaryScope { Kind = SummaryScopeKind.All }; }
+            public static SummaryScope ForBatch(int batchId)
+            {
+                return new SummaryScope { Kind = SummaryScopeKind.Batch, BatchID = batchId };
+            }
+        }
+
+        /// <summary>
+        /// Build the "PackageID IN (...)" filter fragment for a scope, plus
+        /// its bound parameters. The fragment is intended to be dropped
+        /// into a query as "AND pd.PackageID IN (<fragment>)" — caller
+        /// supplies the "pd.PackageID IN" part so the alias and column
+        /// name can differ per query.
+        ///
+        /// Active / All resolve to a status-IN subquery. Batch resolves
+        /// to a DISTINCT subquery against tblLPPI_ReviewPackageDocuments
+        /// joined to tblLPPI_Documents, filtered to live rows from the
+        /// given BatchID.
+        ///
+        /// Returns the fragment without enclosing parentheses; the caller
+        /// wraps it. Parameter names are namespaced ('@SS_...') so they
+        /// will not collide with the outer query's parameters.
+        /// </summary>
+        private static string BuildScopePackageSubquery(SummaryScope scope, List<OleDbParameter> outParams)
+        {
+            if (scope == null) scope = SummaryScope.CurrentCycle();
+
+            switch (scope.Kind)
+            {
+                case SummaryScopeKind.Batch:
+                    if (!scope.BatchID.HasValue)
+                        throw new InvalidOperationException("Summary scope Batch requires BatchID.");
+                    outParams.Add(P("@SS_BatchID", scope.BatchID.Value));
+                    return @"SELECT DISTINCT pd_s.PackageID
+                              FROM dbo.tblLPPI_ReviewPackageDocuments pd_s
+                              INNER JOIN dbo.tblLPPI_Documents d_s
+                                      ON d_s.DocumentID = pd_s.DocumentID
+                             WHERE d_s.BatchID      = @SS_BatchID
+                               AND d_s.IsDeactivated = 0";
+
+                case SummaryScopeKind.Active:
+                case SummaryScopeKind.All:
+                default:
+                    // Active and All resolve identically today.
+                    // ActivePackageStatusList is the canonical IN-list literal.
+                    return "SELECT p_s.PackageID FROM dbo.tblLPPI_ReviewPackages p_s WHERE p_s.Status IN (" + ActivePackageStatusList + ")";
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Scope header — single-row figures for the strip at the top of
+        // the Summary page.
+        //
+        //   PackageCount   : packages in scope
+        //   DocCount       : distinct DocNoAccounting across in-scope
+        //                    packages (one per document, not per line)
+        //   TotalInterest  : sum of InterestPayable across every live
+        //                    line of every in-scope document
+        //   ReviewedCount  : distinct documents with a coded review on
+        //                    their first-line DocumentID
+        //   ReviewedPct    : 0..100 share of DocCount that is reviewed
+        //
+        // Mirrors the same pattern as ComputeFinalisedSummary in
+        // LPPIEmail.cs but scope-wide rather than per-package.
+        // -------------------------------------------------------------------
+        public static DataRow GetSummaryScopeHeader(SummaryScope scope)
+        {
+            var parms = new List<OleDbParameter>();
+            string scopeSql = BuildScopePackageSubquery(scope, parms);
+
+            string sql = @"
+WITH ScopePkgs AS (
+    " + scopeSql + @"
+),
+PkgDocs AS (
+    SELECT DISTINCT
+           d.DocNoAccounting,
+           (SELECT MIN(d2.DocumentID)
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = d.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID
+      FROM dbo.tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+     WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
+       AND d.IsDeactivated = 0
+)
+SELECT
+    (SELECT COUNT(*) FROM ScopePkgs)                                                AS PackageCount,
+    (SELECT COUNT(*) FROM PkgDocs)                                                  AS DocCount,
+    ISNULL((SELECT SUM(d3.InterestPayable)
+              FROM PkgDocs pd2
+              INNER JOIN dbo.tblLPPI_Documents d3
+                      ON d3.DocNoAccounting = pd2.DocNoAccounting
+                     AND d3.IsDeactivated   = 0), 0)                                AS TotalInterest,
+    (SELECT COUNT(*)
+       FROM PkgDocs pd3
+       INNER JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pd3.FirstLineDocumentID
+      WHERE r.ReasonCodeID IS NOT NULL)                                             AS ReviewedCount;";
+
+            DataTable dt = ExecuteTable(sql, parms.ToArray());
+            return dt.Rows.Count > 0 ? dt.Rows[0] : null;
+        }
+
+        // -------------------------------------------------------------------
+        // By reason code — every reason code with at least one in-scope
+        // document, plus an "Awaiting" pseudo-row prepended for documents
+        // with no review yet (or review with no reason code).
+        //
+        // Columns returned:
+        //   Code                NVARCHAR(20)   "Awaiting" for the pseudo-row,
+        //                                       otherwise the rc.Code value.
+        //   Description         NVARCHAR(500)
+        //   Outcome             NVARCHAR(20)   NULL for the pseudo-row.
+        //   DisplayOrder        INT            -1 for the pseudo-row so it
+        //                                       sorts above the canonical
+        //                                       RC01..
+        //   DocCount            INT
+        //   Interest            DECIMAL(19,4)
+        //   PctOfTotal          INT            0..100, share of total
+        //                                       interest in scope.
+        //
+        // Inactive codes are included as long as they appear on a review
+        // (RC-NR will surface here when auto-applied at finalise).
+        // -------------------------------------------------------------------
+        public static DataTable GetSummaryByReasonCode(SummaryScope scope)
+        {
+            var parms = new List<OleDbParameter>();
+            string scopeSql = BuildScopePackageSubquery(scope, parms);
+
+            string sql = @"
+WITH ScopePkgs AS (
+    " + scopeSql + @"
+),
+PkgDocs AS (
+    SELECT DISTINCT
+           d.DocNoAccounting,
+           (SELECT MIN(d2.DocumentID)
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = d.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID
+      FROM dbo.tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+     WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
+       AND d.IsDeactivated = 0
+),
+DocFigures AS (
+    SELECT pd.DocNoAccounting,
+           pd.FirstLineDocumentID,
+           (SELECT SUM(d2.InterestPayable)
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = pd.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS DocInterest,
+           r.ReasonCodeID
+      FROM PkgDocs pd
+      LEFT JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pd.FirstLineDocumentID
+),
+Totals AS (
+    SELECT ISNULL(SUM(DocInterest), 0) AS GrandTotal FROM DocFigures
+)
+SELECT
+    CAST('Awaiting' AS NVARCHAR(20))                                AS Code,
+    CAST('No review recorded yet' AS NVARCHAR(500))                 AS Description,
+    CAST(NULL AS NVARCHAR(20))                                      AS Outcome,
+    -1                                                              AS DisplayOrder,
+    COUNT(*)                                                        AS DocCount,
+    ISNULL(SUM(df.DocInterest), 0)                                  AS Interest,
+    CASE WHEN (SELECT GrandTotal FROM Totals) > 0
+         THEN CAST(ROUND(ISNULL(SUM(df.DocInterest), 0) * 100.0
+                         / (SELECT GrandTotal FROM Totals), 0) AS INT)
+         ELSE 0
+    END                                                             AS PctOfTotal
+  FROM DocFigures df
+ WHERE df.ReasonCodeID IS NULL
+HAVING COUNT(*) > 0
+
+UNION ALL
+
+SELECT
+    rc.Code,
+    rc.Description,
+    rc.Outcome,
+    rc.DisplayOrder,
+    COUNT(*)                                                        AS DocCount,
+    ISNULL(SUM(df.DocInterest), 0)                                  AS Interest,
+    CASE WHEN (SELECT GrandTotal FROM Totals) > 0
+         THEN CAST(ROUND(ISNULL(SUM(df.DocInterest), 0) * 100.0
+                         / (SELECT GrandTotal FROM Totals), 0) AS INT)
+         ELSE 0
+    END                                                             AS PctOfTotal
+  FROM DocFigures df
+  INNER JOIN dbo.tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = df.ReasonCodeID
+ GROUP BY rc.Code, rc.Description, rc.Outcome, rc.DisplayOrder
+
+ORDER BY DisplayOrder, Code;";
+
+            return ExecuteTable(sql, parms.ToArray());
+        }
+
+        // -------------------------------------------------------------------
+        // By Capability Manager program — one row per program with at
+        // least one in-scope package.
+        //
+        // Columns:
+        //   Program        NVARCHAR(200)
+        //   PackageCount   INT  — packages for this program in scope
+        //   DocCount       INT
+        //   ReviewedCount  INT
+        //   Interest       DECIMAL(19,4)
+        // -------------------------------------------------------------------
+        public static DataTable GetSummaryByProgram(SummaryScope scope)
+        {
+            var parms = new List<OleDbParameter>();
+            string scopeSql = BuildScopePackageSubquery(scope, parms);
+
+            // PkgDocs carries DocInterest as a plain column so the outer
+            // SUM is over a column rather than over a correlated subquery
+            // (which SQL Server rejects: "aggregate function on an
+            // expression containing an aggregate or a subquery").
+            string sql = @"
+WITH ScopePkgs AS (
+    " + scopeSql + @"
+),
+PkgDocs AS (
+    SELECT DISTINCT
+           cm.Program,
+           p.PackageID,
+           d.DocNoAccounting,
+           (SELECT MIN(d2.DocumentID)
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = d.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID,
+           (SELECT SUM(d3.InterestPayable)
+              FROM dbo.tblLPPI_Documents d3
+             WHERE d3.DocNoAccounting = d.DocNoAccounting
+               AND d3.IsDeactivated   = 0) AS DocInterest
+      FROM dbo.tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+      INNER JOIN dbo.tblLPPI_ReviewPackages p ON p.PackageID = pd.PackageID
+      INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
+     WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
+       AND d.IsDeactivated = 0
+)
+SELECT
+    pd.Program,
+    COUNT(DISTINCT pd.PackageID)                                AS PackageCount,
+    COUNT(*)                                                    AS DocCount,
+    SUM(CASE WHEN r.ReasonCodeID IS NOT NULL THEN 1 ELSE 0 END) AS ReviewedCount,
+    ISNULL(SUM(pd.DocInterest), 0)                              AS Interest
+  FROM PkgDocs pd
+  LEFT JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pd.FirstLineDocumentID
+ GROUP BY pd.Program
+ ORDER BY pd.Program;";
+
+            return ExecuteTable(sql, parms.ToArray());
+        }
+
+        // -------------------------------------------------------------------
+        // By Capability Manager number — the LPPI Charge Cost Centre /
+        // tblLPPI_Documents.CapabilityManager value.
+        //
+        // Some CM numbers cross programs, which is why this is a distinct
+        // cut from GetSummaryByProgram. Rows ordered by Interest DESC
+        // since the operational use is "where is the biggest concentration
+        // of exposure".
+        //
+        // Columns:
+        //   CapabilityManager      NVARCHAR(50)
+        //   CapabilityManagerName  NVARCHAR(200)  (best-effort, picked from
+        //                                          any first-line row)
+        //   DocCount               INT
+        //   Interest               DECIMAL(19,4)
+        // -------------------------------------------------------------------
+        public static DataTable GetSummaryByCm(SummaryScope scope)
+        {
+            var parms = new List<OleDbParameter>();
+            string scopeSql = BuildScopePackageSubquery(scope, parms);
+
+            // PkgDocs carries DocInterest as a plain column so the outer
+            // SUM does not nest an aggregate inside a subquery. The inner
+            // GROUP BY (d.DocNoAccounting + CM) collapses multi-line docs
+            // to one row per (document, CM bucket) before the outer
+            // GROUP BY rolls up to one row per CM.
+            string sql = @"
+WITH ScopePkgs AS (
+    " + scopeSql + @"
+),
+PkgDocs AS (
+    SELECT
+           d.DocNoAccounting,
+           ISNULL(NULLIF(LTRIM(RTRIM(d.CapabilityManager)), ''), N'(blank)') AS CapabilityManager,
+           MAX(d.CapabilityManagerName)                                       AS CapabilityManagerName,
+           (SELECT SUM(d3.InterestPayable)
+              FROM dbo.tblLPPI_Documents d3
+             WHERE d3.DocNoAccounting = d.DocNoAccounting
+               AND d3.IsDeactivated   = 0)                                    AS DocInterest
+      FROM dbo.tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+     WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
+       AND d.IsDeactivated = 0
+     GROUP BY d.DocNoAccounting,
+              ISNULL(NULLIF(LTRIM(RTRIM(d.CapabilityManager)), ''), N'(blank)')
+)
+SELECT
+    pd.CapabilityManager,
+    MAX(pd.CapabilityManagerName) AS CapabilityManagerName,
+    COUNT(*)                      AS DocCount,
+    ISNULL(SUM(pd.DocInterest), 0) AS Interest
+  FROM PkgDocs pd
+ GROUP BY pd.CapabilityManager
+ ORDER BY Interest DESC, pd.CapabilityManager;";
+
+            return ExecuteTable(sql, parms.ToArray());
+        }
+
+        // -------------------------------------------------------------------
+        // By POC — TOP 10 outstanding.
+        //
+        // "Outstanding" = documents in scope whose first-line review has
+        // no reason code yet. POC email comes from the document's
+        // first-line PocEmail (same source the reviewer page uses for POC
+        // scoping).
+        //
+        // Blank / null POC emails are folded into a single '(no POC)' row
+        // so they do not silently disappear; that row is often the
+        // largest one and signals upstream data issues.
+        //
+        // Columns:
+        //   PocEmail   NVARCHAR(200)
+        //   DocCount   INT
+        //   Interest   DECIMAL(19,4)
+        // -------------------------------------------------------------------
+        public static DataTable GetSummaryByPocOutstanding(SummaryScope scope)
+        {
+            var parms = new List<OleDbParameter>();
+            string scopeSql = BuildScopePackageSubquery(scope, parms);
+
+            string sql = @"
+WITH ScopePkgs AS (
+    " + scopeSql + @"
+),
+PkgDocs AS (
+    SELECT DISTINCT
+           d.DocNoAccounting,
+           (SELECT MIN(d2.DocumentID)
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = d.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID
+      FROM dbo.tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+     WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
+       AND d.IsDeactivated = 0
+),
+Outstanding AS (
+    SELECT pd.DocNoAccounting,
+           pd.FirstLineDocumentID,
+           ISNULL(NULLIF(LTRIM(RTRIM(
+               (SELECT TOP 1 d4.PocEmail
+                  FROM dbo.tblLPPI_Documents d4
+                 WHERE d4.DocumentID = pd.FirstLineDocumentID))), ''), N'(no POC)') AS PocEmail,
+           (SELECT SUM(d3.InterestPayable)
+              FROM dbo.tblLPPI_Documents d3
+             WHERE d3.DocNoAccounting = pd.DocNoAccounting
+               AND d3.IsDeactivated   = 0) AS DocInterest
+      FROM PkgDocs pd
+      LEFT JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pd.FirstLineDocumentID
+     WHERE r.ReasonCodeID IS NULL
+)
+SELECT TOP (10)
+    PocEmail,
+    COUNT(*)                  AS DocCount,
+    ISNULL(SUM(DocInterest),0) AS Interest
+  FROM Outstanding
+ GROUP BY PocEmail
+ ORDER BY Interest DESC, DocCount DESC, PocEmail;";
+
+            return ExecuteTable(sql, parms.ToArray());
+        }
+
+        // -------------------------------------------------------------------
+        // Batch list for the scope dropdown.
+        //
+        // Only batches that actually map to at least one (live) document
+        // in a current package — older batches whose docs have all
+        // exported and dropped off are filtered out so the dropdown
+        // doesn't grow unbounded. RowsInserted is included so the dropdown
+        // label can show file size at a glance.
+        //
+        // Columns:
+        //   BatchID       INT
+        //   FileName      NVARCHAR(260)
+        //   LoadedDate    DATETIME2(3)
+        //   DocCount      INT  — live, in-scope-of-any-package docs from
+        //                        this batch
+        // -------------------------------------------------------------------
+        public static DataTable GetSummaryBatchList()
+        {
+            const string sql = @"
+SELECT lb.BatchID,
+       lb.FileName,
+       lb.LoadedDate,
+       (SELECT COUNT(*)
+          FROM dbo.tblLPPI_Documents d
+          INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = d.DocumentID
+         WHERE d.BatchID       = lb.BatchID
+           AND d.IsDeactivated = 0) AS DocCount
+  FROM dbo.tblLPPI_LoadBatches lb
+ ORDER BY lb.LoadedDate DESC;";
+
+            return ExecuteTable(sql);
+        }
+
+        // -------------------------------------------------------------------
+        // Resolve a scope to its concrete PackageID list. Used by
+        // LPPI_Summary_Export.ashx to seed the export's variable-length
+        // IN-clause.
+        // -------------------------------------------------------------------
+        public static List<int> GetSummaryScopePackageIds(SummaryScope scope)
+        {
+            var parms = new List<OleDbParameter>();
+            string scopeSql = BuildScopePackageSubquery(scope, parms);
+
+            DataTable dt = ExecuteTable(scopeSql, parms.ToArray());
+            var ids = new List<int>(dt.Rows.Count);
+            foreach (DataRow r in dt.Rows)
+            {
+                ids.Add(Convert.ToInt32(r[0]));
+            }
+            return ids;
+        }
+
     }
 }

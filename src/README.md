@@ -47,7 +47,9 @@ For functional documentation — page-by-page guides, package lifecycle, configu
     LPPIFileParser.cs       BODS extract parser + commit reconcile
   LPPI/                     Module pages (.aspx + .aspx.cs)
     LPPI_Admin.aspx           Dashboard
+    LPPI_Summary.aspx         Cycle-summary in-flight view (admin)
     LPPI_Help.aspx            In-app admin help
+    LPPI_Load.aspx            Monthly file load
     LPPI_Load.aspx            Monthly file load
     LPPI_Batches.aspx         Load batch history
     LPPI_SendOuts.aspx        Issue / remind / preview
@@ -58,6 +60,7 @@ For functional documentation — page-by-page guides, package lifecycle, configu
     LPPI_AdminUsers.aspx      Admin allow-list
     LPPI_Review.aspx          Token-gated reviewer page (AS Fin + POC)
     LPPI_Review_*.ashx        Reviewer endpoints (Save, Finalise, etc.)
+    LPPI_Summary_Export.ashx  Admin-auth full data export for the Summary page
   css/lppi.css              All LPPI styles + design tokens
   js/lppi.js                Reviewer-page interactions (vanilla JS)
   Database/

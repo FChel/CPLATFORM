@@ -33,17 +33,22 @@ namespace CPlatform.LPPI
 
         /// <summary>
         /// Render the standard LPPI page header. Pass the active nav key:
-        /// "dashboard","help","load","batches","sendouts","cm","reasons",
-        /// "export","deactivated","adminusers".
+        /// "dashboard","summary","help","load","batches","sendouts","cm",
+        /// "reasons","deactivated","export","adminusers".
         /// </summary>
         public string RenderHeader(string active)
         {
+            // "summary" sits between dashboard and help — it is read-only,
+            // executive-facing, and conceptually adjacent to the dashboard
+            // (operational counterpart to the exec at-a-glance view).
+            //
             // "deactivated" sits between "reasons" and "export" — it is a
             // by-product of the reason-code workflow (RC-RL) and a
             // pre-export watch-list, so the nav order reflects that flow:
             //   reasons -> deactivated -> export
             var nav = new[] {
                 new { Key="dashboard",   Label="Dashboard",            Url="LPPI_Admin.aspx" },
+                new { Key="summary",     Label="Summary",              Url="LPPI_Summary.aspx" },
                 new { Key="help",        Label="Help",                 Url="LPPI_Help.aspx" },
                 new { Key="load",        Label="Load file",            Url="LPPI_Load.aspx" },
                 new { Key="batches",     Label="Batches",              Url="LPPI_Batches.aspx" },
