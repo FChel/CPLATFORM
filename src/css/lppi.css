@@ -1458,24 +1458,10 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 .review-shell .instr-pill-pay   { background: var(--ok-bg);  color: var(--ok); }
 .review-shell .instr-pill-nopay { background: var(--err-bg); color: var(--err); }
 
-/* ---------- New column-width hints ----------
-   The main reasons-entry table now has a Capability Manager column where
-   Profit Centre used to be; CM number is short (8-digit) so the column can
-   be tighter than vendor/WBS. The expand-panel detail also gains DM Program
-   and Capability Manager columns. */
-
-.review-shell .tbl-review .col-cm   { width: 110px; }
-
 /* Expand panel detail table — make CM/DM number columns easy to scan. */
 .review-shell .tbl-expand-detail .col-dm,
 .review-shell .tbl-expand-detail .col-cm     { width: 100px; }
 .review-shell .tbl-expand-detail .col-dmprog { width: 140px; }
-
-/* All Lines (Tab 2) — the new DM (number) and CM columns. */
-.review-shell .tbl-detail .col-dm,
-.review-shell .tbl-detail .col-cm     { white-space: nowrap; }
-.review-shell .tbl-detail .col-dmprog { white-space: normal; }
-
 
 /* ---------- Instructions pane ----------
    Full-width container that mirrors .help-grid on LPPI_Help.aspx: a 220px
@@ -1910,14 +1896,6 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 .review-shell .instr-pill-pay   { background: var(--ok-bg);  color: var(--ok); }
 .review-shell .instr-pill-nopay { background: var(--err-bg); color: var(--err); }
 
-/* ---------- New column-width hints ----------
-   The main reasons-entry table now has a Capability Manager column where
-   Profit Centre used to be; CM number is short (8-digit) so the column can
-   be tighter than vendor/WBS. The expand-panel detail also gains DM Program
-   and Capability Manager columns. */
-
-.review-shell .tbl-review .col-cm   { width: 110px; }
-
 /* Expand panel detail table — make CM/DM number columns easy to scan. */
 .review-shell .tbl-expand-detail .col-dm,
 .review-shell .tbl-expand-detail .col-cm     { width: 100px; }
@@ -2085,13 +2063,11 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 .review-shell .instr-pill-pay   { background: var(--ok-bg);  color: var(--ok); }
 .review-shell .instr-pill-nopay { background: var(--err-bg); color: var(--err); }
 
-/* ---------- New column-width hints ----------
-   The main reasons-entry table now has a Capability Manager column where
-   Profit Centre used to be; CM number is short (8-digit) so the column can
-   be tighter than vendor/WBS. The expand-panel detail also gains DM Program
-   and Capability Manager columns. */
+/* Column-width hints */
 
 .review-shell .tbl-review .col-cm   { width: 110px; }
+.review-shell .tbl-review .col-vim  { width: 95px; }
+.review-shell .tbl-detail .col-vim  { width: 95px; }
 
 /* Expand panel detail table — make CM/DM number columns easy to scan. */
 .review-shell .tbl-expand-detail .col-dm,
