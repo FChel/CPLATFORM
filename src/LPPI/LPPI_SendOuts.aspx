@@ -138,13 +138,16 @@
                                 Text="Send / remind selected"
                                 OnClick="btnSend_Click" />
 
-                    <%-- Mark as sent — visible only in non-production. Drives the
-                         lifecycle without dispatching email so end-to-end flow
-                         can be tested. Mutually exclusive with the real send by
+                    <%-- Visible only in non-production. Drives the lifecycle
+                         without dispatching email so end-to-end flow can be
+                         tested. Branches by current status: NotSent gets a
+                         simulated initial send (status transitions to Sent),
+                         Sent / InReview gets a simulated reminder (no status
+                         change). Mutually exclusive with the real send by
                          construction (gated on the same ProductionMode flag). --%>
                     <asp:Button ID="btnMarkSent" runat="server"
                                 CssClass="btn btn-secondary"
-                                Text="Mark as sent (test)"
+                                Text="Mark as sent / remind (test)"
                                 Visible="false"
                                 OnClick="btnMarkSent_Click" />
                 </div>

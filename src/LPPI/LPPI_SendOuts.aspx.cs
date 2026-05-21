@@ -42,12 +42,14 @@ namespace CPlatform.LPPI
     ///   - Exported / Cancelled are out of scope and only surface on the
     ///     dashboard / batches page.
     ///
-    /// In test mode (LPPIEmail.ProductionMode = false), a "Mark as sent"
-    /// button is visible. It performs the same status transition as a real
-    /// initial send (NotSent -> Sent, stamps SentDate) plus per-audience
-    /// audit rows (one for AS Fin, one per POC) without dispatching any
-    /// email. The two buttons are mutually exclusive: in PROD only Send is
-    /// enabled, in test mode only Mark as sent is. The single
+    /// In test mode (LPPIEmail.ProductionMode = false), a "Mark as sent /
+    /// remind" button is visible. It branches by current package status:
+    /// NotSent packages get the same treatment as a real initial send
+    /// (NotSent -> Sent, due date stamped) and Sent / InReview packages
+    /// get a simulated reminder (no status change). Either way, per-
+    /// audience audit rows are written and no SMTP is touched. The two
+    /// buttons are mutually exclusive: in PROD only Send is enabled, in
+    /// test mode only Mark as sent / remind is. The single
     /// LPPIEmail.ProductionMode flag drives both.
     /// </summary>
     public partial class LPPI_SendOuts : LPPIBasePage
@@ -85,9 +87,8 @@ namespace CPlatform.LPPI
             phUatBanner.Controls.Add(new LiteralControl(
                 "<div class=\"alert alert-warn\">" +
                 "<div><strong>Test mode.</strong> Real email sending is disabled. " +
-                "Use <em>Preview AS Fin</em> or <em>Preview POC</em> to see the formatted email and " +
-                "<em>Mark as sent (test)</em> to simulate email sending " +
-                "and set package(s) status to [Sent]." +
+                "Use <em>Preview AS Fin</em> or <em>Preview POC</em> to see the formatted email. " +
+                "<em>Mark as sent / remind (test)</em> simulates the dispatch so the end-to-end flow can be tested." +
                 "</div>" +
                 "</div>"));
         }
@@ -601,6 +602,24 @@ namespace CPlatform.LPPI
         // Mark as sent (test mode only) — drive the lifecycle without sending email
         // -------------------------------------------------------------------
 
+        // -------------------------------------------------------------------
+        // Mark as sent (test mode only) — drive the lifecycle without sending email
+        //
+        // Branches on the current package status:
+        //   NotSent           -> MarkAsSent     (simulates initial send;
+        //                                        transitions NotSent -> Sent,
+        //                                        stamps SentDate, uses the
+        //                                        due date input)
+        //   Sent / InReview   -> MarkAsReminded (simulates reminder;
+        //                                        no status change, no
+        //                                        due date change)
+        //   anything else     -> skipped with a clear per-package message
+        //
+        // Per-package outcomes are folded through AccumulateResult so the
+        // summary line and per-package note list are consistent with the
+        // real-send path's output.
+        // -------------------------------------------------------------------
+
         protected void btnMarkSent_Click(object sender, EventArgs e)
         {
             // Defence in depth — the button is hidden in PROD via Visible,
@@ -625,67 +644,61 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            int markedOk = 0, skipped = 0, failed = 0;
+            int initialOk = 0, reminderOk = 0, failed = 0;
             int totalPocsDispatched = 0, totalPocsSkipped = 0, totalPocsFailed = 0;
             int totalControlDispatched = 0, totalControlFailed = 0;
             var perPackageNotes = new StringBuilder();
 
             foreach (int pid in selectedPackageIds)
             {
-                // Mark as sent only operates on NotSent packages — anything
-                // else is skipped with a clear message rather than failing.
                 object statusObj = LPPIHelper.ExecuteScalar(
                     "SELECT Status FROM tblLPPI_ReviewPackages WHERE PackageID = @P",
                     LPPIHelper.P("@P", pid));
                 string status = statusObj == null || statusObj == DBNull.Value
                               ? "" : Convert.ToString(statusObj);
 
-                if (!string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase))
                 {
-                    skipped++;
-                    perPackageNotes.Append("<li>Package #").Append(pid)
-                                    .Append(": skipped — already ").Append(LPPIHelper.Enc(status)).Append(".</li>");
-                    continue;
+                    // Initial path. Due date input is the operator's last
+                    // chance to set the package due date before the status
+                    // transitions to Sent.
+                    LPPIHelper.ExecuteNonQuery(
+                        "UPDATE tblLPPI_ReviewPackages SET DueDate = @D WHERE PackageID = @P AND Status = 'NotSent'",
+                        LPPIHelper.P("@D", due),
+                        LPPIHelper.P("@P", pid));
+
+                    var res = LPPIEmail.MarkAsSent(pid);
+                    AccumulateResult(res, perPackageNotes, pid, "initial",
+                        ref initialOk, ref failed,
+                        ref totalPocsDispatched, ref totalPocsSkipped, ref totalPocsFailed,
+                        ref totalControlDispatched, ref totalControlFailed);
                 }
-
-                // Apply the chosen due date before marking — same as the real
-                // send. Mark-as-sent is the operator's last chance to set the
-                // due date in test mode.
-                LPPIHelper.ExecuteNonQuery(
-                    "UPDATE tblLPPI_ReviewPackages SET DueDate = @D WHERE PackageID = @P AND Status = 'NotSent'",
-                    LPPIHelper.P("@D", due),
-                    LPPIHelper.P("@P", pid));
-
-                var res = LPPIEmail.MarkAsSent(pid);
-
-                totalPocsDispatched    += res.PocsDispatched;
-                totalPocsSkipped       += res.PocsSkipped;
-                totalPocsFailed        += res.PocsFailed;
-                totalControlDispatched += res.ControlDispatched;
-                totalControlFailed     += res.ControlFailed;
-
-                if (res.Success)
+                else if (string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase))
                 {
-                    markedOk++;
-                    if (!string.IsNullOrEmpty(res.WarningMessage))
-                    {
-                        perPackageNotes.Append("<li>Package #").Append(pid).Append(": ")
-                                        .Append(LPPIHelper.Enc(res.WarningMessage)).Append("</li>");
-                    }
+                    // Reminder path. Due date input is ignored — reminders
+                    // never change the package due date.
+                    var res = LPPIEmail.MarkAsReminded(pid);
+                    AccumulateResult(res, perPackageNotes, pid, "reminder",
+                        ref reminderOk, ref failed,
+                        ref totalPocsDispatched, ref totalPocsSkipped, ref totalPocsFailed,
+                        ref totalControlDispatched, ref totalControlFailed);
                 }
                 else
                 {
                     failed++;
-                    perPackageNotes.Append("<li>Package #").Append(pid).Append(": ")
-                                    .Append(LPPIHelper.Enc(res.ErrorMessage ?? "(unknown error)"))
-                                    .Append("</li>");
+                    perPackageNotes.Append("<li>Package #").Append(pid)
+                                    .Append(": skipped — status is ").Append(LPPIHelper.Enc(status))
+                                    .Append(", which is not eligible for send/remind.</li>");
                 }
             }
 
-            string kind = (failed == 0 && skipped == 0) ? "ok" : "warn";
+            string kind = (failed == 0) ? "ok" : "warn";
             var msg = new StringBuilder();
-            msg.Append(markedOk).Append(" package").Append(markedOk == 1 ? "" : "s")
-               .Append(" marked as sent (test mode — no email dispatched).");
+            msg.Append(initialOk).Append(" initial").Append(initialOk == 1 ? "" : "s")
+               .Append(" marked as sent, ")
+               .Append(reminderOk).Append(" reminder").Append(reminderOk == 1 ? "" : "s")
+               .Append(" marked as reminded (test mode — no email dispatched).");
             if (totalPocsDispatched + totalPocsSkipped + totalPocsFailed > 0)
             {
                 msg.Append(" Simulated POC fan-out: ")
@@ -701,10 +714,8 @@ namespace CPlatform.LPPI
                 if (totalControlFailed > 0) msg.Append(", ").Append(totalControlFailed).Append(" failed");
                 msg.Append(".");
             }
-            if (skipped > 0)
-                msg.Append(" ").Append(skipped).Append(" not NotSent.");
             if (failed > 0)
-                msg.Append(" ").Append(failed).Append(" failure").Append(failed == 1 ? "" : "s").Append(".");
+                msg.Append(" ").Append(failed).Append(" package failure").Append(failed == 1 ? "" : "s").Append(".");
             if (perPackageNotes.Length > 0)
                 msg.Append("<ul>").Append(perPackageNotes).Append("</ul>");
 
