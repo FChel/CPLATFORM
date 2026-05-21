@@ -447,6 +447,148 @@ UPDATE dbo.tblLPPI_ReviewPackages
             return result;
         }
 
+        /// <summary>
+        /// UAT-only — simulate a reminder send for a Sent or InReview package
+        /// without dispatching any email. Mirrors MarkAsSent for the reminder
+        /// path: writes per-audience audit rows so the operator can verify
+        /// the end-to-end reminder fan-out, but no SMTP is touched and no
+        /// status transition happens (reminders never change status).
+        ///
+        /// Available only when ProductionMode is false; refuses to run in
+        /// PROD even on direct postback.
+        ///
+        /// Recipient validation mirrors the real reminder: refuses when the
+        /// CM has no email configured. Per-POC skip rule also matches —
+        /// POCs whose documents are all reviewed are skipped, since a
+        /// reminder for them would be noise.
+        ///
+        /// No control notice is dispatched. Real reminders do not re-notify
+        /// the contract manager either; that audience hears about initial
+        /// sends only.
+        ///
+        /// Audit rows use EmailType = "Reminder-MarkedSent" (AS Fin) and
+        /// "Reminder-MarkedSent-Poc" (per POC). LastReminderDate is stamped
+        /// on each PackagePocs row that was simulated.
+        /// </summary>
+        public static SendResult MarkAsReminded(int packageId)
+        {
+            var result = new SendResult();
+
+            // Defence in depth — the UI button is hidden in PROD but this
+            // gate protects against any direct postback.
+            if (ProductionMode)
+            {
+                result.Success = false;
+                result.ErrorMessage = "Mark as sent is not available in production. Use Send to dispatch real emails.";
+                return result;
+            }
+
+            DataRow pkg = LoadPackageRow(packageId);
+            if (pkg == null) { result.Success = false; result.ErrorMessage = "Package not found."; return result; }
+
+            string status = Convert.ToString(pkg["Status"]);
+
+            // Reminders are valid on Sent and InReview only — matches the
+            // real reminder status guard.
+            bool reminderable =
+                string.Equals(status, LPPIHelper.StatusSent,     StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(status, LPPIHelper.StatusInReview, StringComparison.OrdinalIgnoreCase);
+            if (!reminderable)
+            {
+                result.Success = false;
+                result.ErrorMessage = "Mark as reminded is only valid for Sent or InReview packages (current status: " + status + ").";
+                return result;
+            }
+
+            int      cmId        = Convert.ToInt32(pkg["CmID"]);
+            string   program     = Convert.ToString(pkg["Program"]);
+            DateTime dueDate     = Convert.ToDateTime(pkg["DueDate"]);
+            int      docCount    = Convert.ToInt32(pkg["DocCount"]);
+            int      reviewedAll = Convert.ToInt32(pkg["ReviewedCount"]);
+            string   asFinToken  = Convert.ToString(pkg["Token"]);
+
+            // Same recipient gate as the real send.
+            var cmEmail = LPPIHelper.GetCmEmail(cmId);
+            if (cmEmail == null || !cmEmail.IsConfigured)
+            {
+                result.Success = false;
+                result.ErrorMessage = "No email configured for this Capability Manager group. Add the AS Fin email and display name on the Capability Managers page first.";
+                return result;
+            }
+
+            // 1) AS Fin audit row — reminder payload.
+            string asFinPeriod = BuildPeriodLabel(packageId, null, dueDate);
+            string subject = BuildSubjectAsFin("Reminder", program, dueDate);
+            string body    = BuildBodyAsFin("Reminder", program, dueDate, asFinToken, docCount, reviewedAll, asFinPeriod);
+            string asFinRecipientsLogged = FormatRecipientsForLog(cmEmail.Email, SupportMailboxTo);
+            LogSend(packageId,
+                    asFinRecipientsLogged,
+                    "Reminder-MarkedSent",
+                    AudAsFin,
+                    null,
+                    subject,
+                    "(no body — marked as reminded in test mode, no email dispatched)",
+                    true,
+                    "MARK-AS-REMINDED (test mode) — no email dispatched. ProductionMode=false.");
+
+            // 2) Per-POC audit rows — simulate the fan-out the real send would do.
+            var pocs = LoadPackagePocs(packageId);
+            foreach (DataRow pr in pocs.Rows)
+            {
+                string pocAddr      = Convert.ToString(pr["PocEmail"]);
+                int    packagePocId = Convert.ToInt32(pr["PackagePocID"]);
+                string pocToken     = Convert.ToString(pr["Token"]);
+
+                string verr;
+                string cleaned = LPPIHelper.ValidateDefenceEmail(pocAddr, out verr);
+                if (cleaned == null)
+                {
+                    LogSend(packageId, pocAddr ?? "", "Reminder-MarkedSent-Poc", AudPoc, pocAddr,
+                        "(skipped — invalid POC address)", "(no body)", false,
+                        "MARK-AS-REMINDED (test mode) — invalid POC email: " + verr);
+                    result.PocsSkipped++;
+                    continue;
+                }
+
+                int pocTotal, pocReviewed;
+                ComputePocCounts(packageId, cleaned, out pocTotal, out pocReviewed);
+
+                // Mirror the real reminder skip rule — POCs with nothing
+                // outstanding are not pestered.
+                if (pocTotal > 0 && pocReviewed >= pocTotal)
+                {
+                    LogSend(packageId, cleaned, "Reminder-MarkedSent-Poc", AudPoc, cleaned,
+                        "(reminder skipped — all POC docs reviewed)", "(no body)", true,
+                        "MARK-AS-REMINDED (test mode) — skipped. All POC documents reviewed.");
+                    result.PocsSkipped++;
+                    continue;
+                }
+
+                string pocPeriod  = BuildPeriodLabel(packageId, cleaned, dueDate);
+                string pocSubject = BuildSubjectPoc("Reminder", program, dueDate);
+                string pocBody    = BuildBodyPoc("Reminder", program, dueDate, pocToken, cleaned, pocTotal, pocReviewed, pocPeriod);
+
+                LogSend(packageId,
+                        FormatRecipientsForLog(cleaned, SupportMailboxTo),
+                        "Reminder-MarkedSent-Poc",
+                        AudPoc,
+                        cleaned,
+                        pocSubject,
+                        "(no body — marked as reminded in test mode, no email dispatched)",
+                        true,
+                        "MARK-AS-REMINDED (test mode) — no email dispatched. ProductionMode=false.");
+                StampPocLastReminder(packagePocId);
+                result.PocsDispatched++;
+            }
+
+            // No control notice — reminders do not re-notify the contract manager.
+            // No status transition — reminders never change status.
+
+            result.Success = true;
+            result.WarningMessage = BuildPocWarning(result);
+            return result;
+        }
+
         // -------------------------------------------------------------------
         // Send pipeline
         // -------------------------------------------------------------------
