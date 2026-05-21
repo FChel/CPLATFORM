@@ -151,10 +151,6 @@ namespace CPlatform.LPPI
         {
             get { return LPPIHelper.Setting("LPPI.SupportMailboxTo", "LPPI.report@resources.defence.gov.au"); }
         }
-        private static string SupportMailboxCc
-        {
-            get { return LPPIHelper.Setting("LPPI.SupportMailboxCc", "dfg.dfspi@defence.gov.au"); }
-        }
 
         /// <summary>
         /// Returns true when LPPI.ProductionMode = "true" in appSettings.
@@ -1039,9 +1035,7 @@ UPDATE dbo.tblLPPI_ReviewPackages
         /// </summary>
         private static void AppendSupportLine(StringBuilder sb)
         {
-            string href = string.Format("mailto:{0}?cc={1}",
-                HttpUtility.HtmlAttributeEncode(SupportMailboxTo),
-                HttpUtility.HtmlAttributeEncode(SupportMailboxCc));
+            string href = "mailto:" + HttpUtility.HtmlAttributeEncode(SupportMailboxTo);
             sb.Append("<p style=\"").Append(FontInline).Append("\">")
               .Append("If you have any questions or require assistance with the review, please contact ")
               .Append("<a href=\"").Append(href).Append("\" style=\"color:").Append(OrangeHex).Append(";").Append(FontInline).Append("\">")

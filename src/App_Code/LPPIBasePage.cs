@@ -55,14 +55,11 @@ namespace CPlatform.LPPI
                 new { Key="adminusers",  Label="Admin users",          Url="LPPI_AdminUsers.aspx" }
             };
 
-            // Support mailto — To: LPPI inbox, CC: DFSPI
+            // Support mailto — To: LPPI inbox
             string supportTo = LPPIHelper.Setting("LPPI.SupportMailboxTo", "");
-            string supportCc = LPPIHelper.Setting("LPPI.SupportMailboxCc", "");
             var supportHref = new StringBuilder("mailto:");
             supportHref.Append(HttpUtility.HtmlAttributeEncode(supportTo));
-            supportHref.Append("?cc=");
-            supportHref.Append(HttpUtility.HtmlAttributeEncode(supportCc));
-            supportHref.Append("&subject=");
+            supportHref.Append("?subject=");
             supportHref.Append(HttpUtility.HtmlAttributeEncode("LPPI Review \u2014 Feedback & Support"));
 
             var sb = new StringBuilder();
