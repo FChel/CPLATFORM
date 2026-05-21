@@ -1322,14 +1322,9 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 .review-shell .tbl-detail .col-gl       { width: 74px; }
 .review-shell .tbl-detail .col-pc       { width: 95px; }
 .review-shell .tbl-detail .col-tax      { width: 56px; }
-.review-shell .tbl-detail .col-dm       { width: 130px; }
+.review-shell .tbl-detail .col-dm       { width: 85px; }
+.review-shell .tbl-detail .col-cm       { width: 85px; }
 .review-shell .tbl-detail .col-poc      { width: 150px; }
-.review-shell .tbl-detail .col-date     { width: 84px; }
-.review-shell .tbl-detail .col-days     { width: 46px; }
-.review-shell .tbl-detail .col-int      { width: 84px; }
-.review-shell .tbl-detail .col-reason   { width: 160px; }
-.review-shell .tbl-detail .col-comments { width: auto; min-width: 140px; }
-.review-shell .tbl-detail .col-obj      { width: 120px; }
 
 /* ---------- Reviewer table scroll wrapper ---------- */
 .review-table-wrap {
@@ -1901,11 +1896,6 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 .review-shell .tbl-expand-detail .col-cm     { width: 100px; }
 .review-shell .tbl-expand-detail .col-dmprog { width: 140px; }
 
-/* All Lines (Tab 2) — the new DM (number) and CM columns. */
-.review-shell .tbl-detail .col-dm,
-.review-shell .tbl-detail .col-cm     { white-space: nowrap; }
-.review-shell .tbl-detail .col-dmprog { white-space: normal; }
-
 /* Cursor hint on the column-header tooltip cells, so users discover the
    tooltip more readily on hover. Tiny detail but improves discoverability. */
 .review-shell .tbl-review th[title],
@@ -2077,7 +2067,8 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 /* All Lines (Tab 2) — the new DM (number) and CM columns. */
 .review-shell .tbl-detail .col-dm,
 .review-shell .tbl-detail .col-cm     { white-space: nowrap; }
-.review-shell .tbl-detail .col-dmprog { white-space: normal; }
+.review-shell .tbl-detail thead th.col-dm,
+.review-shell .tbl-detail thead th.col-cm { white-space: normal; line-height: 1.2; }
 
 /* Cursor hint on the column-header tooltip cells, so users discover the
    tooltip more readily on hover. Tiny detail but improves discoverability. */
