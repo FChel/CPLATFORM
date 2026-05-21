@@ -337,7 +337,7 @@
     /* -------------------------------------------------------------------------
        buildDetailPanel — renders the inline expand panel for a document.
 
-       Column order (May 2026):
+       Column order:
          Line | GL Account | WBS | Capability Manager | Delivery Manager |
          DM Program | POC | Days Late | Interest
 
@@ -347,8 +347,9 @@
        "LPPI Charge Cost Centre: <number> (<name>)" — so the tooltip is
        authored once in the .aspx markup and inherited everywhere.
 
-       Profit Centre and Tax Code are intentionally NOT shown here. PC is
-       legacy in the new ERP world; Tax Code is informational only.
+       DM Program is sourced from the detail-row's data-dm attribute (not
+       a column cell), because DM Program is no longer rendered as its own
+       column on the All Lines tab.
        ------------------------------------------------------------------------- */
     function buildDetailPanel(rows) {
         var html = '<table class="tbl tbl-expand-detail"><thead><tr>'
@@ -385,7 +386,7 @@
                 + '<td title="' + attr(r.getAttribute('data-wbs') || '') + '">' + esc(cell('col-wbs')) + '</td>'
                 + '<td title="' + attr(cellTitle('col-cm')) + '">' + esc(cell('col-cm')) + '</td>'
                 + '<td title="' + attr(cellTitle('col-dm')) + '">' + esc(cell('col-dm')) + '</td>'
-                + '<td>' + esc(cell('col-dmprog')) + '</td>'
+                + '<td>' + esc(r.getAttribute('data-dm') || '') + '</td>'
                 + '<td>' + esc(cell('col-poc')) + '</td>'
                 + '<td class="num">' + esc(cell('col-days')) + '</td>'
                 + '<td class="num">' + esc(cell('col-int')) + '</td>'
