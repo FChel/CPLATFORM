@@ -8,8 +8,15 @@
  *   Non-admin       = LPPI_Review.aspx only (via token link received by email).
  *
  * This page manages the tblLPPI_AdminUsers table.
- * Deactivation (IsActive = 0) is used in preference to hard delete so that
- * the audit trail is preserved.
+ *
+ * Nov 2026 — DisplayName and Email columns dropped from the schema. The
+ * only thing the access gate needs is a Windows username; the rest was
+ * never used anywhere else in the codebase. Deletion is now a hard
+ * delete (the table has no FKs and audit is via CreatedBy on other
+ * tables, not the AdminUserID), so the previous "deactivation is
+ * preferred over delete for audit trail" comment no longer applies —
+ * deactivation is still available as a softer option, but Delete is
+ * the wired button on the row.
  */
 
 using System;
@@ -36,7 +43,7 @@ namespace CPlatform.LPPI
         // -------------------------------------------------------------------
         // Bind user list
         // Columns consumed by rptUsers Eval() bindings:
-        //   AdminUserID, UserId, DisplayName, Email, IsActive, CreatedDate
+        //   AdminUserID, UserId, IsActive, CreatedDate
         // -------------------------------------------------------------------
 
         private void BindUsers()
@@ -44,8 +51,6 @@ namespace CPlatform.LPPI
             const string sql = @"
                 SELECT AdminUserID,
                        UserId,
-                       ISNULL(DisplayName, '') AS DisplayName,
-                       ISNULL(Email, '')       AS Email,
                        IsActive,
                        CreatedDate
                 FROM dbo.tblLPPI_AdminUsers
@@ -59,8 +64,6 @@ namespace CPlatform.LPPI
         // Add user(s)
         // Accepts comma-separated usernames. Loose validation — reject
         // empty/whitespace only; do not require DOMAIN\ prefix.
-        // DisplayName and Email are applied only when a single username is
-        // supplied (ambiguous which to apply when multiple are given).
         // -------------------------------------------------------------------
 
         protected void btnAdd_Click(object sender, EventArgs e)
@@ -86,9 +89,7 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            string displayName = parts.Count == 1 ? (txtAddDisplayName.Text ?? "").Trim() : null;
-            string email       = parts.Count == 1 ? (txtAddEmail.Text ?? "").Trim() : null;
-            string createdBy   = LPPIHelper.CurrentUserDisplayName();
+            string createdBy = LPPIHelper.CurrentUserDisplayName();
 
             int added   = 0;
             int skipped = 0;
@@ -108,11 +109,9 @@ namespace CPlatform.LPPI
 
                 LPPIHelper.ExecuteNonQuery(@"
                     INSERT INTO dbo.tblLPPI_AdminUsers
-                        (UserId, DisplayName, Email, IsActive, CreatedBy)
-                    VALUES (@u, @dn, @em, 1, @cb)",
+                        (UserId, IsActive, CreatedBy)
+                    VALUES (@u, 1, @cb)",
                     LPPIHelper.P("@u",  userId),
-                    LPPIHelper.P("@dn", string.IsNullOrEmpty(displayName) ? (object)DBNull.Value : displayName),
-                    LPPIHelper.P("@em", string.IsNullOrEmpty(email)       ? (object)DBNull.Value : email),
                     LPPIHelper.P("@cb", createdBy));
 
                 added++;
@@ -125,15 +124,13 @@ namespace CPlatform.LPPI
 
             ShowMessage(msg.ToString().Trim(), added > 0 ? "ok" : "warn");
 
-            txtAddUserIds.Text    = "";
-            txtAddDisplayName.Text = "";
-            txtAddEmail.Text       = "";
+            txtAddUserIds.Text = "";
 
             BindUsers();
         }
 
         // -------------------------------------------------------------------
-        // rptUsers — ItemCommand (Edit / Toggle)
+        // rptUsers — ItemCommand (Edit / Toggle / Delete)
         // -------------------------------------------------------------------
 
         protected void rptUsers_ItemCommand(object source, RepeaterCommandEventArgs e)
@@ -144,18 +141,16 @@ namespace CPlatform.LPPI
             if (e.CommandName == "Edit")
             {
                 DataTable dt = LPPIHelper.ExecuteTable(
-                    "SELECT AdminUserID, UserId, ISNULL(DisplayName,'') AS DisplayName, ISNULL(Email,'') AS Email, IsActive FROM dbo.tblLPPI_AdminUsers WHERE AdminUserID = @id",
+                    "SELECT AdminUserID, UserId, IsActive FROM dbo.tblLPPI_AdminUsers WHERE AdminUserID = @id",
                     LPPIHelper.P("@id", id));
 
                 if (dt.Rows.Count != 1) return;
 
                 DataRow r = dt.Rows[0];
-                hfEditId.Value           = id.ToString();
-                litEditUserId.Text       = LPPIHelper.Enc(r["UserId"]);
-                txtEditDisplayName.Text  = Convert.ToString(r["DisplayName"]);
-                txtEditEmail.Text        = Convert.ToString(r["Email"]);
-                chkEditActive.Checked    = Convert.ToBoolean(r["IsActive"]);
-                pnlEdit.Visible          = true;
+                hfEditId.Value        = id.ToString();
+                litEditUserId.Text    = LPPIHelper.Enc(r["UserId"]);
+                chkEditActive.Checked = Convert.ToBoolean(r["IsActive"]);
+                pnlEdit.Visible       = true;
 
                 BindUsers();
             }
@@ -172,6 +167,37 @@ namespace CPlatform.LPPI
                 // current user (self-deactivation, edge case).
                 if (HttpContext.Current != null)
                     HttpContext.Current.Items.Remove("LPPI_IsAdmin");
+
+                BindUsers();
+            }
+            else if (e.CommandName == "Delete")
+            {
+                // Hard delete. Safe because:
+                //   - No FK references AdminUserID anywhere in the schema.
+                //   - "Added by" / "Created by" audit on other tables
+                //     stores the username as a string, not a FK.
+                //   - The client-side confirm() guards against accidents;
+                //     the action is irreversible from the UI.
+                int rows = LPPIHelper.ExecuteNonQuery(
+                    "DELETE FROM dbo.tblLPPI_AdminUsers WHERE AdminUserID = @id",
+                    LPPIHelper.P("@id", id));
+
+                // Clear cached access result — the deleted user may be the
+                // current user (self-deletion, edge case).
+                if (HttpContext.Current != null)
+                    HttpContext.Current.Items.Remove("LPPI_IsAdmin");
+
+                // If the edit panel was open on this user, close it.
+                int editingId;
+                if (pnlEdit.Visible
+                    && int.TryParse(hfEditId.Value, out editingId)
+                    && editingId == id)
+                {
+                    CloseEditPanel();
+                }
+
+                ShowMessage(rows == 1 ? "User deleted." : "User not found (already removed).",
+                            rows == 1 ? "ok" : "warn");
 
                 BindUsers();
             }
@@ -216,19 +242,13 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            string displayName = (txtEditDisplayName.Text ?? "").Trim();
-            string email       = (txtEditEmail.Text ?? "").Trim();
-            bool   isActive    = chkEditActive.Checked;
+            bool isActive = chkEditActive.Checked;
 
             LPPIHelper.ExecuteNonQuery(@"
                 UPDATE dbo.tblLPPI_AdminUsers
-                SET DisplayName  = @dn,
-                    Email        = @em,
-                    IsActive     = @act,
+                SET IsActive     = @act,
                     ModifiedDate = SYSDATETIME()
                 WHERE AdminUserID = @id",
-                LPPIHelper.P("@dn",  string.IsNullOrEmpty(displayName) ? (object)DBNull.Value : displayName),
-                LPPIHelper.P("@em",  string.IsNullOrEmpty(email)       ? (object)DBNull.Value : email),
                 LPPIHelper.P("@act", isActive ? 1 : 0),
                 LPPIHelper.P("@id",  id));
 
@@ -249,12 +269,10 @@ namespace CPlatform.LPPI
 
         private void CloseEditPanel()
         {
-            pnlEdit.Visible         = false;
-            hfEditId.Value          = "";
-            litEditUserId.Text      = "";
-            txtEditDisplayName.Text = "";
-            txtEditEmail.Text       = "";
-            chkEditActive.Checked   = true;
+            pnlEdit.Visible       = false;
+            hfEditId.Value        = "";
+            litEditUserId.Text    = "";
+            chkEditActive.Checked = true;
         }
 
         // -------------------------------------------------------------------

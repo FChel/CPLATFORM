@@ -27,12 +27,9 @@ namespace CPlatform.LPPI
 
             litEnv.Text = LPPIHelper.Enc(LPPIHelper.Environment);
 
-            // Build the contact link using the support mailbox app settings.
-            // Supports both the older single-key pattern and the newer
-            // SupportMailboxTo / SupportMailboxCc split introduced in Prompt D.
-            string to = LPPIHelper.Setting("LPPI.SupportMailboxTo",
-                            LPPIHelper.Setting("LPPI.SupportMailbox", ""));
-            string cc = LPPIHelper.Setting("LPPI.SupportMailboxCc", "");
+            // Build the contact link using the support mailbox app setting.
+            // No CC — the LPPI mailbox is the single support landing point.
+            string to = LPPIHelper.Setting("LPPI.SupportMailboxTo", "");
 
             if (!string.IsNullOrEmpty(to))
             {
@@ -40,11 +37,6 @@ namespace CPlatform.LPPI
                 sb.Append("<p>");
                 sb.Append("<a href=\"mailto:");
                 sb.Append(HttpUtility.HtmlAttributeEncode(to));
-                if (!string.IsNullOrEmpty(cc))
-                {
-                    sb.Append("?cc=");
-                    sb.Append(HttpUtility.HtmlAttributeEncode(cc));
-                }
                 sb.Append("\" class=\"btn btn-primary\" style=\"display:inline-block;\">");
                 sb.Append("Email the LPPI administrator");
                 sb.Append("</a>");

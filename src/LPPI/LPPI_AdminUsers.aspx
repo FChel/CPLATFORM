@@ -9,19 +9,9 @@
     <title>LPPI Review — Admin users</title>
     <link rel="stylesheet" href="../css/lppi.css" />
     <style>
-        /* Row highlight for the user currently being edited */
-        .tbl tr.is-editing > td {
-            background: #eef4ff;
-            box-shadow: inset 3px 0 0 #3b82f6;
-        }
-        .edit-flag {
-            margin-left: 0.5em;
-            font-size: 0.85em;
-            color: #1d4ed8;
-            font-weight: 500;
-        }
-        .pill-active   { background: #dcfce7; color: #166534; }
-        .pill-inactive { background: #fee2e2; color: #991b1b; }
+        /* Edit-row highlight when a user is being edited above. */
+        .tbl tr.is-editing td { background: var(--orange-soft); }
+        .edit-flag { color: var(--orange-deep); font-size: 11px; margin-left: 6px; }
     </style>
 </head>
 <body>
@@ -35,7 +25,8 @@
                 <div class="crumb">LPPI Review</div>
                 <h1>Admin users</h1>
                 <p class="lead">
-                    Manage who has access to the LPPI admin pages. Users not listed here are directed to the LPPI info page.
+                    Active users in this list have full access to the LPPI admin pages.
+                    Users not listed here are directed to the LPPI info page.
                 </p>
             </div>
         </div>
@@ -44,18 +35,14 @@
 
         <%-- ================================================================
              Edit panel — surfaces above the list when operator clicks Edit.
+             Only the IsActive flag is editable now that DisplayName / Email
+             have been removed; toggling active state can also be done from
+             the row's Deactivate / Reactivate button, but the edit panel is
+             retained for symmetry and future fields.
              ================================================================ --%>
         <asp:Panel ID="pnlEdit" runat="server" Visible="false" CssClass="card" Style="margin-bottom:16px;">
             <h2>Edit user — <asp:Literal ID="litEditUserId" runat="server" /></h2>
             <div class="form-grid">
-                <div class="form-row">
-                    <label for="txtEditDisplayName">Display name</label>
-                    <asp:TextBox ID="txtEditDisplayName" runat="server" CssClass="input" MaxLength="200" />
-                </div>
-                <div class="form-row">
-                    <label for="txtEditEmail">Email</label>
-                    <asp:TextBox ID="txtEditEmail" runat="server" CssClass="input" MaxLength="200" TextMode="Email" />
-                </div>
                 <div class="form-row form-row-check">
                     <label>
                         <asp:CheckBox ID="chkEditActive" runat="server" Checked="true" />
@@ -75,19 +62,11 @@
              ================================================================ --%>
         <div class="card" style="margin-bottom:16px;">
             <h2>Add user</h2>
-            <p class="muted" style="font-size:13px;">Enter the Windows username (e.g. <code>DRN\firstname.lastname)</p>
+            <p class="muted" style="font-size:13px;">Enter the Windows username (e.g. <code>DRN\firstname.lastname</code>). Multiple usernames can be added at once, separated by commas or semicolons.</p>
             <div class="form-grid">
                 <div class="form-row form-row-wide">
                     <label for="txtAddUserIds">Username</label>
                     <asp:TextBox ID="txtAddUserIds" runat="server" CssClass="input" MaxLength="500" placeholder="DRN\firstname.lastname" />
-                </div>
-                <div class="form-row">
-                    <label for="txtAddDisplayName">Display name <span class="muted">(optional)</span></label>
-                    <asp:TextBox ID="txtAddDisplayName" runat="server" CssClass="input" MaxLength="200" />
-                </div>
-                <div class="form-row">
-                    <label for="txtAddEmail">Email <span class="muted">(optional)</span></label>
-                    <asp:TextBox ID="txtAddEmail" runat="server" CssClass="input" MaxLength="200" TextMode="Email" />
                 </div>
                 <div class="form-row form-row-actions">
                     <asp:Button ID="btnAdd" runat="server" CssClass="btn btn-primary" Text="Add user(s)" OnClick="btnAdd_Click" />
@@ -107,8 +86,6 @@
                             <thead>
                                 <tr>
                                     <th>Username</th>
-                                    <th>Display name</th>
-                                    <th>Email</th>
                                     <th>Status</th>
                                     <th>Added</th>
                                     <th></th>
@@ -122,8 +99,6 @@
                                 <code><%# LPPIHelper.Enc(Eval("UserId")) %></code>
                                 <asp:Literal runat="server" ID="litEditFlag" />
                             </td>
-                            <td><%# LPPIHelper.Enc(Eval("DisplayName")) %></td>
-                            <td><%# LPPIHelper.Enc(Eval("Email")) %></td>
                             <td>
                                 <%# (bool)Eval("IsActive")
                                     ? "<span class=\"pill pill-active\">Active</span>"
