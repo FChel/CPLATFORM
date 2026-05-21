@@ -492,9 +492,9 @@ GO
    mailbox; 'POC' = a per-POC send (one row per POC dispatched);
    'CONTROL' = the vendor-of-interest heads-up sent to the contract
    manager mailbox when a package contains docs from a vendor in
-   LPPI.ControlVendorNumbers.
-   PocEmail is populated only on Audience = 'POC' rows. NULL Audience is
-   not expected post-schema-change but tolerated for forward compatibility.
+   LPPI.ControlVendorNumbers; 'NOTIFY' = the admin-initiated
+   "Notify AS Fin" email sent on Finalised packages, capturing the
+   package summary for visibility to the responsible AS Fin officer.
 
    RecipientEmail keeps the full "to | CC: ... | BCC: ..." string for
    AS Fin sends; for POC sends it is just the single TO address.
@@ -517,7 +517,7 @@ BEGIN
         ErrorMessage   NVARCHAR(MAX)  NULL,
         CONSTRAINT FK_tblLPPI_EmailLog_Package FOREIGN KEY (PackageID) REFERENCES dbo.tblLPPI_ReviewPackages(PackageID),
         CONSTRAINT CK_tblLPPI_EmailLog_Audience
-            CHECK (Audience IS NULL OR Audience IN ('ASFIN','POC','CONTROL'))
+            CHECK (Audience IS NULL OR Audience IN ('ASFIN','POC','CONTROL','NOTIFY'))
     );
 
     CREATE NONCLUSTERED INDEX IX_tblLPPI_EmailLog_PackageID

@@ -50,10 +50,12 @@
             min-height: 520px;
         }
 
-        /* Recipient cell — keep the single email + display name compact. */
-        .recipient-cell { line-height: 1.35; }
-        .recipient-cell .recipient-email { font-size: 13px; color: var(--ink-1); word-break: break-all; }
-        .recipient-cell .recipient-name  { font-size: 12px; color: var(--ink-3); }
+        /* Capability Manager cell — program name primary, optional
+           "Not configured" pill below when AS Fin email is missing. */
+        .cm-cell { line-height: 1.35; }
+        .cm-cell .cm-program { font-size: 14px; color: var(--ink-1); }
+        .cm-cell .cm-config  { margin-top: 4px; }
+
         .pill-not-configured {
             background: #fff4e0;
             color: #8a4500;
@@ -63,6 +65,46 @@
             border-radius: 999px;
             font-weight: 600;
             white-space: nowrap;
+        }
+
+        /* Notify modal — recipient prompt for the AS Fin notification. Same
+           visual idiom as the preview modal so the page stays consistent. */
+        #notifyOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        #notifyOverlay.open { display: flex; }
+        #notifyDialog {
+            background: #fff;
+            border-radius: 8px;
+            width: 480px;
+            max-width: 96vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+        }
+        #notifyToolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e5e5;
+        }
+        #notifyToolbar span { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+        #notifyBody    { padding: 16px; }
+        #notifyActions {
+            padding: 12px 16px;
+            border-top: 1px solid #e5e5e5;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
         }
     </style>
     <script>
@@ -91,8 +133,81 @@
             document.getElementById('previewFrame').src = 'about:blank';
         }
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') closePreview();
+            if (e.key === 'Escape') { closePreview(); closeNotify(); }
         });
+
+        // --- Notify AS Fin modal ---
+        // openNotify(packageId) is called by the per-row "Notify AS Fin"
+        // button rendered in RenderPackageActions. The package ID is
+        // stashed in the dialog via a data attribute and surfaced in the
+        // context line so the operator can see exactly which package they
+        // are notifying about.
+        function openNotify(packageId) {
+            var overlay = document.getElementById('notifyOverlay');
+            var dialog  = document.getElementById('notifyDialog');
+            var ctx     = document.getElementById('notifyContext');
+            var email   = document.getElementById('notifyEmail');
+            var err     = document.getElementById('notifyError');
+
+            dialog.setAttribute('data-package-id', packageId);
+            ctx.textContent = 'Send the package summary for #' + packageId + ' to the responsible AS Fin officer.';
+            email.value     = '';
+            err.style.display = 'none';
+            err.textContent   = '';
+
+            overlay.classList.add('open');
+            // Defer focus so the modal has actually rendered before we
+            // call .focus() — otherwise some browsers ignore it.
+            setTimeout(function () { email.focus(); }, 50);
+        }
+
+        function closeNotify() {
+            document.getElementById('notifyOverlay').classList.remove('open');
+        }
+
+        // Client-side validation mirrors LPPIHelper.ValidateDefenceEmail
+        // for snappy feedback. The server is still authoritative.
+        function isDefenceLikeEmail(s) {
+            if (!s) return false;
+            var v = s.trim().toLowerCase();
+            // Basic shape, then domain whitelist. Subdomains allowed.
+            if (!/^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/.test(v)) return false;
+            if (v.endsWith('@defence.gov.au') || v.endsWith('.defence.gov.au')) return true;
+            if (v.endsWith('@annpsr.gov.au')  || v.endsWith('.annpsr.gov.au'))  return true;
+            return false;
+        }
+
+        function submitNotify() {
+            var dialog = document.getElementById('notifyDialog');
+            var email  = document.getElementById('notifyEmail');
+            var err    = document.getElementById('notifyError');
+            var sendBtn = document.getElementById('notifySendBtn');
+
+            var packageId = dialog.getAttribute('data-package-id');
+            var addr      = (email.value || '').trim();
+
+            if (!packageId) {
+                err.textContent = 'No package selected.';
+                err.style.display = '';
+                return;
+            }
+            if (!isDefenceLikeEmail(addr)) {
+                err.textContent = 'Please enter a valid Defence (@defence.gov.au) or ANPSR (@annpsr.gov.au) email address.';
+                err.style.display = '';
+                email.focus();
+                return;
+            }
+
+            // Stash values into the hidden ASP.NET fields, then trigger the
+            // hidden postback button which fires btnNotify_Click on the
+            // server. Disable the send button while the postback is in
+            // flight so the operator does not double-submit.
+            document.getElementById('<%= hfNotifyPackageId.ClientID %>').value = packageId;
+            document.getElementById('<%= hfNotifyRecipient.ClientID %>').value = addr;
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending…';
+            document.getElementById('<%= btnNotify.ClientID %>').click();
+        }
     </script>
 </head>
 <body>
@@ -162,7 +277,6 @@
                                     <th><input type="checkbox" id="chkAll" onclick="document.querySelectorAll('.pkgPick').forEach(function(c){c.checked=this.checked}.bind(this))" /></th>
                                     <th>Package</th>
                                     <th>Capability Manager</th>
-                                    <th>AS Fin recipient</th>
                                     <th class="num">POCs</th>
                                     <th class="num">Docs</th>
                                     <th class="num">Reviewed</th>
@@ -197,18 +311,23 @@
                                      packages still send (AS Fin gets the group summary;
                                      POC fan-out is skipped with a warning). The send
                                      pipeline handles it. --%>
+                                <%-- Picker tooltip explains the disabled state on hover.
+                                     The two reasons a row is non-pickable are mutually
+                                     exclusive in practice but rendered as one combined
+                                     message — the SQL projection of EmailConfigured plus
+                                     the status guard cover both cases. --%>
                                 <input type="checkbox" runat="server" id="chkPick" class="pkgPick"
                                        disabled='<%# !( (bool)Eval("EmailConfigured")
                                                     && ( string.Equals(Convert.ToString(Eval("Status")), "NotSent",  System.StringComparison.OrdinalIgnoreCase)
                                                       || string.Equals(Convert.ToString(Eval("Status")), "Sent",     System.StringComparison.OrdinalIgnoreCase)
-                                                      || string.Equals(Convert.ToString(Eval("Status")), "InReview", System.StringComparison.OrdinalIgnoreCase) ) ) %>' />
+                                                      || string.Equals(Convert.ToString(Eval("Status")), "InReview", System.StringComparison.OrdinalIgnoreCase) ) ) %>'
+                                       title='<%# (bool)Eval("EmailConfigured")
+                                                    ? "Select to send/remind this package."
+                                                    : "AS Fin email not configured for this Capability Manager. Click the program name to fix on the Capability Managers page." %>' />
                                 <asp:HiddenField runat="server" ID="hfPackageId" Value='<%# Eval("PackageID") %>' />
                             </td>
                             <td>#<%# Eval("PackageID") %></td>
-                            <td>
-                                <strong><%# LPPIHelper.Enc(Eval("Program")) %></strong>
-                            </td>
-                            <td><%# RenderRecipientCell(Container.DataItem) %></td>
+                            <td><%# RenderCmCell(Container.DataItem) %></td>
                             <td class="num"><%# Eval("PocCount") %></td>
                             <td class="num"><%# Eval("DocCount") %></td>
                             <td class="num"><%# Eval("ReviewedCount") %></td>
@@ -290,6 +409,43 @@
         <iframe id="previewFrame" src="about:blank" title="Email preview"></iframe>
     </div>
 </div>
+
+<%-- Notify AS Fin recipient prompt modal --%>
+<div id="notifyOverlay" onclick="if(event.target===this)closeNotify();">
+    <div id="notifyDialog" role="dialog" aria-labelledby="notifyTitle">
+        <div id="notifyToolbar">
+            <span id="notifyTitle">Notify AS Fin — recipient</span>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="closeNotify()">Close &times;</button>
+        </div>
+        <div id="notifyBody">
+            <p id="notifyContext" class="muted" style="font-size:13px;margin-top:0;"></p>
+            <label for="notifyEmail" style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">Recipient email</label>
+            <input type="email" id="notifyEmail" class="input"
+                   placeholder="firstname.lastname@defence.gov.au"
+                   style="width:100%;box-sizing:border-box;" />
+            <p class="muted" style="font-size:12px;margin:6px 0 0;">
+                Must be a Defence (<code>@defence.gov.au</code>) or ANPSR (<code>@annpsr.gov.au</code>) address.
+                The CM team mailbox is added on CC and LPPI support on BCC automatically.
+            </p>
+            <div id="notifyError" class="alert alert-err" style="display:none;margin-top:10px;"></div>
+        </div>
+        <div id="notifyActions">
+            <button type="button" class="btn btn-ghost" onclick="closeNotify()">Cancel</button>
+            <button type="button" id="notifySendBtn" class="btn btn-primary" onclick="submitNotify();">Send notification</button>
+        </div>
+    </div>
+</div>
+
+<%-- Hidden postback mechanism for the Notify modal. JS writes the package
+     ID and recipient into the hidden fields then clicks the hidden button
+     to fire btnNotify_Click. Keeping this within the form so ASP.NET wires
+     up the postback correctly. --%>
+<asp:HiddenField runat="server" ID="hfNotifyPackageId" />
+<asp:HiddenField runat="server" ID="hfNotifyRecipient" />
+<asp:Button     runat="server" ID="btnNotify"
+                style="display:none;"
+                OnClick="btnNotify_Click"
+                UseSubmitBehavior="false" />
 
 </form>
 </body>

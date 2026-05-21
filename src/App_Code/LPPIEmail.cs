@@ -145,6 +145,7 @@ namespace CPlatform.LPPI
         private const string AudAsFin = "ASFIN";
         private const string AudPoc   = "POC";
         private const string AudControl = "CONTROL";
+        private const string AudNotify  = "NOTIFY";
 
         // Support mailbox addresses — read from config.
         private static string SupportMailboxTo
@@ -590,6 +591,415 @@ UPDATE dbo.tblLPPI_ReviewPackages
         }
 
         // -------------------------------------------------------------------
+        // Notify AS Fin — admin-initiated email on Finalised packages
+        //
+        // Dispatched from the Send-outs page Notify button. Sends a
+        // package-summary email to a recipient typed by the operator at
+        // send time. Used to explicitly inform the responsible AS Fin
+        // officer that the package has been finalised — the same person
+        // is also in the CM team mailbox CC, but the To: is the direct
+        // address so the message lands in their personal inbox.
+        //
+        // Recipients:
+        //   TO   = recipientEmail (operator input, validated)
+        //   CC   = CM team mailbox (cm.Email) — visible to recipient so
+        //          they can see the wider team has a copy
+        //   BCC  = LPPI support mailbox — quiet copy for audit, matches
+        //          the existing send pattern
+        //
+        // From-address rules:
+        //   System mailbox (LPPI.MailFrom / LPPI.MailFromName) — this
+        //   email is initiated by the LPPI admin team via the tool, not
+        //   by the AS Fin team mailbox, so it should look like it came
+        //   from LPPI Review.
+        //
+        // Status guard: Finalised only. NotSent / Sent / InReview /
+        // Exported / Cancelled all refused with a clear error.
+        //
+        // ProductionMode: refuses to dispatch in test mode (UAT) — there
+        // is no mark-as-notified flow because the action is purely a
+        // courtesy email and has no lifecycle side effects to test.
+        //
+        // Audit: writes a single row to tblLPPI_EmailLog with EmailType =
+        // "NotifyAsFin", Audience = "NOTIFY", RecipientEmail capturing
+        // the TO / CC / BCC string.
+        // -------------------------------------------------------------------
+
+        public static SendResult NotifyAsFin(int packageId, string recipientEmail)
+        {
+            var result = new SendResult();
+
+            if (!ProductionMode)
+            {
+                result.Success = false;
+                result.ErrorMessage = "Email sending is disabled — LPPI.ProductionMode is not set to true in web.config.";
+                return result;
+            }
+
+            // Validate recipient first so we fail fast before any data
+            // loading. ValidateDefenceEmail accepts defence.gov.au and
+            // annpsr.gov.au addresses; everything else is rejected.
+            string verr;
+            string toCleaned = LPPIHelper.ValidateDefenceEmail(recipientEmail, out verr);
+            if (toCleaned == null)
+            {
+                result.Success = false;
+                result.ErrorMessage = "Recipient email is not valid: " + verr;
+                return result;
+            }
+
+            DataRow pkg = LoadPackageRow(packageId);
+            if (pkg == null)
+            {
+                result.Success = false;
+                result.ErrorMessage = "Package not found.";
+                return result;
+            }
+
+            string status = Convert.ToString(pkg["Status"]);
+            if (!string.Equals(status, LPPIHelper.StatusFinalised, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Success = false;
+                result.ErrorMessage = "Notify AS Fin is only valid for Finalised packages (current status: " + status + ").";
+                return result;
+            }
+
+            int      cmId       = Convert.ToInt32(pkg["CmID"]);
+            string   program    = Convert.ToString(pkg["Program"]);
+            DateTime dueDate    = Convert.ToDateTime(pkg["DueDate"]);
+            string   asFinToken = Convert.ToString(pkg["Token"]);
+
+            var cmEmail = LPPIHelper.GetCmEmail(cmId);
+            if (cmEmail == null || !cmEmail.IsConfigured)
+            {
+                result.Success = false;
+                result.ErrorMessage = "No email configured for this Capability Manager group. Add the AS Fin email and display name on the Capability Managers page first.";
+                return result;
+            }
+
+            FinalisedSummary summary = ComputeFinalisedSummary(packageId);
+
+            string subject = BuildSubjectNotify(program, summary);
+            string body    = BuildBodyNotify(program, dueDate, asFinToken, summary, pkg);
+
+            string error;
+            bool sendOk = SendOne(
+                fromAddress:  LPPIHelper.Setting("LPPI.MailFrom", "noreply@defence.gov.au"),
+                fromName:     LPPIHelper.Setting("LPPI.MailFromName", "LPPI Review"),
+                toAddress:    toCleaned,
+                ccAddress:    cmEmail.Email,
+                bccAddress:   SupportMailboxTo,
+                subject:      subject,
+                htmlBody:     body,
+                error:        out error);
+
+            LogSend(packageId,
+                FormatRecipientsForLog(toCleaned, SupportMailboxTo, cmEmail.Email),
+                "NotifyAsFin",
+                AudNotify,
+                null,
+                subject,
+                body,
+                sendOk,
+                error);
+
+            if (!sendOk)
+            {
+                result.Success = false;
+                result.ErrorMessage = "Notify failed: " + (error ?? "(no detail)");
+                return result;
+            }
+
+            result.Success = true;
+            return result;
+        }
+
+        // -------------------------------------------------------------------
+        // Finalised summary — the numbers shown in the Notify AS Fin email
+        //
+        // Counts and dollar totals across the package's live first-line
+        // documents, grouped by outcome and broken out for the two
+        // notable single codes (RC-NR auto-applied on finalise; RC-RL
+        // reload-eligible). One round-trip to the DB.
+        //
+        // The InterestPayable join filters on IsDeactivated = 0 so any
+        // historical rows from RC-RL reload cycles do not double-count.
+        // -------------------------------------------------------------------
+
+        private class FinalisedSummary
+        {
+            public int     DocCount;
+            public decimal TotalInterest;
+            public int     PayableCount;
+            public decimal PayableInterest;
+            public int     NotPayableCount;
+            public decimal NotPayableInterest;
+            public int     RcNrCount;
+            public decimal RcNrInterest;
+            public int     RcRlCount;
+            public decimal RcRlInterest;
+        }
+
+        private static FinalisedSummary ComputeFinalisedSummary(int packageId)
+        {
+            // The join pattern:
+            //   pd     — package-to-document link (one row per line of every
+            //            document in the package)
+            //   r      — review on the first-line DocumentID
+            //   rc     — the reason code from that review
+            //   d2     — every live line of that document, used to sum
+            //            InterestPayable across all lines (not just the
+            //            first-line row)
+            //
+            // The outer GROUP BY pivots PayableCount / NotPayableCount /
+            // RcNrCount / RcRlCount in one pass. Document-level counts use
+            // DISTINCT DocNoAccounting because a multi-line document maps
+            // to multiple pd rows.
+            const string sql = @"
+WITH PkgDocs AS (
+    SELECT DISTINCT
+           d.DocNoAccounting,
+           (SELECT MIN(d2.DocumentID)
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = d.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID
+      FROM dbo.tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+     WHERE pd.PackageID = @P
+),
+Coded AS (
+    SELECT pd.DocNoAccounting,
+           rc.Code     AS RcCode,
+           rc.Outcome  AS Outcome,
+           (SELECT SUM(d2.InterestPayable)
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = pd.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS InterestSum
+      FROM PkgDocs pd
+      INNER JOIN dbo.tblLPPI_Reviews      r  ON r.DocumentID   = pd.FirstLineDocumentID
+      INNER JOIN dbo.tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID
+)
+SELECT
+    (SELECT COUNT(*) FROM PkgDocs)                          AS DocCount,
+    ISNULL((SELECT SUM(InterestSum) FROM Coded), 0)         AS TotalInterest,
+    ISNULL(SUM(CASE WHEN Outcome = 'Payable'    THEN 1           ELSE 0   END), 0) AS PayableCount,
+    ISNULL(SUM(CASE WHEN Outcome = 'Payable'    THEN InterestSum ELSE 0.0 END), 0) AS PayableInterest,
+    ISNULL(SUM(CASE WHEN Outcome = 'NotPayable' THEN 1           ELSE 0   END), 0) AS NotPayableCount,
+    ISNULL(SUM(CASE WHEN Outcome = 'NotPayable' THEN InterestSum ELSE 0.0 END), 0) AS NotPayableInterest,
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC-NR'      THEN 1           ELSE 0   END), 0) AS RcNrCount,
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC-NR'      THEN InterestSum ELSE 0.0 END), 0) AS RcNrInterest,
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC-RL'      THEN 1           ELSE 0   END), 0) AS RcRlCount,
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC-RL'      THEN InterestSum ELSE 0.0 END), 0) AS RcRlInterest
+  FROM Coded;";
+            var dt = LPPIHelper.ExecuteTable(sql, LPPIHelper.P("@P", packageId));
+
+            var s = new FinalisedSummary();
+            if (dt.Rows.Count == 0) return s;
+
+            DataRow r = dt.Rows[0];
+            s.DocCount           = Convert.ToInt32(r["DocCount"]);
+            s.TotalInterest      = Convert.ToDecimal(r["TotalInterest"]);
+            s.PayableCount       = Convert.ToInt32(r["PayableCount"]);
+            s.PayableInterest    = Convert.ToDecimal(r["PayableInterest"]);
+            s.NotPayableCount    = Convert.ToInt32(r["NotPayableCount"]);
+            s.NotPayableInterest = Convert.ToDecimal(r["NotPayableInterest"]);
+            s.RcNrCount          = Convert.ToInt32(r["RcNrCount"]);
+            s.RcNrInterest       = Convert.ToDecimal(r["RcNrInterest"]);
+            s.RcRlCount          = Convert.ToInt32(r["RcRlCount"]);
+            s.RcRlInterest       = Convert.ToDecimal(r["RcRlInterest"]);
+            return s;
+        }
+
+        // -------------------------------------------------------------------
+        // Notify AS Fin — subject and body builders
+        // -------------------------------------------------------------------
+
+        private static string BuildSubjectNotify(string program, FinalisedSummary s)
+        {
+            // "FOR VISIBILITY:" prefix flags the email as informational —
+            // SES-band recipients filter heavily, and a recognisable
+            // call-out helps the message land. Mirrors the "ACTION REQUIRED"
+            // / "REMINDER - ACTION REQUIRED" prefix on the AS Fin and POC
+            // review emails so the visual idiom is consistent.
+            //
+            // Program in caps to match how AS Fin officers refer to their
+            // own program (AS FIN ARMY, AS FIN NAVY etc.). Two-figure summary
+            // in the subject so the recipient gets the headline before
+            // opening — body has the full breakdown.
+            return string.Format("FOR VISIBILITY: LPPI {0} finalised \u2014 {1} payable, {2} not payable",
+                (program ?? "").ToUpperInvariant(),
+                LPPIHelper.FormatMoney(s.PayableInterest),
+                LPPIHelper.FormatMoney(s.NotPayableInterest));
+        }
+
+        private static string BuildBodyNotify(string program, DateTime dueDate,
+                                              string asFinToken, FinalisedSummary s,
+                                              DataRow pkg)
+        {
+            string reviewUrl = BuildReviewUrl(asFinToken);
+
+            var auCulture = CultureInfo.GetCultureInfo("en-AU");
+            string dueLong = dueDate.ToString("dddd, d MMMM yyyy", auCulture);
+
+            // FinalisedDate / FinalisedBy may not always be present on the
+            // package row — defensive parse with fallbacks.
+            string finalisedDate = "";
+            if (pkg.Table.Columns.Contains("FinalisedDate")
+                && pkg["FinalisedDate"] != DBNull.Value)
+            {
+                finalisedDate = Convert.ToDateTime(pkg["FinalisedDate"])
+                    .ToString("dddd, d MMMM yyyy 'at' h:mm tt", auCulture);
+            }
+            string finalisedBy = "";
+            if (pkg.Table.Columns.Contains("FinalisedBy")
+                && pkg["FinalisedBy"] != DBNull.Value)
+            {
+                finalisedBy = Convert.ToString(pkg["FinalisedBy"]);
+            }
+
+            string preheader = string.Format(
+                "{0} finalised \u2014 {1} payable across {2} document(s).",
+                (program ?? "").ToUpperInvariant(),
+                LPPIHelper.FormatMoney(s.PayableInterest),
+                s.DocCount);
+
+            var sb = new StringBuilder(8192);
+
+            AppendDoctype(sb);
+            AppendBodyOpen(sb, preheader);
+
+            // Main panel
+            sb.Append("<tr><td style=\"padding:24px 32px;").Append(FontInline).Append("\">");
+
+            sb.Append("<h2 style=\"font-size:18px;margin:0 0 12px 0;color:#1a1a1a;").Append(FontInline).Append("\">")
+              .Append("LPPI Review \u2014 ")
+              .Append(LPPIHelper.Enc((program ?? "").ToUpperInvariant()))
+              .Append(" finalised</h2>");
+
+            sb.Append("<p style=\"").Append(FontInline).Append("\">")
+              .Append("This is a courtesy notice that the LPPI review for ")
+              .Append("<strong style=\"").Append(FontInline).Append("\">")
+              .Append(LPPIHelper.Enc((program ?? "").ToUpperInvariant()))
+              .Append("</strong> has been finalised. The figures below summarise the outcome of the review.")
+              .Append("</p>");
+
+            // Package metadata table
+            sb.Append("<table cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:100%;margin:14px 0;border-collapse:collapse;").Append(FontInline).Append("\">");
+            AppendMetaRow(sb, "Capability Manager", LPPIHelper.Enc((program ?? "").ToUpperInvariant()));
+            AppendMetaRow(sb, "Due date",            LPPIHelper.Enc(dueLong));
+            if (!string.IsNullOrEmpty(finalisedDate))
+                AppendMetaRow(sb, "Finalised",       LPPIHelper.Enc(finalisedDate));
+            if (!string.IsNullOrEmpty(finalisedBy))
+                AppendMetaRow(sb, "Finalised by",    LPPIHelper.Enc(finalisedBy));
+            sb.Append("</table>");
+
+            // Headline summary callout
+            AppendCallout(sb, string.Format(
+                "{0} documents reviewed \u2014 {1} payable ({2}), {3} not payable ({4}).",
+                s.DocCount,
+                s.PayableCount,
+                LPPIHelper.FormatMoney(s.PayableInterest),
+                s.NotPayableCount,
+                LPPIHelper.FormatMoney(s.NotPayableInterest)));
+
+            // Breakdown table
+            sb.Append("<h3 style=\"font-size:15px;margin:18px 0 8px;").Append(FontInline).Append("\">Package summary</h3>");
+
+            sb.Append("<table cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse;border:1px solid #e3e3e3;").Append(FontInline).Append("\">");
+
+            // Header row
+            sb.Append("<tr style=\"background:#fafafa;\">")
+              .Append("<th align=\"left\"  style=\"padding:8px 12px;border-bottom:1px solid #e3e3e3;font-size:12px;text-transform:uppercase;letter-spacing:0.03em;color:#666;").Append(FontInline).Append("\">Category</th>")
+              .Append("<th align=\"right\" style=\"padding:8px 12px;border-bottom:1px solid #e3e3e3;font-size:12px;text-transform:uppercase;letter-spacing:0.03em;color:#666;").Append(FontInline).Append("\">Documents</th>")
+              .Append("<th align=\"right\" style=\"padding:8px 12px;border-bottom:1px solid #e3e3e3;font-size:12px;text-transform:uppercase;letter-spacing:0.03em;color:#666;").Append(FontInline).Append("\">Interest</th>")
+              .Append("</tr>");
+
+            // Payable
+            AppendSummaryRow(sb, "Payable",  s.PayableCount, s.PayableInterest, false, false);
+
+            // Payable breakdown — RC-NR (defaulted on finalise) and other
+            int    payableOtherCount = Math.Max(0, s.PayableCount    - s.RcNrCount);
+            decimal payableOtherDol  = Math.Max(0m, s.PayableInterest - s.RcNrInterest);
+            if (s.RcNrCount > 0)
+                AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 RC-NR (no response, defaulted)", s.RcNrCount, s.RcNrInterest, true, false);
+            if (payableOtherCount > 0)
+                AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 Other payable codes", payableOtherCount, payableOtherDol, true, false);
+
+            // Not payable
+            AppendSummaryRow(sb, "Not payable", s.NotPayableCount, s.NotPayableInterest, false, false);
+
+            // Not payable breakdown — RC-RL (reload-eligible) and other
+            int    notPayOtherCount = Math.Max(0, s.NotPayableCount    - s.RcRlCount);
+            decimal notPayOtherDol  = Math.Max(0m, s.NotPayableInterest - s.RcRlInterest);
+            if (s.RcRlCount > 0)
+                AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 RC-RL (reload-eligible, returns next cycle)", s.RcRlCount, s.RcRlInterest, true, false);
+            if (notPayOtherCount > 0)
+                AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 Other not-payable codes", notPayOtherCount, notPayOtherDol, true, false);
+
+            // Total
+            AppendSummaryRow(sb, "Total reviewed", s.DocCount, s.TotalInterest, false, true);
+
+            sb.Append("</table>");
+
+            // RC-RL footnote — important: AS Fin should know what RC-RL means
+            if (s.RcRlCount > 0)
+            {
+                sb.Append("<p style=\"margin-top:12px;font-size:12px;color:#666;").Append(FontInline).Append("\">")
+                  .Append("<strong style=\"").Append(FontInline).Append("\">RC-RL note.</strong> ")
+                  .Append("Reload-eligible documents are excluded from this cycle's ERP export but will return ")
+                  .Append("in a subsequent file load once the upstream data is corrected.")
+                  .Append("</p>");
+            }
+
+            sb.Append("<p style=\"").Append(FontInline).Append("\">")
+              .Append("Open the package below to view the full line-by-line detail. The reviewer page is read-only since the package is Finalised.")
+              .Append("</p>");
+
+            AppendBeginReviewButton(sb, reviewUrl);
+            AppendFallbackUrl(sb, reviewUrl);
+            AppendSupportLine(sb);
+
+            sb.Append("</td></tr>");
+            AppendFooter(sb);
+            AppendBodyClose(sb);
+            return sb.ToString();
+        }
+
+        // -------------------------------------------------------------------
+        // Notify body helpers — small two-column meta rows and the
+        // summary table row pattern. Kept inline here so they don't
+        // pollute the existing AS Fin / POC body builders.
+        // -------------------------------------------------------------------
+
+        private static void AppendMetaRow(StringBuilder sb, string label, string value)
+        {
+            sb.Append("<tr>")
+              .Append("<td style=\"width:160px;padding:4px 12px 4px 0;font-size:13px;color:#666;vertical-align:top;").Append(FontInline).Append("\">")
+              .Append(LPPIHelper.Enc(label)).Append("</td>")
+              .Append("<td style=\"padding:4px 0;font-size:13px;color:#1a1a1a;").Append(FontInline).Append("\">")
+              .Append(value).Append("</td>")
+              .Append("</tr>");
+        }
+
+        private static void AppendSummaryRow(StringBuilder sb, string label,
+                                             int count, decimal interest,
+                                             bool isIndent, bool isTotal)
+        {
+            string rowBg = isTotal ? "background:#fafafa;font-weight:bold;" : "";
+            string borderTop = isTotal ? "border-top:2px solid #e3e3e3;" : "border-top:1px solid #f0f0f0;";
+            string labelColor = isIndent ? "#666" : "#1a1a1a";
+
+            sb.Append("<tr style=\"").Append(rowBg).Append("\">")
+              .Append("<td align=\"left\" style=\"padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:").Append(labelColor).Append(";").Append(FontInline).Append("\">")
+              .Append(label).Append("</td>")
+              .Append("<td align=\"right\" style=\"padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:#1a1a1a;").Append(FontInline).Append("\">")
+              .Append(count).Append("</td>")
+              .Append("<td align=\"right\" style=\"padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:#1a1a1a;").Append(FontInline).Append("\">")
+              .Append(LPPIHelper.Enc(LPPIHelper.FormatMoney(interest))).Append("</td>")
+              .Append("</tr>");
+        }
+
+        // -------------------------------------------------------------------
         // Send pipeline
         // -------------------------------------------------------------------
 
@@ -779,11 +1189,13 @@ UPDATE dbo.tblLPPI_ReviewPackages
         /// <summary>
         /// Single-message dispatch through SmtpClient. Returns true / sets
         /// error to null on success, false / error populated on failure.
-        /// Called once for the AS Fin send, then once per POC.
+        /// ccAddress is optional — pass null or empty to skip CC. BCC is
+        /// always optional in the same way.
         /// </summary>
         private static bool SendOne(string fromAddress, string fromName,
                                     string toAddress, string bccAddress,
-                                    string subject, string htmlBody, out string error)
+                                    string subject, string htmlBody, out string error,
+                                    string ccAddress = null)
         {
             error = null;
             try
@@ -792,6 +1204,8 @@ UPDATE dbo.tblLPPI_ReviewPackages
                 {
                     msg.From = new MailAddress(fromAddress, fromName);
                     msg.To.Add(toAddress);
+                    if (!string.IsNullOrWhiteSpace(ccAddress))
+                        msg.CC.Add(ccAddress);
                     if (!string.IsNullOrWhiteSpace(bccAddress))
                         msg.Bcc.Add(bccAddress);
                     msg.Subject      = subject;
@@ -1238,14 +1652,15 @@ VALUES (@P, @R, @T, @A, @PE, @S, @B, @U, @OK, @E);";
         }
 
         // -------------------------------------------------------------------
-        // Recipient log formatter — single TO + BCC.
-        // Format: "to | BCC: bcc"   (BCC omitted when blank.)
-        // CC is no longer in the recipient model.
+        // Recipient log formatter — TO + optional CC + optional BCC.
+        // Format: "to | CC: cc | BCC: bcc"  (each leg omitted when blank.)
         // -------------------------------------------------------------------
-        private static string FormatRecipientsForLog(string toAddress, string bcc)
+        private static string FormatRecipientsForLog(string toAddress, string bcc, string cc = null)
         {
             var sb = new StringBuilder();
             sb.Append(toAddress ?? "");
+            if (!string.IsNullOrWhiteSpace(cc))
+                sb.Append(" | CC: ").Append(cc);
             if (!string.IsNullOrWhiteSpace(bcc))
                 sb.Append(" | BCC: ").Append(bcc);
             return sb.ToString();
@@ -1338,6 +1753,7 @@ WHERE ym IS NOT NULL;";
         {
             const string sql = @"
 SELECT p.PackageID, p.Token, p.DueDate, p.CreatedDate, p.SentDate, p.Status,
+       p.FinalisedDate, p.FinalisedBy,
        cm.CmID, cm.Program,
        (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments d WHERE d.PackageID = p.PackageID) AS DocCount,
        (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackageDocuments d

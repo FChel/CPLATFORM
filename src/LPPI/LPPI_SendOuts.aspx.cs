@@ -10,13 +10,15 @@ namespace CPlatform.LPPI
 {
     /// <summary>
     /// Send-outs page. Lists packages in flight (NotSent / Sent / InReview /
-    /// Finalised) and lets the operator issue them or send reminders.
+    /// Finalised) and lets the operator issue them, send reminders, or
+    /// notify the responsible AS Fin officer when finalised.
+    ///
     /// Packages are NOT created here — they are created by the file-load
     /// reconcile step.
     ///
-    /// May 2026 — POC fan-out
+    /// POC fan-out
     /// -------------------------------------------------------------------
-    /// Each Send / Reminder click now dispatches:
+    /// Each Send / Reminder click dispatches:
     ///   1. AS Fin email (group summary, sent to the CM team mailbox)
     ///   2. One per-POC email per distinct invoice POC in the package
     /// LPPIEmail.SendResult carries the per-package fan-out outcome
@@ -34,11 +36,12 @@ namespace CPlatform.LPPI
     ///   - NotSent / Sent / InReview show in Open packages and are
     ///     actionable (can be sent / reminded).
     ///   - Finalised shows in Open packages too, as a read-only row —
-    ///     useful for visibility ("which CMs have finished") even though
-    ///     no email action is meaningful any more. Reminders refuse on
-    ///     Finalised packages (status guard in LPPIEmail). Finalisation
-    ///     is self-service on the reviewer page; there is no Unfinalise
-    ///     button here.
+    ///     useful for visibility ("which CMs have finished"). The
+    ///     "Notify AS Fin" button is rendered on Finalised rows; it sends
+    ///     a courtesy summary email to a typed recipient with the CM team
+    ///     mailbox on CC and LPPI support on BCC. Reminders refuse on
+    ///     Finalised packages. Finalisation is self-service on the
+    ///     reviewer page; there is no Unfinalise button here.
     ///   - Exported / Cancelled are out of scope and only surface on the
     ///     dashboard / batches page.
     ///
@@ -88,7 +91,12 @@ namespace CPlatform.LPPI
                 "<div class=\"alert alert-warn\">" +
                 "<div><strong>Test mode.</strong> Real email sending is disabled. " +
                 "Use <em>Preview AS Fin</em> or <em>Preview POC</em> to see the formatted email. " +
-                "<em>Mark as sent / remind (test)</em> simulates the dispatch so the end-to-end flow can be tested." +
+                "<em>Mark as sent / remind (test)</em> simulates the dispatch: NotSent packages " +
+                "transition to Sent (and stamp the due date); Sent / InReview packages get a " +
+                "simulated reminder. Either way, no email is dispatched and per-audience audit " +
+                "rows are written so the end-to-end flow can be exercised. The <em>Notify AS Fin</em> " +
+                "button on Finalised rows is disabled in test mode — it is a real-send-only action " +
+                "with no lifecycle side effects to simulate." +
                 "</div>" +
                 "</div>"));
         }
@@ -96,8 +104,8 @@ namespace CPlatform.LPPI
         // -------------------------------------------------------------------
         // Unconfigured-CM warning
         //
-        // Driven from LPPIHelper.GetUnconfiguredPrograms() which now reads
-        // the new single-email model on tblLPPI_CapabilityManagers.
+        // Driven from LPPIHelper.GetUnconfiguredPrograms() which reads the
+        // single-email model on tblLPPI_CapabilityManagers.
         // -------------------------------------------------------------------
 
         private void BindUnconfigured()
@@ -109,29 +117,16 @@ namespace CPlatform.LPPI
 
             var msg = "<div class=\"alert alert-warn\"><div><strong>" + unconfigured.Count +
                       " Capability Manager program" + (unconfigured.Count == 1 ? "" : "s") +
-                      "</strong> in your loaded data have no AS Fin email configured. " +
-                      "You will not be able to send these out for review until they are added.<br/>" +
-                      "Missing: " + string.Join(", ", unconfigured.Select(p => "<code>" + System.Web.HttpUtility.HtmlEncode(p) + "</code>")) +
-                      " &nbsp; <a href=\"LPPI_CapabilityManagers.aspx\">Configure now &rarr;</a></div></div>";
+                      " without an AS Fin email configured</strong>: " +
+                      LPPIHelper.Enc(string.Join(", ", unconfigured)) +
+                      ". Go to <a href=\"LPPI_CapabilityManagers.aspx\">Capability Managers</a> to add the email and display name. " +
+                      "Affected packages cannot be sent or notified until the configuration is complete.</div></div>";
+
             phUnconfigured.Controls.Add(new LiteralControl(msg));
         }
 
         // -------------------------------------------------------------------
-        // Data binding — open packages table
-        //
-        // Scope expanded to include Finalised so users can see which
-        // packages have closed off without having to switch to the
-        // dashboard. Finalised rows are visually distinct (green pill) and
-        // their checkbox is suppressed in the markup since they have no
-        // valid send/remind action.
-        //
-        // May 2026 — single CM email + POC count.
-        //   Replaces the legacy join to tblLPPI_CapabilityManagerEmails
-        //   (dropped) with a direct projection of cm.Email and
-        //   cm.EmailDisplayName, plus an EmailConfigured bit derived in SQL
-        //   so the markup can data-bind to it via Eval("EmailConfigured").
-        //   Also surfaces PocCount from tblLPPI_PackagePocs so the operator
-        //   sees the fan-out scope at a glance.
+        // BindPackages — open packages (NotSent / Sent / InReview / Finalised)
         // -------------------------------------------------------------------
 
         private void BindPackages()
@@ -237,7 +232,6 @@ namespace CPlatform.LPPI
             var status = Convert.ToString(row["Status"]);
             var due    = row["DueDate"] == DBNull.Value ? DateTime.MaxValue : Convert.ToDateTime(row["DueDate"]);
 
-            // Overdue / due-soon augmentation only applies to Sent / InReview.
             bool active = string.Equals(status, "Sent",     StringComparison.OrdinalIgnoreCase)
                        || string.Equals(status, "InReview", StringComparison.OrdinalIgnoreCase);
 
@@ -245,37 +239,36 @@ namespace CPlatform.LPPI
             string statusClass;
             switch ((status ?? "").ToLowerInvariant())
             {
-                case "notsent":   statusLabel = "Not sent";   statusClass = "notsent";   break;
-                case "sent":      statusLabel = "Sent";       statusClass = "sent";      break;
-                case "inreview":  statusLabel = "In review";  statusClass = "inreview";  break;
-                case "finalised": statusLabel = "Finalised";  statusClass = "finalised"; break;
-                case "exported":  statusLabel = "Exported";   statusClass = "exported";  break;
-                case "cancelled": statusLabel = "Cancelled";  statusClass = "cancelled"; break;
-                default:          statusLabel = status;       statusClass = "";          break;
+                case "notsent":   statusLabel = "Not sent";  statusClass = "notsent";   break;
+                case "sent":      statusLabel = "Sent";      statusClass = "sent";      break;
+                case "inreview":  statusLabel = "In review"; statusClass = "inreview";  break;
+                case "finalised": statusLabel = "Finalised"; statusClass = "finalised"; break;
+                case "exported":  statusLabel = "Exported";  statusClass = "exported";  break;
+                case "cancelled": statusLabel = "Cancelled"; statusClass = "cancelled"; break;
+                default:          statusLabel = status;     statusClass = "";          break;
             }
 
             var sb = new StringBuilder();
             sb.AppendFormat("<span class=\"pill {0}\">{1}</span>", statusClass, LPPIHelper.Enc(statusLabel));
 
             if (active && due < DateTime.Today)
-            {
                 sb.Append(" <span class=\"pill overdue\">Overdue</span>");
-            }
             else if (active && due <= DateTime.Today.AddDays(LPPIHelper.ReminderWindowDays))
-            {
                 sb.Append(" <span class=\"pill duesoon\">Due soon</span>");
-            }
+
             return sb.ToString();
         }
 
         /// <summary>
-        /// Status pill that takes a raw status value (used by Recent send-outs
-        /// table where overdue augmentation is not needed).
+        /// Status pill for the Recent send-outs table. Same shape as
+        /// RenderStatusPill but takes a raw status value (the markup binds
+        /// via Eval directly, not via Container.DataItem).
         /// </summary>
         protected string RenderStatusPillFromStatus(object statusObj)
         {
-            string status = statusObj == null || statusObj == DBNull.Value
-                          ? "" : Convert.ToString(statusObj);
+            string status = statusObj != null && statusObj != DBNull.Value
+                            ? Convert.ToString(statusObj) : "";
+
             string label;
             string cls;
             switch ((status ?? "").ToLowerInvariant())
@@ -292,40 +285,52 @@ namespace CPlatform.LPPI
         }
 
         /// <summary>
-        /// AS Fin recipient cell. Shows the single CM email and display name
-        /// when configured, or a "Not configured" pill linking to the
-        /// Capability Managers page when blank.
+        /// Capability Manager cell renderer. The program name is the primary
+        /// label. When the CM has no AS Fin email configured a secondary
+        /// "Not configured" pill is rendered below it, linking to the
+        /// Capability Managers page so the admin can fix the gap in one click.
+        ///
+        /// The configured email and display name are deliberately not shown
+        /// here — they live on the Capability Managers page, change rarely,
+        /// and would crowd this table. When they need verifying, the
+        /// "Not configured" link plus the configured-state list on the
+        /// Capability Managers page cover that need.
         /// </summary>
-        protected string RenderRecipientCell(object dataItem)
+        protected string RenderCmCell(object dataItem)
         {
-            var row = (DataRowView)dataItem;
+            var row         = (DataRowView)dataItem;
             bool configured = row["EmailConfigured"] != DBNull.Value
                               && Convert.ToBoolean(row["EmailConfigured"]);
-
-            if (!configured)
-            {
-                return "<a href=\"LPPI_CapabilityManagers.aspx\" class=\"pill-not-configured\" " +
-                       "title=\"Click to configure\">Not configured</a>";
-            }
-
-            string email = row["Email"]             == DBNull.Value ? "" : Convert.ToString(row["Email"]);
-            string name  = row["EmailDisplayName"] == DBNull.Value ? "" : Convert.ToString(row["EmailDisplayName"]);
+            string program  = row["Program"] == DBNull.Value ? "" : Convert.ToString(row["Program"]);
 
             var sb = new StringBuilder();
-            sb.Append("<div class=\"recipient-cell\">");
-            sb.Append("<div class=\"recipient-email\">").Append(LPPIHelper.Enc(email)).Append("</div>");
-            if (name.Length > 0)
-                sb.Append("<div class=\"recipient-name\">").Append(LPPIHelper.Enc(name)).Append("</div>");
+            sb.Append("<div class=\"cm-cell\">");
+            sb.Append("<div class=\"cm-program\"><strong>")
+              .Append(LPPIHelper.Enc(program))
+              .Append("</strong></div>");
+            if (!configured)
+            {
+                sb.Append("<div class=\"cm-config\">")
+                  .Append("<a href=\"LPPI_CapabilityManagers.aspx\" class=\"pill-not-configured\" ")
+                  .Append("title=\"AS Fin email not configured. Click to fix.\">Not configured</a>")
+                  .Append("</div>");
+            }
             sb.Append("</div>");
             return sb.ToString();
         }
 
         /// <summary>
-        /// Actions cell on the Open packages table. Every package gets an
-        /// "Open review" link (admin QA / visibility into Finalised packages).
-        /// Preview buttons (AS Fin and POC) are offered for any non-terminal
-        /// package — pointless on Finalised since the email cycle is over,
-        /// so we suppress them there to reduce clutter.
+        /// Actions cell for Open packages rows. Buttons rendered:
+        ///   - "Open review" (any status with a token) — opens the reviewer
+        ///     page in a new tab via the AS Fin token. Read-only when the
+        ///     package is terminal.
+        ///   - "Preview AS Fin" + "Preview POC" — suppressed on Finalised
+        ///     because reminders / initial sends are meaningless once
+        ///     finalised.
+        ///   - "Notify AS Fin" — visible only on Finalised. Triggers the
+        ///     recipient prompt modal which on submit fires btnNotify_Click.
+        ///     Disabled in test mode (the action only makes sense as a real
+        ///     send — there is no lifecycle side effect to simulate).
         /// </summary>
         protected string RenderPackageActions(object packageIdObj, object tokenObj, object statusObj)
         {
@@ -337,7 +342,7 @@ namespace CPlatform.LPPI
 
             var sb = new StringBuilder();
 
-            // Open review link — admin QA. Available for any package with a token.
+            // Open review — available for every status with a token.
             if (tokenObj != null && tokenObj != DBNull.Value)
             {
                 string token   = LPPIHelper.Enc(tokenObj);
@@ -348,12 +353,11 @@ namespace CPlatform.LPPI
                     token, baseUrl);
             }
 
-            // Preview buttons — useful while the email cycle is still
-            // relevant. Suppressed on Finalised since reminders have no
-            // meaning at that point. POC preview uses placeholder values
-            // (handled in LPPIEmail.BuildEmailHtml) so no per-POC selection
-            // is needed at the UI level.
             bool isFinalised = string.Equals(status, "Finalised", StringComparison.OrdinalIgnoreCase);
+
+            // Previews — suppressed on Finalised. POC preview uses
+            // placeholder values (handled in LPPIEmail.BuildEmailHtml) so
+            // no per-POC selection is needed at the UI level.
             if (!isFinalised)
             {
                 string emailType = string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase)
@@ -367,53 +371,51 @@ namespace CPlatform.LPPI
                     "onclick=\"openPreview({0},'{1}','poc')\">Preview POC</button>",
                     packageId, emailType);
             }
+            else
+            {
+                // Notify AS Fin — Finalised only.
+                bool notifyAllowed = LPPIEmail.ProductionMode;
+                string disabledAttr = notifyAllowed ? "" : "disabled=\"disabled\" ";
+                string tip          = notifyAllowed
+                    ? "Send a courtesy email with the package summary to a typed recipient (CM team mailbox on CC, LPPI support on BCC)."
+                    : "Notify AS Fin is a real-send-only action. Set LPPI.ProductionMode = true to enable.";
+
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-primary\" {0}" +
+                    "title=\"{1}\" " +
+                    "onclick=\"openNotify({2});\">Notify AS Fin</button>",
+                    disabledAttr,
+                    LPPIHelper.Enc(tip),
+                    packageId);
+            }
 
             return sb.ToString();
         }
 
         /// <summary>
-        /// Actions column for rptRecent rows — same model: review link
-        /// available for any package, previews suppressed on terminal states.
+        /// Actions cell for Recent send-outs rows. This is a "what just
+        /// happened" log sorted by last email date — the natural follow-up
+        /// from here is to click through and verify the send landed, so an
+        /// Open review link is offered. Previews are not rendered here; they
+        /// belong on the Open packages table where the send button lives.
+        /// Notify lives on Finalised rows in the Open packages table for the
+        /// same reason (action surface, not log surface).
+        ///
+        /// packageIdObj is accepted for signature compatibility with the
+        /// markup but is not used directly — the Open review link is built
+        /// purely from the token.
         /// </summary>
         protected string RenderRecentActions(object packageIdObj, object tokenObj, object statusObj)
         {
-            if (packageIdObj == null || packageIdObj == DBNull.Value) return "";
+            if (tokenObj == null || tokenObj == DBNull.Value) return "";
 
-            int    packageId = Convert.ToInt32(packageIdObj);
-            string status    = statusObj != null && statusObj != DBNull.Value
-                               ? Convert.ToString(statusObj) : "";
+            string token   = LPPIHelper.Enc(tokenObj);
+            string baseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
 
-            var sb = new StringBuilder();
-
-            if (tokenObj != null && tokenObj != DBNull.Value)
-            {
-                string token   = LPPIHelper.Enc(tokenObj);
-                string baseUrl = LPPIHelper.Enc(LPPIHelper.Setting("LPPI.BaseUrl", ""));
-                sb.AppendFormat(
-                    "<button type=\"button\" class=\"btn btn-sm btn-secondary\" " +
-                    "onclick=\"openReviewLink('{0}','{1}');\">Open review &rarr;</button> ",
-                    token, baseUrl);
-            }
-
-            bool isFinalised = string.Equals(status, "Finalised", StringComparison.OrdinalIgnoreCase);
-            bool isExported  = string.Equals(status, "Exported",  StringComparison.OrdinalIgnoreCase);
-            bool isCancelled = string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase);
-
-            if (!isFinalised && !isExported && !isCancelled)
-            {
-                string emailType = string.Equals(status, "NotSent", StringComparison.OrdinalIgnoreCase)
-                                   ? "Initial" : "Reminder";
-                sb.AppendFormat(
-                    "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
-                    "onclick=\"openPreview({0},'{1}','asfin')\">Preview AS Fin</button> ",
-                    packageId, emailType);
-                sb.AppendFormat(
-                    "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
-                    "onclick=\"openPreview({0},'{1}','poc')\">Preview POC</button>",
-                    packageId, emailType);
-            }
-
-            return sb.ToString();
+            return string.Format(
+                "<button type=\"button\" class=\"btn btn-sm btn-secondary\" " +
+                "onclick=\"openReviewLink('{0}','{1}');\">Open review &rarr;</button>",
+                token, baseUrl);
         }
 
         // -------------------------------------------------------------------
@@ -453,8 +455,7 @@ namespace CPlatform.LPPI
         // outcome:
         //   Success         — true when the AS Fin send succeeded
         //   ErrorMessage    — populated when Success is false
-        //   WarningMessage  — non-fatal note about the POC fan-out (e.g.
-        //                     "12 POCs sent, 1 skipped" or "No POCs configured")
+        //   WarningMessage  — non-fatal note about the POC fan-out
         //   PocsDispatched / PocsSkipped / PocsFailed — counts used to build
         //                     the per-package result line below.
         //
@@ -467,7 +468,7 @@ namespace CPlatform.LPPI
         {
             if (!LPPIEmail.ProductionMode)
             {
-                ShowMessage("Email sending is disabled in test mode. Use Mark as sent (test) instead, or set LPPI.ProductionMode = true in web.config.", "err");
+                ShowMessage("Real sending is disabled in test mode. Use Mark as sent / remind (test) instead.", "err");
                 return;
             }
 
@@ -492,8 +493,6 @@ namespace CPlatform.LPPI
 
             foreach (int pid in selectedPackageIds)
             {
-                // Look up current status to decide initial vs reminder, and to
-                // apply the user-specified due date for first sends only.
                 object statusObj = LPPIHelper.ExecuteScalar(
                     "SELECT Status FROM tblLPPI_ReviewPackages WHERE PackageID = @P",
                     LPPIHelper.P("@P", pid));
@@ -564,7 +563,8 @@ namespace CPlatform.LPPI
 
         /// <summary>
         /// Folds one SendResult into the running totals and per-package note
-        /// list. Shared between btnSend_Click's initial and reminder branches.
+        /// list. Shared between btnSend_Click's initial and reminder branches
+        /// and the test-mode equivalents in btnMarkSent_Click.
         /// </summary>
         private void AccumulateResult(LPPIEmail.SendResult res, StringBuilder perPackageNotes,
                                       int pid, string label,
@@ -600,10 +600,6 @@ namespace CPlatform.LPPI
 
         // -------------------------------------------------------------------
         // Mark as sent (test mode only) — drive the lifecycle without sending email
-        // -------------------------------------------------------------------
-
-        // -------------------------------------------------------------------
-        // Mark as sent (test mode only) — drive the lifecycle without sending email
         //
         // Branches on the current package status:
         //   NotSent           -> MarkAsSent     (simulates initial send;
@@ -614,10 +610,6 @@ namespace CPlatform.LPPI
         //                                        no status change, no
         //                                        due date change)
         //   anything else     -> skipped with a clear per-package message
-        //
-        // Per-package outcomes are folded through AccumulateResult so the
-        // summary line and per-package note list are consistent with the
-        // real-send path's output.
         // -------------------------------------------------------------------
 
         protected void btnMarkSent_Click(object sender, EventArgs e)
@@ -725,19 +717,82 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
+        // Notify AS Fin — admin-initiated email on Finalised packages
+        //
+        // Triggered by the JS notify modal which collects the recipient
+        // email, writes the PackageID + recipient into two hidden fields,
+        // then submits via btnNotify (which calls this handler).
+        //
+        // All validation is server-side. The modal does a client-side
+        // sanity check on the regex but that is purely for snappy UX —
+        // the real authority is LPPIEmail.NotifyAsFin which delegates to
+        // LPPIHelper.ValidateDefenceEmail.
+        // -------------------------------------------------------------------
+
+        protected void btnNotify_Click(object sender, EventArgs e)
+        {
+            if (!LPPIEmail.ProductionMode)
+            {
+                ShowMessage("Notify AS Fin is not available in test mode. Set LPPI.ProductionMode = true to enable.", "err");
+                return;
+            }
+
+            int packageId;
+            if (!int.TryParse(hfNotifyPackageId.Value, out packageId))
+            {
+                ShowMessage("No package was selected for the notify action.", "err");
+                return;
+            }
+
+            string recipient = (hfNotifyRecipient.Value ?? "").Trim();
+            if (recipient.Length == 0)
+            {
+                ShowMessage("A recipient email address is required.", "err");
+                return;
+            }
+
+            var res = LPPIEmail.NotifyAsFin(packageId, recipient);
+
+            // Clear the hidden fields whether success or failure so the
+            // next notify click starts fresh.
+            hfNotifyPackageId.Value = "";
+            hfNotifyRecipient.Value = "";
+
+            if (res.Success)
+            {
+                ShowMessage(string.Format(
+                    "Notification sent to {0} for package #{1}. CC: CM team mailbox. BCC: LPPI support.",
+                    LPPIHelper.Enc(recipient), packageId), "ok");
+            }
+            else
+            {
+                ShowMessage(res.ErrorMessage ?? "Notification failed (no detail).", "err");
+            }
+
+            BindPackages();
+            BindRecent();
+        }
+
+        // -------------------------------------------------------------------
         // Message helpers
         // -------------------------------------------------------------------
 
-        private void ShowMessage(string text, string kind)
+        private void ShowMessage(string msg, string kind)
         {
-            ShowMessageRaw(System.Web.HttpUtility.HtmlEncode(text), kind);
+            var sb = new StringBuilder();
+            sb.Append("<div class=\"alert alert-").Append(kind).Append("\"><div>")
+              .Append(LPPIHelper.Enc(msg))
+              .Append("</div></div>");
+            phMessage.Controls.Add(new LiteralControl(sb.ToString()));
         }
 
         private void ShowMessageRaw(string html, string kind)
         {
-            phMessage.Controls.Clear();
-            phMessage.Controls.Add(new LiteralControl(
-                "<div class=\"alert alert-" + kind + "\">" + html + "</div>"));
+            var sb = new StringBuilder();
+            sb.Append("<div class=\"alert alert-").Append(kind).Append("\"><div>")
+              .Append(html)
+              .Append("</div></div>");
+            phMessage.Controls.Add(new LiteralControl(sb.ToString()));
         }
     }
 }

@@ -301,7 +301,7 @@
                         <dd>Upload an LPPI file (<code>LATEPMT_INTEREST_REVIEW_*.xls</code>), preview, then commit. The reconcile step creates new packages and adds documents to existing NotSent packages.</dd>
 
                         <dt>Send-outs</dt>
-                        <dd>Lists in-flight packages. Issue first sends, send reminders, preview the AS Fin and POC emails. Each send dispatches one group summary plus one email per POC. The disabled-checkbox on a row indicates either a CM with no AS Fin email configured or a status that is not actionable. Finalised packages are visible (read-only) so you can see what is queued for export. In test mode the real Send button is replaced with Mark-as-sent.</dd>
+                        <dd>Lists in-flight packages. Issue first sends, send reminders, preview the AS Fin and POC emails. Each send dispatches one group summary plus one email per POC. The disabled-checkbox on a row indicates either a CM with no AS Fin email configured or a status that is not actionable. Finalised packages are visible (read-only) so you can see what is queued for export, and offer a <em>Notify AS Fin</em> button to send a courtesy summary email to a typed recipient. In test mode the real Send button is replaced with Mark-as-sent / remind.</dd>
 
                         <dt>Reviewer page</dt>
                         <dd>Token-authenticated. AS Fin reviews each document from the group summary link, picks a reason code, optionally adds comments and an objective reference, then clicks Finalise to close the package. Unfinalise is available on the same toolbar to reopen. POCs use a separate per-POC link from their own email; they see only their documents and cannot finalise.</dd>
@@ -356,6 +356,9 @@
                     <h3>Sending reminders</h3>
                     <p>Reminders are valid only on <strong>Sent</strong> or <strong>In review</strong> packages. NotSent uses Send instead; Finalised / Exported / Cancelled packages cannot be reminded. The dashboard surfaces packages that are near deadline or overdue. POCs whose documents are all reviewed are automatically skipped on a reminder so they are not chased for completed work; the AS Fin reminder always goes regardless of progress.</p>
 
+                    <h3>Notifying AS Fin after finalise</h3>
+                    <p>Once a package is Finalised, a <em>Notify AS Fin</em> button appears in the actions cell of that row on the Send-outs page. Use it to explicitly inform the responsible AS Fin officer that the package has been closed off. Each click prompts for a recipient email (must be a Defence or ANPSR address); the CM team mailbox is added on CC automatically and LPPI support is BCCed. The email carries the package summary &mdash; payable and not-payable counts and dollars, broken down by RC-NR (defaulted on finalise) and RC-RL (reload-eligible, returns next cycle) so the recipient can see exactly what has been decided. The link in the email opens the reviewer page read-only.</p>
+
                     <h3>Finalising and unfinalising (AS Fin self-service)</h3>
                     <p>This happens on the reviewer page using the AS Fin link, not in the admin pages &mdash; AS Fin manages its own workflow. POC links cannot finalise.</p>
                     <ul>
@@ -380,7 +383,7 @@
                 <section id="support">
                     <h2>Support</h2>
                     <p>For functional questions, use the <strong>Feedback &amp; support</strong> button in the page header &mdash; it opens a pre-populated mailto with the support inbox addresses configured in <code>web.config</code>.</p>
-                    <p>For module documentation and source, see the repository <code>README.md</code> at the repo root and the SQL scripts under <code>db/</code>.</p>
+                    <p>For module documentation and source, see the repository <code>README.md</code> at the root folder and the SQL scripts in the <code>sql/</code> subfolder.</p>
                 </section>
 
             </article>
