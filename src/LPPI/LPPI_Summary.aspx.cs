@@ -9,33 +9,51 @@ namespace CPlatform.LPPI
 {
     /// <summary>
     /// Summary page. Admin-only operational view of the current review
-    /// cycle — cycle picker, scope header, by-reason-code split (with
-    /// Awaiting pseudo-row), non-payment subset, by-program / by-CM
-    /// breakdowns, and the top-10 outstanding POCs.
+    /// cycle — Scope picker, CM picker, scope header, by-reason-code split
+    /// (with Awaiting pseudo-row), non-payment subset, by-program
+    /// breakdown (with totals row), and the top-10 outstanding POCs.
     ///
     /// Read-only. No writes, no token paths. Every query honours the
     /// first-line-review model and the IsDeactivated = 0 filter via
     /// LPPIHelper helpers.
     ///
-    /// The scope picker drives a postback that re-binds the whole page.
+    /// Two independent pickers:
+    ///   - Scope: which packages are in the universe (active / all / batch).
+    ///   - Capability Manager: narrow within that universe to one program.
+    /// Both are AutoPostBack; both contribute to the bookmarkable
+    /// query string (s=, cm=). The CM picker re-binds when Scope changes
+    /// so it only ever shows programs actually represented in the scope;
+    /// the user's selection is preserved across the rebind if still valid,
+    /// otherwise falls back to (all).
+    ///
     /// The Export full data button is a separate handler call to
     /// LPPI_Summary_Export.ashx (admin-auth), which mirrors the 53-column
-    /// reviewer-page export but scoped to whichever scope is selected.
+    /// reviewer-page export but scoped to whichever scope + CM is selected.
     /// </summary>
     public partial class LPPI_Summary : LPPIBasePage
     {
         // Reviewed progress bar % surfaced into markup via <%= OvReviewedPct %>.
         protected int OvReviewedPct;
 
-        // Scope query-string key. Survives postbacks via the dropdown's
-        // SelectedValue, but the export handler reads it from the URL so
-        // the picker state is bookmarkable / shareable.
-        private const string ScopeQueryKey = "s";
+        // Program-table totals — surfaced into the tfoot via <%= ... %>
+        // for the progress bar's two arguments. The numeric literals are
+        // bound through their own asp:Literal controls (litProgTotXxx).
+        protected int ProgTotReviewed;
+        protected int ProgTotDocs;
 
-        // Sentinel values for the dropdown. Batch options use "B<id>".
-        private const string ScopeValueActive = "active";
-        private const string ScopeValueAll    = "all";
+        // Query-string keys. The pickers AutoPostBack and live via
+        // SelectedValue, but the export handler reads from the URL so the
+        // picker state is bookmarkable and shareable.
+        private const string ScopeQueryKey = "s";
+        private const string CmQueryKey    = "cm";
+
+        // Scope dropdown sentinel values. Batch options use "B<id>".
+        private const string ScopeValueActive      = "active";
+        private const string ScopeValueAll         = "all";
         private const string ScopeValueBatchPrefix = "B";
+
+        // CM dropdown sentinel value for the (all programs) option.
+        private const string CmValueAll = "";
 
         protected void Page_Load(object sender, EventArgs e)
         {
@@ -43,6 +61,8 @@ namespace CPlatform.LPPI
             {
                 BindScopePicker();
                 ApplyScopeFromQueryString();
+                BindCmPicker(ScopeWithoutCm());
+                ApplyCmFromQueryString();
                 BindAll();
             }
         }
@@ -101,10 +121,75 @@ namespace CPlatform.LPPI
 
         protected void ddlScope_SelectedIndexChanged(object sender, EventArgs e)
         {
+            // Re-bind the CM picker against the new scope. Preserve the
+            // current CM selection if it is still represented in the new
+            // scope, otherwise fall back to (all).
+            string previousCm = ddlCm.SelectedValue ?? CmValueAll;
+            BindCmPicker(ScopeWithoutCm());
+            ListItem keep = ddlCm.Items.FindByValue(previousCm);
+            if (keep != null)
+            {
+                ddlCm.ClearSelection();
+                keep.Selected = true;
+            }
+            // else default-selected (all) from BindCmPicker.
+
             BindAll();
         }
 
-        private LPPIHelper.SummaryScope CurrentScope()
+        // -------------------------------------------------------------------
+        // CM dropdown
+        //
+        // Always starts with "(All programs)" as a sentinel for no CM
+        // filter. Subsequent items are the CmIDs available within the
+        // CURRENT Scope — passing pickerScope through GetSummaryCmList
+        // ensures the dropdown collapses to just programs you can actually
+        // reach with the current Scope selection.
+        // -------------------------------------------------------------------
+
+        private void BindCmPicker(LPPIHelper.SummaryScope pickerScope)
+        {
+            ddlCm.Items.Clear();
+            ddlCm.Items.Add(new ListItem("(All programs)", CmValueAll));
+
+            DataTable cms = LPPIHelper.GetSummaryCmList(pickerScope);
+            foreach (DataRow r in cms.Rows)
+            {
+                int cmId      = Convert.ToInt32(r["CmID"]);
+                string program = r["Program"] == DBNull.Value ? "" : Convert.ToString(r["Program"]);
+                ddlCm.Items.Add(new ListItem(
+                    string.IsNullOrEmpty(program) ? "(unnamed program)" : program,
+                    cmId.ToString(CultureInfo.InvariantCulture)));
+            }
+        }
+
+        private void ApplyCmFromQueryString()
+        {
+            string cm = (Request.QueryString[CmQueryKey] ?? "").Trim();
+            if (string.IsNullOrEmpty(cm)) return;
+
+            ListItem li = ddlCm.Items.FindByValue(cm);
+            if (li != null)
+            {
+                ddlCm.ClearSelection();
+                li.Selected = true;
+            }
+        }
+
+        protected void ddlCm_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            BindAll();
+        }
+
+        // -------------------------------------------------------------------
+        // Scope resolution
+        // -------------------------------------------------------------------
+
+        /// <summary>
+        /// Scope with Scope-kind only, no CM filter. Used to seed the CM
+        /// picker so its option list does not constrain itself.
+        /// </summary>
+        private LPPIHelper.SummaryScope ScopeWithoutCm()
         {
             string v = ddlScope.SelectedValue ?? ScopeValueActive;
 
@@ -125,8 +210,24 @@ namespace CPlatform.LPPI
             return LPPIHelper.SummaryScope.CurrentCycle();
         }
 
+        private LPPIHelper.SummaryScope CurrentScope()
+        {
+            LPPIHelper.SummaryScope scope = ScopeWithoutCm();
+
+            string cmVal = ddlCm.SelectedValue ?? CmValueAll;
+            int cmId;
+            if (!string.IsNullOrEmpty(cmVal)
+                && int.TryParse(cmVal, NumberStyles.Integer, CultureInfo.InvariantCulture, out cmId)
+                && cmId > 0)
+            {
+                scope.WithCm(cmId);
+            }
+
+            return scope;
+        }
+
         // -------------------------------------------------------------------
-        // Bind all sections for the currently-selected scope.
+        // Bind all sections for the currently-selected scope + CM filter.
         // -------------------------------------------------------------------
 
         private void BindAll()
@@ -137,7 +238,6 @@ namespace CPlatform.LPPI
             BindByReason(scope);
             BindByNonPayment(scope);
             BindByProgram(scope);
-            BindByCm(scope);
             BindByPoc(scope);
             BindScopeMeta(scope);
         }
@@ -200,17 +300,54 @@ namespace CPlatform.LPPI
         private void BindByProgram(LPPIHelper.SummaryScope scope)
         {
             DataTable dt = LPPIHelper.GetSummaryByProgram(scope);
+
             rptByProgram.DataSource = dt;
             rptByProgram.DataBind();
-            phNoProgram.Visible = dt.Rows.Count == 0;
-        }
 
-        private void BindByCm(LPPIHelper.SummaryScope scope)
-        {
-            DataTable dt = LPPIHelper.GetSummaryByCm(scope);
-            rptByCm.DataSource = dt;
-            rptByCm.DataBind();
-            phNoCm.Visible = dt.Rows.Count == 0;
+            bool hasRows = dt.Rows.Count > 0;
+            phProgramTable.Visible = hasRows;
+            phNoProgram.Visible    = !hasRows;
+
+            // Compute the totals row. POC count is the sum of per-program
+            // PocCounts (cross-program POCs counted once per program; the
+            // footnote in the markup explains this).
+            //
+            // No-POC count is summed across rows and surfaced as a small
+            // warning caption underneath the table — only shown when > 0.
+            int totPackages = 0, totDocs = 0, totReviewed = 0, totPocs = 0, totNoPoc = 0;
+            decimal totInterest = 0m;
+
+            foreach (DataRow r in dt.Rows)
+            {
+                totPackages += AsInt(r, "PackageCount");
+                totDocs     += AsInt(r, "DocCount");
+                totReviewed += AsInt(r, "ReviewedCount");
+                totPocs     += AsInt(r, "PocCount");
+                totNoPoc    += AsInt(r, "NoPocCount");
+                totInterest += AsDec(r, "Interest");
+            }
+
+            litProgTotPackages.Text = totPackages.ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
+            litProgTotDocs.Text     = totDocs.ToString("N0",     CultureInfo.GetCultureInfo("en-AU"));
+            litProgTotPocs.Text     = totPocs.ToString("N0",     CultureInfo.GetCultureInfo("en-AU"));
+            litProgTotInterest.Text = "$" + totInterest.ToString("N2", CultureInfo.GetCultureInfo("en-AU"));
+
+            ProgTotReviewed = totReviewed;
+            ProgTotDocs     = totDocs;
+
+            if (totNoPoc > 0)
+            {
+                phNoPocNote.Visible = true;
+                litNoPocCount.Text = string.Format(CultureInfo.GetCultureInfo("en-AU"),
+                    "{0} document{1} in scope ha{2} no POC email recorded, these are not included in the POC counts above. *POCs in multiple programs are counted once per program.",
+                    totNoPoc.ToString("N0", CultureInfo.GetCultureInfo("en-AU")),
+                    totNoPoc == 1 ? "" : "s",
+                    totNoPoc == 1 ? "s" : "ve");
+            }
+            else
+            {
+                phNoPocNote.Visible = false;
+            }
         }
 
         private void BindByPoc(LPPIHelper.SummaryScope scope)
@@ -223,34 +360,53 @@ namespace CPlatform.LPPI
 
         private void BindScopeMeta(LPPIHelper.SummaryScope scope)
         {
-            // Short descriptor sitting beside the dropdown.
+            // Short descriptor sitting beside the dropdowns. Mentions CM
+            // when a filter is applied so the operator sees at a glance
+            // that the page is narrowed.
+            string scopeText;
             switch (scope.Kind)
             {
                 case LPPIHelper.SummaryScopeKind.Batch:
-                    litScopeMeta.Text = "Scoped to packages containing documents from this batch.";
+                    scopeText = "Scoped to packages containing documents from this batch.";
                     break;
                 case LPPIHelper.SummaryScopeKind.All:
-                    litScopeMeta.Text = "All packages in NotSent / Sent / In review / Finalised — same set as Current cycle.";
+                    scopeText = "All packages in NotSent / Sent / In review / Finalised — same set as Current cycle.";
                     break;
                 case LPPIHelper.SummaryScopeKind.Active:
                 default:
-                    litScopeMeta.Text = "In-flight packages (NotSent / Sent / In review / Finalised). Exported and Cancelled packages drop off.";
+                    scopeText = "In-flight packages (NotSent / Sent / In review / Finalised). Exported and Cancelled packages drop off.";
                     break;
             }
+
+            if (scope.CmID.HasValue)
+            {
+                ListItem cmItem = ddlCm.Items.FindByValue(scope.CmID.Value.ToString(CultureInfo.InvariantCulture));
+                string cmLabel = cmItem != null ? cmItem.Text : ("CM #" + scope.CmID.Value);
+                scopeText += " Filtered to " + cmLabel + ".";
+            }
+
+            litScopeMeta.Text = LPPIHelper.Enc(scopeText);
         }
 
         // -------------------------------------------------------------------
         // Export — admin-auth handler call
         //
-        // Builds a query-string with the current scope and redirects.
-        // The handler does its own admin gate so this redirect is safe
-        // even if a non-admin somehow reaches this page.
+        // Builds a query-string with the current scope + CM filter and
+        // redirects. The handler does its own admin gate so this redirect
+        // is safe even if a non-admin somehow reaches this page.
         // -------------------------------------------------------------------
         protected void btnExport_Click(object sender, EventArgs e)
         {
             string scopeValue = ddlScope.SelectedValue ?? ScopeValueActive;
-            string url = "LPPI_Summary_Export.ashx?" + ScopeQueryKey + "=" + Server.UrlEncode(scopeValue);
-            Response.Redirect(url, true);
+            string cmValue    = ddlCm.SelectedValue    ?? CmValueAll;
+
+            var sb = new StringBuilder("LPPI_Summary_Export.ashx?");
+            sb.Append(ScopeQueryKey).Append('=').Append(Server.UrlEncode(scopeValue));
+            if (!string.IsNullOrEmpty(cmValue))
+            {
+                sb.Append('&').Append(CmQueryKey).Append('=').Append(Server.UrlEncode(cmValue));
+            }
+            Response.Redirect(sb.ToString(), true);
         }
 
         // -------------------------------------------------------------------
@@ -342,6 +498,22 @@ namespace CPlatform.LPPI
             if (pct < 0) return 0;
             if (pct > 100) return 100;
             return pct;
+        }
+
+        // -------------------------------------------------------------------
+        // Tiny DataRow conversion helpers — used by BindByProgram's totals
+        // loop. Tolerant of missing columns / DBNulls so a missing-column
+        // bug shows up as a zero rather than a NullReferenceException.
+        // -------------------------------------------------------------------
+        private static int AsInt(DataRow r, string column)
+        {
+            if (!r.Table.Columns.Contains(column) || r[column] == DBNull.Value) return 0;
+            return Convert.ToInt32(r[column]);
+        }
+        private static decimal AsDec(DataRow r, string column)
+        {
+            if (!r.Table.Columns.Contains(column) || r[column] == DBNull.Value) return 0m;
+            return Convert.ToDecimal(r[column]);
         }
     }
 }

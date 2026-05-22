@@ -1582,11 +1582,28 @@ UPDATE dbo.tblLPPI_ReviewPackages
             public SummaryScopeKind Kind;
             public int? BatchID;
 
+            // Optional Capability Manager filter. When set, the package set
+            // is further narrowed to packages owned by this CmID. Composes
+            // with Kind — Scope picks the universe (active / all / batch),
+            // CmID narrows within it. Default null = no CM filter.
+            public int? CmID;
+
             public static SummaryScope CurrentCycle() { return new SummaryScope { Kind = SummaryScopeKind.Active }; }
             public static SummaryScope AllActive()    { return new SummaryScope { Kind = SummaryScopeKind.All }; }
             public static SummaryScope ForBatch(int batchId)
             {
                 return new SummaryScope { Kind = SummaryScopeKind.Batch, BatchID = batchId };
+            }
+
+            /// <summary>
+            /// Fluent CM filter. Returns the same instance so factory calls
+            /// can chain: SummaryScope.CurrentCycle().WithCm(7).
+            /// Passing null clears the filter.
+            /// </summary>
+            public SummaryScope WithCm(int? cmId)
+            {
+                this.CmID = cmId;
+                return this;
             }
         }
 
@@ -1610,6 +1627,16 @@ UPDATE dbo.tblLPPI_ReviewPackages
         {
             if (scope == null) scope = SummaryScope.CurrentCycle();
 
+            // Optional CM filter — composes with whichever Kind is selected.
+            // For Batch scope we need an explicit join to tblLPPI_ReviewPackages
+            // to reach CmID; for Active/All scope p_s is already in the FROM
+            // and we just AND the predicate.
+            bool hasCm = scope.CmID.HasValue;
+            if (hasCm)
+            {
+                outParams.Add(P("@SS_CmID", scope.CmID.Value));
+            }
+
             switch (scope.Kind)
             {
                 case SummaryScopeKind.Batch:
@@ -1620,15 +1647,22 @@ UPDATE dbo.tblLPPI_ReviewPackages
                               FROM dbo.tblLPPI_ReviewPackageDocuments pd_s
                               INNER JOIN dbo.tblLPPI_Documents d_s
                                       ON d_s.DocumentID = pd_s.DocumentID
+                              "
+                          + (hasCm
+                              ? "INNER JOIN dbo.tblLPPI_ReviewPackages p_s ON p_s.PackageID = pd_s.PackageID "
+                              : "")
+                          + @"
                              WHERE d_s.BatchID      = @SS_BatchID
-                               AND d_s.IsDeactivated = 0";
+                               AND d_s.IsDeactivated = 0"
+                          + (hasCm ? " AND p_s.CmID = @SS_CmID" : "");
 
                 case SummaryScopeKind.Active:
                 case SummaryScopeKind.All:
                 default:
                     // Active and All resolve identically today.
                     // ActivePackageStatusList is the canonical IN-list literal.
-                    return "SELECT p_s.PackageID FROM dbo.tblLPPI_ReviewPackages p_s WHERE p_s.Status IN (" + ActivePackageStatusList + ")";
+                    return "SELECT p_s.PackageID FROM dbo.tblLPPI_ReviewPackages p_s WHERE p_s.Status IN (" + ActivePackageStatusList + ")"
+                         + (hasCm ? " AND p_s.CmID = @SS_CmID" : "");
             }
         }
 
@@ -1797,10 +1831,14 @@ ORDER BY DisplayOrder, Code;";
             var parms = new List<OleDbParameter>();
             string scopeSql = BuildScopePackageSubquery(scope, parms);
 
-            // PkgDocs carries DocInterest as a plain column so the outer
-            // SUM is over a column rather than over a correlated subquery
-            // (which SQL Server rejects: "aggregate function on an
-            // expression containing an aggregate or a subquery").
+            // PkgDocs carries DocInterest + PocEmailClean as plain columns
+            // so the outer aggregates are over columns rather than over
+            // correlated subqueries (SQL Server rejects an aggregate
+            // applied to a correlated subquery).
+            //
+            // PocEmailClean is the trimmed first-line PocEmail; blank /
+            // null become NULL so COUNT(DISTINCT ...) ignores them, and
+            // an explicit no-POC count is exposed separately.
             string sql = @"
 WITH ScopePkgs AS (
     " + scopeSql + @"
@@ -1817,7 +1855,15 @@ PkgDocs AS (
            (SELECT SUM(d3.InterestPayable)
               FROM dbo.tblLPPI_Documents d3
              WHERE d3.DocNoAccounting = d.DocNoAccounting
-               AND d3.IsDeactivated   = 0) AS DocInterest
+               AND d3.IsDeactivated   = 0) AS DocInterest,
+           NULLIF(LTRIM(RTRIM(
+               (SELECT TOP 1 d4.PocEmail
+                  FROM dbo.tblLPPI_Documents d4
+                 WHERE d4.DocumentID = (SELECT MIN(d5.DocumentID)
+                                          FROM dbo.tblLPPI_Documents d5
+                                         WHERE d5.DocNoAccounting = d.DocNoAccounting
+                                           AND d5.IsDeactivated   = 0)))
+               ), '') AS PocEmailClean
       FROM dbo.tblLPPI_ReviewPackageDocuments pd
       INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
       INNER JOIN dbo.tblLPPI_ReviewPackages p ON p.PackageID = pd.PackageID
@@ -1827,10 +1873,12 @@ PkgDocs AS (
 )
 SELECT
     pd.Program,
-    COUNT(DISTINCT pd.PackageID)                                AS PackageCount,
-    COUNT(*)                                                    AS DocCount,
-    SUM(CASE WHEN r.ReasonCodeID IS NOT NULL THEN 1 ELSE 0 END) AS ReviewedCount,
-    ISNULL(SUM(pd.DocInterest), 0)                              AS Interest
+    COUNT(DISTINCT pd.PackageID)                                  AS PackageCount,
+    COUNT(*)                                                      AS DocCount,
+    SUM(CASE WHEN r.ReasonCodeID IS NOT NULL THEN 1 ELSE 0 END)   AS ReviewedCount,
+    COUNT(DISTINCT pd.PocEmailClean)                              AS PocCount,
+    SUM(CASE WHEN pd.PocEmailClean IS NULL THEN 1 ELSE 0 END)     AS NoPocCount,
+    ISNULL(SUM(pd.DocInterest), 0)                                AS Interest
   FROM PkgDocs pd
   LEFT JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pd.FirstLineDocumentID
  GROUP BY pd.Program
@@ -1956,7 +2004,7 @@ SELECT TOP (10)
     ISNULL(SUM(DocInterest),0) AS Interest
   FROM Outstanding
  GROUP BY PocEmail
- ORDER BY Interest DESC, DocCount DESC, PocEmail;";
+ ORDER BY DocCount DESC, Interest DESC, PocEmail;";
 
             return ExecuteTable(sql, parms.ToArray());
         }
@@ -1992,6 +2040,43 @@ SELECT lb.BatchID,
  ORDER BY lb.LoadedDate DESC;";
 
             return ExecuteTable(sql);
+        }
+
+        // -------------------------------------------------------------------
+        // CM picker list — distinct Capability Manager programs that have
+        // at least one in-scope package given the supplied scope.
+        //
+        // The picker on LPPI_Summary.aspx re-binds on Scope change so the
+        // list is always in step with what is selectable. Pass a scope
+        // WITHOUT a CmID filter — this helper builds the list of CMs
+        // available within that scope (it would be circular to constrain
+        // the picker by its own value).
+        //
+        // Columns:
+        //   CmID      INT
+        //   Program   NVARCHAR(200)
+        // -------------------------------------------------------------------
+        public static DataTable GetSummaryCmList(SummaryScope scope)
+        {
+            // Strip any incoming CmID so the picker shows the unfiltered
+            // population of programs in this scope. Callers are expected
+            // to pass an un-filtered scope but this is defence in depth.
+            var pickerScope = new SummaryScope { Kind = scope.Kind, BatchID = scope.BatchID, CmID = null };
+
+            var parms = new List<OleDbParameter>();
+            string scopeSql = BuildScopePackageSubquery(pickerScope, parms);
+
+            string sql = @"
+WITH ScopePkgs AS (
+    " + scopeSql + @"
+)
+SELECT DISTINCT cm.CmID, cm.Program
+  FROM dbo.tblLPPI_ReviewPackages p
+  INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
+ WHERE p.PackageID IN (SELECT PackageID FROM ScopePkgs)
+ ORDER BY cm.Program;";
+
+            return ExecuteTable(sql, parms.ToArray());
         }
 
         // -------------------------------------------------------------------

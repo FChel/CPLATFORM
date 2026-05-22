@@ -301,15 +301,20 @@
                     <ul>
                         <li>The reason-code split across in-scope documents (with an <strong>Awaiting</strong> pseudo-row for unreviewed docs).</li>
                         <li>A Not Payable sub-cut, useful for spotting clusters &mdash; e.g. lots of RC-RL signalling upstream data issues.</li>
-                        <li>Progress by Capability Manager program (reviewed / total bars per program).</li>
-                        <li>Exposure by Capability Manager number (LPPI Charge Cost Centre).</li>
-                        <li>The top 10 outstanding POCs by interest exposure, for chase-up triage.</li>
+                        <li>Progress by Capability Manager program (packages, documents, reviewed / total bar, distinct POCs and interest exposure, with a totals row).</li>
+                        <li>The top 10 outstanding POCs by document count, for chase-up triage.</li>
                     </ul>
                     <p>
-                        The scope picker at the top defaults to <strong>Current cycle</strong> (every in-flight package).
-                        Past load batches are listed below and let you focus on a specific monthly file's documents.
+                        Two independent pickers sit at the top of the page:
+                    </p>
+                    <ul>
+                        <li><strong>Scope</strong> &mdash; picks the universe of packages. Defaults to <em>Current cycle</em> (every in-flight package); past load batches are listed below it for focusing on a specific monthly file.</li>
+                        <li><strong>Capability Manager</strong> &mdash; defaults to <em>(All programs)</em>; pick a specific program to narrow the whole page (counts, reason-code split, non-payment, POCs, export) to just that program. Useful for spotting POC gaps by group, or reason-code clusters within one program.</li>
+                    </ul>
+                    <p>
                         The <strong>Export full data</strong> button generates a 53-column xlsx covering every line of every
                         in-scope document &mdash; same layout as the reviewer page's export, but cycle-wide rather than per package.
+                        The export honours both pickers, so an ARMY-filtered Current-cycle export contains only ARMY's in-flight lines.
                     </p>
                     <div class="callout">
                         <strong>Reporting note.</strong> For trend analysis, CFO-level visibility, and cycle-over-cycle reporting,

@@ -2111,11 +2111,11 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
      - By POC:             full-width table
    ============================================================================= */
 
-/* Scope picker bar ---------------------------------------------------------- */
+/* Scope + CM picker bar ---------------------------------------------------- */
 .summary-shell .summary-scope-bar {
     display: flex;
-    align-items: center;
-    gap: 14px;
+    align-items: flex-end;
+    gap: 16px;
     background: var(--white);
     border: 1px solid var(--line);
     border-radius: var(--r-lg);
@@ -2124,17 +2124,26 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     margin-bottom: 20px;
     flex-wrap: wrap;
 }
+/* Each picker is a small column: label stacked above its select. Lets
+   the two pickers (Scope + Capability Manager) sit cleanly side by
+   side and stack on narrow viewports. */
+.summary-shell .summary-scope-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 0 1 auto;
+    min-width: 0;
+}
 .summary-shell .summary-scope-label {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--ink-3);
     font-weight: 700;
-    margin-right: 2px;
 }
 .summary-shell .summary-scope-select {
     flex: 0 0 auto;
-    min-width: 320px;
+    min-width: 280px;
     max-width: 100%;
     padding: 8px 12px;
     border: 1px solid var(--line);
@@ -2151,15 +2160,17 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     box-shadow: 0 0 0 3px rgba(215,91,7,0.15);
 }
 .summary-shell .summary-scope-meta {
-    flex: 1;
+    flex: 1 1 200px;
     min-width: 0;
     font-size: 12px;
     color: var(--ink-3);
     line-height: 1.4;
+    padding-bottom: 8px;  /* nudge baseline up to align with the selects */
 }
-@media (max-width: 700px) {
+@media (max-width: 900px) {
+    .summary-shell .summary-scope-field { flex: 1 1 100%; }
     .summary-shell .summary-scope-select { min-width: 0; width: 100%; }
-    .summary-shell .summary-scope-meta   { width: 100%; }
+    .summary-shell .summary-scope-meta   { width: 100%; padding-bottom: 0; }
 }
 
 /* Section wrappers ---------------------------------------------------------- */
@@ -2285,16 +2296,42 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     font-variant-numeric: tabular-nums;
 }
 
-/* Side-by-side block for By program + By CM number ------------------------- */
-.summary-shell .summary-split {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
+/* Total row in the By-program table footer. Subtle top border + slight
+   background tint so it reads as a summary line without competing with
+   the body rows. Numbers stay tabular for alignment. */
+.summary-shell .summary-row-total {
+    background: var(--orange-soft);
+    border-top: 2px solid var(--orange-tint);
 }
-@media (max-width: 1100px) {
-    .summary-shell .summary-split { grid-template-columns: 1fr; }
+.summary-shell .summary-row-total td {
+    font-weight: 600;
+    color: var(--ink);
 }
-.summary-shell .summary-split .summary-section { margin-bottom: 0; }
+.summary-shell .summary-row-total .summary-progress .lbl {
+    color: var(--ink-2);
+    font-weight: 600;
+}
+/* Footnote marker used in the Total row's POCs cell. */
+.summary-shell .summary-foot-marker {
+    color: var(--orange-deep);
+    font-weight: 700;
+    margin-left: 2px;
+}
+
+/* Warning-tone footnote — used for the "N documents have no POC" caption
+   sitting underneath the By-program table. Same size and tone as the
+   neutral .summary-foot-note but with a left-edge accent so it reads as
+   "heads up, look at this". */
+.summary-shell .summary-foot-note-warn {
+    padding: 8px 12px;
+    background: var(--warn-bg);
+    border-left: 3px solid var(--warn);
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+    color: var(--ink-2);
+    margin: 8px 0;
+}
+
+/* Table styling ------------------------------------------------------------- */
 
 /* Table styling ------------------------------------------------------------- */
 .summary-shell .summary-tbl tbody tr:hover { background: var(--orange-soft); }

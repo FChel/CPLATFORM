@@ -16,8 +16,9 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Admin-auth export handler for the Summary page. Streams an .xlsx
     /// containing every line of every document in the currently-selected
-    /// scope — the same 53-column layout as LPPI_Review_Export.ashx,
-    /// expanded to all in-scope documents instead of one package.
+    /// scope + CM filter — the same 53-column layout as
+    /// LPPI_Review_Export.ashx, expanded to all in-scope documents
+    /// instead of one package.
     ///
     /// Distinct from LPPI_Review_Export.ashx by design:
     ///   - This handler is admin-only (LPPIHelper.IsAdminUser gate).
@@ -29,10 +30,12 @@ namespace CPlatform.LPPI
     /// shape in one handler without ceremony.
     ///
     /// QUERY STRING
-    ///   s = scope value matching the LPPI_Summary.aspx dropdown:
+    ///   s  = scope value matching the LPPI_Summary.aspx Scope dropdown:
     ///         "active"        — Current cycle (default if missing/invalid)
     ///         "all"           — All active
     ///         "B<batchId>"    — Batch #<batchId>
+    ///   cm = optional Capability Manager CmID to narrow the scope.
+    ///         Missing / 0 / non-numeric = no CM filter.
     ///
     /// RESPONSE
     ///   200 — Content-Type: xlsx, body = file bytes.
@@ -67,9 +70,10 @@ namespace CPlatform.LPPI
             }
 
             // Resolve the scope from the query string.
-            string scopeValue = (ctx.Request.QueryString["s"] ?? "").Trim();
-            LPPIHelper.SummaryScope scope = ParseScope(scopeValue);
-            string scopeToken = ScopeFilenameToken(scopeValue, scope);
+            string scopeValue = (ctx.Request.QueryString["s"]  ?? "").Trim();
+            string cmValue    = (ctx.Request.QueryString["cm"] ?? "").Trim();
+            LPPIHelper.SummaryScope scope = ParseScope(scopeValue, cmValue);
+            string scopeToken = ScopeFilenameToken(scope);
 
             // Resolve scope -> concrete PackageID list. This protects the
             // export against scope drift mid-build (an active package
@@ -127,44 +131,80 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // Scope parsing — accept the same dropdown values as LPPI_Summary.aspx.
-        // Unknown or missing values fall back to Active.
+        // Scope parsing — accept the same s + cm values as LPPI_Summary.aspx.
+        // Unknown / missing scope falls back to Active; unknown / missing
+        // cm leaves the filter off.
         // -------------------------------------------------------------------
-        private static LPPIHelper.SummaryScope ParseScope(string value)
+        private static LPPIHelper.SummaryScope ParseScope(string scopeValue, string cmValue)
         {
-            if (string.IsNullOrEmpty(value)) return LPPIHelper.SummaryScope.CurrentCycle();
+            LPPIHelper.SummaryScope scope;
 
-            if (string.Equals(value, ScopeValueAll, StringComparison.OrdinalIgnoreCase))
-                return LPPIHelper.SummaryScope.AllActive();
-
-            if (value.StartsWith(ScopeValueBatchPrefix, StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(scopeValue))
+            {
+                scope = LPPIHelper.SummaryScope.CurrentCycle();
+            }
+            else if (string.Equals(scopeValue, ScopeValueAll, StringComparison.OrdinalIgnoreCase))
+            {
+                scope = LPPIHelper.SummaryScope.AllActive();
+            }
+            else if (scopeValue.StartsWith(ScopeValueBatchPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 int batchId;
-                if (int.TryParse(value.Substring(ScopeValueBatchPrefix.Length),
+                if (int.TryParse(scopeValue.Substring(ScopeValueBatchPrefix.Length),
                     NumberStyles.Integer, CultureInfo.InvariantCulture, out batchId)
                     && batchId > 0)
                 {
-                    return LPPIHelper.SummaryScope.ForBatch(batchId);
+                    scope = LPPIHelper.SummaryScope.ForBatch(batchId);
+                }
+                else
+                {
+                    scope = LPPIHelper.SummaryScope.CurrentCycle();
+                }
+            }
+            else
+            {
+                scope = LPPIHelper.SummaryScope.CurrentCycle();
+            }
+
+            // CM filter — optional, applied after Kind is resolved.
+            if (!string.IsNullOrEmpty(cmValue))
+            {
+                int cmId;
+                if (int.TryParse(cmValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out cmId)
+                    && cmId > 0)
+                {
+                    scope.WithCm(cmId);
                 }
             }
 
-            return LPPIHelper.SummaryScope.CurrentCycle();
+            return scope;
         }
 
-        private static string ScopeFilenameToken(string rawValue, LPPIHelper.SummaryScope scope)
+        private static string ScopeFilenameToken(LPPIHelper.SummaryScope scope)
         {
+            string baseToken;
             switch (scope.Kind)
             {
                 case LPPIHelper.SummaryScopeKind.Batch:
-                    return "Batch" + (scope.BatchID.HasValue
+                    baseToken = "Batch" + (scope.BatchID.HasValue
                         ? scope.BatchID.Value.ToString(CultureInfo.InvariantCulture)
                         : "0");
+                    break;
                 case LPPIHelper.SummaryScopeKind.All:
-                    return "AllActive";
+                    baseToken = "AllActive";
+                    break;
                 case LPPIHelper.SummaryScopeKind.Active:
                 default:
-                    return "ActiveCycle";
+                    baseToken = "ActiveCycle";
+                    break;
             }
+
+            if (scope.CmID.HasValue)
+            {
+                baseToken += "_CM" + scope.CmID.Value.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return baseToken;
         }
 
         // -------------------------------------------------------------------

@@ -21,7 +21,7 @@
             <div>
                 <div class="crumb">LPPI Review</div>
                 <h1>Summary</h1>
-                <p class="lead">In-flight visibility of the current review cycle &mdash; counts, reason-code split, and outstanding work by program, CM number, and POC.</p>
+                <p class="lead">In-flight visibility of the current review cycle &mdash; counts, reason-code split, and outstanding work by program and POC.</p>
             </div>
             <div class="btn-row">
                 <asp:Button ID="btnExport" runat="server" CssClass="btn btn-primary"
@@ -29,13 +29,24 @@
             </div>
         </div>
 
-        <%-- Scope picker --%>
+        <%-- Scope + CM pickers — independent filters. Scope picks the
+             universe of packages (current cycle / all active / a specific
+             batch); CM narrows within that universe to a single program. --%>
         <section class="summary-scope-bar">
-            <label class="summary-scope-label" for="<%= ddlScope.ClientID %>">Scope</label>
-            <asp:DropDownList ID="ddlScope" runat="server"
-                AutoPostBack="true"
-                CssClass="summary-scope-select"
-                OnSelectedIndexChanged="ddlScope_SelectedIndexChanged" />
+            <div class="summary-scope-field">
+                <label class="summary-scope-label" for="<%= ddlScope.ClientID %>">Scope</label>
+                <asp:DropDownList ID="ddlScope" runat="server"
+                    AutoPostBack="true"
+                    CssClass="summary-scope-select"
+                    OnSelectedIndexChanged="ddlScope_SelectedIndexChanged" />
+            </div>
+            <div class="summary-scope-field">
+                <label class="summary-scope-label" for="<%= ddlCm.ClientID %>">Capability Manager</label>
+                <asp:DropDownList ID="ddlCm" runat="server"
+                    AutoPostBack="true"
+                    CssClass="summary-scope-select"
+                    OnSelectedIndexChanged="ddlCm_SelectedIndexChanged" />
+            </div>
             <div class="summary-scope-meta">
                 <asp:Literal ID="litScopeMeta" runat="server" />
             </div>
@@ -168,85 +179,65 @@
         </section>
 
         <%-- ============================================================
-             4 + 5. By CM program + By CM number — side by side on wide
-                    screens, stacked on narrow.
+             4. By CM program — full width, with totals row.
+                Code-behind builds the totals row and feeds it via the
+                separate tfoot literals so the Repeater itself does not
+                need an inline pivot.
              ============================================================ --%>
-        <div class="summary-split">
-            <section class="summary-section">
-                <div class="section-label">By Capability Manager program</div>
-                <div class="tbl-wrap">
-                    <asp:Repeater ID="rptByProgram" runat="server">
-                        <HeaderTemplate>
-                            <table class="tbl summary-tbl">
-                                <thead>
-                                    <tr>
-                                        <th>Program</th>
-                                        <th class="num">Packages</th>
-                                        <th class="num">Documents</th>
-                                        <th>Progress</th>
-                                        <th class="num">Interest</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                        </HeaderTemplate>
-                        <ItemTemplate>
+        <section class="summary-section">
+            <div class="section-label">By Capability Manager program</div>
+            <div class="tbl-wrap">
+                <asp:PlaceHolder ID="phProgramTable" runat="server">
+                    <table class="tbl summary-tbl">
+                        <thead>
                             <tr>
-                                <td><%# LPPIHelper.Enc(Eval("Program")) %></td>
-                                <td class="num"><%# FormatInt(Eval("PackageCount")) %></td>
-                                <td class="num"><%# FormatInt(Eval("DocCount")) %></td>
-                                <td><%# RenderProgressBar(Eval("ReviewedCount"), Eval("DocCount")) %></td>
-                                <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
+                                <th>Program</th>
+                                <th class="num">Packages</th>
+                                <th class="num">Documents</th>
+                                <th>Progress</th>
+                                <th class="num">POCs</th>
+                                <th class="num">Interest</th>
                             </tr>
-                        </ItemTemplate>
-                        <FooterTemplate>
-                                </tbody>
-                            </table>
-                        </FooterTemplate>
-                    </asp:Repeater>
-                    <asp:PlaceHolder ID="phNoProgram" runat="server" Visible="false">
-                        <div class="empty-state">No programs in scope.</div>
-                    </asp:PlaceHolder>
-                </div>
-            </section>
-
-            <section class="summary-section">
-                <div class="section-label">By Capability Manager number</div>
-                <div class="tbl-wrap">
-                    <asp:Repeater ID="rptByCm" runat="server">
-                        <HeaderTemplate>
-                            <table class="tbl summary-tbl">
-                                <thead>
+                        </thead>
+                        <tbody>
+                            <asp:Repeater ID="rptByProgram" runat="server">
+                                <ItemTemplate>
                                     <tr>
-                                        <th>CM number</th>
-                                        <th>Name</th>
-                                        <th class="num">Documents</th>
-                                        <th class="num">Interest</th>
+                                        <td><%# LPPIHelper.Enc(Eval("Program")) %></td>
+                                        <td class="num"><%# FormatInt(Eval("PackageCount")) %></td>
+                                        <td class="num"><%# FormatInt(Eval("DocCount")) %></td>
+                                        <td><%# RenderProgressBar(Eval("ReviewedCount"), Eval("DocCount")) %></td>
+                                        <td class="num"><%# FormatInt(Eval("PocCount")) %></td>
+                                        <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                        </HeaderTemplate>
-                        <ItemTemplate>
-                            <tr>
-                                <td><strong><%# LPPIHelper.Enc(Eval("CapabilityManager")) %></strong></td>
-                                <td class="muted"><%# LPPIHelper.Enc(Eval("CapabilityManagerName")) %></td>
-                                <td class="num"><%# FormatInt(Eval("DocCount")) %></td>
-                                <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
+                                </ItemTemplate>
+                            </asp:Repeater>
+                        </tbody>
+                        <tfoot>
+                            <tr class="summary-row-total">
+                                <td><strong>Total</strong></td>
+                                <td class="num"><strong><asp:Literal ID="litProgTotPackages" runat="server" Text="0"/></strong></td>
+                                <td class="num"><strong><asp:Literal ID="litProgTotDocs"     runat="server" Text="0"/></strong></td>
+                                <td><%= RenderProgressBar(ProgTotReviewed, ProgTotDocs) %></td>
+                                <td class="num"><strong><asp:Literal ID="litProgTotPocs"     runat="server" Text="0"/></strong><span class="summary-foot-marker">*</span></td>
+                                <td class="num"><strong><asp:Literal ID="litProgTotInterest" runat="server" Text="$0.00"/></strong></td>
                             </tr>
-                        </ItemTemplate>
-                        <FooterTemplate>
-                                </tbody>
-                            </table>
-                        </FooterTemplate>
-                    </asp:Repeater>
-                    <asp:PlaceHolder ID="phNoCm" runat="server" Visible="false">
-                        <div class="empty-state">No CM numbers in scope.</div>
-                    </asp:PlaceHolder>
-                </div>
-            </section>
-        </div>
+                        </tfoot>
+                    </table>
+                </asp:PlaceHolder>
+                <asp:PlaceHolder ID="phNoProgram" runat="server" Visible="false">
+                    <div class="empty-state">No programs in scope.</div>
+                </asp:PlaceHolder>
+            </div>
+            <asp:PlaceHolder ID="phNoPocNote" runat="server" Visible="false">
+                <p class="summary-foot-note summary-foot-note-warn">
+                    <asp:Literal ID="litNoPocCount" runat="server" />		
+                </p>
+            </asp:PlaceHolder>
+        </section>
 
         <%-- ============================================================
-             6. By POC — top 10 outstanding.
+             5. By POC — top 10 outstanding, sorted by doc count.
              ============================================================ --%>
         <section class="summary-section">
             <div class="section-label">By POC &mdash; top 10 outstanding</div>
@@ -280,12 +271,12 @@
                 </asp:PlaceHolder>
             </div>
             <p class="summary-foot-note">
-                "Outstanding" = documents in scope with no reason code on their first-line review. Sorted by interest exposure (highest first), then document count.
+                "Outstanding" = documents in scope with no reason code.
             </p>
         </section>
 
         <p class="summary-foot-note">
-            Numbers refresh on every page load. For trend analysis and cycle-over-cycle reporting, see the Power BI report (linked from the Help page once configured).
+            Numbers refresh on every page load. Detailed reporting will be developed in Power BI.
         </p>
 
     </main>
