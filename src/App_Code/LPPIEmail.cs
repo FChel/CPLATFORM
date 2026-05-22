@@ -854,7 +854,18 @@ SELECT
             if (pkg.Table.Columns.Contains("FinalisedBy")
                 && pkg["FinalisedBy"] != DBNull.Value)
             {
-                finalisedBy = Convert.ToString(pkg["FinalisedBy"]);
+                // The raw value is the Windows identity stamped at finalise,
+                // shaped DOMAIN\firstname.lastname (or with numeric suffix
+                // for name collisions). Strip the domain prefix and append
+                // the Defence email suffix so the recipient can click
+                // through to the finaliser — Defence UserIds map 1:1 to
+                // their @defence.gov.au addresses.
+                string raw = Convert.ToString(pkg["FinalisedBy"]);
+                int slash  = raw.LastIndexOf('\\');
+                string user = slash >= 0 ? raw.Substring(slash + 1) : raw;
+                finalisedBy = user.Length > 0
+                              ? user + "@defence.gov.au"
+                              : "";
             }
 
             string preheader = string.Format(
@@ -877,10 +888,12 @@ SELECT
               .Append(" finalised</h2>");
 
             sb.Append("<p style=\"").Append(FontInline).Append("\">")
-              .Append("This is a courtesy notice that the LPPI review for ")
+              .Append("This is for your awareness as the responsible AS. ")
+              .Append("The LPPI review for ")
               .Append("<strong style=\"").Append(FontInline).Append("\">")
               .Append(LPPIHelper.Enc((program ?? "").ToUpperInvariant()))
-              .Append("</strong> has been finalised. The figures below summarise the outcome of the review.")
+              .Append("</strong> has been finalised by a member of your team. ")
+              .Append("No further action is required, the outcome is summarised below.")
               .Append("</p>");
 
             // Package metadata table

@@ -192,7 +192,7 @@
                 return;
             }
             if (!isDefenceLikeEmail(addr)) {
-                err.textContent = 'Please enter a valid Defence (@defence.gov.au) or ANPSR (@annpsr.gov.au) email address.';
+                err.textContent = 'Please enter a valid Defence (@defence.gov.au) or ANNPSR (@annpsr.gov.au) email address.';
                 err.style.display = '';
                 email.focus();
                 return;
@@ -424,7 +424,7 @@
                    placeholder="firstname.lastname@defence.gov.au"
                    style="width:100%;box-sizing:border-box;" />
             <p class="muted" style="font-size:12px;margin:6px 0 0;">
-                Must be a Defence (<code>@defence.gov.au</code>) or ANPSR (<code>@annpsr.gov.au</code>) address.
+                Must be a Defence (<code>@defence.gov.au</code>) or ANNPSR (<code>@annpsr.gov.au</code>) address.
                 The CM team mailbox is added on CC and LPPI support on BCC automatically.
             </p>
             <div id="notifyError" class="alert alert-err" style="display:none;margin-top:10px;"></div>

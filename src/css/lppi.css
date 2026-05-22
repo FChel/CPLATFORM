@@ -2111,6 +2111,18 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
      - By POC:             full-width table
    ============================================================================= */
 
+/* Summary tables — no inner vertical scroll. The global .tbl-wrap rule
+   has a max-height + overflow:auto for admin list pages; on Summary
+   every table is short enough (POCs capped at 10, reason codes ~18,
+   programs a handful) that an inner scrollbar just gets in the way.
+   Let the page scroll once instead. */
+.summary-shell .tbl-wrap {
+    max-height: none;
+    overflow: visible;
+    border: none;       /* the wrapper border is redundant when not scrolling */
+    border-radius: 0;
+}
+
 /* Scope + CM picker bar ---------------------------------------------------- */
 .summary-shell .summary-scope-bar {
     display: flex;

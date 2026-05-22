@@ -441,12 +441,14 @@
                         <li><strong>Document (Lines)</strong> &mdash; SAP accounting document number. The number in brackets is the line count for that document. Click to open the SAP Fiori deep link.</li>
                         <li><strong>Vendor</strong> &mdash; the vendor that was paid late.</li>
                         <li><strong>PO</strong> &mdash; the purchase order. Click to open in SAP Fiori.</li>
-                        <li><strong>VIM Doc ID</strong> &mdash; the VIM (Vendor Invoice Management) document identifier. Useful if you do not have direct access to FI documents &mdash; you can look this up in the VIM report you already use to approve invoices. Expand the row to also see the WBS, GL account, Delivery Manager and POC for each line.</li>	
+                        <li><strong>VIM Doc ID</strong> &mdash; the VIM (Vendor Invoice Management) document identifier. Click to open the document directly in SAP.</li>
                         <li><strong>Capability Manager</strong> &mdash; the LPPI Charge Cost Centre. This is the cost centre that will be charged with the interest if the outcome is Payable. Hover for the Capability Manager name.</li>
                         <li><strong>Delivery Manager Program</strong> &mdash; the program that owns the delivery. Hover for the Delivery Manager name.</li>
                         <li><strong>Days Late</strong> / <strong>Interest Payable</strong> &mdash; the late-payment numbers.</li>
                         <li><strong>Reason Code</strong> &mdash; your decision.</li>
                         <li><strong>Comments</strong> / <strong>Evidence (Obj Ref)</strong> &mdash; supporting context for the decision.</li>
+                        <li><strong>Expand row</strong> (chevron on the right) &mdash; expands the document to show every line with its WBS, GL account, Delivery Manager and POC. When a document has more than one line it also shows how the interest splits.</li>
+                    </ul>
                     </ul>
                 </section>
 
@@ -812,7 +814,7 @@
                             <%# LPPIHelper.Enc(Eval("VendorName")) %>
                         </td>
                         <td class="col-po"><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
-                        <td class="col-vim" title='<%# LPPIHelper.Enc(Eval("VimDocumentId")) %>'><%# LPPIHelper.Enc(Eval("VimDocumentId")) %></td>
+                        <td class="col-vim" title='<%# LPPIHelper.Enc(Eval("VimDocumentId")) %>'><%# LPPIHelper.SapVimNumberHtml(Eval("VimDocumentId")) %></td>
                         <td class="col-cm" title='<%# "LPPI Charge Cost Centre: " + LPPIHelper.Enc(Eval("CapabilityManager")) + " (" + LPPIHelper.Enc(Eval("CapabilityManagerName")) + ")" %>'>
                             <%# LPPIHelper.Enc(Eval("CapabilityManager")) %>
                         </td>
@@ -932,7 +934,7 @@
                         <td class="col-seq num"><span class="seq-chip"><%# string.Format("{0:000}", Eval("ItemSequence")) %></span></td>
                         <td class="col-vendor" title='<%# LPPIHelper.Enc(Eval("VendorName")) %>'><%# LPPIHelper.Enc(Eval("VendorName")) %></td>
                         <td class="col-po"><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
-                        <td class="col-vim" title='<%# LPPIHelper.Enc(Eval("VimDocumentId")) %>'><%# LPPIHelper.Enc(Eval("VimDocumentId")) %></td>
+                        <td class="col-vim" title='<%# LPPIHelper.Enc(Eval("VimDocumentId")) %>'><%# LPPIHelper.SapVimNumberHtml(Eval("VimDocumentId")) %></td>
                         <td class="col-wbs" title='<%# LPPIHelper.Enc(Eval("WbsDesc")) %>'><%# LPPIHelper.Enc(Eval("WbsElement")) %></td>
                         <td class="col-gl"><%# LPPIHelper.Enc(Eval("GlAccount")) %></td>
                         <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'><%# LPPIHelper.Enc(Eval("DeliveryManager")) %></td>

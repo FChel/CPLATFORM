@@ -34,18 +34,18 @@
              batch); CM narrows within that universe to a single program. --%>
         <section class="summary-scope-bar">
             <div class="summary-scope-field">
-                <label class="summary-scope-label" for="<%= ddlScope.ClientID %>">Scope</label>
-                <asp:DropDownList ID="ddlScope" runat="server"
-                    AutoPostBack="true"
-                    CssClass="summary-scope-select"
-                    OnSelectedIndexChanged="ddlScope_SelectedIndexChanged" />
-            </div>
-            <div class="summary-scope-field">
                 <label class="summary-scope-label" for="<%= ddlCm.ClientID %>">Capability Manager</label>
                 <asp:DropDownList ID="ddlCm" runat="server"
                     AutoPostBack="true"
                     CssClass="summary-scope-select"
                     OnSelectedIndexChanged="ddlCm_SelectedIndexChanged" />
+            </div>
+            <div class="summary-scope-field">
+                <label class="summary-scope-label" for="<%= ddlScope.ClientID %>">Scope</label>
+                <asp:DropDownList ID="ddlScope" runat="server"
+                    AutoPostBack="true"
+                    CssClass="summary-scope-select"
+                    OnSelectedIndexChanged="ddlScope_SelectedIndexChanged" />
             </div>
             <div class="summary-scope-meta">
                 <asp:Literal ID="litScopeMeta" runat="server" />

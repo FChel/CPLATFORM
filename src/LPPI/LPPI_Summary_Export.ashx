@@ -337,9 +337,34 @@ SELECT
             // DocumentID can still be hit through more than one pd row
             // when several lines of one document are all in scope across
             // overlapping packages. Distinct in SQL is cleaner here.
-            sql = "WITH Raw AS (" + sql.TrimEnd(';') + ") SELECT DISTINCT * FROM Raw ORDER BY DocNoAccounting, ItemSequence;";
+            //
+            // SQL Server rejects ORDER BY inside a CTE body unless TOP /
+            // OFFSET / FOR XML is present, so the inner ORDER BY must be
+            // stripped before wrapping. The outer ORDER BY is what sets
+            // the final row order regardless.
+            string inner = StripTrailingOrderBy(sql);
+            sql = "WITH Raw AS (" + inner + ") SELECT DISTINCT * FROM Raw ORDER BY DocNoAccounting, ItemSequence;";
 
             return LPPIHelper.ExecuteTable(sql, parms.ToArray());
+        }
+
+        /// <summary>
+        /// Strip a trailing "ORDER BY ... ;" from a SELECT, returning the
+        /// statement without the order clause and without the terminating
+        /// semicolon. Used to make a SELECT safe to wrap inside a CTE
+        /// body, where ORDER BY is disallowed.
+        ///
+        /// Operates on the last ORDER BY in the string, which is the
+        /// outermost (the inner correlated subqueries do not have one).
+        /// Lower-cases for the search so case-mixed source is handled.
+        /// </summary>
+        private static string StripTrailingOrderBy(string sql)
+        {
+            if (string.IsNullOrEmpty(sql)) return sql;
+            string trimmed = sql.TrimEnd().TrimEnd(';').TrimEnd();
+            int idx = trimmed.LastIndexOf("ORDER BY", StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return trimmed;
+            return trimmed.Substring(0, idx).TrimEnd();
         }
 
         private static DataTable BuildEmptyShape()

@@ -1009,6 +1009,40 @@ LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
             return BuildNumberAnchor(href, doc, "Open document " + doc + " in SAP");
         }
 
+        /// <summary>
+        /// Build an SAP webgui deep link for a VIM document (OPT/VIM_VA2 transaction).
+        /// Webgui has SSO so this opens directly to the document.
+        ///
+        /// Returns "" if the base URL or the VIM doc ID is missing.
+        /// </summary>
+        public static string SapVimLink(object vimDocId)
+        {
+            string id = (vimDocId == null || vimDocId == DBNull.Value) ? "" : Convert.ToString(vimDocId).Trim();
+            if (id.Length == 0) return "";
+            var baseUrl = SapBaseUrl;
+            if (baseUrl.Length == 0) return "";
+
+            return baseUrl
+                 + "/sap/bc/gui/sap/its/webgui?~transaction=*/OPT/VIM_VA2%20S_DOCID-LOW="
+                 + System.Uri.EscapeDataString(id)
+                 + ";DYNP_OKCODE=ONLI#";
+        }
+
+        /// <summary>
+        /// Render a VIM document ID as an anchor to its webgui display page,
+        /// or as plain HTML-encoded text when the URL cannot be built.
+        /// </summary>
+        public static string SapVimNumberHtml(object vimDocId)
+        {
+            string id = (vimDocId == null || vimDocId == DBNull.Value) ? "" : Convert.ToString(vimDocId).Trim();
+            if (id.Length == 0) return "";
+
+            var href = SapVimLink(vimDocId);
+            if (href.Length == 0) return Enc(id);
+
+            return BuildNumberAnchor(href, id, "Open VIM document " + id + " in SAP");
+        }
+
         private static string BuildNumberAnchor(string href, string text, string title)
         {
             var sb = new System.Text.StringBuilder();
