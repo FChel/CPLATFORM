@@ -119,8 +119,11 @@ namespace CPlatform.LPPI
                 return;
             }
 
+            // EnvironmentFileTag returns e.g. "UAT_" / "PROD_" — prefixed
+            // so admins can tell environments apart in their Downloads folder.
             string fileName = string.Format(CultureInfo.InvariantCulture,
-                "LPPI_Summary_{0}_{1}.xlsx",
+                "{0}LPPI_Summary_{1}_{2}.xlsx",
+                LPPIHelper.EnvironmentFileTag,
                 scopeToken,
                 DateTime.Now.ToString("yyyyMMdd_HHmm", CultureInfo.InvariantCulture));
 

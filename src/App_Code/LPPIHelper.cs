@@ -125,6 +125,31 @@ namespace CPlatform.LPPI
         public static string Environment
             { get { return Setting("CPlatform.Environment", "DEV").ToUpperInvariant(); } }
 
+        /// <summary>
+        /// Environment tag prefixed to admin-downloaded export filenames so
+        /// admins can tell UAT and PROD downloads apart in their Downloads
+        /// folder. Uppercase, suffixed with an underscore so the caller
+        /// concatenates without ceremony — e.g. "UAT_LPPI_Summary_...xlsx".
+        ///
+        /// Sanitised: only A-Z and 0-9 survive, anything else falls back to
+        /// "ENV". Length capped at 8 characters to keep filenames sane.
+        /// </summary>
+        public static string EnvironmentFileTag
+        {
+            get
+            {
+                var env = Environment;
+                var sb = new System.Text.StringBuilder(env.Length);
+                foreach (char c in env)
+                {
+                    if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+                        sb.Append(c);
+                    if (sb.Length >= 8) break;
+                }
+                return (sb.Length == 0 ? "ENV" : sb.ToString()) + "_";
+            }
+        }
+
         public static int ReminderWindowDays
             { get { return SettingInt("LPPI.ReminderWindowDays", 3); } }
 
@@ -1010,7 +1035,7 @@ LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
         }
 
         /// <summary>
-        /// Build an SAP webgui deep link for a VIM document (OPT/VIM_VA2 transaction).
+        /// Build an SAP webgui deep link for a VIM document (ZFIVIMPOC transaction).
         /// Webgui has SSO so this opens directly to the document.
         ///
         /// Returns "" if the base URL or the VIM doc ID is missing.

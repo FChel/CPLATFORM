@@ -246,10 +246,14 @@ SELECT TOP 20
                 // We don't yet know the batch id, so we build a placeholder
                 // filename, insert, then update once we know the id. Cheaper
                 // than two-phase preallocation and matches the desired
-                // "LPPI_Export_Batch<id>_<yyyymmdd_hhmm>.xlsx" format.
+                // "<ENV>_LPPI_Export_Batch<id>_<yyyymmdd_hhmm>.xlsx" format.
+                // EnvironmentFileTag puts UAT_ / PROD_ at the front so a
+                // file generated in one environment is never mistaken for
+                // the other if it slips out of an audit folder.
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm",
                     CultureInfo.InvariantCulture);
-                string placeholderName = "LPPI_Export_Pending_" + timestamp + ".xlsx";
+                string envTag = LPPIHelper.EnvironmentFileTag;
+                string placeholderName = envTag + "LPPI_Export_Pending_" + timestamp + ".xlsx";
 
                 string by     = LPPIHelper.CurrentUserDisplayName();
                 string byUser = LPPIHelper.CurrentUserId();
@@ -279,7 +283,7 @@ VALUES (@FileName, SYSDATETIME(), @ByUser, @ByName,
 
                 batchId = Convert.ToInt32(newIdObj);
                 filename = string.Format(CultureInfo.InvariantCulture,
-                    "LPPI_Export_Batch{0}_{1}.xlsx", batchId, timestamp);
+                    "{0}LPPI_Export_Batch{1}_{2}.xlsx", envTag, batchId, timestamp);
 
                 // Update the row with the final filename.
                 LPPIHelper.ExecuteNonQuery(

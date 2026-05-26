@@ -284,8 +284,8 @@
                             <thead>
                                 <tr>
                                     <th>POC email</th>
-                                    <th class="num">Interest outstanding</th>
                                     <th class="num">Documents outstanding</th>
+                                    <th class="num">Interest outstanding</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -293,8 +293,8 @@
                     <ItemTemplate>
                         <tr>
                             <td><%# LPPIHelper.Enc(Eval("PocEmail")) %></td>
-                            <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
                             <td class="num"><%# FormatInt(Eval("DocCount")) %></td>
+                            <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
                         </tr>
                     </ItemTemplate>
                     <FooterTemplate>
