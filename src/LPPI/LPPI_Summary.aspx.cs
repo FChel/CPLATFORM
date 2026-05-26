@@ -9,9 +9,9 @@ namespace CPlatform.LPPI
 {
     /// <summary>
     /// Summary page. Admin-only operational view of the current review
-    /// cycle — Scope picker, CM picker, scope header, by-reason-code split
-    /// (with Awaiting pseudo-row), non-payment subset, by-program
-    /// breakdown (with totals row), and the top-10 outstanding POCs.
+    /// cycle — Scope picker, CM picker, scope header, reason-code split
+    /// (Payable + NotPayable), by-program breakdown (with totals row),
+    /// and the top-10 outstanding POCs by both count and value.
     ///
     /// Read-only. No writes, no token paths. Every query honours the
     /// first-line-review model and the IsDeactivated = 0 filter via
@@ -26,9 +26,11 @@ namespace CPlatform.LPPI
     /// the user's selection is preserved across the rebind if still valid,
     /// otherwise falls back to (all).
     ///
-    /// The Export full data button is a separate handler call to
-    /// LPPI_Summary_Export.ashx (admin-auth), which mirrors the 53-column
-    /// reviewer-page export but scoped to whichever scope + CM is selected.
+    /// Two export buttons:
+    ///   - Export full data — every line of every in-scope document.
+    ///   - Export no-POC lines — only lines whose PocEmail is missing.
+    /// Both call LPPI_Summary_Export.ashx (admin-auth); the no-POC variant
+    /// adds &noPoc=1 to the query string.
     /// </summary>
     public partial class LPPI_Summary : LPPIBasePage
     {
@@ -46,6 +48,7 @@ namespace CPlatform.LPPI
         // picker state is bookmarkable and shareable.
         private const string ScopeQueryKey = "s";
         private const string CmQueryKey    = "cm";
+        private const string NoPocQueryKey = "noPoc";
 
         // Scope dropdown sentinel values. Batch options use "B<id>".
         private const string ScopeValueActive      = "active";
@@ -234,11 +237,16 @@ namespace CPlatform.LPPI
         {
             LPPIHelper.SummaryScope scope = CurrentScope();
 
+            // The reason-code source is shared between BindByPayable and
+            // BindByNonPayment — one round trip, two filtered views.
+            DataTable byReason = LPPIHelper.GetSummaryByReasonCode(scope);
+
             BindOverview(scope);
-            BindByReason(scope);
-            BindByNonPayment(scope);
+            BindByPayable(byReason);
+            BindByNonPayment(byReason);
             BindByProgram(scope);
             BindByPoc(scope);
+            BindByPocByValue(scope);
             BindScopeMeta(scope);
         }
 
@@ -268,33 +276,46 @@ namespace CPlatform.LPPI
             OvReviewedPct = SharePct(reviewed, docCount);
         }
 
-        private void BindByReason(LPPIHelper.SummaryScope scope)
+        /// <summary>
+        /// Bind the Payable reasons table. Filters the shared by-reason
+        /// result to rows with Outcome = "Payable" and DocCount > 0.
+        /// </summary>
+        private void BindByPayable(DataTable src)
         {
-            DataTable dt = LPPIHelper.GetSummaryByReasonCode(scope);
-            rptByReason.DataSource = dt;
-            rptByReason.DataBind();
-            phNoReason.Visible = dt.Rows.Count == 0;
+            DataTable t = src.Clone();
+            foreach (DataRow r in src.Rows)
+            {
+                string outcome = r["Outcome"] == DBNull.Value ? "" : Convert.ToString(r["Outcome"]);
+                int    count   = r["DocCount"] == DBNull.Value ? 0  : Convert.ToInt32(r["DocCount"]);
+                if (count > 0 && string.Equals(outcome, "Payable", StringComparison.OrdinalIgnoreCase))
+                {
+                    t.ImportRow(r);
+                }
+            }
+            rptByPayable.DataSource = t;
+            rptByPayable.DataBind();
+            phNoPayable.Visible = t.Rows.Count == 0;
         }
 
-        private void BindByNonPayment(LPPIHelper.SummaryScope scope)
+        /// <summary>
+        /// Bind the Non-payment reasons table. Filters the shared by-reason
+        /// result to rows with Outcome = "NotPayable" and DocCount > 0.
+        /// </summary>
+        private void BindByNonPayment(DataTable src)
         {
-            // Re-uses the by-reason-code result and filters in-memory to
-            // NotPayable rows with DocCount > 0. Saves a round-trip and
-            // guarantees the two views can not drift.
-            DataTable src = LPPIHelper.GetSummaryByReasonCode(scope);
-            DataTable np  = src.Clone();
+            DataTable t = src.Clone();
             foreach (DataRow r in src.Rows)
             {
                 string outcome = r["Outcome"] == DBNull.Value ? "" : Convert.ToString(r["Outcome"]);
                 int    count   = r["DocCount"] == DBNull.Value ? 0  : Convert.ToInt32(r["DocCount"]);
                 if (count > 0 && string.Equals(outcome, "NotPayable", StringComparison.OrdinalIgnoreCase))
                 {
-                    np.ImportRow(r);
+                    t.ImportRow(r);
                 }
             }
-            rptByNonPayment.DataSource = np;
+            rptByNonPayment.DataSource = t;
             rptByNonPayment.DataBind();
-            phNoNonPayment.Visible = np.Rows.Count == 0;
+            phNoNonPayment.Visible = t.Rows.Count == 0;
         }
 
         private void BindByProgram(LPPIHelper.SummaryScope scope)
@@ -335,11 +356,16 @@ namespace CPlatform.LPPI
             ProgTotReviewed = totReviewed;
             ProgTotDocs     = totDocs;
 
+            // Toggle the no-POC export button — disabled when there are no
+            // no-POC lines to export, so admins do not download an empty
+            // file. Visible always so the action is discoverable.
+            btnExportNoPoc.Enabled = totNoPoc > 0;
+
             if (totNoPoc > 0)
             {
                 phNoPocNote.Visible = true;
                 litNoPocCount.Text = string.Format(CultureInfo.GetCultureInfo("en-AU"),
-                    "{0} document{1} in scope ha{2} no POC email recorded, these are not included in the POC counts above. *POCs in multiple programs are counted once per program.",
+                    "*POCs in multiple programs are counted once per program. <b>{0}</b> document{1} in scope ha{2} no POC email recorded; use the <em>Export no-POC lines</em> button above to pull the underlying lines.",
                     totNoPoc.ToString("N0", CultureInfo.GetCultureInfo("en-AU")),
                     totNoPoc == 1 ? "" : "s",
                     totNoPoc == 1 ? "s" : "ve");
@@ -356,6 +382,14 @@ namespace CPlatform.LPPI
             rptByPoc.DataSource = dt;
             rptByPoc.DataBind();
             phNoPoc.Visible = dt.Rows.Count == 0;
+        }
+
+        private void BindByPocByValue(LPPIHelper.SummaryScope scope)
+        {
+            DataTable dt = LPPIHelper.GetSummaryByPocOutstandingByValue(scope);
+            rptByPocValue.DataSource = dt;
+            rptByPocValue.DataBind();
+            phNoPocValue.Visible = dt.Rows.Count == 0;
         }
 
         private void BindScopeMeta(LPPIHelper.SummaryScope scope)
@@ -397,6 +431,16 @@ namespace CPlatform.LPPI
         // -------------------------------------------------------------------
         protected void btnExport_Click(object sender, EventArgs e)
         {
+            Response.Redirect(BuildExportUrl(noPocOnly: false), true);
+        }
+
+        protected void btnExportNoPoc_Click(object sender, EventArgs e)
+        {
+            Response.Redirect(BuildExportUrl(noPocOnly: true), true);
+        }
+
+        private string BuildExportUrl(bool noPocOnly)
+        {
             string scopeValue = ddlScope.SelectedValue ?? ScopeValueActive;
             string cmValue    = ddlCm.SelectedValue    ?? CmValueAll;
 
@@ -406,43 +450,23 @@ namespace CPlatform.LPPI
             {
                 sb.Append('&').Append(CmQueryKey).Append('=').Append(Server.UrlEncode(cmValue));
             }
-            Response.Redirect(sb.ToString(), true);
+            if (noPocOnly)
+            {
+                sb.Append('&').Append(NoPocQueryKey).Append("=1");
+            }
+            return sb.ToString();
         }
 
         // -------------------------------------------------------------------
         // Render helpers — called from the .aspx Eval()s
         // -------------------------------------------------------------------
 
-        /// <summary>
-        /// Class hook for the by-reason-code row so the toggle JS can find
-        /// it. Also tags the Awaiting pseudo-row (DisplayOrder = -1) with
-        /// a distinct class for CSS.
-        /// </summary>
-        protected string RowClassForReason(object dataItem)
-        {
-            DataRowView drv = dataItem as DataRowView;
-            if (drv == null) return "";
-            int order = drv.Row["DisplayOrder"] == DBNull.Value
-                ? 0 : Convert.ToInt32(drv.Row["DisplayOrder"]);
-            return order == -1 ? "summary-row-awaiting" : "";
-        }
-
-        protected string RenderOutcomePill(object outcomeObj)
-        {
-            if (outcomeObj == null || outcomeObj == DBNull.Value)
-            {
-                return "<span class=\"pill pill-awaiting\">Awaiting</span>";
-            }
-            string outcome = Convert.ToString(outcomeObj);
-            if (string.Equals(outcome, "Payable", StringComparison.OrdinalIgnoreCase))
-                return "<span class=\"pill pill-payable\">Payable</span>";
-            return "<span class=\"pill pill-notpayable\">Not Payable</span>";
-        }
-
         protected string RenderProgressBar(object reviewedObj, object totalObj)
         {
-            int reviewed = reviewedObj == null || reviewedObj == DBNull.Value ? 0 : Convert.ToInt32(reviewedObj);
-            int total    = totalObj    == null || totalObj    == DBNull.Value ? 0 : Convert.ToInt32(totalObj);
+            int reviewed = reviewedObj == null || reviewedObj == DBNull.Value
+                ? 0 : Convert.ToInt32(reviewedObj);
+            int total    = totalObj    == null || totalObj    == DBNull.Value
+                ? 0 : Convert.ToInt32(totalObj);
             int pct      = SharePct(reviewed, total);
 
             var sb = new StringBuilder();
@@ -505,15 +529,21 @@ namespace CPlatform.LPPI
         // loop. Tolerant of missing columns / DBNulls so a missing-column
         // bug shows up as a zero rather than a NullReferenceException.
         // -------------------------------------------------------------------
-        private static int AsInt(DataRow r, string column)
+
+        private static int AsInt(DataRow r, string col)
         {
-            if (!r.Table.Columns.Contains(column) || r[column] == DBNull.Value) return 0;
-            return Convert.ToInt32(r[column]);
+            if (r == null || !r.Table.Columns.Contains(col)) return 0;
+            object v = r[col];
+            if (v == null || v == DBNull.Value) return 0;
+            return Convert.ToInt32(v);
         }
-        private static decimal AsDec(DataRow r, string column)
+
+        private static decimal AsDec(DataRow r, string col)
         {
-            if (!r.Table.Columns.Contains(column) || r[column] == DBNull.Value) return 0m;
-            return Convert.ToDecimal(r[column]);
+            if (r == null || !r.Table.Columns.Contains(col)) return 0m;
+            object v = r[col];
+            if (v == null || v == DBNull.Value) return 0m;
+            return Convert.ToDecimal(v);
         }
     }
 }

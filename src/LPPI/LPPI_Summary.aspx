@@ -26,6 +26,9 @@
             <div class="btn-row">
                 <asp:Button ID="btnExport" runat="server" CssClass="btn btn-primary"
                     Text="Export full data" OnClick="btnExport_Click" />
+                <asp:Button ID="btnExportNoPoc" runat="server" CssClass="btn btn-secondary"
+                    Text="Export no-POC lines" OnClick="btnExportNoPoc_Click"
+                    ToolTip="Lines in scope where the LPPI file did not supply a POC email. Send to AS Fin for triage." />
             </div>
         </div>
 
@@ -90,25 +93,20 @@
         </section>
 
         <%-- ============================================================
-             2. By reason code — full split with Awaiting pseudo-row.
+             2. Payable reasons — Payable-outcome reason codes with at
+                least one in-scope document. Code-behind filters the
+                shared by-reason-code result in memory.
              ============================================================ --%>
         <section class="summary-section">
-            <div class="section-label">
-                <span>By reason code</span>
-                <label class="summary-toggle">
-                    <input type="checkbox" id="chkShowAllCodes" />
-                    <span>Show codes with zero documents</span>
-                </label>
-            </div>
+            <div class="section-label">Payable reasons</div>
             <div class="tbl-wrap">
-                <asp:Repeater ID="rptByReason" runat="server">
+                <asp:Repeater ID="rptByPayable" runat="server">
                     <HeaderTemplate>
-                        <table class="tbl summary-tbl" id="tblByReason">
+                        <table class="tbl summary-tbl">
                             <thead>
                                 <tr>
                                     <th>Code</th>
                                     <th>Description</th>
-                                    <th>Outcome</th>
                                     <th class="num">Documents</th>
                                     <th class="num">Interest</th>
                                     <th class="num">% of total</th>
@@ -117,11 +115,9 @@
                             <tbody>
                     </HeaderTemplate>
                     <ItemTemplate>
-                        <tr class="<%# RowClassForReason(Container.DataItem) %>"
-                            data-count="<%# Eval("DocCount") %>">
+                        <tr>
                             <td><strong><%# LPPIHelper.Enc(Eval("Code")) %></strong></td>
                             <td><%# LPPIHelper.Enc(Eval("Description")) %></td>
-                            <td><%# RenderOutcomePill(Eval("Outcome")) %></td>
                             <td class="num"><%# FormatInt(Eval("DocCount")) %></td>
                             <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
                             <td class="num"><%# FormatPctCell(Eval("PctOfTotal")) %></td>
@@ -132,14 +128,14 @@
                         </table>
                     </FooterTemplate>
                 </asp:Repeater>
-                <asp:PlaceHolder ID="phNoReason" runat="server" Visible="false">
-                    <div class="empty-state">No documents in scope.</div>
+                <asp:PlaceHolder ID="phNoPayable" runat="server" Visible="false">
+                    <div class="empty-state">No documents coded as Payable in scope.</div>
                 </asp:PlaceHolder>
             </div>
         </section>
 
         <%-- ============================================================
-             3. Non-payment reasons — same data filtered to NotPayable.
+             3. Non-payment reasons — NotPayable-outcome reason codes.
              ============================================================ --%>
         <section class="summary-section">
             <div class="section-label">Non-payment reasons</div>
@@ -185,7 +181,7 @@
                 need an inline pivot.
              ============================================================ --%>
         <section class="summary-section">
-            <div class="section-label">By Capability Manager program</div>
+            <div class="section-label">Progress By Capability Manager program</div>
             <div class="tbl-wrap">
                 <asp:PlaceHolder ID="phProgramTable" runat="server">
                     <table class="tbl summary-tbl">
@@ -237,10 +233,12 @@
         </section>
 
         <%-- ============================================================
-             5. By POC — top 10 outstanding, sorted by doc count.
+             5. By POC — top 10 outstanding by document count.
+                Useful for chase-up triage by volume — POCs sitting on
+                the most pending decisions surface first.
              ============================================================ --%>
         <section class="summary-section">
-            <div class="section-label">By POC &mdash; top 10 outstanding</div>
+            <div class="section-label">Top 10 outstanding by count</div>
             <div class="tbl-wrap">
                 <asp:Repeater ID="rptByPoc" runat="server">
                     <HeaderTemplate>
@@ -270,15 +268,50 @@
                     <div class="empty-state">Nothing outstanding &mdash; all in-scope documents are reviewed.</div>
                 </asp:PlaceHolder>
             </div>
-            <p class="summary-foot-note">
-                "Outstanding" = documents in scope with no reason code.
-            </p>
         </section>
 
-        <p class="summary-foot-note">
-            Numbers refresh on every page load. Detailed reporting will be developed in Power BI.
-        </p>
-
+        <%-- ============================================================
+             6. By POC — top 10 outstanding by VALUE.
+                Surfaces the highest-dollar pending exposure so big-ticket
+                POCs are chased before the package is defaulted.
+             ============================================================ --%>
+        <section class="summary-section">
+            <div class="section-label">Top 10 outstanding by value</div>
+            <div class="tbl-wrap">
+                <asp:Repeater ID="rptByPocValue" runat="server">
+                    <HeaderTemplate>
+                        <table class="tbl summary-tbl">
+                            <thead>
+                                <tr>
+                                    <th>POC email</th>
+                                    <th class="num">Interest outstanding</th>
+                                    <th class="num">Documents outstanding</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    </HeaderTemplate>
+                    <ItemTemplate>
+                        <tr>
+                            <td><%# LPPIHelper.Enc(Eval("PocEmail")) %></td>
+                            <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
+                            <td class="num"><%# FormatInt(Eval("DocCount")) %></td>
+                        </tr>
+                    </ItemTemplate>
+                    <FooterTemplate>
+                            </tbody>
+                        </table>
+                    </FooterTemplate>
+                </asp:Repeater>
+                <asp:PlaceHolder ID="phNoPocValue" runat="server" Visible="false">
+                    <div class="empty-state">Nothing outstanding &mdash; all in-scope documents are reviewed.</div>
+                </asp:PlaceHolder>
+            </div>
+            <p class="summary-foot-note">
+                "Outstanding" = documents in scope with no reason code.
+                Blank POC emails are grouped as <em>(no POC)</em> -
+                use the <em>Export no-POC lines</em> button above to pull the underlying lines.
+            </p>
+        </section>
     </main>
 
     <footer class="lppi-footer">
@@ -286,32 +319,5 @@
     </footer>
 </div>
 </form>
-
-<script>
-// Show / hide zero-count rows in the By-reason-code table.
-// Vanilla, no postback, no jQuery — matches the rest of the codebase.
-(function () {
-    var toggle = document.getElementById('chkShowAllCodes');
-    var tbl    = document.getElementById('tblByReason');
-    if (!toggle || !tbl) return;
-
-    function apply() {
-        var rows = tbl.querySelectorAll('tbody tr');
-        for (var i = 0; i < rows.length; i++) {
-            var c = parseInt(rows[i].getAttribute('data-count') || '0', 10);
-            // Always show rows with count > 0 and the Awaiting pseudo-row.
-            // Hide the rest unless the toggle is on.
-            if (c > 0) {
-                rows[i].style.display = '';
-            } else {
-                rows[i].style.display = toggle.checked ? '' : 'none';
-            }
-        }
-    }
-
-    toggle.addEventListener('change', apply);
-    apply();
-})();
-</script>
 </body>
 </html>

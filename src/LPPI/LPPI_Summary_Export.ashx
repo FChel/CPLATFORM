@@ -72,8 +72,11 @@ namespace CPlatform.LPPI
             // Resolve the scope from the query string.
             string scopeValue = (ctx.Request.QueryString["s"]  ?? "").Trim();
             string cmValue    = (ctx.Request.QueryString["cm"] ?? "").Trim();
+            string noPocValue = (ctx.Request.QueryString["noPoc"] ?? "").Trim();
+            bool noPocOnly = noPocValue == "1"
+                || noPocValue.Equals("true", StringComparison.OrdinalIgnoreCase);
             LPPIHelper.SummaryScope scope = ParseScope(scopeValue, cmValue);
-            string scopeToken = ScopeFilenameToken(scope);
+            string scopeToken = ScopeFilenameToken(scope) + (noPocOnly ? "_NoPoc" : "");
 
             // Resolve scope -> concrete PackageID list. This protects the
             // export against scope drift mid-build (an active package
@@ -97,7 +100,7 @@ namespace CPlatform.LPPI
             DataTable dt;
             try
             {
-                dt = LoadData(packageIds);
+                dt = LoadData(packageIds, noPocOnly);
             }
             catch (Exception ex)
             {
@@ -232,6 +235,14 @@ namespace CPlatform.LPPI
                 inPlaceholders.Append("@P").Append(i.ToString(CultureInfo.InvariantCulture));
             }
 
+            // No-POC filter: restrict to lines whose PocEmail is missing
+            // (NULL or whitespace-only). Applied at the LINE level — every
+            // line of an in-scope document where the line itself carries
+            // no POC. Lines that DO have a POC pass through.
+            string noPocClause = noPocOnly
+                ? " AND (d.PocEmail IS NULL OR LTRIM(RTRIM(d.PocEmail)) = '')"
+                : "";
+
             string sql = @"
 SELECT
     d.DocumentID,
@@ -315,7 +326,7 @@ SELECT
                                 AND d3.IsDeactivated   = 0)
   LEFT  JOIN dbo.tblLPPI_ReasonCodes rc
           ON rc.ReasonCodeID = r.ReasonCodeID
- WHERE pd.PackageID IN (" + inPlaceholders.ToString() + @")
+ WHERE pd.PackageID IN (" + inPlaceholders.ToString() + @")" + noPocClause + @"
  ORDER BY
     (SELECT SUM(d4.InterestPayable)
        FROM dbo.tblLPPI_Documents d4

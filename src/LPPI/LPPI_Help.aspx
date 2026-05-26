@@ -299,10 +299,10 @@
                         complementary to the Dashboard's at-a-glance exec view. Use it to see, in flight:
                     </p>
                     <ul>
-                        <li>The reason-code split across in-scope documents (with an <strong>Awaiting</strong> pseudo-row for unreviewed docs).</li>
-                        <li>A Not Payable sub-cut, useful for spotting clusters &mdash; e.g. lots of RC-RL signalling upstream data issues.</li>
+                        <li>The reason-code split across in-scope documents, separated into Payable and Not Payable tables.</li>
+                        <li>The Not Payable cut is useful for spotting clusters &mdash; e.g. lots of RC-RL signalling upstream data issues.</li>
                         <li>Progress by Capability Manager program (packages, documents, reviewed / total bar, distinct POCs and interest exposure, with a totals row).</li>
-                        <li>The top 10 outstanding POCs by document count, for chase-up triage.</li>
+                        <li>Top 10 outstanding POCs by document count <em>and</em> by interest value, for chase-up triage by either volume or dollars.</li>
                     </ul>
                     <p>
                         Two independent pickers sit at the top of the page:
@@ -315,6 +315,12 @@
                         The <strong>Export full data</strong> button generates a 53-column xlsx covering every line of every
                         in-scope document &mdash; same layout as the reviewer page's export, but cycle-wide rather than per package.
                         The export honours both pickers, so an ARMY-filtered Current-cycle export contains only ARMY's in-flight lines.
+                    </p>
+                    <p>
+                        The <strong>Export no-POC lines</strong> button generates the same xlsx restricted to lines whose
+                        <code>PocEmail</code> is blank in the LPPI file. Use it to send AS Fin the underlying lines for
+                        triage when the by-program footnote shows a non-zero no-POC count. The button is disabled when
+                        there is nothing to export.
                     </p>
                     <div class="callout">
                         <strong>Reporting note.</strong> For trend analysis, CFO-level visibility, and cycle-over-cycle reporting,
@@ -329,7 +335,7 @@
                         <dd>Read-only overview. LPPI exposure (dollar headlines), counts, open packages (NotSent/Sent/InReview/Finalised), recent loads.</dd>
 
                         <dt>Summary</dt>
-                        <dd>Operational in-flight view of the current cycle. Reason-code split (with Awaiting), non-payment cluster view, by-program and by-CM-number cuts, top-10 outstanding POCs, plus a full 53-column xlsx export of every in-scope line.</dd>
+                        <dd>Operational in-flight view of the current cycle. Reason-code split (Payable + Not Payable tables), by-program cut, top-10 outstanding POCs by count and by value, plus a full 53-column xlsx export of every in-scope line and a no-POC-only variant for AS Fin triage.</dd>
 
                         <dt>Load file</dt>
                         <dd>Upload an LPPI file (<code>LATEPMT_INTEREST_REVIEW_*.xls</code>), preview, then commit. The reconcile step creates new packages and adds documents to existing NotSent packages.</dd>
