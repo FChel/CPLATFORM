@@ -221,7 +221,7 @@ namespace CPlatform.LPPI
         // First-line review pattern + IsDeactivated = 0 on every document
         // reference, same as the rest of the codebase.
         // -------------------------------------------------------------------
-        private static DataTable LoadData(List<int> packageIds)
+        private static DataTable LoadData(List<int> packageIds, bool noPocOnly)
         {
             if (packageIds == null || packageIds.Count == 0)
             {
