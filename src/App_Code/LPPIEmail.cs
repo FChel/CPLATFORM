@@ -135,6 +135,9 @@ namespace CPlatform.LPPI
         private const string Rmg417Url =
             "https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417";
 
+        // Defence email-marking suffix appended to every outgoing subject.
+        private const string SubjectSuffix = " [SEC=OFFICIAL]";
+
         // Handy resource URLs from the supplied templates.
         private const string PaymentTermsIntranetUrl =
             "https://dpeintranet-dfg.defence.gov.au/policies/payment-terms-prepayments-guidance-note";
@@ -829,7 +832,8 @@ SELECT
             return string.Format("FOR VISIBILITY: LPPI {0} finalised \u2014 {1} payable, {2} not payable",
                 (program ?? "").ToUpperInvariant(),
                 LPPIHelper.FormatMoney(s.PayableInterest),
-                LPPIHelper.FormatMoney(s.NotPayableInterest));
+                LPPIHelper.FormatMoney(s.NotPayableInterest))
+                + SubjectSuffix;
         }
 
         private static string BuildBodyNotify(string program, DateTime dueDate,
@@ -1273,18 +1277,20 @@ UPDATE dbo.tblLPPI_ReviewPackages
         {
             // From the supplied AS Fin templates — note the "Group Summary" suffix
             // distinguishes this from the per-POC mail, which is otherwise
-            // similarly worded.
+            // similarly worded. SubjectSuffix carries the Defence
+            // protective marking.
             if (string.Equals(type, "Reminder", StringComparison.OrdinalIgnoreCase))
-                return "REMINDER - ACTION REQUIRED: Late Payment Penalty Interest Review Group Summary";
-            return "ACTION REQUIRED: Late Payment Penalty Interest Review Group Summary";
+                return "REMINDER - ACTION REQUIRED: Late Payment Penalty Interest Review Group Summary" + SubjectSuffix;
+            return "ACTION REQUIRED: Late Payment Penalty Interest Review Group Summary" + SubjectSuffix;
         }
 
         private static string BuildSubjectPoc(string type, string program, DateTime due)
         {
-            // From the supplied POC templates.
+            // From the supplied POC templates. SubjectSuffix carries the
+            // Defence protective marking.
             if (string.Equals(type, "Reminder", StringComparison.OrdinalIgnoreCase))
-                return "REMINDER - ACTION REQUIRED: Late Payment Penalty Interest Review";
-            return "ACTION REQUIRED: Late Payment Penalty Interest Review";
+                return "REMINDER - ACTION REQUIRED: Late Payment Penalty Interest Review" + SubjectSuffix;
+            return "ACTION REQUIRED: Late Payment Penalty Interest Review" + SubjectSuffix;
         }
 
         // -------------------------------------------------------------------
@@ -1988,7 +1994,7 @@ ORDER BY VendorName;");
 
         private static string BuildSubjectControl(string type, string program)
         {
-            return "[CONTROL] LPPI vendor-of-interest sighting — " + program;
+            return "[CONTROL] LPPI vendor-of-interest sighting — " + program + SubjectSuffix;
         }
 
         private static string BuildBodyControl(string type, string program, DateTime dueDate,

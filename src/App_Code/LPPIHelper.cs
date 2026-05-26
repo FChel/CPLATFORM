@@ -1023,7 +1023,7 @@ LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
             if (baseUrl.Length == 0) return "";
 
             return baseUrl
-                 + "/sap/bc/gui/sap/its/webgui?~transaction=*/OPT/VIM_VA2%20S_DOCID-LOW="
+                 + "/sap/bc/gui/sap/its/webgui?~transaction=*ZFIVIMPOC%20S_DOCID-LOW="
                  + System.Uri.EscapeDataString(id)
                  + ";DYNP_OKCODE=ONLI#";
         }
@@ -1756,17 +1756,21 @@ SELECT
 
         // -------------------------------------------------------------------
         // By reason code — every reason code with at least one in-scope
-        // document, plus an "Awaiting" pseudo-row prepended for documents
-        // with no review yet (or review with no reason code).
+        // document. Returns one row per coded reason code; the Payable /
+        // NotPayable split is done in the caller (LPPI_Summary.aspx.cs)
+        // since the two summary sections share the same source.
+        //
+        // Awaiting (uncoded) documents are NOT included. The Summary page
+        // already surfaces overall progress via the Cycle overview's
+        // reviewed-vs-total bar; a separate "Awaiting" row on the
+        // reason-code table is redundant once the Payable/NotPayable split
+        // is in place.
         //
         // Columns returned:
-        //   Code                NVARCHAR(20)   "Awaiting" for the pseudo-row,
-        //                                       otherwise the rc.Code value.
+        //   Code                NVARCHAR(20)
         //   Description         NVARCHAR(500)
-        //   Outcome             NVARCHAR(20)   NULL for the pseudo-row.
-        //   DisplayOrder        INT            -1 for the pseudo-row so it
-        //                                       sorts above the canonical
-        //                                       RC01..
+        //   Outcome             NVARCHAR(20)
+        //   DisplayOrder        INT
         //   DocCount            INT
         //   Interest            DECIMAL(19,4)
         //   PctOfTotal          INT            0..100, share of total
@@ -1811,28 +1815,10 @@ Totals AS (
     SELECT ISNULL(SUM(DocInterest), 0) AS GrandTotal FROM DocFigures
 )
 SELECT
-    CAST('Awaiting' AS NVARCHAR(20))                                AS Code,
-    CAST('No review recorded yet' AS NVARCHAR(500))                 AS Description,
-    CAST(NULL AS NVARCHAR(20))                                      AS Outcome,
-    -1                                                              AS DisplayOrder,
-    COUNT(*)                                                        AS DocCount,
-    ISNULL(SUM(df.DocInterest), 0)                                  AS Interest,
-    CASE WHEN (SELECT GrandTotal FROM Totals) > 0
-         THEN CAST(ROUND(ISNULL(SUM(df.DocInterest), 0) * 100.0
-                         / (SELECT GrandTotal FROM Totals), 0) AS INT)
-         ELSE 0
-    END                                                             AS PctOfTotal
-  FROM DocFigures df
- WHERE df.ReasonCodeID IS NULL
-HAVING COUNT(*) > 0
-
-UNION ALL
-
-SELECT
-    rc.Code,
-    rc.Description,
-    rc.Outcome,
-    rc.DisplayOrder,
+    rc.Code                                                         AS Code,
+    rc.Description                                                  AS Description,
+    rc.Outcome                                                      AS Outcome,
+    rc.DisplayOrder                                                 AS DisplayOrder,
     COUNT(*)                                                        AS DocCount,
     ISNULL(SUM(df.DocInterest), 0)                                  AS Interest,
     CASE WHEN (SELECT GrandTotal FROM Totals) > 0
@@ -1843,8 +1829,7 @@ SELECT
   FROM DocFigures df
   INNER JOIN dbo.tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = df.ReasonCodeID
  GROUP BY rc.Code, rc.Description, rc.Outcome, rc.DisplayOrder
-
-ORDER BY DisplayOrder, Code;";
+ ORDER BY rc.DisplayOrder, rc.Code;";
 
             return ExecuteTable(sql, parms.ToArray());
         }
@@ -2039,6 +2024,65 @@ SELECT TOP (10)
   FROM Outstanding
  GROUP BY PocEmail
  ORDER BY DocCount DESC, Interest DESC, PocEmail;";
+
+            return ExecuteTable(sql, parms.ToArray());
+        }
+
+        // -------------------------------------------------------------------
+        // By POC — TOP 10 outstanding by VALUE.
+        //
+        // Same data shape as GetSummaryByPocOutstanding, but ordered by
+        // outstanding interest descending instead of doc count. Lets admins
+        // identify the highest-dollar pending exposure before defaulting
+        // the package (so the big-ticket POCs get chased first).
+        //
+        // Counts and dollar totals are identical to the by-count helper
+        // for a given POC — only the TOP 10 selection and the ordering
+        // differ.
+        // -------------------------------------------------------------------
+        public static DataTable GetSummaryByPocOutstandingByValue(SummaryScope scope)
+        {
+            var parms = new List<OleDbParameter>();
+            string scopeSql = BuildScopePackageSubquery(scope, parms);
+
+            string sql = @"
+WITH ScopePkgs AS (
+    " + scopeSql + @"
+),
+PkgDocs AS (
+    SELECT DISTINCT
+           d.DocNoAccounting,
+           (SELECT MIN(d2.DocumentID)
+              FROM dbo.tblLPPI_Documents d2
+             WHERE d2.DocNoAccounting = d.DocNoAccounting
+               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID
+      FROM dbo.tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+     WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
+       AND d.IsDeactivated = 0
+),
+Outstanding AS (
+    SELECT pd.DocNoAccounting,
+           pd.FirstLineDocumentID,
+           ISNULL(NULLIF(LTRIM(RTRIM(
+               (SELECT TOP 1 d4.PocEmail
+                  FROM dbo.tblLPPI_Documents d4
+                 WHERE d4.DocumentID = pd.FirstLineDocumentID))), ''), N'(no POC)') AS PocEmail,
+           (SELECT SUM(d3.InterestPayable)
+              FROM dbo.tblLPPI_Documents d3
+             WHERE d3.DocNoAccounting = pd.DocNoAccounting
+               AND d3.IsDeactivated   = 0) AS DocInterest
+      FROM PkgDocs pd
+      LEFT JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pd.FirstLineDocumentID
+     WHERE r.ReasonCodeID IS NULL
+)
+SELECT TOP (10)
+    PocEmail,
+    COUNT(*)                  AS DocCount,
+    ISNULL(SUM(DocInterest),0) AS Interest
+  FROM Outstanding
+ GROUP BY PocEmail
+ ORDER BY Interest DESC, DocCount DESC, PocEmail;";
 
             return ExecuteTable(sql, parms.ToArray());
         }
