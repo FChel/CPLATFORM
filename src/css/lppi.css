@@ -2349,23 +2349,6 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 .summary-shell .summary-tbl tbody tr:hover { background: var(--orange-soft); }
 .summary-shell .summary-tbl .num { font-variant-numeric: tabular-nums; }
 
-/* Awaiting pseudo-row: subtle grey background so it reads as distinct
-   from a real reason code without being alarming. */
-.summary-shell .summary-row-awaiting {
-    background: var(--line-2);
-}
-.summary-shell .summary-row-awaiting:hover {
-    background: var(--bg);
-}
-
-/* Awaiting pill — neutral grey so it does not compete with Payable
-   (orange-tinted) or Not Payable (cool grey). */
-.summary-shell .pill-awaiting {
-    background: #ececef;
-    color: var(--ink-2);
-    border: 1px solid var(--line);
-}
-
 /* Inline progress bar used inside the By-program table. Two-row stack:
    bar on top, "reviewed / total" caption underneath. Caps to a sensible
    width so the column does not stretch across half the table. */
