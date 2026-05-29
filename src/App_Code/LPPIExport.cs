@@ -24,16 +24,18 @@ namespace CPlatform.LPPI
     ///
     /// Row model: ONE ROW PER LINE in tblLPPI_Documents. BODS supplies an
     /// ITEM_SEQUENCE so a single DocNoAccounting may have many lines and
-    /// Finance wants each line paid separately against its own GL / WBS /
-    /// Profit Centre. The reason code lives at DOCUMENT level (the reviewer
-    /// codes only the first/dominant line, via the smallest-ItemSequence
-    /// row), and every line of the same document inherits that code — this
-    /// is done via a correlated sub-query that maps each document row to
-    /// its first-line DocumentID and joins the review there.
+    /// Finance pays each line separately. Every payable line carries the
+    /// Defective Administration GL (282000) and the document's Capability
+    /// Manager charge cost centre; no WBS is emitted. The reason code lives
+    /// at DOCUMENT level (the reviewer codes only the first/dominant line,
+    /// via the smallest-ItemSequence row), and every line of the same
+    /// document inherits that code — this is done via a correlated
+    /// sub-query that maps each document row to its first-line DocumentID
+    /// and joins the review there.
     ///
-    /// Payment reference is made unique per line with a -NNN suffix so the
-    /// bulk upload cannot collide on duplicate references when a document
-    /// has multiple lines.
+    /// Payment reference quotes the vendor invoice number from the late
+    /// payment, suffixed INT. The ERP payment run de-duplicates references
+    /// across multiple lines of the same document.
     ///
     /// Tax code: always "P5". After TAX_CODE landed in the BODS extract
     /// Finance confirmed interest payments are not tax-input or tax-output
@@ -145,18 +147,15 @@ namespace CPlatform.LPPI
             //    whose DOCUMENT-level review (joined via first-line
             //    DocumentID) carries a Payable outcome.
             //
-            //    OLE DB requires positional ? placeholders. We build the IN
-            //    clause manually with one placeholder per package id and
-            //    pass the parameter list in matching order — same pattern
-            //    used elsewhere in the codebase for variable-length lists.
+            //    OLE DB requires positional ? placeholders. The IN clause is
+            //    built manually with one placeholder per package id and the
+            //    parameter list passed in matching order — the same pattern
+            //    used elsewhere for variable-length lists.
             //
-            //    May 2026 — supersession model: the WHERE clause has carried
-            //    d.IsDeactivated = 0 since RC-RL launched (deactivated lines
-            //    never ship to ERP). The INNER JOIN to d now also asserts
-            //    d.IsDeactivated = 0 — defence in depth, plus it makes the
-            //    intent explicit. The two are redundant by design: if a
-            //    future edit ever removes one, the other still keeps
-            //    deactivated rows out of the export.
+            //    Both the INNER JOIN and the WHERE clause assert
+            //    d.IsDeactivated = 0 — deactivated lines never ship to ERP.
+            //    The two are redundant by design: if a future edit removes
+            //    one, the other still keeps deactivated rows out.
             // -----------------------------------------------------------------
             var inPlaceholders = new StringBuilder();
             for (int i = 0; i < packageIds.Count; i++)
@@ -166,9 +165,8 @@ namespace CPlatform.LPPI
             }
 
             string sql =
-                "SELECT d.DocumentID, d.CompanyCode, d.VendorNum, d.GlAccount, d.ProfitCentre, " +
-                "       d.WbsElement, d.InterestPayable, d.DocNoAccounting, d.ItemSequence, " +
-                "       d.VendorInvoiceNo, d.ClearingMonth, d.FiscalYear, " +
+                "SELECT d.DocumentID, d.CompanyCode, d.VendorNum, d.CapabilityManager, " +
+                "       d.InterestPayable, d.DocNoAccounting, d.VendorInvoiceNo, " +
                 "       pd.PackageID " +
                 "  FROM dbo.tblLPPI_ReviewPackageDocuments pd " +
                 "  INNER JOIN dbo.tblLPPI_Documents d " +
@@ -182,7 +180,7 @@ namespace CPlatform.LPPI
                 "          ON rc.ReasonCodeID = r.ReasonCodeID " +
                 " WHERE pd.PackageID IN (" + inPlaceholders.ToString() + ") " +
                 "   AND rc.Outcome      = 'Payable' " +
-                "   AND d.IsDeactivated = 0 " +     // RC-RL — deactivated lines never ship (kept here as belt-and-braces)
+                "   AND d.IsDeactivated = 0 " +
                 " ORDER BY pd.PackageID, d.DocNoAccounting, d.ItemSequence;";
 
             var parms = new List<OleDbParameter>(packageIds.Count);
@@ -217,51 +215,32 @@ namespace CPlatform.LPPI
                 int excelRow = 2;
                 foreach (DataRow row in dt.Rows)
                 {
-                    string companyCode    = AsString(row["CompanyCode"]);
-                    string vendorNum      = AsString(row["VendorNum"]);
-                    string glAccount      = AsString(row["GlAccount"]);
-                    string profitCentre   = AsString(row["ProfitCentre"]);  // Cost Centre placeholder
-                    string wbsElement     = AsString(row["WbsElement"]);
-                    decimal? interestPay  = AsDecimal(row["InterestPayable"]);
-                    string docNoAcct      = AsString(row["DocNoAccounting"]);
-                    int    itemSeq        = AsInt(row["ItemSequence"]);
-                    string vendorInvoice  = AsString(row["VendorInvoiceNo"]);
-                    string clearingMonth  = AsString(row["ClearingMonth"]);
-                    string fiscalYearRaw  = AsString(row["FiscalYear"]);
-                    int    pkgIdRow       = AsInt(row["PackageID"]);
+                    string   companyCode       = AsString(row["CompanyCode"]);
+                    string   vendorNum         = AsString(row["VendorNum"]);
+                    string   capabilityManager = AsString(row["CapabilityManager"]);
+                    decimal? interestPay       = AsDecimal(row["InterestPayable"]);
+                    string   docNoAcct         = AsString(row["DocNoAccounting"]);
+                    string   vendorInvoice     = AsString(row["VendorInvoiceNo"]);
+                    int      pkgIdRow          = AsInt(row["PackageID"]);
 
-                    // FY: prefer the dedicated FISCAL_YEAR column from BODS,
-                    // fall back to deriving from ClearingMonth for any
-                    // legacy rows where the column is empty.
-                    int fy;
-                    if (!int.TryParse(fiscalYearRaw, NumberStyles.Integer,
-                        CultureInfo.InvariantCulture, out fy) || fy <= 0)
-                    {
-                        fy = DeriveAuFiscalYear(clearingMonth);
-                    }
-
-                    // Payment reference must be unique per LINE so the bulk
-                    // upload does not reject duplicates when a document has
-                    // multiple lines. Format: {CC}{FY}{DOC}-{SEQ:000}.
-                    string paymentRef = string.Format(CultureInfo.InvariantCulture,
-                        "{0}{1}{2}-{3:000}",
-                        companyCode,
-                        fy,
-                        docNoAcct,
-                        itemSeq);
+                    // Payment reference quotes the vendor invoice number from
+                    // the late payment, suffixed INT. The ERP payment run
+                    // de-duplicates references across multiple lines of the
+                    // same document.
+                    string paymentRef = vendorInvoice + "INT";
 
                     string itemText = "Late Payment Interest for " + vendorInvoice;
 
                     // Col 1–10
-                    ws.Cells[excelRow, 1].Value  = companyCode;     // Company code
-                    ws.Cells[excelRow, 2].Value  = "INTEREST";      // Payment type
-                    ws.Cells[excelRow, 3].Value  = "INTEREST";      // Payment sub type
-                    ws.Cells[excelRow, 4].Value  = "NP";            // Document type
-                    ws.Cells[excelRow, 5].Value  = "0023";          // Financial Delegation
-                    ws.Cells[excelRow, 6].Value  = vendorNum;       // Vendor Number
-                    ws.Cells[excelRow, 7].Value  = glAccount;       // GL Account Code
-                    ws.Cells[excelRow, 8].Value  = profitCentre;    // Cost Centre Code (placeholder)
-                    ws.Cells[excelRow, 9].Value  = wbsElement;      // WBS Element
+                    ws.Cells[excelRow, 1].Value  = companyCode;        // Company code
+                    ws.Cells[excelRow, 2].Value  = "OTHER";            // Payment type
+                    ws.Cells[excelRow, 3].Value  = "OTHER";            // Payment sub type
+                    ws.Cells[excelRow, 4].Value  = "NP";               // Document type
+                    ws.Cells[excelRow, 5].Value  = "0023";             // Financial Delegation
+                    ws.Cells[excelRow, 6].Value  = vendorNum;          // Vendor Number
+                    ws.Cells[excelRow, 7].Value  = "282000";           // GL Account Code — Defective Administration
+                    ws.Cells[excelRow, 8].Value  = capabilityManager;  // Cost Centre Code — Capability Manager charge cost centre
+                    // Col 9 WBS Element — intentionally blank; LPPI interest carries no WBS
                     // Col 10 Internal Order — blank
 
                     // Col 11 Amount Paid (GST Incl) — per-line InterestPayable
@@ -271,11 +250,11 @@ namespace CPlatform.LPPI
                         total += interestPay.Value;
                     }
 
-                    ws.Cells[excelRow, 12].Value = "AUD";           // Currency
-                    ws.Cells[excelRow, 13].Value = "P5";            // Tax code — interest is not tax-relevant
-                    ws.Cells[excelRow, 14].Value = paymentRef;      // Payment reference
-                    ws.Cells[excelRow, 15].Value = docNoAcct;       // Header text
-                    ws.Cells[excelRow, 16].Value = itemText;        // Item text
+                    ws.Cells[excelRow, 12].Value = "AUD";              // Currency
+                    ws.Cells[excelRow, 13].Value = "P5";               // Tax code — interest is not tax-relevant
+                    ws.Cells[excelRow, 14].Value = paymentRef;         // Payment reference — {VendorInvoiceNo}INT
+                    ws.Cells[excelRow, 15].Value = docNoAcct;          // Header text — FI accounting document number
+                    ws.Cells[excelRow, 16].Value = itemText;          // Item text
                     // Col 17–27 all blank (Title, Name, address, bank fields)
 
                     docIds.Add(Convert.ToInt32(row["DocumentID"]));
@@ -302,46 +281,8 @@ namespace CPlatform.LPPI
         }
 
         // -------------------------------------------------------------------
-        // Helpers — unchanged from the legacy version. Retained verbatim so
-        // any future caller writing tests against the FY derivation logic
-        // continues to pass.
+        // Helpers
         // -------------------------------------------------------------------
-
-        /// <summary>
-        /// Derive the Australian fiscal year from a ClearingMonth string of
-        /// the form "M.YYYY" (e.g. "7.2025" -> FY 2026, "4.2025" -> FY 2025).
-        /// Jul–Dec roll forward; Jan–Jun stay on the calendar year. Falls
-        /// back to today's FY if the value is missing or malformed.
-        /// Retained only for legacy rows where the FISCAL_YEAR column is
-        /// empty — fresh BODS extracts supply FY directly.
-        /// </summary>
-        internal static int DeriveAuFiscalYear(string clearingMonth)
-        {
-            int month, year;
-            if (!TryParseClearingMonth(clearingMonth, out month, out year))
-            {
-                var today = DateTime.Today;
-                month = today.Month;
-                year  = today.Year;
-            }
-            return (month >= 7) ? year + 1 : year;
-        }
-
-        private static bool TryParseClearingMonth(string s, out int month, out int year)
-        {
-            month = 0; year = 0;
-            if (string.IsNullOrWhiteSpace(s)) return false;
-
-            var parts = s.Trim().Split('.');
-            if (parts.Length != 2) return false;
-
-            if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out month)) return false;
-            if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out year))  return false;
-
-            if (month < 1 || month > 12) return false;
-            if (year  < 1900 || year > 2999) return false;
-            return true;
-        }
 
         private static string AsString(object v)
         {
