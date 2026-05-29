@@ -2329,6 +2329,13 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     font-weight: 700;
     margin-left: 2px;
 }
+.summary-shell .summary-reload-flag {
+    color: var(--orange-deep);
+    font-weight: 600;
+}
+.summary-shell .summary-muted-zero {
+    color: var(--ink-3);
+}
 
 /* Warning-tone footnote — used for the "N documents have no POC" caption
    sitting underneath the By-program table. Same size and tone as the

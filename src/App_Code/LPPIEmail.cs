@@ -721,9 +721,10 @@ UPDATE dbo.tblLPPI_ReviewPackages
         // Finalised summary — the numbers shown in the Notify AS Fin email
         //
         // Counts and dollar totals across the package's live first-line
-        // documents, grouped by outcome and broken out for the two
-        // notable single codes (RC-NR auto-applied on finalise; RC-RL
-        // reload-eligible). One round-trip to the DB.
+        // documents, grouped by outcome and broken out for the notable
+        // single codes: RC01 (ERP issues) and RC-NR (defaulted on finalise)
+        // on the payable side; RC08 (pre-RMG-417 contract) and RC-RL
+        // (awaiting reload) on the not-payable side. One round-trip to the DB.
         //
         // The InterestPayable join filters on IsDeactivated = 0 so any
         // historical rows from RC-RL reload cycles do not double-count.
@@ -741,6 +742,10 @@ UPDATE dbo.tblLPPI_ReviewPackages
             public decimal RcNrInterest;
             public int     RcRlCount;
             public decimal RcRlInterest;
+            public int     Rc01Count;       // ERP issues (Payable) — usually one of the largest buckets
+            public decimal Rc01Interest;
+            public int     Rc08Count;       // Pre-RMG-417 contract (Not payable) — usually one of the largest buckets
+            public decimal Rc08Interest;
         }
 
         private static FinalisedSummary ComputeFinalisedSummary(int packageId)
@@ -755,9 +760,9 @@ UPDATE dbo.tblLPPI_ReviewPackages
             //            first-line row)
             //
             // The outer GROUP BY pivots PayableCount / NotPayableCount /
-            // RcNrCount / RcRlCount in one pass. Document-level counts use
-            // DISTINCT DocNoAccounting because a multi-line document maps
-            // to multiple pd rows.
+            // RcNrCount / RcRlCount / Rc01Count / Rc08Count in one pass.
+            // Document-level counts use DISTINCT DocNoAccounting because a
+            // multi-line document maps to multiple pd rows.
             const string sql = @"
 WITH PkgDocs AS (
     SELECT DISTINCT
@@ -792,7 +797,11 @@ SELECT
     ISNULL(SUM(CASE WHEN RcCode  = 'RC-NR'      THEN 1           ELSE 0   END), 0) AS RcNrCount,
     ISNULL(SUM(CASE WHEN RcCode  = 'RC-NR'      THEN InterestSum ELSE 0.0 END), 0) AS RcNrInterest,
     ISNULL(SUM(CASE WHEN RcCode  = 'RC-RL'      THEN 1           ELSE 0   END), 0) AS RcRlCount,
-    ISNULL(SUM(CASE WHEN RcCode  = 'RC-RL'      THEN InterestSum ELSE 0.0 END), 0) AS RcRlInterest
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC-RL'      THEN InterestSum ELSE 0.0 END), 0) AS RcRlInterest,
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC01'       THEN 1           ELSE 0   END), 0) AS Rc01Count,
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC01'       THEN InterestSum ELSE 0.0 END), 0) AS Rc01Interest,
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC08'       THEN 1           ELSE 0   END), 0) AS Rc08Count,
+    ISNULL(SUM(CASE WHEN RcCode  = 'RC08'       THEN InterestSum ELSE 0.0 END), 0) AS Rc08Interest
   FROM Coded;";
             var dt = LPPIHelper.ExecuteTable(sql, LPPIHelper.P("@P", packageId));
 
@@ -810,6 +819,10 @@ SELECT
             s.RcNrInterest       = Convert.ToDecimal(r["RcNrInterest"]);
             s.RcRlCount          = Convert.ToInt32(r["RcRlCount"]);
             s.RcRlInterest       = Convert.ToDecimal(r["RcRlInterest"]);
+            s.Rc01Count          = Convert.ToInt32(r["Rc01Count"]);
+            s.Rc01Interest       = Convert.ToDecimal(r["Rc01Interest"]);
+            s.Rc08Count          = Convert.ToInt32(r["Rc08Count"]);
+            s.Rc08Interest       = Convert.ToDecimal(r["Rc08Interest"]);
             return s;
         }
 
@@ -934,9 +947,14 @@ SELECT
             // Payable
             AppendSummaryRow(sb, "Payable",  s.PayableCount, s.PayableInterest, false, false);
 
-            // Payable breakdown — RC-NR (defaulted on finalise) and other
-            int    payableOtherCount = Math.Max(0, s.PayableCount    - s.RcNrCount);
-            decimal payableOtherDol  = Math.Max(0m, s.PayableInterest - s.RcNrInterest);
+            // Payable breakdown. RC01 (ERP issues) and RC-NR (no response,
+            // defaulted on finalise) are called out; RC01 is highlighted as
+            // it is usually one of the largest buckets. Everything else
+            // rolls into "Other payable codes".
+            int    payableOtherCount = Math.Max(0,  s.PayableCount    - s.RcNrCount - s.Rc01Count);
+            decimal payableOtherDol  = Math.Max(0m, s.PayableInterest - s.RcNrInterest - s.Rc01Interest);
+            if (s.Rc01Count > 0)
+                AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 RC01 (ERP issues)", s.Rc01Count, s.Rc01Interest, true, false, true);
             if (s.RcNrCount > 0)
                 AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 RC-NR (no response, defaulted)", s.RcNrCount, s.RcNrInterest, true, false);
             if (payableOtherCount > 0)
@@ -945,11 +963,16 @@ SELECT
             // Not payable
             AppendSummaryRow(sb, "Not payable", s.NotPayableCount, s.NotPayableInterest, false, false);
 
-            // Not payable breakdown — RC-RL (reload-eligible) and other
-            int    notPayOtherCount = Math.Max(0, s.NotPayableCount    - s.RcRlCount);
-            decimal notPayOtherDol  = Math.Max(0m, s.NotPayableInterest - s.RcRlInterest);
+            // Not payable breakdown. RC08 (contract pre-dates RMG-417) and
+            // RC-RL (awaiting reload) are called out; RC08 is highlighted as
+            // it is usually one of the largest buckets. Everything else
+            // rolls into "Other not-payable codes".
+            int    notPayOtherCount = Math.Max(0,  s.NotPayableCount    - s.RcRlCount - s.Rc08Count);
+            decimal notPayOtherDol  = Math.Max(0m, s.NotPayableInterest - s.RcRlInterest - s.Rc08Interest);
+            if (s.Rc08Count > 0)
+                AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 RC08 (contract pre-dates RMG-417)", s.Rc08Count, s.Rc08Interest, true, false, true);
             if (s.RcRlCount > 0)
-                AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 RC-RL (reload-eligible, returns next cycle)", s.RcRlCount, s.RcRlInterest, true, false);
+                AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 RC-RL (awaiting reload, returns next cycle)", s.RcRlCount, s.RcRlInterest, true, false);
             if (notPayOtherCount > 0)
                 AppendSummaryRow(sb, "&nbsp;&nbsp;\u2937 Other not-payable codes", notPayOtherCount, notPayOtherDol, true, false);
 
@@ -969,7 +992,8 @@ SELECT
             }
 
             sb.Append("<p style=\"").Append(FontInline).Append("\">")
-              .Append("Open the package below to view the full line-by-line detail. The reviewer page is read-only since the package is Finalised.")
+              .Append("Open the package below to view the full line-by-line detail. The reviewer page is read-only since the package is Finalised. ")
+              .Append("The package can be unfinalised if changes are required.")
               .Append("</p>");
 
             AppendBeginReviewButton(sb, reviewUrl);
@@ -1000,18 +1024,21 @@ SELECT
 
         private static void AppendSummaryRow(StringBuilder sb, string label,
                                              int count, decimal interest,
-                                             bool isIndent, bool isTotal)
+                                             bool isIndent, bool isTotal,
+                                             bool isHighlight = false)
         {
-            string rowBg = isTotal ? "background:#fafafa;font-weight:bold;" : "";
+            string rowStyle  = isTotal ? "background:#fafafa;font-weight:bold;" : "";
+            string cellBg    = (isHighlight && !isTotal) ? "background:#fff6ef;" : "";
             string borderTop = isTotal ? "border-top:2px solid #e3e3e3;" : "border-top:1px solid #f0f0f0;";
             string labelColor = isIndent ? "#666" : "#1a1a1a";
+            string weight    = isHighlight ? "font-weight:600;" : "";
 
-            sb.Append("<tr style=\"").Append(rowBg).Append("\">")
-              .Append("<td align=\"left\" style=\"padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:").Append(labelColor).Append(";").Append(FontInline).Append("\">")
+            sb.Append("<tr style=\"").Append(rowStyle).Append("\">")
+              .Append("<td align=\"left\" style=\"").Append(cellBg).Append("padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:").Append(labelColor).Append(";").Append(weight).Append(FontInline).Append("\">")
               .Append(label).Append("</td>")
-              .Append("<td align=\"right\" style=\"padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:#1a1a1a;").Append(FontInline).Append("\">")
+              .Append("<td align=\"right\" style=\"").Append(cellBg).Append("padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:#1a1a1a;").Append(weight).Append(FontInline).Append("\">")
               .Append(count).Append("</td>")
-              .Append("<td align=\"right\" style=\"padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:#1a1a1a;").Append(FontInline).Append("\">")
+              .Append("<td align=\"right\" style=\"").Append(cellBg).Append("padding:8px 12px;").Append(borderTop).Append("font-size:13px;color:#1a1a1a;").Append(weight).Append(FontInline).Append("\">")
               .Append(LPPIHelper.Enc(LPPIHelper.FormatMoney(interest))).Append("</td>")
               .Append("</tr>");
         }

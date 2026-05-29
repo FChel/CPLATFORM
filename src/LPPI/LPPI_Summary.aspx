@@ -192,6 +192,7 @@
                                 <th class="num">Documents</th>
                                 <th>Progress</th>
                                 <th class="num">POCs</th>
+                                <th class="num">Flagged for reload</th>
                                 <th class="num">Interest</th>
                             </tr>
                         </thead>
@@ -204,6 +205,7 @@
                                         <td class="num"><%# FormatInt(Eval("DocCount")) %></td>
                                         <td><%# RenderProgressBar(Eval("ReviewedCount"), Eval("DocCount")) %></td>
                                         <td class="num"><%# FormatInt(Eval("PocCount")) %></td>
+                                        <td class="num"><%# FormatReloadCell(Eval("FlaggedReloadCount")) %></td>
                                         <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
                                     </tr>
                                 </ItemTemplate>
@@ -213,10 +215,11 @@
                             <tr class="summary-row-total">
                                 <td><strong>Total</strong></td>
                                 <td class="num"><strong><asp:Literal ID="litProgTotPackages" runat="server" Text="0"/></strong></td>
-                                <td class="num"><strong><asp:Literal ID="litProgTotDocs"     runat="server" Text="0"/></strong></td>
+                                <td class="num"><strong><asp:Literal ID="litProgTotDocs"     runat="server" Text="0"/></strong><span class="summary-foot-marker">*</span></td>
                                 <td><%= RenderProgressBar(ProgTotReviewed, ProgTotDocs) %></td>
                                 <td class="num"><strong><asp:Literal ID="litProgTotPocs"     runat="server" Text="0"/></strong><span class="summary-foot-marker">*</span></td>
-                                <td class="num"><strong><asp:Literal ID="litProgTotInterest" runat="server" Text="$0.00"/></strong></td>
+                                <td class="num"><strong><asp:Literal ID="litProgTotReload"   runat="server" Text="0"/></strong></td>
+                                <td class="num"><strong><asp:Literal ID="litProgTotInterest" runat="server" Text="$0.00"/></strong><span class="summary-foot-marker">*</span></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -225,9 +228,19 @@
                     <div class="empty-state">No programs in scope.</div>
                 </asp:PlaceHolder>
             </div>
+            <p class="summary-foot-note">
+                <span class="summary-foot-marker">*</span> Documents, POCs and Interest are per-program rollups.
+                A document, POC or dollar that spans more than one program is counted under each, so the Total row
+                can exceed the distinct figures on the Cycle overview cards.
+            </p>
+            <asp:PlaceHolder ID="phReloadNote" runat="server" Visible="false">
+                <p class="summary-foot-note summary-foot-note-warn">
+                    <asp:Literal ID="litReloadNote" runat="server" />
+                </p>
+            </asp:PlaceHolder>
             <asp:PlaceHolder ID="phNoPocNote" runat="server" Visible="false">
                 <p class="summary-foot-note summary-foot-note-warn">
-                    <asp:Literal ID="litNoPocCount" runat="server" />		
+                    <asp:Literal ID="litNoPocCount" runat="server" />
                 </p>
             </asp:PlaceHolder>
         </section>

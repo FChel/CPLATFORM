@@ -1864,11 +1864,14 @@ SELECT
         // least one in-scope package.
         //
         // Columns:
-        //   Program        NVARCHAR(200)
-        //   PackageCount   INT  — packages for this program in scope
-        //   DocCount       INT
-        //   ReviewedCount  INT
-        //   Interest       DECIMAL(19,4)
+        //   Program             NVARCHAR(200)
+        //   PackageCount        INT  — packages for this program in scope
+        //   DocCount            INT
+        //   ReviewedCount       INT
+        //   PocCount            INT  — distinct first-line POC emails
+        //   NoPocCount          INT  — first-line docs with no POC email
+        //   FlaggedReloadCount  INT  — first-line docs coded RC-RL (live)
+        //   Interest            DECIMAL(19,4)
         // -------------------------------------------------------------------
         public static DataTable GetSummaryByProgram(SummaryScope scope)
         {
@@ -1922,13 +1925,35 @@ SELECT
     SUM(CASE WHEN r.ReasonCodeID IS NOT NULL THEN 1 ELSE 0 END)   AS ReviewedCount,
     COUNT(DISTINCT pd.PocEmailClean)                              AS PocCount,
     SUM(CASE WHEN pd.PocEmailClean IS NULL THEN 1 ELSE 0 END)     AS NoPocCount,
+    SUM(CASE WHEN rc.Code = N'RC-RL' THEN 1 ELSE 0 END)           AS FlaggedReloadCount,
     ISNULL(SUM(pd.DocInterest), 0)                                AS Interest
   FROM PkgDocs pd
-  LEFT JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pd.FirstLineDocumentID
+  LEFT JOIN dbo.tblLPPI_Reviews     r  ON r.DocumentID    = pd.FirstLineDocumentID
+  LEFT JOIN dbo.tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID
  GROUP BY pd.Program
  ORDER BY pd.Program;";
 
             return ExecuteTable(sql, parms.ToArray());
+        }
+
+        // -------------------------------------------------------------------
+        // Deactivated documents awaiting reload — system-wide.
+        //
+        // Documents whose lines were deactivated by an RC-RL finalise and
+        // have not yet been replaced by a corrected reload
+        // (SupersededByDocumentID IS NULL). Counted as distinct
+        // DocNoAccounting. NOT cycle-scoped — this is the live size of the
+        // reload backlog across all cycles, the same set the Deactivated
+        // watch-list shows.
+        // -------------------------------------------------------------------
+        public static int GetDeactivatedAwaitingReloadCount()
+        {
+            object o = ExecuteScalar(@"
+SELECT COUNT(DISTINCT d.DocNoAccounting)
+  FROM dbo.tblLPPI_Documents d
+ WHERE d.IsDeactivated = 1
+   AND d.SupersededByDocumentID IS NULL;");
+            return (o == null || o == DBNull.Value) ? 0 : Convert.ToInt32(o);
         }
 
         // -------------------------------------------------------------------

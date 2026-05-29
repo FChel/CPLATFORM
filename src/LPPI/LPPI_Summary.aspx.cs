@@ -329,13 +329,20 @@ namespace CPlatform.LPPI
             phProgramTable.Visible = hasRows;
             phNoProgram.Visible    = !hasRows;
 
-            // Compute the totals row. POC count is the sum of per-program
-            // PocCounts (cross-program POCs counted once per program; the
-            // footnote in the markup explains this).
+            // Compute the totals row. Documents, POCs and Interest are
+            // per-program rollups: a document, POC or dollar that spans more
+            // than one program is counted under each, so each Total can
+            // exceed the distinct figure on the Cycle overview cards. The
+            // standing footnote under the table (marked *) states this and
+            // shows regardless of the data.
             //
-            // No-POC count is summed across rows and surfaced as a small
-            // warning caption underneath the table — only shown when > 0.
-            int totPackages = 0, totDocs = 0, totReviewed = 0, totPocs = 0, totNoPoc = 0;
+            // Two conditional captions sit beneath that standing note, each
+            // shown only when its count is non-zero:
+            //   - flagged-for-reload: in-scope docs coded RC-RL (live, not
+            //     yet finalised) plus the system-wide count of documents
+            //     already deactivated and awaiting a corrected reload;
+            //   - no-POC: in-scope first-line docs with no POC email.
+            int totPackages = 0, totDocs = 0, totReviewed = 0, totPocs = 0, totNoPoc = 0, totReload = 0;
             decimal totInterest = 0m;
 
             foreach (DataRow r in dt.Rows)
@@ -345,12 +352,14 @@ namespace CPlatform.LPPI
                 totReviewed += AsInt(r, "ReviewedCount");
                 totPocs     += AsInt(r, "PocCount");
                 totNoPoc    += AsInt(r, "NoPocCount");
+                totReload   += AsInt(r, "FlaggedReloadCount");
                 totInterest += AsDec(r, "Interest");
             }
 
             litProgTotPackages.Text = totPackages.ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
             litProgTotDocs.Text     = totDocs.ToString("N0",     CultureInfo.GetCultureInfo("en-AU"));
             litProgTotPocs.Text     = totPocs.ToString("N0",     CultureInfo.GetCultureInfo("en-AU"));
+            litProgTotReload.Text   = totReload.ToString("N0",   CultureInfo.GetCultureInfo("en-AU"));
             litProgTotInterest.Text = "$" + totInterest.ToString("N2", CultureInfo.GetCultureInfo("en-AU"));
 
             ProgTotReviewed = totReviewed;
@@ -361,12 +370,40 @@ namespace CPlatform.LPPI
             // file. Visible always so the action is discoverable.
             btnExportNoPoc.Enabled = totNoPoc > 0;
 
+            // Flagged-for-reload caption. Combines the in-scope RC-RL docs
+            // (flagged, still live) with the system-wide deactivated-and-
+            // awaiting-reload backlog, which is not cycle-scoped.
+            var au = CultureInfo.GetCultureInfo("en-AU");
+            int deactivatedAwaitingReload = LPPIHelper.GetDeactivatedAwaitingReloadCount();
+            if (totReload > 0 || deactivatedAwaitingReload > 0)
+            {
+                string text = "";
+                if (totReload > 0)
+                    text += string.Format(au,
+                        "<b>{0}</b> document{1} in scope {2} flagged for reload (RC-RL) and will deactivate when the package is finalised.",
+                        totReload.ToString("N0", au),
+                        totReload == 1 ? "" : "s",
+                        totReload == 1 ? "is" : "are");
+                if (deactivatedAwaitingReload > 0)
+                    text += string.Format(au,
+                        " Across all cycles, <b>{0}</b> document{1} {2} deactivated and awaiting a corrected reload.",
+                        deactivatedAwaitingReload.ToString("N0", au),
+                        deactivatedAwaitingReload == 1 ? "" : "s",
+                        deactivatedAwaitingReload == 1 ? "is" : "are");
+                litReloadNote.Text = text.Trim();
+                phReloadNote.Visible = true;
+            }
+            else
+            {
+                phReloadNote.Visible = false;
+            }
+
             if (totNoPoc > 0)
             {
                 phNoPocNote.Visible = true;
-                litNoPocCount.Text = string.Format(CultureInfo.GetCultureInfo("en-AU"),
-                    "*POCs in multiple programs are counted once per program. <b>{0}</b> document{1} in scope ha{2} no POC email recorded; use the <em>Export no-POC lines</em> button above to pull the underlying lines.",
-                    totNoPoc.ToString("N0", CultureInfo.GetCultureInfo("en-AU")),
+                litNoPocCount.Text = string.Format(au,
+                    "<b>{0}</b> document{1} in scope ha{2} no POC email recorded; use the <em>Export no-POC lines</em> button above to pull the underlying lines.",
+                    totNoPoc.ToString("N0", au),
                     totNoPoc == 1 ? "" : "s",
                     totNoPoc == 1 ? "s" : "ve");
             }
@@ -499,6 +536,15 @@ namespace CPlatform.LPPI
                 return "$" + d.ToString("N2", CultureInfo.GetCultureInfo("en-AU"));
             }
             return Convert.ToString(val);
+        }
+
+        protected string FormatReloadCell(object v)
+        {
+            int n = (v == null || v == DBNull.Value) ? 0 : Convert.ToInt32(v);
+            if (n == 0)
+                return "<span class=\"summary-muted-zero\">&ndash;</span>";
+            return "<span class=\"summary-reload-flag\">"
+                 + n.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) + "</span>";
         }
 
         protected static string FormatPctCell(object val)

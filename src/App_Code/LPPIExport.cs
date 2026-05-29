@@ -13,8 +13,7 @@ namespace CPlatform.LPPI
     /// payable LPPI documents. Layout matches Payment_Request_Bulk_Upload_Template.xlsx
     /// exactly: 27 columns, Sheet1, plain headers (General format, no bold).
     ///
-    /// May 2026 rebuild — the export is now driven by a LIST OF PACKAGES rather
-    /// than a date range. The Export page presents a picker of Finalised
+    /// The export is driven by a LIST OF PACKAGES, Export page presents a picker of Finalised
     /// packages; the operator selects one or more; this helper pulls the
     /// payable lines belonging to those packages and builds the workbook.
     /// Date-range filtering, batch-id filtering and the include-already-
