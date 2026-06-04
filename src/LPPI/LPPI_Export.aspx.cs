@@ -360,7 +360,7 @@ UPDATE dbo.tblLPPI_Documents
             if (result.LineCount == 0)
             {
                 ShowMessage(string.Format(CultureInfo.InvariantCulture,
-                    "Selected package(s) had no payable lines. They have been marked Exported (batch #{0}); no payment file was sent to ERP.",
+                    "Selected package(s) had no payable lines. They have been marked Exported (batch #{0}); ERP file is empty (header rows only).",
                     batchId), "ok");
                 BindPicker();
                 BindRecentBatches();

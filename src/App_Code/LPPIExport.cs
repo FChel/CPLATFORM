@@ -226,7 +226,15 @@ namespace CPlatform.LPPI
                     // the late payment, suffixed INT. The ERP payment run
                     // de-duplicates references across multiple lines of the
                     // same document.
+                    //
+                    // The ERP Payment reference field caps at 16 characters.
+                    // When VendorInvoiceNo pushes the reference past that, trim
+                    // from the FRONT and keep the rightmost 16 — the trailing
+                    // characters plus the INT suffix are the most distinguishing
+                    // part of the reference.
                     string paymentRef = vendorInvoice + "INT";
+                    if (paymentRef.Length > 16)
+                        paymentRef = paymentRef.Substring(paymentRef.Length - 16);
 
                     string itemText = "Late Payment Interest for " + vendorInvoice;
 
