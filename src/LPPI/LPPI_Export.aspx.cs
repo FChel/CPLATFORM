@@ -227,11 +227,12 @@ SELECT TOP 20
                 return;
             }
 
-            if (result.LineCount == 0)
-            {
-                ShowMessage("No payable lines in the selected package(s) — nothing to export.", "warn");
-                return;
-            }
+            // A zero-payable selection (every document NotPayable / RC-RL) is
+            // intentionally NOT bailed here. The packages still need to reach
+            // Exported so they clear the queue, so we persist a header-only
+            // batch, flip the selected packages, then show a message instead
+            // of streaming an empty file — see the LineCount == 0 branch after
+            // persistence.
 
             // -----------------------------------------------------------------
             // Persist — header row first, then stamp packages and documents.
@@ -273,7 +274,7 @@ VALUES (@FileName, SYSDATETIME(), @ByUser, @ByName,
                     LPPIHelper.P("@FileName",      placeholderName),
                     LPPIHelper.P("@ByUser",        byUser ?? ""),
                     LPPIHelper.P("@ByName",        by     ?? ""),
-                    LPPIHelper.P("@PackageCount",  result.PackageCount),
+                    LPPIHelper.P("@PackageCount",  selectedPackageIds.Count),
                     LPPIHelper.P("@DocumentCount", result.DocumentCount),
                     LPPIHelper.P("@LineCount",     result.LineCount),
                     LPPIHelper.P("@TotalAmount",   result.TotalAmount),
@@ -298,7 +299,7 @@ VALUES (@FileName, SYSDATETIME(), @ByUser, @ByName,
                 // not flip and the loop count would diverge. We verify
                 // afterwards.
                 int packagesFlipped = 0;
-                foreach (int pkgId in result.PackageIds)
+                foreach (int pkgId in selectedPackageIds)
                 {
                     int rows = LPPIHelper.ExecuteNonQuery(@"
 UPDATE dbo.tblLPPI_ReviewPackages
@@ -311,7 +312,7 @@ UPDATE dbo.tblLPPI_ReviewPackages
                     packagesFlipped += rows;
                 }
 
-                if (packagesFlipped != result.PackageIds.Count)
+                if (packagesFlipped != selectedPackageIds.Count)
                 {
                     // We've already inserted the batch row and got partial
                     // package-stamping. Rather than try to roll back, we
@@ -319,7 +320,7 @@ UPDATE dbo.tblLPPI_ReviewPackages
                     ShowMessage(string.Format(
                         "Export warning: {0} of {1} packages were stamped as Exported. " +
                         "Some may have been unfinalised concurrently. Batch #{2} was created — please review the recent-batches table.",
-                        packagesFlipped, result.PackageIds.Count, batchId), "warn");
+                        packagesFlipped, selectedPackageIds.Count, batchId), "warn");
                     BindPicker();
                     BindRecentBatches();
                     return;
@@ -346,6 +347,21 @@ UPDATE dbo.tblLPPI_Documents
             {
                 ShowMessage("Export persistence failed: " + ex.Message +
                             ". The file may be partially saved — check the recent batches table.", "err");
+                BindPicker();
+                BindRecentBatches();
+                return;
+            }
+
+            // -----------------------------------------------------------------
+            // Zero-payable selection — every selected package has been marked
+            // Exported and a header-only batch recorded, but there is nothing
+            // to ship. Show a message rather than streaming an empty file.
+            // -----------------------------------------------------------------
+            if (result.LineCount == 0)
+            {
+                ShowMessage(string.Format(CultureInfo.InvariantCulture,
+                    "Selected package(s) had no payable lines. They have been marked Exported (batch #{0}); no payment file was sent to ERP.",
+                    batchId), "ok");
                 BindPicker();
                 BindRecentBatches();
                 return;

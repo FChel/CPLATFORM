@@ -16,15 +16,10 @@ namespace CPlatform.LPPI
     /// appSetting "LPPI.ConnectionString" (falls back to a UDL under
     /// ~/Database/CPlatform.udl, matching CPLATFORM convention).
     ///
-    /// May 2026 changes:
-    ///   - tblLPPI_CapabilityManagerEmails removed; recipient model collapsed
-    ///     to a single Email + EmailDisplayName on tblLPPI_CapabilityManagers.
-    ///     GetCmEmails / GetActiveRecipients are gone, replaced by
-    ///     GetCmEmail returning a single CmEmail struct (or null).
-    ///   - Reviewer page now supports two token types: AS Fin token (the
-    ///     existing tblLPPI_ReviewPackages.Token) and POC token (new
-    ///     tblLPPI_PackagePocs.Token). ResolveReviewToken inspects both
-    ///     tables and returns a typed result so callers can dispatch on it.
+    ///  Reviewer page now supports two token types: AS Fin token (the
+    ///  existing tblLPPI_ReviewPackages.Token) and POC token (new
+    ///  tblLPPI_PackagePocs.Token). ResolveReviewToken inspects both
+    ///  tables and returns a typed result so callers can dispatch on it.
     /// </summary>
     public static class LPPIHelper
     {
@@ -814,10 +809,14 @@ SELECT cm.Program
         //
         // Document-level counts work on COUNT(DISTINCT DocNoAccounting). The
         // first-line-review model puts one Review row per document, against
-        // the first line's DocumentID, so TotalReviewed stays as COUNT(*) on
-        // tblLPPI_Reviews — numerically it is still a document count.
-        // TotalOutstanding is derived as TotalDocs - TotalReviewed so the
-        // three numbers reconcile cleanly.
+        // the first line's DocumentID
+        // 
+        // TotalReviewed counts DISTINCT live documents whose first-line
+        // review carries a reason code — live-scoped (IsDeactivated = 0) to
+        // match TotalDocs. A bare COUNT(*) on tblLPPI_Reviews would also
+        // count reviews on deactivated (RC-RL) documents that TotalDocs
+        // excludes, driving TotalOutstanding negative. TotalOutstanding is
+        // TotalDocs - TotalReviewed
         // -------------------------------------------------------------------
 
         public static DataRow GetDashboardSummary()
@@ -830,10 +829,26 @@ SELECT cm.Program
 SELECT
    (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents
      WHERE IsDeactivated = 0)                                                    AS TotalDocs,
-   (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL)     AS TotalReviewed,
+   (SELECT COUNT(DISTINCT d.DocNoAccounting)
+      FROM dbo.tblLPPI_Documents d
+      INNER JOIN dbo.tblLPPI_Reviews r
+              ON r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                   FROM dbo.tblLPPI_Documents d2
+                                  WHERE d2.DocNoAccounting = d.DocNoAccounting
+                                    AND d2.IsDeactivated   = 0)
+             AND r.ReasonCodeID IS NOT NULL
+     WHERE d.IsDeactivated = 0)                                                  AS TotalReviewed,
    (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents
      WHERE IsDeactivated = 0)
-     - (SELECT COUNT(*) FROM dbo.tblLPPI_Reviews WHERE ReasonCodeID IS NOT NULL) AS TotalOutstanding,
+     - (SELECT COUNT(DISTINCT d.DocNoAccounting)
+          FROM dbo.tblLPPI_Documents d
+          INNER JOIN dbo.tblLPPI_Reviews r
+                  ON r.DocumentID = (SELECT MIN(d2.DocumentID)
+                                       FROM dbo.tblLPPI_Documents d2
+                                      WHERE d2.DocNoAccounting = d.DocNoAccounting
+                                        AND d2.IsDeactivated   = 0)
+                 AND r.ReasonCodeID IS NOT NULL
+         WHERE d.IsDeactivated = 0)                                              AS TotalOutstanding,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
        WHERE Status IN (" + activeIn + @"))                                      AS OpenPackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages

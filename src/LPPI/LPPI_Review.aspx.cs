@@ -246,7 +246,14 @@ namespace CPlatform.LPPI
                 case "exported":
                     kind  = "ok";
                     title = "Exported";
+                    var expWho  = string.IsNullOrEmpty(finalisedBy) ? "AS Fin" : finalisedBy;
+                    var expWhen = finalisedAt.HasValue
+                        ? finalisedAt.Value.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("en-AU"))
+                        : "";
                     body  = "This package has been included in an ERP payment file and is locked. No further changes are possible.";
+                    body += expWhen.Length > 0
+                        ? " Finalised by " + expWho + " on " + expWhen + "."
+                        : " Finalised by " + expWho + ".";
                     break;
 
                 case "cancelled":
