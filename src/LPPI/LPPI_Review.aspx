@@ -442,12 +442,12 @@
                         <li><strong>Vendor</strong> &mdash; the vendor that was paid late.</li>
                         <li><strong>PO</strong> &mdash; the purchase order. Click to open in SAP Fiori.</li>
                         <li><strong>VIM Doc ID</strong> &mdash; the VIM (Vendor Invoice Management) document identifier. Click to open the document directly in SAP.</li>
-                        <li><strong>Capability Manager</strong> &mdash; the LPPI Charge Cost Centre. This is the cost centre that will be charged with the interest if the outcome is Payable. Hover for the Capability Manager name.</li>
+                        <li><strong>Delivery Manager</strong> &mdash; the LPPI Charge Cost Centre. This is the cost centre that will be charged with the interest if the outcome is Payable. Hover for the Delivery Manager name.</li>
                         <li><strong>Delivery Manager Program</strong> &mdash; the program that owns the delivery. Hover for the Delivery Manager name.</li>
                         <li><strong>Days Late</strong> / <strong>Interest Payable</strong> &mdash; the late-payment numbers.</li>
                         <li><strong>Reason Code</strong> &mdash; your decision.</li>
                         <li><strong>Comments</strong> / <strong>Evidence (Obj Ref)</strong> &mdash; supporting context for the decision.</li>
-                        <li><strong>Expand row</strong> (chevron on the right) &mdash; expands the document to show every line with its WBS, GL account, Delivery Manager and POC. When a document has more than one line it also shows how the interest splits.</li>
+                        <li><strong>Expand row</strong> (chevron on the right) &mdash; expands the document to show every line with its WBS, GL account, Capability Manager, Delivery Manager and POC. When a document has more than one line it also shows how the interest splits.</li>
                     </ul>
                     </ul>
                 </section>
@@ -529,7 +529,7 @@
                         <dd>POCs should take a commercial view on LPPI &mdash; apply practical judgement to maintain a positive ongoing relationship with the Business Partner. No dispute or cost transfer (ERP or DFG) will be considered by AS Fin.</dd>
 
                         <dt>What account assignment is used for late payment interest?</dt>
-                        <dd>LPPI is processed and charged to the responsible business unit (the LPPI Charge Cost Centre shown in the Capability Manager column).</dd>
+                        <dd>LPPI is processed and charged to the responsible business unit (the LPPI Charge Cost Centre shown in the Delivery Manager column).</dd>
 
                         <dt>What can I do to avoid LPPI in the future?</dt>
                         <dd>See the <a href="#instr-faq-best-practice">Best Practice</a> tips below for preventative controls at the contract, supplier, and process level.</dd>
@@ -778,7 +778,7 @@
                                 <th class="col-vendor">Vendor</th>
                                 <th class="col-po">PO</th>
                                 <th class="col-vim" title="VIM Document ID">VIM Doc ID</th>
-                                <th class="col-cm" title="LPPI Charge Cost Centre">Capability Manager</th>
+                                <th class="col-cm" title="LPPI Charge Cost Centre">Delivery Manager</th>
                                 <th class="col-dm">Delivery Manager Program</th>
                                 <th class="col-days num">Days Late</th>
                                 <th class="col-int num">Interest Payable</th>
@@ -815,8 +815,8 @@
                         </td>
                         <td class="col-po"><%# LPPIHelper.SapPoNumberHtml(Eval("PoNumber")) %></td>
                         <td class="col-vim" title='<%# LPPIHelper.Enc(Eval("VimDocumentId")) %>'><%# LPPIHelper.SapVimNumberHtml(Eval("VimDocumentId")) %></td>
-                        <td class="col-cm" title='<%# "LPPI Charge Cost Centre: " + LPPIHelper.Enc(Eval("CapabilityManager")) + " (" + LPPIHelper.Enc(Eval("CapabilityManagerName")) + ")" %>'>
-                            <%# LPPIHelper.Enc(Eval("CapabilityManager")) %>
+                        <td class="col-cm" title='<%# "LPPI Charge Cost Centre: " + LPPIHelper.Enc(Eval("DeliveryManager")) + " (" + LPPIHelper.Enc(Eval("DeliveryManagerName")) + ")" %>'>
+                            <%# LPPIHelper.Enc(Eval("DeliveryManager")) %>
                         </td>
                         <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'>
                             <%# LPPIHelper.Enc(Eval("DeliveryManagerProgram")) %>
@@ -907,8 +907,8 @@
                                 <th class="col-vim" title="VIM Document ID">VIM Doc ID</th>
                                 <th class="col-wbs">WBS Element</th>
                                 <th class="col-gl">GL Account</th>
-                                <th class="col-dm">Delivery Manager</th>
-                                <th class="col-cm" title="LPPI Charge Cost Centre">Capability Manager</th>
+                                <th class="col-dm" title="LPPI Charge Cost Centre">Delivery Manager</th>
+                                <th class="col-cm">Capability Manager</th>
                                 <th class="col-poc">POC Email</th>
                                 <th class="col-date">Payment Date</th>
                                 <th class="col-days num">Days Late</th>
@@ -937,8 +937,8 @@
                         <td class="col-vim" title='<%# LPPIHelper.Enc(Eval("VimDocumentId")) %>'><%# LPPIHelper.SapVimNumberHtml(Eval("VimDocumentId")) %></td>
                         <td class="col-wbs" title='<%# LPPIHelper.Enc(Eval("WbsDesc")) %>'><%# LPPIHelper.Enc(Eval("WbsElement")) %></td>
                         <td class="col-gl"><%# LPPIHelper.Enc(Eval("GlAccount")) %></td>
-                        <td class="col-dm" title='<%# LPPIHelper.Enc(Eval("DeliveryManagerName")) %>'><%# LPPIHelper.Enc(Eval("DeliveryManager")) %></td>
-                        <td class="col-cm" title='<%# "LPPI Charge Cost Centre: " + LPPIHelper.Enc(Eval("CapabilityManager")) + " (" + LPPIHelper.Enc(Eval("CapabilityManagerName")) + ")" %>'><%# LPPIHelper.Enc(Eval("CapabilityManager")) %></td>
+                        <td class="col-dm" title='<%# "LPPI Charge Cost Centre: " + LPPIHelper.Enc(Eval("DeliveryManager")) + " (" + LPPIHelper.Enc(Eval("DeliveryManagerName")) + ")" %>'><%# LPPIHelper.Enc(Eval("DeliveryManager")) %></td>
+                        <td class="col-cm" title='<%# LPPIHelper.Enc(Eval("CapabilityManagerName")) %>'><%# LPPIHelper.Enc(Eval("CapabilityManager")) %></td>
                         <td class="col-poc"><%# LPPIHelper.Enc(Eval("PocEmail")) %></td>
                         <td class="col-date"><%# LPPIHelper.FormatDate(Eval("PaymentRunDate")) %></td>
                         <td class="col-days num"><%# Eval("DaysVariance") %></td>
