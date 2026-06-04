@@ -342,22 +342,19 @@
          DM Program | POC | Days Late | Interest
 
        Capability Manager and Delivery Manager show the NUMBER (cell text),
-       with the NAME in the title attribute. The CM tooltip is propagated
-       directly from the All Lines td title — formatted upstream as
+       with the NAME in the title attribute. The Delivery Manager tooltip
+       carries the LPPI Charge Cost Centre, propagated directly from the All
+       Lines td title — formatted upstream as
        "LPPI Charge Cost Centre: <number> (<name>)" — so the tooltip is
        authored once in the .aspx markup and inherited everywhere.
-
-       DM Program is sourced from the detail-row's data-dm attribute (not
-       a column cell), because DM Program is no longer rendered as its own
-       column on the All Lines tab.
        ------------------------------------------------------------------------- */
     function buildDetailPanel(rows) {
         var html = '<table class="tbl tbl-expand-detail"><thead><tr>'
             + '<th>Line</th>'
             + '<th>GL Account</th>'
             + '<th>WBS</th>'
-            + '<th title="LPPI Charge Cost Centre">Capability Manager</th>'
-            + '<th>Delivery Manager</th>'
+            + '<th>Capability Manager</th>'
+            + '<th title="LPPI Charge Cost Centre">Delivery Manager</th>'
             + '<th>DM Program</th>'
             + '<th>POC</th>'
             + '<th class="num">Days Late</th>'
