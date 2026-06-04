@@ -24,7 +24,7 @@ namespace CPlatform.LPPI
     /// Row model: ONE ROW PER LINE in tblLPPI_Documents. BODS supplies an
     /// ITEM_SEQUENCE so a single DocNoAccounting may have many lines and
     /// Finance pays each line separately. Every payable line carries the
-    /// Defective Administration GL (282000) and the document's Capability
+    /// Defective Administration GL (282000) and the document's Delivery
     /// Manager charge cost centre; no WBS is emitted. The reason code lives
     /// at DOCUMENT level (the reviewer codes only the first/dominant line,
     /// via the smallest-ItemSequence row), and every line of the same
@@ -164,7 +164,7 @@ namespace CPlatform.LPPI
             }
 
             string sql =
-                "SELECT d.DocumentID, d.CompanyCode, d.VendorNum, d.CapabilityManager, " +
+                "SELECT d.DocumentID, d.CompanyCode, d.VendorNum, d.DeliveryManager, " +
                 "       d.InterestPayable, d.DocNoAccounting, d.VendorInvoiceNo, " +
                 "       pd.PackageID " +
                 "  FROM dbo.tblLPPI_ReviewPackageDocuments pd " +
@@ -216,7 +216,7 @@ namespace CPlatform.LPPI
                 {
                     string   companyCode       = AsString(row["CompanyCode"]);
                     string   vendorNum         = AsString(row["VendorNum"]);
-                    string   capabilityManager = AsString(row["CapabilityManager"]);
+                    string   deliveryManager   = AsString(row["DeliveryManager"]);
                     decimal? interestPay       = AsDecimal(row["InterestPayable"]);
                     string   docNoAcct         = AsString(row["DocNoAccounting"]);
                     string   vendorInvoice     = AsString(row["VendorInvoiceNo"]);
@@ -232,13 +232,13 @@ namespace CPlatform.LPPI
 
                     // Col 1–10
                     ws.Cells[excelRow, 1].Value  = companyCode;        // Company code
-                    ws.Cells[excelRow, 2].Value  = "OTHER";            // Payment type
-                    ws.Cells[excelRow, 3].Value  = "OTHER";            // Payment sub type
+                    ws.Cells[excelRow, 2].Value  = "INTEREST";         // Payment type
+                    ws.Cells[excelRow, 3].Value  = "INTEREST";         // Payment sub type
                     ws.Cells[excelRow, 4].Value  = "NP";               // Document type
                     ws.Cells[excelRow, 5].Value  = "0023";             // Financial Delegation
                     ws.Cells[excelRow, 6].Value  = vendorNum;          // Vendor Number
                     ws.Cells[excelRow, 7].Value  = "282000";           // GL Account Code — Defective Administration
-                    ws.Cells[excelRow, 8].Value  = capabilityManager;  // Cost Centre Code — Capability Manager charge cost centre
+                    ws.Cells[excelRow, 8].Value  = deliveryManager;    // Cost Centre Code — Delivery Manager charge cost centre
                     // Col 9 WBS Element — intentionally blank; LPPI interest carries no WBS
                     // Col 10 Internal Order — blank
 
