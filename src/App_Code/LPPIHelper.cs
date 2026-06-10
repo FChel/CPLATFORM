@@ -56,6 +56,11 @@ namespace CPlatform.LPPI
         // Cancelled).
         public const string ActivePackageStatusList = "'NotSent','Sent','InReview','Finalised'";
 
+        // SQL-quoted IN list for the cumulative ("All cycles") Summary scope.
+        // Adds Exported to the active list so an all-cycles total includes
+        // shipped packages; Cancelled stays excluded.
+        public const string CumulativePackageStatusList = "'NotSent','Sent','InReview','Finalised','Exported'";
+
         // Reviewer-page write gate — saves are rejected when the package is
         // in any of these states. Only a Finalised package can be unfinalised
         // (admin action on Send-outs); Exported and Cancelled are terminal.
@@ -801,24 +806,20 @@ SELECT cm.Program
         }
 
         // -------------------------------------------------------------------
-        // Dashboard summary
+        // Dashboard package + batch counts.
         //
-        // "OpenPackages" / "OverduePackages" / "NearDeadlinePackages" use the
-        // active package status set: NotSent, Sent, InReview, Finalised.
-        // Exported and Cancelled are out of scope for these counts.
+        // Returns the package-status tallies and total batch count for the
+        // Dashboard stat-grid. Document, reviewed and dollar figures are NOT
+        // here — the Dashboard sources those from
+        // GetSummaryScopeHeader(CurrentCycle) so its headline matches the
+        // Summary page and reflects the live cycle rather than drifting
+        // cumulative as packages ship.
         //
-        // Document-level counts work on COUNT(DISTINCT DocNoAccounting). The
-        // first-line-review model puts one Review row per document, against
-        // the first line's DocumentID
-        // 
-        // TotalReviewed counts DISTINCT live documents whose first-line
-        // review carries a reason code — live-scoped (IsDeactivated = 0) to
-        // match TotalDocs. A bare COUNT(*) on tblLPPI_Reviews would also
-        // count reviews on deactivated (RC-RL) documents that TotalDocs
-        // excludes, driving TotalOutstanding negative. TotalOutstanding is
-        // TotalDocs - TotalReviewed
+        // OpenPackages / Overdue / NearDeadline are scoped to
+        // ActivePackageStatusList (NotSent / Sent / InReview / Finalised);
+        // Exported and Cancelled are terminal and drop off. TotalBatches is a
+        // system-wide load count.
         // -------------------------------------------------------------------
-
         public static DataRow GetDashboardSummary()
         {
             // The IN list is built from the StatusXxx constants so a future
@@ -827,28 +828,6 @@ SELECT cm.Program
 
             var sql = @"
 SELECT
-   (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents
-     WHERE IsDeactivated = 0)                                                    AS TotalDocs,
-   (SELECT COUNT(DISTINCT d.DocNoAccounting)
-      FROM dbo.tblLPPI_Documents d
-      INNER JOIN dbo.tblLPPI_Reviews r
-              ON r.DocumentID = (SELECT MIN(d2.DocumentID)
-                                   FROM dbo.tblLPPI_Documents d2
-                                  WHERE d2.DocNoAccounting = d.DocNoAccounting
-                                    AND d2.IsDeactivated   = 0)
-             AND r.ReasonCodeID IS NOT NULL
-     WHERE d.IsDeactivated = 0)                                                  AS TotalReviewed,
-   (SELECT COUNT(DISTINCT DocNoAccounting) FROM dbo.tblLPPI_Documents
-     WHERE IsDeactivated = 0)
-     - (SELECT COUNT(DISTINCT d.DocNoAccounting)
-          FROM dbo.tblLPPI_Documents d
-          INNER JOIN dbo.tblLPPI_Reviews r
-                  ON r.DocumentID = (SELECT MIN(d2.DocumentID)
-                                       FROM dbo.tblLPPI_Documents d2
-                                      WHERE d2.DocNoAccounting = d.DocNoAccounting
-                                        AND d2.IsDeactivated   = 0)
-                 AND r.ReasonCodeID IS NOT NULL
-         WHERE d.IsDeactivated = 0)                                              AS TotalOutstanding,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
        WHERE Status IN (" + activeIn + @"))                                      AS OpenPackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_ReviewPackages
@@ -860,53 +839,6 @@ SELECT
                                                                                  AS NearDeadlinePackages,
    (SELECT COUNT(*) FROM dbo.tblLPPI_LoadBatches)                                AS TotalBatches;";
             var dt = ExecuteTable(sql, P("@WarnDays", ReminderWindowDays));
-            return dt.Rows.Count > 0 ? dt.Rows[0] : null;
-        }
-
-        // -------------------------------------------------------------------
-        // Exposure summary — dollar totals
-        //
-        // Returns a single row with four decimal columns:
-        //   TotalExposure       — sum of InterestPayable across every document.
-        //   PayableExposure     — sum where the document's review has a Payable
-        //                         outcome.
-        //   NotPayableExposure  — sum where the review has a NotPayable outcome.
-        //   AwaitingExposure    — sum where there is no review yet (or the
-        //                         review has no reason code set).
-        //
-        // The three component figures sum to the total — useful invariant for
-        // the dashboard's three-bar breakdown.
-        //
-        // Per-document dollar values are computed once per DocNoAccounting via
-        // a CTE that totals InterestPayable over every line of that document
-        // (BODS now produces multiple ITEM_SEQUENCE lines per document). Each
-        // document is then classified by its first-line review's outcome.
-        // -------------------------------------------------------------------
-        public static DataRow GetExposureSummary()
-        {
-            const string sql = @"
-WITH DocTotals AS (
-    SELECT
-        d.DocNoAccounting,
-        (SELECT MIN(d2.DocumentID)
-           FROM dbo.tblLPPI_Documents d2
-          WHERE d2.DocNoAccounting = d.DocNoAccounting
-            AND d2.IsDeactivated   = 0) AS FirstLineDocumentID,
-        SUM(d.InterestPayable) AS DocInterest
-      FROM dbo.tblLPPI_Documents d
-     WHERE d.IsDeactivated = 0
-     GROUP BY d.DocNoAccounting
-)
-SELECT
-    ISNULL(SUM(dt.DocInterest), 0)                                                          AS TotalExposure,
-    ISNULL(SUM(CASE WHEN rc.Outcome = 'Payable'    THEN dt.DocInterest ELSE 0 END), 0)      AS PayableExposure,
-    ISNULL(SUM(CASE WHEN rc.Outcome = 'NotPayable' THEN dt.DocInterest ELSE 0 END), 0)      AS NotPayableExposure,
-    ISNULL(SUM(CASE WHEN rc.ReasonCodeID IS NULL   THEN dt.DocInterest ELSE 0 END), 0)      AS AwaitingExposure,
-    COUNT(*) AS DocCount
-FROM DocTotals dt
-LEFT JOIN dbo.tblLPPI_Reviews r       ON r.DocumentID    = dt.FirstLineDocumentID
-LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
-            var dt = ExecuteTable(sql);
             return dt.Rows.Count > 0 ? dt.Rows[0] : null;
         }
 
@@ -1634,8 +1566,10 @@ UPDATE dbo.tblLPPI_ReviewPackages
         //   Active : packages whose Status IN ActivePackageStatusList
         //            (NotSent / Sent / InReview / Finalised). The default
         //            "current cycle" view.
-        //   All    : same set today. Kept as a distinct option for clarity
-        //            and forward-proofing if the lifecycle changes.
+        //   All    : cumulative — every package that has shipped or is in
+        //            flight (the active list plus Exported). Cancelled is
+        //            excluded. Surfaces an all-cycles total on the Summary
+        //            page; the Dashboard always uses Active.
         //   Batch  : packages that contain at least one (live) document
         //            from a specific load batch. BatchID is required.
         //
@@ -1730,31 +1664,44 @@ UPDATE dbo.tblLPPI_ReviewPackages
                                AND d_s.IsDeactivated = 0"
                           + (hasCm ? " AND p_s.CmID = @SS_CmID" : "");
 
-                case SummaryScopeKind.Active:
                 case SummaryScopeKind.All:
+                    // Cumulative — every package that has shipped or is in
+                    // flight (active list plus Exported). Cancelled stays
+                    // excluded.
+                    return "SELECT p_s.PackageID FROM dbo.tblLPPI_ReviewPackages p_s WHERE p_s.Status IN (" + CumulativePackageStatusList + ")"
+                         + (hasCm ? " AND p_s.CmID = @SS_CmID" : "");
+
+                case SummaryScopeKind.Active:
                 default:
-                    // Active and All resolve identically today.
-                    // ActivePackageStatusList is the canonical IN-list literal.
+                    // In-flight only — the default current-cycle universe.
                     return "SELECT p_s.PackageID FROM dbo.tblLPPI_ReviewPackages p_s WHERE p_s.Status IN (" + ActivePackageStatusList + ")"
                          + (hasCm ? " AND p_s.CmID = @SS_CmID" : "");
             }
         }
 
         // -------------------------------------------------------------------
-        // Scope header — single-row figures for the strip at the top of
-        // the Summary page.
+        // Scope header — single-row figures for the Cycle overview cards on
+        // the Summary page, and for the current-cycle headline on the
+        // Dashboard (both pages call this so their figures match).
         //
-        //   PackageCount   : packages in scope
-        //   DocCount       : distinct DocNoAccounting across in-scope
-        //                    packages (one per document, not per line)
-        //   TotalInterest  : sum of InterestPayable across every live
-        //                    line of every in-scope document
-        //   ReviewedCount  : distinct documents with a coded review on
-        //                    their first-line DocumentID
-        //   ReviewedPct    : 0..100 share of DocCount that is reviewed
+        //   PackageCount        : packages in scope
+        //   DocCount            : distinct DocNoAccounting across in-scope
+        //                         packages (one per document, not per line)
+        //   ReviewedCount       : distinct documents with a coded review on
+        //                         their first-line DocumentID
+        //   TotalInterest       : sum of InterestPayable across every live
+        //                         line of every in-scope document
+        //   PayableInterest     : TotalInterest restricted to documents whose
+        //                         first-line review outcome is Payable
+        //   NotPayableInterest  : ... outcome is NotPayable
+        //   AwaitingInterest    : ... documents with no reason code yet
         //
-        // Mirrors the same pattern as ComputeFinalisedSummary in
-        // LPPIEmail.cs but scope-wide rather than per-package.
+        // Payable + NotPayable + Awaiting sum to Total: every in-scope
+        // document falls into exactly one bucket (its first-line outcome, or
+        // Awaiting when uncoded). Per-document dollars are summed once across
+        // all live lines of the DocNoAccounting, then classified by the
+        // first-line review — same pattern as the per-package summary in
+        // LPPIEmail.cs but scope-wide.
         // -------------------------------------------------------------------
         public static DataRow GetSummaryScopeHeader(SummaryScope scope)
         {
@@ -1771,24 +1718,30 @@ PkgDocs AS (
            (SELECT MIN(d2.DocumentID)
               FROM dbo.tblLPPI_Documents d2
              WHERE d2.DocNoAccounting = d.DocNoAccounting
-               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID
+               AND d2.IsDeactivated   = 0) AS FirstLineDocumentID,
+           (SELECT SUM(d3.InterestPayable)
+              FROM dbo.tblLPPI_Documents d3
+             WHERE d3.DocNoAccounting = d.DocNoAccounting
+               AND d3.IsDeactivated   = 0) AS DocInterest
       FROM dbo.tblLPPI_ReviewPackageDocuments pd
       INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
      WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
        AND d.IsDeactivated = 0
 )
 SELECT
-    (SELECT COUNT(*) FROM ScopePkgs)                                                AS PackageCount,
-    (SELECT COUNT(*) FROM PkgDocs)                                                  AS DocCount,
-    ISNULL((SELECT SUM(d3.InterestPayable)
-              FROM PkgDocs pd2
-              INNER JOIN dbo.tblLPPI_Documents d3
-                      ON d3.DocNoAccounting = pd2.DocNoAccounting
-                     AND d3.IsDeactivated   = 0), 0)                                AS TotalInterest,
+    (SELECT COUNT(*) FROM ScopePkgs)                                                       AS PackageCount,
+    (SELECT COUNT(*) FROM PkgDocs)                                                         AS DocCount,
     (SELECT COUNT(*)
-       FROM PkgDocs pd3
-       INNER JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pd3.FirstLineDocumentID
-      WHERE r.ReasonCodeID IS NOT NULL)                                             AS ReviewedCount;";
+       FROM PkgDocs pdr
+       INNER JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = pdr.FirstLineDocumentID
+      WHERE r.ReasonCodeID IS NOT NULL)                                                    AS ReviewedCount,
+    ISNULL(SUM(pdx.DocInterest), 0)                                                        AS TotalInterest,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'Payable'    THEN pdx.DocInterest ELSE 0 END), 0)    AS PayableInterest,
+    ISNULL(SUM(CASE WHEN rc.Outcome = 'NotPayable' THEN pdx.DocInterest ELSE 0 END), 0)    AS NotPayableInterest,
+    ISNULL(SUM(CASE WHEN rc.ReasonCodeID IS NULL   THEN pdx.DocInterest ELSE 0 END), 0)    AS AwaitingInterest
+  FROM PkgDocs pdx
+  LEFT JOIN dbo.tblLPPI_Reviews r2      ON r2.DocumentID   = pdx.FirstLineDocumentID
+  LEFT JOIN dbo.tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r2.ReasonCodeID;";
 
             DataTable dt = ExecuteTable(sql, parms.ToArray());
             return dt.Rows.Count > 0 ? dt.Rows[0] : null;

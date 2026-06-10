@@ -308,7 +308,7 @@
                         Two independent pickers sit at the top of the page:
                     </p>
                     <ul>
-                        <li><strong>Scope</strong> &mdash; picks the universe of packages. Defaults to <em>Current cycle</em> (every in-flight package); past load batches are listed below it for focusing on a specific monthly file.</li>
+                        <li><strong>Scope</strong> &mdash; picks the universe of packages. Defaults to <em>Current cycle</em> (every in-flight package). <em>All cycles (cumulative)</em> adds Exported packages for an all-cycles total (Cancelled excluded); past load batches are listed below for focusing on a specific monthly file.</li>
                         <li><strong>Capability Manager</strong> &mdash; defaults to <em>(All programs)</em>; pick a specific program to narrow the whole page (counts, reason-code split, non-payment, POCs, export) to just that program. Useful for spotting POC gaps by group, or reason-code clusters within one program.</li>
                     </ul>
                     <p>
@@ -332,7 +332,7 @@
                     <h2>Page-by-page guide</h2>
                     <dl class="help-pages">
                         <dt>Dashboard</dt>
-                        <dd>Read-only overview. LPPI exposure (dollar headlines), counts, open packages (NotSent/Sent/InReview/Finalised), recent loads.</dd>
+                        <dd>Read-only overview of the current cycle. LPPI exposure (dollar headlines) and document counts cover in-flight packages (NotSent/Sent/InReview/Finalised); plus open packages and recent loads. For an all-cycles total, use the Summary page's cumulative scope.</dd>
 
                         <dt>Summary</dt>
                         <dd>Operational in-flight view of the current cycle. Reason-code split (Payable + Not Payable tables), by-program cut, top-10 outstanding POCs by count and by value, plus a full 53-column xlsx export of every in-scope line and a no-POC-only variant for AS Fin triage.</dd>

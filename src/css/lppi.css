@@ -2286,6 +2286,39 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 }
 .summary-shell .overview-card.exposure .val { color: var(--orange-deep); }
 
+/* Combined Payable / Not payable card — two compact figures stacked in a
+   single overview slot, replacing the old standalone Documents card. */
+.summary-shell .overview-card.split {
+    justify-content: center;
+    gap: 10px;
+}
+.summary-shell .overview-card.split .split-row {
+    display: flex;
+    flex-direction: column;
+}
+.summary-shell .overview-card.split .split-row .lbl {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-3);
+    font-weight: 600;
+}
+.summary-shell .overview-card.split .split-row .val {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 1px;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+}
+.summary-shell .overview-card.split .split-row .val .currency {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-3);
+    margin-right: 1px;
+    vertical-align: 2px;
+}
+
 /* Reviewed-progress bar inside the overview card */
 .summary-shell .overview-bar { margin-top: 10px; }
 .summary-shell .overview-bar .track {

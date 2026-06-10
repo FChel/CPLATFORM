@@ -80,7 +80,7 @@ namespace CPlatform.LPPI
 
             // In-flight scopes group.
             ddlScope.Items.Add(new ListItem("Current cycle (in-flight packages)", ScopeValueActive));
-            ddlScope.Items.Add(new ListItem("All active",                          ScopeValueAll));
+            ddlScope.Items.Add(new ListItem("All cycles (cumulative)",             ScopeValueAll));
 
             // Past load batches. The list is filtered to batches with at
             // least one document still attached to a package — older
@@ -257,21 +257,28 @@ namespace CPlatform.LPPI
             int pkgCount  = 0;
             int docCount  = 0;
             int reviewed  = 0;
-            decimal total = 0m;
+            decimal total      = 0m;
+            decimal payable    = 0m;
+            decimal notPayable = 0m;
 
             if (s != null)
             {
-                pkgCount  = s["PackageCount"] == DBNull.Value ? 0 : Convert.ToInt32(s["PackageCount"]);
-                docCount  = s["DocCount"]     == DBNull.Value ? 0 : Convert.ToInt32(s["DocCount"]);
-                reviewed  = s["ReviewedCount"] == DBNull.Value ? 0 : Convert.ToInt32(s["ReviewedCount"]);
-                total     = s["TotalInterest"] == DBNull.Value ? 0m : Convert.ToDecimal(s["TotalInterest"]);
+                pkgCount   = s["PackageCount"]       == DBNull.Value ? 0  : Convert.ToInt32(s["PackageCount"]);
+                docCount   = s["DocCount"]           == DBNull.Value ? 0  : Convert.ToInt32(s["DocCount"]);
+                reviewed   = s["ReviewedCount"]      == DBNull.Value ? 0  : Convert.ToInt32(s["ReviewedCount"]);
+                total      = s["TotalInterest"]      == DBNull.Value ? 0m : Convert.ToDecimal(s["TotalInterest"]);
+                payable    = s["PayableInterest"]    == DBNull.Value ? 0m : Convert.ToDecimal(s["PayableInterest"]);
+                notPayable = s["NotPayableInterest"] == DBNull.Value ? 0m : Convert.ToDecimal(s["NotPayableInterest"]);
             }
 
-            litOvPackages.Text  = pkgCount.ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
-            litOvDocs.Text      = docCount.ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
-            litOvDocs2.Text     = litOvDocs.Text;
-            litOvReviewed.Text  = reviewed.ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
-            litOvInterest.Text  = total.ToString("N2", CultureInfo.GetCultureInfo("en-AU"));
+            CultureInfo au = CultureInfo.GetCultureInfo("en-AU");
+
+            litOvPackages.Text   = pkgCount.ToString("N0", au);
+            litOvDocs2.Text      = docCount.ToString("N0", au);
+            litOvReviewed.Text   = reviewed.ToString("N0", au);
+            litOvInterest.Text   = total.ToString("N2", au);
+            litOvPayable.Text    = payable.ToString("N2", au);
+            litOvNotPayable.Text = notPayable.ToString("N2", au);
 
             OvReviewedPct = SharePct(reviewed, docCount);
         }
@@ -441,7 +448,7 @@ namespace CPlatform.LPPI
                     scopeText = "Scoped to packages containing documents from this batch.";
                     break;
                 case LPPIHelper.SummaryScopeKind.All:
-                    scopeText = "All packages in NotSent / Sent / In review / Finalised — same set as Current cycle.";
+                    scopeText = "All cycles (cumulative) — every package including Exported. Cancelled is excluded.";
                     break;
                 case LPPIHelper.SummaryScopeKind.Active:
                 default:

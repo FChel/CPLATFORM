@@ -69,10 +69,6 @@
                     <div class="val"><asp:Literal ID="litOvPackages" runat="server" Text="0"/></div>
                 </div>
                 <div class="overview-card">
-                    <div class="lbl">Documents</div>
-                    <div class="val"><asp:Literal ID="litOvDocs" runat="server" Text="0"/></div>
-                </div>
-                <div class="overview-card">
                     <div class="lbl">Reviewed</div>
                     <div class="val">
                         <asp:Literal ID="litOvReviewed" runat="server" Text="0"/>
@@ -81,6 +77,16 @@
                     <div class="overview-bar">
                         <div class="track"><div class="fill" style="width: <%= OvReviewedPct %>%"></div></div>
                         <div class="pct"><%= OvReviewedPct %>% complete</div>
+                    </div>
+                </div>
+                <div class="overview-card split">
+                    <div class="split-row">
+                        <span class="lbl">Payable (confirmed)</span>
+                        <span class="val"><span class="currency">$</span><asp:Literal ID="litOvPayable" runat="server" Text="0.00"/></span>
+                    </div>
+                    <div class="split-row">
+                        <span class="lbl">Not payable</span>
+                        <span class="val"><span class="currency">$</span><asp:Literal ID="litOvNotPayable" runat="server" Text="0.00"/></span>
                     </div>
                 </div>
                 <div class="overview-card exposure">

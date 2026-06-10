@@ -10,17 +10,18 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Dashboard. Read-only overview of LPPI activity.
     ///
-    /// Lifecycle scope (May 2026):
-    ///   The Open packages list now covers NotSent / Sent / InReview /
-    ///   Finalised. Finalised packages stay visible here so admins can see
-    ///   what's queued for export at a glance. Exported and Cancelled
-    ///   packages drop off the dashboard entirely — they're terminal and
-    ///   surface on the Batches page if needed.
+    /// The exposure headline and document / reviewed / outstanding counts are
+    /// current-cycle — in-flight packages (NotSent / Sent / InReview /
+    /// Finalised) via GetSummaryScopeHeader(CurrentCycle), so they match the
+    /// Summary page and do not drift cumulative as packages ship to ERP. For
+    /// an all-cycles total, see the Summary page's cumulative scope.
     ///
-    ///   The old "Complete (pending close)" override (which cosmetically
-    ///   relabelled fully-reviewed Sent/InReview packages) is GONE — there
-    ///   is now a real Finalised status with its own pill, so the override
-    ///   is obsolete.
+    /// Open packages list covers NotSent / Sent / InReview / Finalised
+    /// Finalised packages stay visible here so admins can see
+    /// what's queued for export at a glance. Exported and Cancelled
+    /// packages drop off the dashboard entirely — they're terminal and
+    /// surface on the Batches page if needed.
+    ///
     /// </summary>
     public partial class LPPI_Admin : LPPIBasePage
     {
@@ -40,44 +41,53 @@ namespace CPlatform.LPPI
         private void Bind()
         {
             // -----------------------------------------------------------------
-            // Exposure totals (dollar figures) — headline at the top of the
-            // dashboard. The three component figures sum to the total so the
-            // progress bars are eye-checkable against each other.
+            // Current-cycle headline — in-flight packages (NotSent / Sent /
+            // InReview / Finalised), the same universe as the Summary page's
+            // "Current cycle" scope. Sourced from GetSummaryScopeHeader so the
+            // Dashboard and Summary report identical figures, and so the
+            // numbers reflect the live cycle rather than drifting cumulative
+            // as packages ship to ERP (Exported) or are Cancelled.
             // -----------------------------------------------------------------
-            var exp = LPPIHelper.GetExposureSummary();
-            decimal expTotal      = AsDecimal(exp, "TotalExposure");
-            decimal expPayable    = AsDecimal(exp, "PayableExposure");
-            decimal expNotPayable = AsDecimal(exp, "NotPayableExposure");
-            decimal expAwaiting   = AsDecimal(exp, "AwaitingExposure");
-            int     expDocs       = exp == null || exp["DocCount"] == DBNull.Value
-                                    ? 0 : Convert.ToInt32(exp["DocCount"]);
+            var s = LPPIHelper.GetSummaryScopeHeader(LPPIHelper.SummaryScope.CurrentCycle());
 
+            decimal expTotal      = AsDecimal(s, "TotalInterest");
+            decimal expPayable    = AsDecimal(s, "PayableInterest");
+            decimal expNotPayable = AsDecimal(s, "NotPayableInterest");
+            decimal expAwaiting   = AsDecimal(s, "AwaitingInterest");
+            int cycleDocs        = s == null || s["DocCount"]      == DBNull.Value ? 0 : Convert.ToInt32(s["DocCount"]);
+            int cycleReviewed    = s == null || s["ReviewedCount"] == DBNull.Value ? 0 : Convert.ToInt32(s["ReviewedCount"]);
+            int cycleOutstanding = cycleDocs - cycleReviewed;
+
+            CultureInfo au = CultureInfo.GetCultureInfo("en-AU");
+
+            // Exposure cards (dollar headline). The three component figures
+            // sum to the total so the progress bars are eye-checkable.
             litExpTotal.Text      = FormatMoney(expTotal);
             litExpPayable.Text    = FormatMoney(expPayable);
             litExpNotPayable.Text = FormatMoney(expNotPayable);
             litExpAwaiting.Text   = FormatMoney(expAwaiting);
-            litExpDocs.Text       = expDocs.ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
+            litExpDocs.Text       = cycleDocs.ToString("N0", au);
 
             // Percentage shares — clamped 0..100. When total is zero, all
-            // three bars render empty (0%) which is the right thing for an
-            // empty system.
+            // three bars render empty (0%), the right thing for an empty cycle.
             ExpPayablePct    = SharePct(expPayable,    expTotal);
             ExpNotPayablePct = SharePct(expNotPayable, expTotal);
             ExpAwaitingPct   = SharePct(expAwaiting,   expTotal);
 
-            // -----------------------------------------------------------------
-            // Counts (existing stat-grid)
-            // -----------------------------------------------------------------
-            var s = LPPIHelper.GetDashboardSummary();
-            if (s != null)
+            // Count stat-grid — document figures are current-cycle (from the
+            // scope header above); package and batch figures come from
+            // GetDashboardSummary.
+            litTotal.Text       = cycleDocs.ToString("N0", au);
+            litReviewed.Text    = cycleReviewed.ToString("N0", au);
+            litOutstanding.Text = cycleOutstanding.ToString("N0", au);
+
+            var dash = LPPIHelper.GetDashboardSummary();
+            if (dash != null)
             {
-                litTotal.Text       = Convert.ToString(s["TotalDocs"]);
-                litReviewed.Text    = Convert.ToString(s["TotalReviewed"]);
-                litOutstanding.Text = Convert.ToString(s["TotalOutstanding"]);
-                litOpen.Text        = Convert.ToString(s["OpenPackages"]);
-                litNear.Text        = Convert.ToString(s["NearDeadlinePackages"]);
-                litOverdue.Text     = Convert.ToString(s["OverduePackages"]);
-                litBatches.Text     = Convert.ToString(s["TotalBatches"]);
+                litOpen.Text    = Convert.ToString(dash["OpenPackages"]);
+                litNear.Text    = Convert.ToString(dash["NearDeadlinePackages"]);
+                litOverdue.Text = Convert.ToString(dash["OverduePackages"]);
+                litBatches.Text = Convert.ToString(dash["TotalBatches"]);
             }
 
             // -----------------------------------------------------------------
