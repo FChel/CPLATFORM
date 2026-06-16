@@ -300,7 +300,7 @@
                                     <td><strong><%# CPlatform.LPPI.LPPIHelper.Enc(Eval("CmDisplay")) %></strong></td>
                                     <td><%# CPlatform.LPPI.LPPIHelper.FormatDate(Eval("CreatedDate")) %></td>
                                     <td><%# CPlatform.LPPI.LPPIHelper.FormatDate(Eval("DueDate")) %></td>
-                                    <td class="num"><%# Eval("DocCount") %></td>
+                                    <td class="num"><%# Eval("DocCount") %><%# RenderReloadPill(Eval("RcRlAwaitingCount")) %></td>
                                     <td class="num"><%# Eval("ReviewedCount") %></td>
                                     <td><%# RenderStatusPill(Container.DataItem) %></td>
                                     <td class="actions">

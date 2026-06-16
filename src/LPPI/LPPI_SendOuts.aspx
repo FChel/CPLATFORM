@@ -329,7 +329,7 @@
                             <td>#<%# Eval("PackageID") %></td>
                             <td><%# RenderCmCell(Container.DataItem) %></td>
                             <td class="num"><%# Eval("PocCount") %></td>
-                            <td class="num"><%# Eval("DocCount") %></td>
+                            <td class="num"><%# Eval("DocCount") %><%# RenderReloadPill(Eval("RcRlAwaitingCount")) %></td>
                             <td class="num"><%# Eval("ReviewedCount") %></td>
                             <td><%# RenderStatusPill(Container.DataItem) %></td>
                             <td><%# LPPIHelper.FormatDate(Eval("LastEmailDate"), "dd/MM/yyyy HH:mm") %></td>

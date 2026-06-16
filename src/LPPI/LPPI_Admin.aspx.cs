@@ -38,6 +38,26 @@ namespace CPlatform.LPPI
                 Bind();
         }
 
+        /// <summary>
+        /// Reload-eligible pill for the Open packages list. Shows when a
+        /// package still carries documents flagged RC-RL and deactivated at
+        /// finalise that have not yet been superseded by a corrected reload.
+        /// Reconciles with the Deactivated watch-list for the same package.
+        /// Renders nothing when the count is zero.
+        /// </summary>
+        protected string RenderReloadPill(object countObj)
+        {
+            int n = (countObj == null || countObj == DBNull.Value) ? 0 : Convert.ToInt32(countObj);
+            if (n <= 0) return "";
+            string title = n + " document" + (n == 1 ? "" : "s") +
+                " flagged reload-eligible (RC-RL), deactivated at finalise and awaiting a corrected reload." +
+                " Open the Deactivated watch-list for detail.";
+            return "<a href=\"LPPI_Deactivated.aspx\" class=\"pill\" title=\"" +
+                System.Web.HttpUtility.HtmlAttributeEncode(title) +
+                "\" style=\"margin-left:6px;background:#fff1d6;color:#7a4f00;border:1px solid #e6c478;text-decoration:none;\">RC-RL &times;" +
+                n + "</a>";
+        }
+
         private void Bind()
         {
             // -----------------------------------------------------------------
@@ -106,12 +126,25 @@ SELECT p.PackageID, p.Token, p.CreatedDate, p.DueDate, p.Status,
        cm.Program AS CmDisplay,
        (SELECT COUNT(*)
           FROM dbo.tblLPPI_ReviewPackageDocuments d
+         INNER JOIN dbo.tblLPPI_Documents doc
+                 ON doc.DocumentID = d.DocumentID
+                AND doc.IsDeactivated = 0
          WHERE d.PackageID = p.PackageID) AS DocCount,
        (SELECT COUNT(*)
           FROM dbo.tblLPPI_ReviewPackageDocuments d
+         INNER JOIN dbo.tblLPPI_Documents doc
+                 ON doc.DocumentID = d.DocumentID
+                AND doc.IsDeactivated = 0
          INNER JOIN dbo.tblLPPI_Reviews r ON r.DocumentID = d.DocumentID
          WHERE d.PackageID = p.PackageID
-           AND r.ReasonCodeID IS NOT NULL) AS ReviewedCount
+           AND r.ReasonCodeID IS NOT NULL) AS ReviewedCount,
+       (SELECT COUNT(DISTINCT doc.DocNoAccounting)
+          FROM dbo.tblLPPI_ReviewPackageDocuments d
+         INNER JOIN dbo.tblLPPI_Documents doc
+                 ON doc.DocumentID = d.DocumentID
+         WHERE d.PackageID = p.PackageID
+           AND doc.IsDeactivated = 1
+           AND doc.SupersededByDocumentID IS NULL) AS RcRlAwaitingCount
   FROM dbo.tblLPPI_ReviewPackages p
  INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
  WHERE p.Status IN ('NotSent','Sent','InReview','Finalised')
