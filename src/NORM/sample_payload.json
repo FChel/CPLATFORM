@@ -1,0 +1,8688 @@
+{
+ "meta": {
+  "entity": "Department of Defence \u2014 Departmental",
+  "fy": "2023\u201324",
+  "basis": "ROMAN ledgers 1000 + 4100 (combined)",
+  "source": "Balances_2024_ROMAN1.txt",
+  "mapVersion": "FY2024 v0.1 (seed)",
+  "rule": "RFSSLD00 G/L Account Balances, periods 01\u201316",
+  "accounts": 1471,
+  "coverage": 83.5
+ },
+ "validations": [
+  {
+   "k": "Debits = credits",
+   "detail": "Sum of all trial-balance accumulated balances",
+   "val": 0,
+   "pass": true
+  },
+  {
+   "k": "Statement of financial position balances",
+   "detail": "Assets \u2212 liabilities \u2212 equity (mapped)",
+   "val": null,
+   "pass": null,
+   "pending": true
+  },
+  {
+   "k": "Note totals reconcile to face",
+   "detail": "Awaiting note-level mapping",
+   "pass": null,
+   "pending": true
+  },
+  {
+   "k": "Comparative-year consistency",
+   "detail": "FY2023 comparatives present",
+   "pass": true
+  }
+ ],
+ "soci": [
+  {
+   "type": "section",
+   "label": "Expenses"
+  },
+  {
+   "type": "line",
+   "label": "Employee benefits",
+   "note": "1.1A",
+   "code": "EXP_EMP",
+   "sign": "D",
+   "computed": 14329850,
+   "pub24": 13986166,
+   "pub23": 12780879,
+   "diff": 343684,
+   "status": "variance",
+   "rule": "GL accounts in series 20xxx",
+   "n": 189,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "20018",
+     "text": "Gross salary - ADF",
+     "amt": 5488384
+    },
+    {
+     "cc": "1000",
+     "gl": "20500",
+     "text": "APS - Salaries&wages",
+     "amt": 1334711
+    },
+    {
+     "cc": "1000",
+     "gl": "20545",
+     "text": "MSBS Emp Conts ADF",
+     "amt": 1072546
+    },
+    {
+     "cc": "1000",
+     "gl": "20877",
+     "text": "ADF Health-Domestic",
+     "amt": 668922
+    },
+    {
+     "cc": "1000",
+     "gl": "20700",
+     "text": "Rent Paid to DHA Mil",
+     "amt": 647243
+    },
+    {
+     "cc": "1000",
+     "gl": "20990",
+     "text": "ADF - FBT",
+     "amt": 583427
+    },
+    {
+     "cc": "1000",
+     "gl": "20590",
+     "text": "Annual Lv Exp ADF",
+     "amt": 545649
+    },
+    {
+     "cc": "1000",
+     "gl": "20527",
+     "text": "ADF Super Contrib",
+     "amt": 455148
+    },
+    {
+     "cc": "4100",
+     "gl": "20500",
+     "text": "APS - Salaries&wages",
+     "amt": 407766
+    },
+    {
+     "cc": "1000",
+     "gl": "20174",
+     "text": "Other allowances ADF",
+     "amt": 281710
+    },
+    {
+     "cc": "1000",
+     "gl": "20709",
+     "text": "Living out Allow Mil",
+     "amt": 281260
+    },
+    {
+     "cc": "1000",
+     "gl": "20371",
+     "text": "Reserve - Army",
+     "amt": 235982
+    },
+    {
+     "cc": "1000",
+     "gl": "20580",
+     "text": "APS - super contb",
+     "amt": 209731
+    },
+    {
+     "cc": "4100",
+     "gl": "20018",
+     "text": "Gross salary - ADF",
+     "amt": 186265
+    },
+    {
+     "cc": "1000",
+     "gl": "20620",
+     "text": "LSL exp-Military ADF",
+     "amt": 140716
+    },
+    {
+     "cc": "1000",
+     "gl": "20610",
+     "text": "APS - AL expense",
+     "amt": 139233
+    },
+    {
+     "cc": "1000",
+     "gl": "20372",
+     "text": "Reserve - RAAF",
+     "amt": 100093
+    },
+    {
+     "cc": "1000",
+     "gl": "20553",
+     "text": "3% Super (MSBS) ADF",
+     "amt": 96797
+    },
+    {
+     "cc": "1000",
+     "gl": "20751",
+     "text": "Res Hse Rent-notDHA",
+     "amt": 83523
+    },
+    {
+     "cc": "1000",
+     "gl": "20440",
+     "text": "Returns to OPA",
+     "amt": 82636
+    },
+    {
+     "cc": "1000",
+     "gl": "20752",
+     "text": "Res hse-not Rent-DHA",
+     "amt": 80153
+    },
+    {
+     "cc": "1000",
+     "gl": "20506",
+     "text": "APS-Sal-Allow",
+     "amt": 67309
+    },
+    {
+     "cc": "1000",
+     "gl": "20630",
+     "text": "APS - LSL expense",
+     "amt": 66494
+    },
+    {
+     "cc": "4100",
+     "gl": "20580",
+     "text": "APS - super contb",
+     "amt": 61298
+    },
+    {
+     "cc": "4100",
+     "gl": "20545",
+     "text": "MSBS Emp Conts ADF",
+     "amt": 52554
+    },
+    {
+     "cc": "1000",
+     "gl": "20702",
+     "text": "Rep & Main Military",
+     "amt": 51532
+    },
+    {
+     "cc": "1000",
+     "gl": "20286",
+     "text": "Oth O/S allow-FBT-AD",
+     "amt": 50886
+    },
+    {
+     "cc": "1000",
+     "gl": "20165",
+     "text": "Field allowance ADF",
+     "amt": 50792
+    },
+    {
+     "cc": "1000",
+     "gl": "20370",
+     "text": "Res sal & all-Navy",
+     "amt": 48532
+    },
+    {
+     "cc": "1000",
+     "gl": "20198",
+     "text": "ADFRetnPdExp-DPCT2",
+     "amt": 44779
+    },
+    {
+     "cc": "1000",
+     "gl": "20582",
+     "text": "APS-SG charge",
+     "amt": 43298
+    },
+    {
+     "cc": "1000",
+     "gl": "20141",
+     "text": "Home pur assist sche",
+     "amt": 35453
+    },
+    {
+     "cc": "4100",
+     "gl": "20610",
+     "text": "APS - AL expense",
+     "amt": 35391
+    },
+    {
+     "cc": "1000",
+     "gl": "20603",
+     "text": "Super oncosts AL Mil",
+     "amt": 31711
+    },
+    {
+     "cc": "4100",
+     "gl": "20506",
+     "text": "APS-Sal-Allow",
+     "amt": 28040
+    },
+    {
+     "cc": "1000",
+     "gl": "20289",
+     "text": "Oth O/S allw-NoFBT-A",
+     "amt": 25862
+    },
+    {
+     "cc": "1000",
+     "gl": "20550",
+     "text": "DFRDB emp conts ADF",
+     "amt": 20805
+    },
+    {
+     "cc": "1000",
+     "gl": "20960",
+     "text": "Rations not FVeg(B)",
+     "amt": 20764
+    },
+    {
+     "cc": "1000",
+     "gl": "20415",
+     "text": "Cadet forces allow",
+     "amt": 20511
+    },
+    {
+     "cc": "1000",
+     "gl": "20640",
+     "text": "APS Workers Comp Pre",
+     "amt": 20478
+    },
+    {
+     "cc": "1000",
+     "gl": "20200",
+     "text": "ADFContinuationBonus",
+     "amt": 18066
+    },
+    {
+     "cc": "1000",
+     "gl": "20715",
+     "text": "Leave Trv oth Mil",
+     "amt": 17837
+    },
+    {
+     "cc": "1000",
+     "gl": "20283",
+     "text": "O/S Allw-Rent&Util A",
+     "amt": 14767
+    },
+    {
+     "cc": "1000",
+     "gl": "20201",
+     "text": "ADFCompnPdExp-DPCT2",
+     "amt": 14554
+    },
+    {
+     "cc": "4100",
+     "gl": "20590",
+     "text": "Annual Lv Exp ADF",
+     "amt": 14363
+    },
+    {
+     "cc": "4100",
+     "gl": "20582",
+     "text": "APS-SG charge",
+     "amt": 14120
+    },
+    {
+     "cc": "1000",
+     "gl": "20556",
+     "text": "3% Super (DFRDB) ADF",
+     "amt": 13613
+    },
+    {
+     "cc": "1000",
+     "gl": "20714",
+     "text": "Leave Trav rec Mil",
+     "amt": 11774
+    },
+    {
+     "cc": "1000",
+     "gl": "20501",
+     "text": "APS- Osea salary Net",
+     "amt": 11738
+    },
+    {
+     "cc": "1000",
+     "gl": "20186",
+     "text": "Sep allowance ADF",
+     "amt": 11645
+    },
+    {
+     "cc": "1000",
+     "gl": "20158",
+     "text": "TAA sevcd aptmt-ADF",
+     "amt": 11535
+    },
+    {
+     "cc": "1000",
+     "gl": "20581",
+     "text": "APS-SuperPdctvyContb",
+     "amt": 10901
+    },
+    {
+     "cc": "1000",
+     "gl": "20895",
+     "text": "ADFHlth- osea",
+     "amt": 10880
+    },
+    {
+     "cc": "1000",
+     "gl": "20263",
+     "text": "Eductn AllowO/S-ADF",
+     "amt": 10430
+    },
+    {
+     "cc": "1000",
+     "gl": "20991",
+     "text": "APS - FBT",
+     "amt": 10276
+    },
+    {
+     "cc": "1000",
+     "gl": "20704",
+     "text": "Food Allow Rent Mil",
+     "amt": 10050
+    },
+    {
+     "cc": "1000",
+     "gl": "20783",
+     "text": "RLT - Mem non Mil",
+     "amt": 9774
+    },
+    {
+     "cc": "1000",
+     "gl": "20521",
+     "text": "APS - Overtime",
+     "amt": 9642
+    },
+    {
+     "cc": "1000",
+     "gl": "20693",
+     "text": "Redundancy - ADF",
+     "amt": 9508
+    },
+    {
+     "cc": "1000",
+     "gl": "20777",
+     "text": "TravelADF-reunion",
+     "amt": 9172
+    },
+    {
+     "cc": "1000",
+     "gl": "20701",
+     "text": "Excess Water chg Mil",
+     "amt": 8824
+    },
+    {
+     "cc": "4100",
+     "gl": "20286",
+     "text": "Oth O/S allow-FBT-AD",
+     "amt": 8328
+    },
+    {
+     "cc": "1000",
+     "gl": "20155",
+     "text": "Temp accom allw ADF",
+     "amt": 8172
+    },
+    {
+     "cc": "1000",
+     "gl": "20376",
+     "text": "Continuous Trg",
+     "amt": 8165
+    },
+    {
+     "cc": "1000",
+     "gl": "20626",
+     "text": "Super Oncosts LSLMil",
+     "amt": 7479
+    },
+    {
+     "cc": "4100",
+     "gl": "20620",
+     "text": "LSL exp-Military ADF",
+     "amt": 7418
+    },
+    {
+     "cc": "4100",
+     "gl": "20630",
+     "text": "APS - LSL expense",
+     "amt": 7108
+    },
+    {
+     "cc": "1000",
+     "gl": "20612",
+     "text": "APS- SuperOncosts:AL",
+     "amt": 6570
+    },
+    {
+     "cc": "4100",
+     "gl": "20372",
+     "text": "Reserve - RAAF",
+     "amt": 6130
+    },
+    {
+     "cc": "1000",
+     "gl": "20202",
+     "text": "ADFCompbonPdExp-R2T1",
+     "amt": 5730
+    },
+    {
+     "cc": "1000",
+     "gl": "20502",
+     "text": "APS-OseaAllow: FBT",
+     "amt": 5609
+    },
+    {
+     "cc": "1000",
+     "gl": "20391",
+     "text": "Field allowance",
+     "amt": 5579
+    },
+    {
+     "cc": "4100",
+     "gl": "20991",
+     "text": "APS - FBT",
+     "amt": 5193
+    },
+    {
+     "cc": "1000",
+     "gl": "20772",
+     "text": "TravelADF-medical",
+     "amt": 4775
+    },
+    {
+     "cc": "1000",
+     "gl": "20961",
+     "text": "Rations - Fresh FV M",
+     "amt": 4555
+    },
+    {
+     "cc": "4100",
+     "gl": "20527",
+     "text": "ADF Super Contrib",
+     "amt": 4451
+    },
+    {
+     "cc": "4100",
+     "gl": "20553",
+     "text": "3% Super (MSBS) ADF",
+     "amt": 4403
+    },
+    {
+     "cc": "1000",
+     "gl": "20790",
+     "text": "ADF reg contribution",
+     "amt": 4272
+    },
+    {
+     "cc": "1000",
+     "gl": "20782",
+     "text": "Rem Loc Trav non Mil",
+     "amt": 4153
+    },
+    {
+     "cc": "4100",
+     "gl": "20501",
+     "text": "APS- Osea salary Net",
+     "amt": 4145
+    },
+    {
+     "cc": "1000",
+     "gl": "20388",
+     "text": "Parachute div&oth",
+     "amt": 3755
+    },
+    {
+     "cc": "1000",
+     "gl": "20280",
+     "text": "O/S allow settle ADF",
+     "amt": 3741
+    },
+    {
+     "cc": "4100",
+     "gl": "20370",
+     "text": "Res sal & all-Navy",
+     "amt": 3669
+    },
+    {
+     "cc": "1000",
+     "gl": "20631",
+     "text": "APS-SuperOncosts:LSL",
+     "amt": 3437
+    },
+    {
+     "cc": "1000",
+     "gl": "20781",
+     "text": "Dep Reunion Trv Mil",
+     "amt": 3265
+    },
+    {
+     "cc": "4100",
+     "gl": "20581",
+     "text": "APS-SuperPdctvyContb",
+     "amt": 3173
+    },
+    {
+     "cc": "4100",
+     "gl": "20371",
+     "text": "Reserve - Army",
+     "amt": 3154
+    },
+    {
+     "cc": "1000",
+     "gl": "20712",
+     "text": "Remote Local leave",
+     "amt": 2957
+    },
+    {
+     "cc": "4100",
+     "gl": "20504",
+     "text": "RES Rent-Oseas Civ",
+     "amt": 2669
+    },
+    {
+     "cc": "1000",
+     "gl": "20003",
+     "text": "Salaries - O/S ADF",
+     "amt": -2451
+    },
+    {
+     "cc": "1000",
+     "gl": "20560",
+     "text": "Super guarantee levy",
+     "amt": 2202
+    },
+    {
+     "cc": "1000",
+     "gl": "20698",
+     "text": "APS-Separations",
+     "amt": 2159
+    },
+    {
+     "cc": "4100",
+     "gl": "20502",
+     "text": "APS-OseaAllow: FBT",
+     "amt": 2124
+    },
+    {
+     "cc": "1000",
+     "gl": "20140",
+     "text": "Allow-Hostel chgs-Na",
+     "amt": 2019
+    },
+    {
+     "cc": "4100",
+     "gl": "20141",
+     "text": "Home pur assist sche",
+     "amt": 1838
+    },
+    {
+     "cc": "1000",
+     "gl": "20641",
+     "text": "LSL exp Clearing Mil",
+     "amt": 1798
+    },
+    {
+     "cc": "1000",
+     "gl": "20504",
+     "text": "RES Rent-Oseas Civ",
+     "amt": 1782
+    },
+    {
+     "cc": "1000",
+     "gl": "20503",
+     "text": "APS-OseaAllow:NonFBT",
+     "amt": 1692
+    },
+    {
+     "cc": "4100",
+     "gl": "20550",
+     "text": "DFRDB emp conts ADF",
+     "amt": 1592
+    },
+    {
+     "cc": "1000",
+     "gl": "20778",
+     "text": "Compass Travel Mil",
+     "amt": 1532
+    },
+    {
+     "cc": "4100",
+     "gl": "20521",
+     "text": "APS - Overtime",
+     "amt": 1523
+    },
+    {
+     "cc": "1000",
+     "gl": "20774",
+     "text": "T&S-Oth Cond Mil",
+     "amt": 1306
+    },
+    {
+     "cc": "1000",
+     "gl": "20775",
+     "text": "Travel ADF - Meal",
+     "amt": 1284
+    },
+    {
+     "cc": "1000",
+     "gl": "20520",
+     "text": "APS - penalty pay",
+     "amt": 1188
+    },
+    {
+     "cc": "1000",
+     "gl": "20740",
+     "text": "TravelAPS-RLL:ATO",
+     "amt": -1080
+    },
+    {
+     "cc": "1000",
+     "gl": "20747",
+     "text": "Home Purch/Sale Exp",
+     "amt": 1073
+    },
+    {
+     "cc": "1000",
+     "gl": "20171",
+     "text": "In-Port allowanceNav",
+     "amt": 966
+    },
+    {
+     "cc": "1000",
+     "gl": "20515",
+     "text": "APS- education exp",
+     "amt": 949
+    },
+    {
+     "cc": "1000",
+     "gl": "20516",
+     "text": "Travel APS-ALFA",
+     "amt": 942
+    },
+    {
+     "cc": "1000",
+     "gl": "20015",
+     "text": "Dischgd/Dec Membs-A",
+     "amt": 924
+    },
+    {
+     "cc": "1000",
+     "gl": "20270",
+     "text": "Cri YrsExtra Tut ADF",
+     "amt": 800
+    },
+    {
+     "cc": "4100",
+     "gl": "20503",
+     "text": "APS-OseaAllow:NonFBT",
+     "amt": 778
+    },
+    {
+     "cc": "1000",
+     "gl": "20787",
+     "text": "Rel out of Ctry Trav",
+     "amt": 688
+    },
+    {
+     "cc": "4100",
+     "gl": "20698",
+     "text": "APS-Separations",
+     "amt": 641
+    },
+    {
+     "cc": "1000",
+     "gl": "20266",
+     "text": "Ter accom allo - ADF",
+     "amt": 629
+    },
+    {
+     "cc": "1000",
+     "gl": "20199",
+     "text": "ADFRetbonPDExp-R2T1",
+     "amt": 577
+    },
+    {
+     "cc": "4100",
+     "gl": "20174",
+     "text": "Other allowances ADF",
+     "amt": 566
+    },
+    {
+     "cc": "1000",
+     "gl": "20891",
+     "text": "APS Health - other",
+     "amt": 537
+    },
+    {
+     "cc": "1000",
+     "gl": "20785",
+     "text": "Attach Trav Mil",
+     "amt": 415
+    },
+    {
+     "cc": "1000",
+     "gl": "20773",
+     "text": "Tra ADF Legal Discp",
+     "amt": 397
+    },
+    {
+     "cc": "1000",
+     "gl": "20894",
+     "text": "APS Health-rehab",
+     "amt": 389
+    },
+    {
+     "cc": "4100",
+     "gl": "20200",
+     "text": "ADFContinuationBonus",
+     "amt": 375
+    },
+    {
+     "cc": "4100",
+     "gl": "20631",
+     "text": "APS-SuperOncosts:LSL",
+     "amt": -355
+    },
+    {
+     "cc": "4100",
+     "gl": "20186",
+     "text": "Sep allowance ADF",
+     "amt": 349
+    },
+    {
+     "cc": "1000",
+     "gl": "20195",
+     "text": "Xtra Tuitn Allw-ADF",
+     "amt": 266
+    },
+    {
+     "cc": "4100",
+     "gl": "20891",
+     "text": "APS Health - other",
+     "amt": 259
+    },
+    {
+     "cc": "1000",
+     "gl": "20892",
+     "text": "APS Health-CMO fit",
+     "amt": 256
+    },
+    {
+     "cc": "4100",
+     "gl": "20198",
+     "text": "ADFRetnPdExp-DPCT2",
+     "amt": 251
+    },
+    {
+     "cc": "1000",
+     "gl": "20713",
+     "text": "RLLT-Fam or ext Fam",
+     "amt": 240
+    },
+    {
+     "cc": "4100",
+     "gl": "20747",
+     "text": "Home Purch/Sale Exp",
+     "amt": 235
+    },
+    {
+     "cc": "4100",
+     "gl": "20715",
+     "text": "Leave Trv oth Mil",
+     "amt": 209
+    },
+    {
+     "cc": "1000",
+     "gl": "20016",
+     "text": "Dischgd/Dec Membs-Ar",
+     "amt": 195
+    },
+    {
+     "cc": "4100",
+     "gl": "20516",
+     "text": "Travel APS-ALFA",
+     "amt": 183
+    },
+    {
+     "cc": "4100",
+     "gl": "20289",
+     "text": "Oth O/S allw-NoFBT-A",
+     "amt": 158
+    },
+    {
+     "cc": "4100",
+     "gl": "20376",
+     "text": "Continuous Trg",
+     "amt": 127
+    },
+    {
+     "cc": "1000",
+     "gl": "20203",
+     "text": "ADFCompbonPdExp-Othr",
+     "amt": 118
+    },
+    {
+     "cc": "4100",
+     "gl": "20702",
+     "text": "Rep & Main Military",
+     "amt": 115
+    },
+    {
+     "cc": "1000",
+     "gl": "20710",
+     "text": "Living Away Home Mil",
+     "amt": 111
+    },
+    {
+     "cc": "4100",
+     "gl": "20612",
+     "text": "APS- SuperOncosts:AL",
+     "amt": 105
+    },
+    {
+     "cc": "1000",
+     "gl": "20017",
+     "text": "Dischgd/Dec Membs-AF",
+     "amt": 105
+    },
+    {
+     "cc": "4100",
+     "gl": "20015",
+     "text": "Dischgd/Dec Membs-A",
+     "amt": 100
+    },
+    {
+     "cc": "1000",
+     "gl": "20900",
+     "text": "Trav Exp Health Prof",
+     "amt": 93
+    },
+    {
+     "cc": "4100",
+     "gl": "20283",
+     "text": "O/S Allw-Rent&Util A",
+     "amt": 74
+    },
+    {
+     "cc": "1000",
+     "gl": "20780",
+     "text": "Stud Reunion Oth Mil",
+     "amt": 69
+    },
+    {
+     "cc": "1000",
+     "gl": "20888",
+     "text": "APS Health - optical",
+     "amt": 59
+    },
+    {
+     "cc": "1000",
+     "gl": "20716",
+     "text": "Rec lve Trav ATO Mil",
+     "amt": 47
+    },
+    {
+     "cc": "4100",
+     "gl": "20515",
+     "text": "APS- education exp",
+     "amt": -43
+    },
+    {
+     "cc": "1000",
+     "gl": "20742",
+     "text": "TravelAPS-MemReunion",
+     "amt": 36
+    },
+    {
+     "cc": "4100",
+     "gl": "20960",
+     "text": "Rations not FVeg(B)",
+     "amt": 35
+    },
+    {
+     "cc": "1000",
+     "gl": "20789",
+     "text": "House Hunt Trip Mil",
+     "amt": 32
+    },
+    {
+     "cc": "1000",
+     "gl": "20887",
+     "text": "APS Health-OHS scrn",
+     "amt": 31
+    },
+    {
+     "cc": "1000",
+     "gl": "20745",
+     "text": "Dep's Reunion Trav",
+     "amt": 28
+    },
+    {
+     "cc": "4100",
+     "gl": "20888",
+     "text": "APS Health - optical",
+     "amt": 24
+    },
+    {
+     "cc": "4100",
+     "gl": "20165",
+     "text": "Field allowance ADF",
+     "amt": 23
+    },
+    {
+     "cc": "4100",
+     "gl": "20742",
+     "text": "TravelAPS-MemReunion",
+     "amt": 22
+    },
+    {
+     "cc": "4100",
+     "gl": "20883",
+     "text": "APS Health-OtrScrn",
+     "amt": 22
+    },
+    {
+     "cc": "4100",
+     "gl": "20745",
+     "text": "Dep's Reunion Trav",
+     "amt": 21
+    },
+    {
+     "cc": "1000",
+     "gl": "20177",
+     "text": "DEF Acdmy Txtbk ADF",
+     "amt": 20
+    },
+    {
+     "cc": "1000",
+     "gl": "20779",
+     "text": "Stud Reun Trv YR9-12",
+     "amt": 20
+    },
+    {
+     "cc": "1000",
+     "gl": "20893",
+     "text": "APS Health-CMO PAppt",
+     "amt": 19
+    },
+    {
+     "cc": "4100",
+     "gl": "20781",
+     "text": "Dep Reunion Trv Mil",
+     "amt": 16
+    },
+    {
+     "cc": "1000",
+     "gl": "20791",
+     "text": "TravelADF-NonRes",
+     "amt": 14
+    },
+    {
+     "cc": "1000",
+     "gl": "20505",
+     "text": "APS-OseaRepAllow",
+     "amt": 12
+    },
+    {
+     "cc": "1000",
+     "gl": "20792",
+     "text": "TravelADF-NonResRev",
+     "amt": 10
+    },
+    {
+     "cc": "4100",
+     "gl": "20777",
+     "text": "TravelADF-reunion",
+     "amt": 10
+    },
+    {
+     "cc": "4100",
+     "gl": "20520",
+     "text": "APS - penalty pay",
+     "amt": 10
+    },
+    {
+     "cc": "4100",
+     "gl": "20774",
+     "text": "T&S-Oth Cond Mil",
+     "amt": 9
+    },
+    {
+     "cc": "4100",
+     "gl": "20388",
+     "text": "Parachute div&oth",
+     "amt": 8
+    },
+    {
+     "cc": "4100",
+     "gl": "20775",
+     "text": "Travel ADF - Meal",
+     "amt": 7
+    },
+    {
+     "cc": "4100",
+     "gl": "20961",
+     "text": "Rations - Fresh FV M",
+     "amt": 5
+    },
+    {
+     "cc": "1000",
+     "gl": "20705",
+     "text": "Temp rent allow Mil",
+     "amt": 4
+    },
+    {
+     "cc": "4100",
+     "gl": "20887",
+     "text": "APS Health-OHS scrn",
+     "amt": 3
+    },
+    {
+     "cc": "4100",
+     "gl": "20772",
+     "text": "TravelADF-medical",
+     "amt": 3
+    },
+    {
+     "cc": "1000",
+     "gl": "20883",
+     "text": "APS Health-OtrScrn",
+     "amt": 3
+    },
+    {
+     "cc": "1000",
+     "gl": "20681",
+     "text": "S37 Rehab Prog ADF",
+     "amt": 3
+    },
+    {
+     "cc": "1000",
+     "gl": "20507",
+     "text": "APS WF over progras",
+     "amt": 2
+    },
+    {
+     "cc": "4100",
+     "gl": "20792",
+     "text": "TravelADF-NonResRev",
+     "amt": 2
+    },
+    {
+     "cc": "4100",
+     "gl": "20877",
+     "text": "ADF Health-Domestic",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "20783",
+     "text": "RLT - Mem non Mil",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "20790",
+     "text": "ADF reg contribution",
+     "amt": 1
+    },
+    {
+     "cc": "1000",
+     "gl": "20741",
+     "text": "TravelAPS-RLL:Family",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "20894",
+     "text": "APS Health-rehab",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "20195",
+     "text": "Xtra Tuitn Allw-ADF",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "20280",
+     "text": "O/S allow settle ADF",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "20771",
+     "text": "Attend allow - Mil",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "20990",
+     "text": "ADF - FBT",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "20785",
+     "text": "Attach Trav Mil",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "20778",
+     "text": "Compass Travel Mil",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "20714",
+     "text": "Leave Trav rec Mil",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Supplier expenses",
+   "note": "1.1B",
+   "code": "EXP_SUP",
+   "sign": "D",
+   "computed": 22791748,
+   "pub24": 23287040,
+   "pub23": 22271696,
+   "diff": -495292,
+   "status": "variance",
+   "rule": "GL accounts in series 21xxx\u201324xxx",
+   "n": 588,
+   "rows": [
+    {
+     "cc": "4100",
+     "gl": "22042",
+     "text": "Technical services",
+     "amt": 3138996
+    },
+    {
+     "cc": "4100",
+     "gl": "22010",
+     "text": "Material sup contrac",
+     "amt": 2524026
+    },
+    {
+     "cc": "1000",
+     "gl": "22042",
+     "text": "Technical services",
+     "amt": 1079236
+    },
+    {
+     "cc": "1000",
+     "gl": "21537",
+     "text": "Estate Upkeep",
+     "amt": 886972
+    },
+    {
+     "cc": "1000",
+     "gl": "21544",
+     "text": "Estate Projects",
+     "amt": 778704
+    },
+    {
+     "cc": "4100",
+     "gl": "22030",
+     "text": "Repair Planned SME",
+     "amt": 716026
+    },
+    {
+     "cc": "1000",
+     "gl": "21422",
+     "text": "ICT Mgn Adv Service",
+     "amt": 677885
+    },
+    {
+     "cc": "1000",
+     "gl": "24250",
+     "text": "Invent Offset - Fuel",
+     "amt": -539127
+    },
+    {
+     "cc": "1000",
+     "gl": "24006",
+     "text": "Inv consmpt - GSI",
+     "amt": 528219
+    },
+    {
+     "cc": "1000",
+     "gl": "21038",
+     "text": "Cap cons supp charge",
+     "amt": 483086
+    },
+    {
+     "cc": "1000",
+     "gl": "24913",
+     "text": "LseAcftShp12Mh<",
+     "amt": -447786
+    },
+    {
+     "cc": "1000",
+     "gl": "21440",
+     "text": "Software Services",
+     "amt": 421559
+    },
+    {
+     "cc": "1000",
+     "gl": "24000",
+     "text": "Inv consmpt - Fuel",
+     "amt": 417661
+    },
+    {
+     "cc": "4100",
+     "gl": "24050",
+     "text": "Purch-EO on COMSARM",
+     "amt": 354529
+    },
+    {
+     "cc": "1000",
+     "gl": "21708",
+     "text": "Contractor Services",
+     "amt": 340110
+    },
+    {
+     "cc": "1000",
+     "gl": "24012",
+     "text": "Purchases - Avtur",
+     "amt": 319861
+    },
+    {
+     "cc": "1000",
+     "gl": "21450",
+     "text": "ICT sys hwre Pur Sup",
+     "amt": 308425
+    },
+    {
+     "cc": "4100",
+     "gl": "24100",
+     "text": "Invent Offset - EO",
+     "amt": -300667
+    },
+    {
+     "cc": "1000",
+     "gl": "21171",
+     "text": "Contract Labour",
+     "amt": 300647
+    },
+    {
+     "cc": "1000",
+     "gl": "23213",
+     "text": "Acctble&Consum-S/W",
+     "amt": 292791
+    },
+    {
+     "cc": "1000",
+     "gl": "22035",
+     "text": "Tech services-ships",
+     "amt": 286640
+    },
+    {
+     "cc": "1000",
+     "gl": "24953",
+     "text": "Lease Dom Property",
+     "amt": 280066
+    },
+    {
+     "cc": "1000",
+     "gl": "21425",
+     "text": "ICT Net Hdwa Pur Sup",
+     "amt": 264396
+    },
+    {
+     "cc": "4100",
+     "gl": "22025",
+     "text": "Proj Maint contracts",
+     "amt": 257839
+    },
+    {
+     "cc": "4100",
+     "gl": "23100",
+     "text": "Purch SME-CP",
+     "amt": 240483
+    },
+    {
+     "cc": "1000",
+     "gl": "21990",
+     "text": "Security Services",
+     "amt": 231504
+    },
+    {
+     "cc": "1000",
+     "gl": "21711",
+     "text": "Recruitment services",
+     "amt": 228307
+    },
+    {
+     "cc": "4100",
+     "gl": "21035",
+     "text": "Mngnt & Strategic Ad",
+     "amt": 221972
+    },
+    {
+     "cc": "4100",
+     "gl": "22000",
+     "text": "Rep & ohaul OPE(B)",
+     "amt": 219631
+    },
+    {
+     "cc": "1000",
+     "gl": "24010",
+     "text": "Purch - Marine Dieso",
+     "amt": 217085
+    },
+    {
+     "cc": "1000",
+     "gl": "23212",
+     "text": "Acctble&Consum-ICThw",
+     "amt": 210796
+    },
+    {
+     "cc": "1000",
+     "gl": "21176",
+     "text": "Catering",
+     "amt": 201880
+    },
+    {
+     "cc": "1000",
+     "gl": "21250",
+     "text": "Engring - Indust (B)",
+     "amt": 201192
+    },
+    {
+     "cc": "1000",
+     "gl": "21259",
+     "text": "General R&D",
+     "amt": 192505
+    },
+    {
+     "cc": "1000",
+     "gl": "24001",
+     "text": "Inv consmpt - EO",
+     "amt": 187745
+    },
+    {
+     "cc": "1000",
+     "gl": "21416",
+     "text": "Softwr lic Fees",
+     "amt": 187702
+    },
+    {
+     "cc": "1000",
+     "gl": "21357",
+     "text": "Warehousing services",
+     "amt": 187444
+    },
+    {
+     "cc": "1000",
+     "gl": "21035",
+     "text": "Mngnt & Strategic Ad",
+     "amt": 184639
+    },
+    {
+     "cc": "1000",
+     "gl": "21951",
+     "text": "Contracted Trng Del",
+     "amt": 183779
+    },
+    {
+     "cc": "1000",
+     "gl": "21370",
+     "text": "Defence Removl Costs",
+     "amt": 179674
+    },
+    {
+     "cc": "4100",
+     "gl": "22020",
+     "text": "Repair Unplanned SME",
+     "amt": 178985
+    },
+    {
+     "cc": "1000",
+     "gl": "21501",
+     "text": "Light and power (B)",
+     "amt": 172472
+    },
+    {
+     "cc": "1000",
+     "gl": "21023",
+     "text": "Geospatial Data",
+     "amt": 155984
+    },
+    {
+     "cc": "1000",
+     "gl": "21500",
+     "text": "Cleaning expenses",
+     "amt": 148542
+    },
+    {
+     "cc": "1000",
+     "gl": "21540",
+     "text": "Grounds Maintenance",
+     "amt": 146901
+    },
+    {
+     "cc": "1000",
+     "gl": "21506",
+     "text": "Sanitatn & Tox Waste",
+     "amt": 137619
+    },
+    {
+     "cc": "4100",
+     "gl": "22040",
+     "text": "Rep items maint cost",
+     "amt": 134583
+    },
+    {
+     "cc": "4100",
+     "gl": "23138",
+     "text": "Eng Change -Sup/Obs",
+     "amt": 131087
+    },
+    {
+     "cc": "4100",
+     "gl": "21027",
+     "text": "Tech & Eng Support",
+     "amt": 126553
+    },
+    {
+     "cc": "4100",
+     "gl": "24055",
+     "text": "Explosive Prod Capab",
+     "amt": 124319
+    },
+    {
+     "cc": "4100",
+     "gl": "21005",
+     "text": "Dir Pur Con Stores",
+     "amt": 119451
+    },
+    {
+     "cc": "1000",
+     "gl": "23214",
+     "text": "Acctble&Consum-OP&E",
+     "amt": 113471
+    },
+    {
+     "cc": "1000",
+     "gl": "21991",
+     "text": "Security Clrnce Cost",
+     "amt": 110014
+    },
+    {
+     "cc": "1000",
+     "gl": "21428",
+     "text": "ICT UseHdwa Pur Supp",
+     "amt": 106784
+    },
+    {
+     "cc": "4100",
+     "gl": "21252",
+     "text": "Engineering - Other",
+     "amt": 105310
+    },
+    {
+     "cc": "1000",
+     "gl": "21553",
+     "text": "Environmental Compli",
+     "amt": 94464
+    },
+    {
+     "cc": "4100",
+     "gl": "22073",
+     "text": "Repairs FMS",
+     "amt": 93826
+    },
+    {
+     "cc": "1000",
+     "gl": "21949",
+     "text": "Terti Edu Contr Serv",
+     "amt": 88376
+    },
+    {
+     "cc": "1000",
+     "gl": "21750",
+     "text": "AdvtCost-ADF recruit",
+     "amt": 86131
+    },
+    {
+     "cc": "4100",
+     "gl": "21069",
+     "text": "Rescue/Fire Fighting",
+     "amt": 83626
+    },
+    {
+     "cc": "1000",
+     "gl": "21027",
+     "text": "Tech & Eng Support",
+     "amt": 79403
+    },
+    {
+     "cc": "1000",
+     "gl": "21074",
+     "text": "DCP activities - Mat",
+     "amt": 77074
+    },
+    {
+     "cc": "1000",
+     "gl": "21309",
+     "text": "DOM Fares & Chart(B)",
+     "amt": 72935
+    },
+    {
+     "cc": "4100",
+     "gl": "21128",
+     "text": "FGA Expenses",
+     "amt": 71241
+    },
+    {
+     "cc": "1000",
+     "gl": "21322",
+     "text": "Overseas Exercise",
+     "amt": 68365
+    },
+    {
+     "cc": "1000",
+     "gl": "21022",
+     "text": "Hire and Other Fees",
+     "amt": 67501
+    },
+    {
+     "cc": "1000",
+     "gl": "21312",
+     "text": "ADF TrnigTravl Domes",
+     "amt": 67070
+    },
+    {
+     "cc": "1000",
+     "gl": "21252",
+     "text": "Engineering - Other",
+     "amt": 66725
+    },
+    {
+     "cc": "4100",
+     "gl": "23235",
+     "text": "Purch of CV",
+     "amt": 64447
+    },
+    {
+     "cc": "1000",
+     "gl": "21069",
+     "text": "Rescue/Fire Fighting",
+     "amt": 63507
+    },
+    {
+     "cc": "1000",
+     "gl": "24005",
+     "text": "COGS - Frn fuel sal",
+     "amt": 62531
+    },
+    {
+     "cc": "1000",
+     "gl": "21722",
+     "text": "Legal Professional F",
+     "amt": 57859
+    },
+    {
+     "cc": "1000",
+     "gl": "24029",
+     "text": "Purch - Jet A-1",
+     "amt": 56307
+    },
+    {
+     "cc": "4100",
+     "gl": "21259",
+     "text": "General R&D",
+     "amt": 55976
+    },
+    {
+     "cc": "4100",
+     "gl": "21708",
+     "text": "Contractor Services",
+     "amt": 55144
+    },
+    {
+     "cc": "4100",
+     "gl": "24913",
+     "text": "LseAcftShp12Mh<",
+     "amt": -52200
+    },
+    {
+     "cc": "4100",
+     "gl": "21350",
+     "text": "Freight Non Remls(B)",
+     "amt": 52056
+    },
+    {
+     "cc": "1000",
+     "gl": "21731",
+     "text": "Common law COMCOVER",
+     "amt": 51324
+    },
+    {
+     "cc": "4100",
+     "gl": "22070",
+     "text": "MILIS Repair Serv Or",
+     "amt": 50891
+    },
+    {
+     "cc": "1000",
+     "gl": "21538",
+     "text": "Work plan fees",
+     "amt": 50789
+    },
+    {
+     "cc": "1000",
+     "gl": "24016",
+     "text": "Purch - Auto distal",
+     "amt": 49945
+    },
+    {
+     "cc": "4100",
+     "gl": "21440",
+     "text": "Software Services",
+     "amt": 48717
+    },
+    {
+     "cc": "1000",
+     "gl": "21151",
+     "text": "Employee Family Supp",
+     "amt": 47138
+    },
+    {
+     "cc": "1000",
+     "gl": "21536",
+     "text": "Estate Prop Maint",
+     "amt": 46064
+    },
+    {
+     "cc": "1000",
+     "gl": "21350",
+     "text": "Freight Non Remls(B)",
+     "amt": 45394
+    },
+    {
+     "cc": "1000",
+     "gl": "22040",
+     "text": "Rep items maint cost",
+     "amt": 45241
+    },
+    {
+     "cc": "1000",
+     "gl": "21265",
+     "text": "Internal R&D",
+     "amt": 44589
+    },
+    {
+     "cc": "1000",
+     "gl": "21300",
+     "text": "O/S-Fares&Charter(B)",
+     "amt": 44572
+    },
+    {
+     "cc": "1000",
+     "gl": "21037",
+     "text": "Garr supp cont (B)",
+     "amt": 43760
+    },
+    {
+     "cc": "4100",
+     "gl": "22035",
+     "text": "Tech services-ships",
+     "amt": 43328
+    },
+    {
+     "cc": "1000",
+     "gl": "21126",
+     "text": "Super admin charges",
+     "amt": 42045
+    },
+    {
+     "cc": "1000",
+     "gl": "21173",
+     "text": "Range Services",
+     "amt": 41207
+    },
+    {
+     "cc": "1000",
+     "gl": "21727",
+     "text": "Settlements (B)",
+     "amt": 38912
+    },
+    {
+     "cc": "1000",
+     "gl": "21402",
+     "text": "Satellite - Usage",
+     "amt": 37656
+    },
+    {
+     "cc": "4100",
+     "gl": "21171",
+     "text": "Contract Labour",
+     "amt": 35904
+    },
+    {
+     "cc": "4100",
+     "gl": "21428",
+     "text": "ICT UseHdwa Pur Supp",
+     "amt": 35383
+    },
+    {
+     "cc": "1000",
+     "gl": "21125",
+     "text": "Gov Common Services",
+     "amt": 34768
+    },
+    {
+     "cc": "4100",
+     "gl": "22071",
+     "text": "MILIS Purch order Re",
+     "amt": 33565
+    },
+    {
+     "cc": "1000",
+     "gl": "21318",
+     "text": "Local Posting Travel",
+     "amt": 32837
+    },
+    {
+     "cc": "1000",
+     "gl": "21558",
+     "text": "Estate Work Sponsor",
+     "amt": 32763
+    },
+    {
+     "cc": "1000",
+     "gl": "21510",
+     "text": "TRANSPORT",
+     "amt": 32706
+    },
+    {
+     "cc": "1000",
+     "gl": "21317",
+     "text": "Domestic Exercise",
+     "amt": 32212
+    },
+    {
+     "cc": "1000",
+     "gl": "21303",
+     "text": "ADF O/S Trng Rel Tra",
+     "amt": 32139
+    },
+    {
+     "cc": "1000",
+     "gl": "21005",
+     "text": "Dir Pur Con Stores",
+     "amt": 31579
+    },
+    {
+     "cc": "1000",
+     "gl": "21911",
+     "text": "ADF Tng Military",
+     "amt": 30671
+    },
+    {
+     "cc": "4100",
+     "gl": "21727",
+     "text": "Settlements (B)",
+     "amt": 30654
+    },
+    {
+     "cc": "1000",
+     "gl": "21381",
+     "text": "Relocations agreemen",
+     "amt": 29927
+    },
+    {
+     "cc": "1000",
+     "gl": "21502",
+     "text": "Water",
+     "amt": 27720
+    },
+    {
+     "cc": "1000",
+     "gl": "23100",
+     "text": "Purch SME-CP",
+     "amt": 27600
+    },
+    {
+     "cc": "1000",
+     "gl": "21080",
+     "text": "DCP activities - Sti",
+     "amt": 25396
+    },
+    {
+     "cc": "1000",
+     "gl": "21081",
+     "text": "DFAT Empl LES OS (B)",
+     "amt": 24539
+    },
+    {
+     "cc": "1000",
+     "gl": "21305",
+     "text": "StratLift-Int:Air",
+     "amt": 24353
+    },
+    {
+     "cc": "1000",
+     "gl": "21941",
+     "text": "ADF Tng Non Mil",
+     "amt": 23257
+    },
+    {
+     "cc": "4100",
+     "gl": "24924",
+     "text": "Lease Purp Aircraft",
+     "amt": 22753
+    },
+    {
+     "cc": "1000",
+     "gl": "21075",
+     "text": "Spt to OPS&Ex - serv",
+     "amt": 21240
+    },
+    {
+     "cc": "1000",
+     "gl": "21923",
+     "text": "ADF Trnig - Sep",
+     "amt": 20907
+    },
+    {
+     "cc": "4100",
+     "gl": "21911",
+     "text": "ADF Tng Military",
+     "amt": 20058
+    },
+    {
+     "cc": "1000",
+     "gl": "24928",
+     "text": "Lease Ship",
+     "amt": 19804
+    },
+    {
+     "cc": "1000",
+     "gl": "21187",
+     "text": "Rations - other",
+     "amt": 19597
+    },
+    {
+     "cc": "1000",
+     "gl": "21539",
+     "text": "Annual fees/levies",
+     "amt": 19316
+    },
+    {
+     "cc": "1000",
+     "gl": "22010",
+     "text": "Material sup contrac",
+     "amt": 19270
+    },
+    {
+     "cc": "1000",
+     "gl": "21032",
+     "text": "Military Handling ch",
+     "amt": 19093
+    },
+    {
+     "cc": "1000",
+     "gl": "21390",
+     "text": "Meals & Incidentals",
+     "amt": 18999
+    },
+    {
+     "cc": "1000",
+     "gl": "21308",
+     "text": "O/S Posting Travel",
+     "amt": 18420
+    },
+    {
+     "cc": "1000",
+     "gl": "21950",
+     "text": "Contracted Trng Dev",
+     "amt": 18420
+    },
+    {
+     "cc": "1000",
+     "gl": "21391",
+     "text": "Accommodation",
+     "amt": 18303
+    },
+    {
+     "cc": "4100",
+     "gl": "21416",
+     "text": "Softwr lic Fees",
+     "amt": 18072
+    },
+    {
+     "cc": "4100",
+     "gl": "21722",
+     "text": "Legal Professional F",
+     "amt": 17933
+    },
+    {
+     "cc": "1000",
+     "gl": "21945",
+     "text": "APS Training",
+     "amt": 17756
+    },
+    {
+     "cc": "4100",
+     "gl": "23236",
+     "text": "Purch OP&E - CASG",
+     "amt": 17350
+    },
+    {
+     "cc": "1000",
+     "gl": "21127",
+     "text": "Pymt - Govt agencies",
+     "amt": -17255
+    },
+    {
+     "cc": "1000",
+     "gl": "22030",
+     "text": "Repair Planned SME",
+     "amt": 16771
+    },
+    {
+     "cc": "1000",
+     "gl": "21700",
+     "text": "Consultancies",
+     "amt": 16152
+    },
+    {
+     "cc": "1000",
+     "gl": "21374",
+     "text": "Disturbance allowanc",
+     "amt": 15511
+    },
+    {
+     "cc": "1000",
+     "gl": "24930",
+     "text": "Lease Equip",
+     "amt": 15143
+    },
+    {
+     "cc": "4100",
+     "gl": "21309",
+     "text": "DOM Fares & Chart(B)",
+     "amt": 15087
+    },
+    {
+     "cc": "1000",
+     "gl": "21393",
+     "text": "Overseas Accomm",
+     "amt": 14793
+    },
+    {
+     "cc": "1000",
+     "gl": "21346",
+     "text": "StratLift-Dom:Sea",
+     "amt": 14526
+    },
+    {
+     "cc": "1000",
+     "gl": "23007",
+     "text": "Proj Acct only- S/W",
+     "amt": 14058
+    },
+    {
+     "cc": "1000",
+     "gl": "21311",
+     "text": "Student Movt Travel",
+     "amt": 13857
+    },
+    {
+     "cc": "1000",
+     "gl": "21395",
+     "text": "O/S Mls & Incident",
+     "amt": 13699
+    },
+    {
+     "cc": "1000",
+     "gl": "21347",
+     "text": "StratLift-Dom:Land",
+     "amt": 13585
+    },
+    {
+     "cc": "4100",
+     "gl": "24925",
+     "text": "Lease Aircraft",
+     "amt": 13544
+    },
+    {
+     "cc": "4100",
+     "gl": "21450",
+     "text": "ICT sys hwre Pur Sup",
+     "amt": 13509
+    },
+    {
+     "cc": "4100",
+     "gl": "21767",
+     "text": "Management Services",
+     "amt": 13448
+    },
+    {
+     "cc": "1000",
+     "gl": "21008",
+     "text": "Stat&Offreq (B)",
+     "amt": 13107
+    },
+    {
+     "cc": "1000",
+     "gl": "21915",
+     "text": "ADF Training Oversea",
+     "amt": 13023
+    },
+    {
+     "cc": "1000",
+     "gl": "22000",
+     "text": "Rep & ohaul OPE(B)",
+     "amt": 12961
+    },
+    {
+     "cc": "4100",
+     "gl": "24928",
+     "text": "Lease Ship",
+     "amt": 12949
+    },
+    {
+     "cc": "1000",
+     "gl": "24919",
+     "text": "Lease Office Equip",
+     "amt": 12679
+    },
+    {
+     "cc": "1000",
+     "gl": "21178",
+     "text": "Recreation Services",
+     "amt": 12561
+    },
+    {
+     "cc": "1000",
+     "gl": "24951",
+     "text": "Lease Sale Leaseback",
+     "amt": 12383
+    },
+    {
+     "cc": "1000",
+     "gl": "21573",
+     "text": "Asbestos",
+     "amt": 12341
+    },
+    {
+     "cc": "1000",
+     "gl": "21560",
+     "text": "Defence Archives",
+     "amt": 12090
+    },
+    {
+     "cc": "1000",
+     "gl": "21400",
+     "text": "Voice & Data Usage",
+     "amt": 12047
+    },
+    {
+     "cc": "1000",
+     "gl": "21307",
+     "text": "Travel Exp O/S Post",
+     "amt": 11927
+    },
+    {
+     "cc": "4100",
+     "gl": "23137",
+     "text": "Eng Change -Safe/Env",
+     "amt": 11656
+    },
+    {
+     "cc": "1000",
+     "gl": "24925",
+     "text": "Lease Aircraft",
+     "amt": 11611
+    },
+    {
+     "cc": "1000",
+     "gl": "21504",
+     "text": "Gas",
+     "amt": 11067
+    },
+    {
+     "cc": "1000",
+     "gl": "21319",
+     "text": "Travel non ADF/APS",
+     "amt": 10972
+    },
+    {
+     "cc": "1000",
+     "gl": "21925",
+     "text": "ADF Cse Cost FBTR",
+     "amt": 10960
+    },
+    {
+     "cc": "1000",
+     "gl": "21396",
+     "text": "DCP trav - non APS/A",
+     "amt": 10074
+    },
+    {
+     "cc": "1000",
+     "gl": "24055",
+     "text": "Explosive Prod Capab",
+     "amt": 10074
+    },
+    {
+     "cc": "4100",
+     "gl": "21019",
+     "text": "Gen-Off Services",
+     "amt": 9522
+    },
+    {
+     "cc": "1000",
+     "gl": "21019",
+     "text": "Gen-Off Services",
+     "amt": 9344
+    },
+    {
+     "cc": "1000",
+     "gl": "21503",
+     "text": "Liq Petroleum Prod",
+     "amt": 9201
+    },
+    {
+     "cc": "4100",
+     "gl": "23282",
+     "text": "cost asst dspsl-SME",
+     "amt": 9191
+    },
+    {
+     "cc": "1000",
+     "gl": "23104",
+     "text": "Purchase SME-FMS",
+     "amt": 9177
+    },
+    {
+     "cc": "1000",
+     "gl": "21545",
+     "text": "New works",
+     "amt": 9162
+    },
+    {
+     "cc": "4100",
+     "gl": "21023",
+     "text": "Geospatial Data",
+     "amt": 9131
+    },
+    {
+     "cc": "1000",
+     "gl": "21251",
+     "text": "Engineering - Uni",
+     "amt": 9014
+    },
+    {
+     "cc": "4100",
+     "gl": "21125",
+     "text": "Gov Common Services",
+     "amt": 8941
+    },
+    {
+     "cc": "1000",
+     "gl": "21118",
+     "text": "Library Resources",
+     "amt": 8898
+    },
+    {
+     "cc": "1000",
+     "gl": "21306",
+     "text": "StratLift-Int:Sea",
+     "amt": 8311
+    },
+    {
+     "cc": "1000",
+     "gl": "21767",
+     "text": "Management Services",
+     "amt": 8204
+    },
+    {
+     "cc": "4100",
+     "gl": "23214",
+     "text": "Acctble&Consum-OP&E",
+     "amt": 8063
+    },
+    {
+     "cc": "1000",
+     "gl": "21161",
+     "text": "PTSE of R U ESPS",
+     "amt": 7877
+    },
+    {
+     "cc": "4100",
+     "gl": "21300",
+     "text": "O/S-Fares&Charter(B)",
+     "amt": 7848
+    },
+    {
+     "cc": "1000",
+     "gl": "21160",
+     "text": "PTE of R U ESPS",
+     "amt": 7780
+    },
+    {
+     "cc": "1000",
+     "gl": "21026",
+     "text": "DCDD",
+     "amt": 7368
+    },
+    {
+     "cc": "1000",
+     "gl": "21024",
+     "text": "Ind Workforce Devel",
+     "amt": 7325
+    },
+    {
+     "cc": "4100",
+     "gl": "23212",
+     "text": "Acctble&Consum-ICThw",
+     "amt": 7231
+    },
+    {
+     "cc": "4100",
+     "gl": "23104",
+     "text": "Purchase SME-FMS",
+     "amt": 7184
+    },
+    {
+     "cc": "4100",
+     "gl": "21422",
+     "text": "ICT Mgn Adv Service",
+     "amt": 7057
+    },
+    {
+     "cc": "1000",
+     "gl": "23254",
+     "text": "Sware development",
+     "amt": 7040
+    },
+    {
+     "cc": "4100",
+     "gl": "22072",
+     "text": "WrkshpOrdRepairMILIS",
+     "amt": 7020
+    },
+    {
+     "cc": "1000",
+     "gl": "21543",
+     "text": "FP&E Reactive Maint",
+     "amt": 6930
+    },
+    {
+     "cc": "4100",
+     "gl": "21022",
+     "text": "Hire and Other Fees",
+     "amt": 6854
+    },
+    {
+     "cc": "1000",
+     "gl": "21260",
+     "text": "Ext R&D Industry",
+     "amt": 6846
+    },
+    {
+     "cc": "1000",
+     "gl": "21142",
+     "text": "Oth Aircraft Expend",
+     "amt": 6788
+    },
+    {
+     "cc": "1000",
+     "gl": "21174",
+     "text": "Petrol oil & manage",
+     "amt": 6731
+    },
+    {
+     "cc": "4100",
+     "gl": "21951",
+     "text": "Contracted Trng Del",
+     "amt": 6637
+    },
+    {
+     "cc": "1000",
+     "gl": "21907",
+     "text": "ADF CTT-FinCounsel",
+     "amt": 6584
+    },
+    {
+     "cc": "1000",
+     "gl": "21183",
+     "text": "Certif/Lice/Officdoc",
+     "amt": 6547
+    },
+    {
+     "cc": "1000",
+     "gl": "21045",
+     "text": "Membship Prof Bodies",
+     "amt": 6176
+    },
+    {
+     "cc": "1000",
+     "gl": "21017",
+     "text": "Spt to OPS & EX-Good",
+     "amt": 5943
+    },
+    {
+     "cc": "1000",
+     "gl": "21177",
+     "text": "Pest Control",
+     "amt": 5859
+    },
+    {
+     "cc": "4100",
+     "gl": "21319",
+     "text": "Travel non ADF/APS",
+     "amt": 5834
+    },
+    {
+     "cc": "1000",
+     "gl": "21382",
+     "text": "Lateral recruit cost",
+     "amt": 5660
+    },
+    {
+     "cc": "1000",
+     "gl": "24031",
+     "text": "Purch - Avcat",
+     "amt": 5646
+    },
+    {
+     "cc": "4100",
+     "gl": "24930",
+     "text": "Lease Equip",
+     "amt": 5588
+    },
+    {
+     "cc": "1000",
+     "gl": "21320",
+     "text": "S/Term Vehicle Hire",
+     "amt": 5551
+    },
+    {
+     "cc": "1000",
+     "gl": "21010",
+     "text": "Postage",
+     "amt": 5531
+    },
+    {
+     "cc": "4100",
+     "gl": "23230",
+     "text": "OP&EdCASG4Def <thshl",
+     "amt": 5516
+    },
+    {
+     "cc": "1000",
+     "gl": "21301",
+     "text": "O/S-Travelling Allow",
+     "amt": 5338
+    },
+    {
+     "cc": "1000",
+     "gl": "21709",
+     "text": "Audit fees",
+     "amt": 5226
+    },
+    {
+     "cc": "4100",
+     "gl": "21026",
+     "text": "DCDD",
+     "amt": 5191
+    },
+    {
+     "cc": "1000",
+     "gl": "23006",
+     "text": "Proj Acct  - OP&E",
+     "amt": 5145
+    },
+    {
+     "cc": "1000",
+     "gl": "23235",
+     "text": "Purch of CV",
+     "amt": -5044
+    },
+    {
+     "cc": "1000",
+     "gl": "23284",
+     "text": "Costassetdsposl-OP&E",
+     "amt": 5010
+    },
+    {
+     "cc": "1000",
+     "gl": "21182",
+     "text": "Clothing Expenses",
+     "amt": 4960
+    },
+    {
+     "cc": "1000",
+     "gl": "23138",
+     "text": "Eng Change -Sup/Obs",
+     "amt": 4649
+    },
+    {
+     "cc": "1000",
+     "gl": "21926",
+     "text": "Seminar & Conference",
+     "amt": 4627
+    },
+    {
+     "cc": "1000",
+     "gl": "21175",
+     "text": "Airfield ops support",
+     "amt": 4585
+    },
+    {
+     "cc": "4100",
+     "gl": "24953",
+     "text": "Lease Dom Property",
+     "amt": 4527
+    },
+    {
+     "cc": "4100",
+     "gl": "23213",
+     "text": "Acctble&Consum-S/W",
+     "amt": 4434
+    },
+    {
+     "cc": "1000",
+     "gl": "21185",
+     "text": "Purch in-flight rat",
+     "amt": 4429
+    },
+    {
+     "cc": "4100",
+     "gl": "21390",
+     "text": "Meals & Incidentals",
+     "amt": 4424
+    },
+    {
+     "cc": "4100",
+     "gl": "21391",
+     "text": "Accommodation",
+     "amt": 4362
+    },
+    {
+     "cc": "1000",
+     "gl": "21547",
+     "text": "Furn and Fittings",
+     "amt": 4339
+    },
+    {
+     "cc": "4100",
+     "gl": "21142",
+     "text": "Oth Aircraft Expend",
+     "amt": 4321
+    },
+    {
+     "cc": "1000",
+     "gl": "21331",
+     "text": "Vehicle allowance",
+     "amt": 4182
+    },
+    {
+     "cc": "1000",
+     "gl": "21172",
+     "text": "Helpdesk Services",
+     "amt": 4065
+    },
+    {
+     "cc": "1000",
+     "gl": "21948",
+     "text": "APS Trnig Trav-Domes",
+     "amt": 4061
+    },
+    {
+     "cc": "1000",
+     "gl": "21715",
+     "text": "Legal disbursements",
+     "amt": 3993
+    },
+    {
+     "cc": "4100",
+     "gl": "21302",
+     "text": "Equip Allow Osea",
+     "amt": 3648
+    },
+    {
+     "cc": "1000",
+     "gl": "21992",
+     "text": "Maint Security Syste",
+     "amt": 3572
+    },
+    {
+     "cc": "1000",
+     "gl": "21004",
+     "text": "Publishing Srvc",
+     "amt": 3531
+    },
+    {
+     "cc": "1000",
+     "gl": "21943",
+     "text": "APS Cse Cost FBTR",
+     "amt": 3498
+    },
+    {
+     "cc": "1000",
+     "gl": "21542",
+     "text": "GEW Reactive Maint",
+     "amt": 3466
+    },
+    {
+     "cc": "1000",
+     "gl": "23211",
+     "text": "Acctble&Consum-Infra",
+     "amt": 3419
+    },
+    {
+     "cc": "4100",
+     "gl": "21945",
+     "text": "APS Training",
+     "amt": 3397
+    },
+    {
+     "cc": "1000",
+     "gl": "24945",
+     "text": "Shrt trm lease payts",
+     "amt": 3379
+    },
+    {
+     "cc": "1000",
+     "gl": "21903",
+     "text": "ADF CseCost Non FBTR",
+     "amt": 3316
+    },
+    {
+     "cc": "1000",
+     "gl": "21029",
+     "text": "Dom Nav Chart Expens",
+     "amt": 3307
+    },
+    {
+     "cc": "4100",
+     "gl": "21250",
+     "text": "Engring - Indust (B)",
+     "amt": 3261
+    },
+    {
+     "cc": "1000",
+     "gl": "22025",
+     "text": "Proj Maint contracts",
+     "amt": 3221
+    },
+    {
+     "cc": "1000",
+     "gl": "21376",
+     "text": "Reimb-PetRelocation",
+     "amt": 3174
+    },
+    {
+     "cc": "1000",
+     "gl": "21415",
+     "text": "SpectrumFeesChgs",
+     "amt": 3105
+    },
+    {
+     "cc": "1000",
+     "gl": "21065",
+     "text": "Official Hospitality",
+     "amt": 3085
+    },
+    {
+     "cc": "1000",
+     "gl": "21394",
+     "text": "O/S Sht trm Veh Hire",
+     "amt": 3046
+    },
+    {
+     "cc": "1000",
+     "gl": "21762",
+     "text": "Prov sponsorship",
+     "amt": 2991
+    },
+    {
+     "cc": "1000",
+     "gl": "21359",
+     "text": "Discharge Travel",
+     "amt": 2923
+    },
+    {
+     "cc": "4100",
+     "gl": "21303",
+     "text": "ADF O/S Trng Rel Tra",
+     "amt": 2851
+    },
+    {
+     "cc": "1000",
+     "gl": "21068",
+     "text": "Working meals",
+     "amt": 2764
+    },
+    {
+     "cc": "1000",
+     "gl": "21316",
+     "text": "ADFStud Mov Veh Allo",
+     "amt": 2753
+    },
+    {
+     "cc": "1000",
+     "gl": "21099",
+     "text": "PromoGood-Def",
+     "amt": 2667
+    },
+    {
+     "cc": "4100",
+     "gl": "21558",
+     "text": "Estate Work Sponsor",
+     "amt": 2633
+    },
+    {
+     "cc": "4100",
+     "gl": "21322",
+     "text": "Overseas Exercise",
+     "amt": 2580
+    },
+    {
+     "cc": "1000",
+     "gl": "21021",
+     "text": "Min Off Equip R&M",
+     "amt": 2517
+    },
+    {
+     "cc": "4100",
+     "gl": "21425",
+     "text": "ICT Net Hdwa Pur Sup",
+     "amt": 2502
+    },
+    {
+     "cc": "1000",
+     "gl": "21129",
+     "text": "VehOpCosts-DefOwned",
+     "amt": 2488
+    },
+    {
+     "cc": "4100",
+     "gl": "22079",
+     "text": "Certification",
+     "amt": 2463
+    },
+    {
+     "cc": "1000",
+     "gl": "24019",
+     "text": "Purch - Other fuels",
+     "amt": 2450
+    },
+    {
+     "cc": "1000",
+     "gl": "21036",
+     "text": "LES - Overseas",
+     "amt": 2448
+    },
+    {
+     "cc": "1000",
+     "gl": "21315",
+     "text": "Recrt & Enlstmt Trav",
+     "amt": 2443
+    },
+    {
+     "cc": "1000",
+     "gl": "21942",
+     "text": "ADF Conf/Semina Attd",
+     "amt": 2409
+    },
+    {
+     "cc": "4100",
+     "gl": "21700",
+     "text": "Consultancies",
+     "amt": 2328
+    },
+    {
+     "cc": "4100",
+     "gl": "24970",
+     "text": "Lease Sublease",
+     "amt": 2324
+    },
+    {
+     "cc": "1000",
+     "gl": "21132",
+     "text": "Cust duty for DEF im",
+     "amt": 2302
+    },
+    {
+     "cc": "1000",
+     "gl": "21765",
+     "text": "Scientific Services",
+     "amt": 2296
+    },
+    {
+     "cc": "4100",
+     "gl": "21402",
+     "text": "Satellite - Usage",
+     "amt": 2270
+    },
+    {
+     "cc": "4100",
+     "gl": "21038",
+     "text": "Cap cons supp charge",
+     "amt": 2215
+    },
+    {
+     "cc": "4100",
+     "gl": "21393",
+     "text": "Overseas Accomm",
+     "amt": 2193
+    },
+    {
+     "cc": "4100",
+     "gl": "21547",
+     "text": "Furn and Fittings",
+     "amt": 2155
+    },
+    {
+     "cc": "4100",
+     "gl": "21763",
+     "text": "Engineering Services",
+     "amt": 2117
+    },
+    {
+     "cc": "1000",
+     "gl": "21946",
+     "text": "APS Conf/Semina Attd",
+     "amt": 2071
+    },
+    {
+     "cc": "4100",
+     "gl": "21948",
+     "text": "APS Trnig Trav-Domes",
+     "amt": 2030
+    },
+    {
+     "cc": "1000",
+     "gl": "21345",
+     "text": "StratLift-Dom:Air",
+     "amt": 2021
+    },
+    {
+     "cc": "4100",
+     "gl": "21582",
+     "text": "Facilities enhancemt",
+     "amt": 2013
+    },
+    {
+     "cc": "1000",
+     "gl": "21713",
+     "text": "Res Legal Offcr Fees",
+     "amt": 1982
+    },
+    {
+     "cc": "1000",
+     "gl": "24940",
+     "text": "Lease Voice Data",
+     "amt": 1976
+    },
+    {
+     "cc": "4100",
+     "gl": "21941",
+     "text": "ADF Tng Non Mil",
+     "amt": 1967
+    },
+    {
+     "cc": "1000",
+     "gl": "21034",
+     "text": "Media Supp Serv",
+     "amt": 1905
+    },
+    {
+     "cc": "4100",
+     "gl": "21132",
+     "text": "Cust duty for DEF im",
+     "amt": 1845
+    },
+    {
+     "cc": "4100",
+     "gl": "21129",
+     "text": "VehOpCosts-DefOwned",
+     "amt": 1828
+    },
+    {
+     "cc": "1000",
+     "gl": "23106",
+     "text": "Purch SME-LOC-SDSSEX",
+     "amt": 1824
+    },
+    {
+     "cc": "4100",
+     "gl": "21307",
+     "text": "Travel Exp O/S Post",
+     "amt": 1799
+    },
+    {
+     "cc": "1000",
+     "gl": "21044",
+     "text": "SpecEvntsHospitality",
+     "amt": 1787
+    },
+    {
+     "cc": "1000",
+     "gl": "21761",
+     "text": "Advtng Costs - Non A",
+     "amt": 1779
+    },
+    {
+     "cc": "4100",
+     "gl": "21127",
+     "text": "Pymt - Govt agencies",
+     "amt": 1775
+    },
+    {
+     "cc": "1000",
+     "gl": "21061",
+     "text": "APS Hlth-Emp Wellbg",
+     "amt": 1770
+    },
+    {
+     "cc": "1000",
+     "gl": "21028",
+     "text": "Pho, vid & Int Spprt",
+     "amt": 1746
+    },
+    {
+     "cc": "4100",
+     "gl": "21537",
+     "text": "Estate Upkeep",
+     "amt": 1746
+    },
+    {
+     "cc": "1000",
+     "gl": "21378",
+     "text": "Remvls Misc costs(B)",
+     "amt": 1724
+    },
+    {
+     "cc": "4100",
+     "gl": "23102",
+     "text": "Purchase SME-ROMAN",
+     "amt": 1718
+    },
+    {
+     "cc": "1000",
+     "gl": "23102",
+     "text": "Purchase SME-ROMAN",
+     "amt": 1710
+    },
+    {
+     "cc": "1000",
+     "gl": "21703",
+     "text": "Gen Service/Medical",
+     "amt": 1670
+    },
+    {
+     "cc": "4100",
+     "gl": "21021",
+     "text": "Min Off Equip R&M",
+     "amt": 1651
+    },
+    {
+     "cc": "1000",
+     "gl": "21701",
+     "text": "Laboratory Services",
+     "amt": 1604
+    },
+    {
+     "cc": "4100",
+     "gl": "21320",
+     "text": "S/Term Vehicle Hire",
+     "amt": 1574
+    },
+    {
+     "cc": "1000",
+     "gl": "24924",
+     "text": "Lease Purp Aircraft",
+     "amt": -1533
+    },
+    {
+     "cc": "4100",
+     "gl": "24508",
+     "text": "PurchGSI:FMS (II)",
+     "amt": 1500
+    },
+    {
+     "cc": "1000",
+     "gl": "24501",
+     "text": "Purch-GSI: MILIS(ll)",
+     "amt": 1500
+    },
+    {
+     "cc": "4100",
+     "gl": "24501",
+     "text": "Purch-GSI: MILIS(ll)",
+     "amt": -1475
+    },
+    {
+     "cc": "1000",
+     "gl": "24954",
+     "text": "Lease OS Property",
+     "amt": 1451
+    },
+    {
+     "cc": "4100",
+     "gl": "21265",
+     "text": "Internal R&D",
+     "amt": 1435
+    },
+    {
+     "cc": "4100",
+     "gl": "23254",
+     "text": "Sware development",
+     "amt": 1403
+    },
+    {
+     "cc": "1000",
+     "gl": "21060",
+     "text": "Prizes and awards",
+     "amt": 1399
+    },
+    {
+     "cc": "4100",
+     "gl": "21357",
+     "text": "Warehousing services",
+     "amt": 1393
+    },
+    {
+     "cc": "4100",
+     "gl": "23259",
+     "text": "IntbyCASG4Def<thrshl",
+     "amt": 1336
+    },
+    {
+     "cc": "4100",
+     "gl": "21395",
+     "text": "O/S Mls & Incident",
+     "amt": 1329
+    },
+    {
+     "cc": "1000",
+     "gl": "21763",
+     "text": "Engineering Services",
+     "amt": 1293
+    },
+    {
+     "cc": "4100",
+     "gl": "24932",
+     "text": "Lease NonSES Dom Veh",
+     "amt": 1289
+    },
+    {
+     "cc": "1000",
+     "gl": "24970",
+     "text": "Lease Sublease",
+     "amt": 1277
+    },
+    {
+     "cc": "4100",
+     "gl": "23355",
+     "text": "InvAstNPVCorrAcMILIS",
+     "amt": -1275
+    },
+    {
+     "cc": "1000",
+     "gl": "21063",
+     "text": "Present/Commemort",
+     "amt": 1274
+    },
+    {
+     "cc": "1000",
+     "gl": "21552",
+     "text": "WHS Assessment",
+     "amt": 1256
+    },
+    {
+     "cc": "1000",
+     "gl": "23354",
+     "text": "MIT NPV CorAcctMILIS",
+     "amt": 1248
+    },
+    {
+     "cc": "1000",
+     "gl": "21059",
+     "text": "Warranty Claims",
+     "amt": 1172
+    },
+    {
+     "cc": "4100",
+     "gl": "21418",
+     "text": "ICT Adm Bundl Contra",
+     "amt": 1156
+    },
+    {
+     "cc": "4100",
+     "gl": "23133",
+     "text": "Eng Change -Cap Imp",
+     "amt": 1156
+    },
+    {
+     "cc": "1000",
+     "gl": "21302",
+     "text": "Equip Allow Osea",
+     "amt": 1154
+    },
+    {
+     "cc": "1000",
+     "gl": "23282",
+     "text": "cost asst dspsl-SME",
+     "amt": 1139
+    },
+    {
+     "cc": "4100",
+     "gl": "21544",
+     "text": "Estate Projects",
+     "amt": 1133
+    },
+    {
+     "cc": "1000",
+     "gl": "21117",
+     "text": "Library serials",
+     "amt": 1133
+    },
+    {
+     "cc": "1000",
+     "gl": "21128",
+     "text": "FGA Expenses",
+     "amt": 1085
+    },
+    {
+     "cc": "4100",
+     "gl": "21008",
+     "text": "Stat&Offreq (B)",
+     "amt": 1074
+    },
+    {
+     "cc": "1000",
+     "gl": "24014",
+     "text": "Purch - Lubricants",
+     "amt": 1071
+    },
+    {
+     "cc": "1000",
+     "gl": "22020",
+     "text": "Repair Unplanned SME",
+     "amt": 1069
+    },
+    {
+     "cc": "1000",
+     "gl": "21049",
+     "text": "Representatn Allows",
+     "amt": 1059
+    },
+    {
+     "cc": "1000",
+     "gl": "21130",
+     "text": "Land Tax and Rates",
+     "amt": 1036
+    },
+    {
+     "cc": "4100",
+     "gl": "21946",
+     "text": "APS Conf/Semina Attd",
+     "amt": 1015
+    },
+    {
+     "cc": "1000",
+     "gl": "21310",
+     "text": "Trav-Dom-Allowance",
+     "amt": 992
+    },
+    {
+     "cc": "4100",
+     "gl": "21312",
+     "text": "ADF TrnigTravl Domes",
+     "amt": 984
+    },
+    {
+     "cc": "1000",
+     "gl": "24932",
+     "text": "Lease NonSES Dom Veh",
+     "amt": 972
+    },
+    {
+     "cc": "1000",
+     "gl": "21188",
+     "text": "Rat exp at O/S",
+     "amt": 971
+    },
+    {
+     "cc": "1000",
+     "gl": "21766",
+     "text": "Health Services",
+     "amt": -956
+    },
+    {
+     "cc": "1000",
+     "gl": "21904",
+     "text": "APS CseCost Non FBTR",
+     "amt": 928
+    },
+    {
+     "cc": "1000",
+     "gl": "21432",
+     "text": "ITusrAp-SwareUFL-Clr",
+     "amt": 901
+    },
+    {
+     "cc": "4100",
+     "gl": "21552",
+     "text": "WHS Assessment",
+     "amt": 888
+    },
+    {
+     "cc": "4100",
+     "gl": "21950",
+     "text": "Contracted Trng Dev",
+     "amt": 862
+    },
+    {
+     "cc": "4100",
+     "gl": "24960",
+     "text": "Lease Contingent",
+     "amt": 840
+    },
+    {
+     "cc": "4100",
+     "gl": "21504",
+     "text": "Gas",
+     "amt": 838
+    },
+    {
+     "cc": "4100",
+     "gl": "21990",
+     "text": "Security Services",
+     "amt": 823
+    },
+    {
+     "cc": "4100",
+     "gl": "23120",
+     "text": "Purch SME-SDSS-PO",
+     "amt": 805
+    },
+    {
+     "cc": "1000",
+     "gl": "21095",
+     "text": "Bank Fees and chq",
+     "amt": 802
+    },
+    {
+     "cc": "4100",
+     "gl": "24004",
+     "text": "Inv Cons Gen CS",
+     "amt": 797
+    },
+    {
+     "cc": "1000",
+     "gl": "21356",
+     "text": "Quarantine Expense",
+     "amt": 792
+    },
+    {
+     "cc": "4100",
+     "gl": "21396",
+     "text": "DCP trav - non APS/A",
+     "amt": 780
+    },
+    {
+     "cc": "4100",
+     "gl": "21006",
+     "text": "Publications",
+     "amt": 699
+    },
+    {
+     "cc": "1000",
+     "gl": "21947",
+     "text": "APS Trnig Trav-Overs",
+     "amt": 695
+    },
+    {
+     "cc": "1000",
+     "gl": "21375",
+     "text": "Transfer Allowance",
+     "amt": 690
+    },
+    {
+     "cc": "1000",
+     "gl": "23260",
+     "text": "Int>ThldCASG4Defence",
+     "amt": 686
+    },
+    {
+     "cc": "1000",
+     "gl": "22070",
+     "text": "MILIS Repair Serv Or",
+     "amt": 677
+    },
+    {
+     "cc": "4100",
+     "gl": "21536",
+     "text": "Estate Prop Maint",
+     "amt": 664
+    },
+    {
+     "cc": "1000",
+     "gl": "21541",
+     "text": "GEW routine maint",
+     "amt": -636
+    },
+    {
+     "cc": "1000",
+     "gl": "23210",
+     "text": "Acctble&Consum-Bldg",
+     "amt": 626
+    },
+    {
+     "cc": "4100",
+     "gl": "21251",
+     "text": "Engineering - Uni",
+     "amt": 618
+    },
+    {
+     "cc": "1000",
+     "gl": "21145",
+     "text": "State Bases CDT sch",
+     "amt": 616
+    },
+    {
+     "cc": "4100",
+     "gl": "23283",
+     "text": "cost asstdispsl-infr",
+     "amt": 601
+    },
+    {
+     "cc": "1000",
+     "gl": "21016",
+     "text": "LsdVehNonSESOpCost",
+     "amt": 600
+    },
+    {
+     "cc": "1000",
+     "gl": "23137",
+     "text": "Eng Change -Safe/Env",
+     "amt": 595
+    },
+    {
+     "cc": "4100",
+     "gl": "21301",
+     "text": "O/S-Travelling Allow",
+     "amt": 587
+    },
+    {
+     "cc": "4100",
+     "gl": "21715",
+     "text": "Legal disbursements",
+     "amt": 581
+    },
+    {
+     "cc": "1000",
+     "gl": "21712",
+     "text": "DFDA Legal Exp",
+     "amt": 576
+    },
+    {
+     "cc": "1000",
+     "gl": "23012",
+     "text": "Proj Acct - Infrast",
+     "amt": 567
+    },
+    {
+     "cc": "4100",
+     "gl": "21992",
+     "text": "Maint Security Syste",
+     "amt": 553
+    },
+    {
+     "cc": "1000",
+     "gl": "21006",
+     "text": "Publications",
+     "amt": 515
+    },
+    {
+     "cc": "1000",
+     "gl": "21116",
+     "text": "Prod Multmedia/CDROM",
+     "amt": 489
+    },
+    {
+     "cc": "1000",
+     "gl": "21042",
+     "text": "Funeral costs & Expe",
+     "amt": 479
+    },
+    {
+     "cc": "1000",
+     "gl": "21314",
+     "text": "Part Day Travl Allow",
+     "amt": 465
+    },
+    {
+     "cc": "1000",
+     "gl": "24027",
+     "text": "Purch - ULP",
+     "amt": 457
+    },
+    {
+     "cc": "1000",
+     "gl": "21582",
+     "text": "Facilities enhancemt",
+     "amt": 444
+    },
+    {
+     "cc": "4100",
+     "gl": "21711",
+     "text": "Recruitment services",
+     "amt": 435
+    },
+    {
+     "cc": "4100",
+     "gl": "21305",
+     "text": "StratLift-Int:Air",
+     "amt": 421
+    },
+    {
+     "cc": "4100",
+     "gl": "21400",
+     "text": "Voice & Data Usage",
+     "amt": 409
+    },
+    {
+     "cc": "1000",
+     "gl": "21062",
+     "text": "Animal Mgt Fees",
+     "amt": 406
+    },
+    {
+     "cc": "4100",
+     "gl": "21394",
+     "text": "O/S Sht trm Veh Hire",
+     "amt": 403
+    },
+    {
+     "cc": "1000",
+     "gl": "23280",
+     "text": "Prop dispsl cst-Land",
+     "amt": 380
+    },
+    {
+     "cc": "1000",
+     "gl": "21379",
+     "text": "Travel removal incid",
+     "amt": 376
+    },
+    {
+     "cc": "1000",
+     "gl": "23236",
+     "text": "Purch OP&E - CASG",
+     "amt": 367
+    },
+    {
+     "cc": "4100",
+     "gl": "21095",
+     "text": "Bank Fees and chq",
+     "amt": 364
+    },
+    {
+     "cc": "4100",
+     "gl": "21068",
+     "text": "Working meals",
+     "amt": 357
+    },
+    {
+     "cc": "4100",
+     "gl": "21308",
+     "text": "O/S Posting Travel",
+     "amt": 355
+    },
+    {
+     "cc": "4100",
+     "gl": "21764",
+     "text": "Financial Services",
+     "amt": 349
+    },
+    {
+     "cc": "4100",
+     "gl": "21045",
+     "text": "Membship Prof Bodies",
+     "amt": 348
+    },
+    {
+     "cc": "1000",
+     "gl": "24933",
+     "text": "Lease NonSES OS Veh",
+     "amt": 341
+    },
+    {
+     "cc": "4100",
+     "gl": "21765",
+     "text": "Scientific Services",
+     "amt": 335
+    },
+    {
+     "cc": "4100",
+     "gl": "21266",
+     "text": "Patent fees (R&D)",
+     "amt": 320
+    },
+    {
+     "cc": "4100",
+     "gl": "21538",
+     "text": "Work plan fees",
+     "amt": 311
+    },
+    {
+     "cc": "4100",
+     "gl": "21943",
+     "text": "APS Cse Cost FBTR",
+     "amt": 299
+    },
+    {
+     "cc": "1000",
+     "gl": "21418",
+     "text": "ICT Adm Bundl Contra",
+     "amt": 294
+    },
+    {
+     "cc": "4100",
+     "gl": "21539",
+     "text": "Annual fees/levies",
+     "amt": 271
+    },
+    {
+     "cc": "4100",
+     "gl": "21081",
+     "text": "DFAT Empl LES OS (B)",
+     "amt": 268
+    },
+    {
+     "cc": "1000",
+     "gl": "21730",
+     "text": "Legal Assistance CMW",
+     "amt": 265
+    },
+    {
+     "cc": "4100",
+     "gl": "21769",
+     "text": "Committee Services",
+     "amt": 264
+    },
+    {
+     "cc": "4100",
+     "gl": "21331",
+     "text": "Vehicle allowance",
+     "amt": 260
+    },
+    {
+     "cc": "4100",
+     "gl": "21346",
+     "text": "StratLift-Dom:Sea",
+     "amt": 260
+    },
+    {
+     "cc": "1000",
+     "gl": "23002",
+     "text": "Proj Acct- Buildings",
+     "amt": 255
+    },
+    {
+     "cc": "4100",
+     "gl": "24516",
+     "text": "PurGSI:MILIS Cap(II)",
+     "amt": 253
+    },
+    {
+     "cc": "1000",
+     "gl": "21012",
+     "text": "TV Subscriptions",
+     "amt": 235
+    },
+    {
+     "cc": "4100",
+     "gl": "21176",
+     "text": "Catering",
+     "amt": 220
+    },
+    {
+     "cc": "1000",
+     "gl": "21013",
+     "text": "Newspaper subs",
+     "amt": 207
+    },
+    {
+     "cc": "4100",
+     "gl": "21024",
+     "text": "Ind Workforce Devel",
+     "amt": 206
+    },
+    {
+     "cc": "4100",
+     "gl": "21543",
+     "text": "FP&E Reactive Maint",
+     "amt": 206
+    },
+    {
+     "cc": "4100",
+     "gl": "21761",
+     "text": "Advtng Costs - Non A",
+     "amt": 206
+    },
+    {
+     "cc": "4100",
+     "gl": "21071",
+     "text": "Discount received",
+     "amt": -204
+    },
+    {
+     "cc": "1000",
+     "gl": "21091",
+     "text": "Agency banking fees",
+     "amt": 203
+    },
+    {
+     "cc": "4100",
+     "gl": "23231",
+     "text": "OPE>ThldCASG4Defence",
+     "amt": -197
+    },
+    {
+     "cc": "4100",
+     "gl": "23288",
+     "text": "Costassetdisp-oipurc",
+     "amt": 195
+    },
+    {
+     "cc": "4100",
+     "gl": "23256",
+     "text": "Intan><thldCASG4CASG",
+     "amt": 194
+    },
+    {
+     "cc": "4100",
+     "gl": "21310",
+     "text": "Trav-Dom-Allowance",
+     "amt": 193
+    },
+    {
+     "cc": "4100",
+     "gl": "21173",
+     "text": "Range Services",
+     "amt": 192
+    },
+    {
+     "cc": "4100",
+     "gl": "21991",
+     "text": "Security Clrnce Cost",
+     "amt": 190
+    },
+    {
+     "cc": "4100",
+     "gl": "21175",
+     "text": "Airfield ops support",
+     "amt": 184
+    },
+    {
+     "cc": "4100",
+     "gl": "21510",
+     "text": "TRANSPORT",
+     "amt": 178
+    },
+    {
+     "cc": "1000",
+     "gl": "21944",
+     "text": "APS TrainingOverseas",
+     "amt": 173
+    },
+    {
+     "cc": "1000",
+     "gl": "21092",
+     "text": "CR Card Merch Chrgs",
+     "amt": 169
+    },
+    {
+     "cc": "4100",
+     "gl": "21182",
+     "text": "Clothing Expenses",
+     "amt": 168
+    },
+    {
+     "cc": "1000",
+     "gl": "24020",
+     "text": "Purchases - Avgas",
+     "amt": 168
+    },
+    {
+     "cc": "1000",
+     "gl": "24004",
+     "text": "Inv Cons Gen CS",
+     "amt": 167
+    },
+    {
+     "cc": "1000",
+     "gl": "21266",
+     "text": "Patent fees (R&D)",
+     "amt": 155
+    },
+    {
+     "cc": "4100",
+     "gl": "21378",
+     "text": "Remvls Misc costs(B)",
+     "amt": 154
+    },
+    {
+     "cc": "4100",
+     "gl": "21506",
+     "text": "Sanitatn & Tox Waste",
+     "amt": 153
+    },
+    {
+     "cc": "4100",
+     "gl": "21358",
+     "text": "Freight - MILIS",
+     "amt": -150
+    },
+    {
+     "cc": "4100",
+     "gl": "24507",
+     "text": "PurchGSI:WO othr(II)",
+     "amt": 130
+    },
+    {
+     "cc": "4100",
+     "gl": "21942",
+     "text": "ADF Conf/Semina Attd",
+     "amt": 130
+    },
+    {
+     "cc": "1000",
+     "gl": "21115",
+     "text": "Library materials",
+     "amt": 124
+    },
+    {
+     "cc": "4100",
+     "gl": "21318",
+     "text": "Local Posting Travel",
+     "amt": 123
+    },
+    {
+     "cc": "4100",
+     "gl": "21034",
+     "text": "Media Supp Serv",
+     "amt": 120
+    },
+    {
+     "cc": "4100",
+     "gl": "21183",
+     "text": "Certif/Lice/Officdoc",
+     "amt": 120
+    },
+    {
+     "cc": "1000",
+     "gl": "23120",
+     "text": "Purch SME-SDSS-PO",
+     "amt": 119
+    },
+    {
+     "cc": "1000",
+     "gl": "21110",
+     "text": "Public relations",
+     "amt": 118
+    },
+    {
+     "cc": "4100",
+     "gl": "21701",
+     "text": "Laboratory Services",
+     "amt": 117
+    },
+    {
+     "cc": "4100",
+     "gl": "21926",
+     "text": "Seminar & Conference",
+     "amt": 103
+    },
+    {
+     "cc": "1000",
+     "gl": "23230",
+     "text": "OP&EdCASG4Def <thshl",
+     "amt": 102
+    },
+    {
+     "cc": "4100",
+     "gl": "23284",
+     "text": "Costassetdsposl-OP&E",
+     "amt": -97
+    },
+    {
+     "cc": "4100",
+     "gl": "24940",
+     "text": "Lease Voice Data",
+     "amt": 90
+    },
+    {
+     "cc": "4100",
+     "gl": "21036",
+     "text": "LES - Overseas",
+     "amt": 90
+    },
+    {
+     "cc": "1000",
+     "gl": "21011",
+     "text": "Magazine Subs",
+     "amt": 88
+    },
+    {
+     "cc": "4100",
+     "gl": "21059",
+     "text": "Warranty Claims",
+     "amt": 88
+    },
+    {
+     "cc": "1000",
+     "gl": "23288",
+     "text": "Costassetdisp-oipurc",
+     "amt": 87
+    },
+    {
+     "cc": "1000",
+     "gl": "24025",
+     "text": "DEF Fuel Purch CASG",
+     "amt": 87
+    },
+    {
+     "cc": "1000",
+     "gl": "24931",
+     "text": "Lease EVS SES Vehcle",
+     "amt": 84
+    },
+    {
+     "cc": "4100",
+     "gl": "21061",
+     "text": "APS Hlth-Emp Wellbg",
+     "amt": 82
+    },
+    {
+     "cc": "1000",
+     "gl": "23281",
+     "text": "cost asst dspls-bldg",
+     "amt": 81
+    },
+    {
+     "cc": "1000",
+     "gl": "21351",
+     "text": "Storage chg Removal",
+     "amt": 81
+    },
+    {
+     "cc": "1000",
+     "gl": "21714",
+     "text": "Fleet Support",
+     "amt": 79
+    },
+    {
+     "cc": "4100",
+     "gl": "21004",
+     "text": "Publishing Srvc",
+     "amt": 75
+    },
+    {
+     "cc": "4100",
+     "gl": "21099",
+     "text": "PromoGood-Def",
+     "amt": 73
+    },
+    {
+     "cc": "4100",
+     "gl": "23210",
+     "text": "Acctble&Consum-Bldg",
+     "amt": 72
+    },
+    {
+     "cc": "1000",
+     "gl": "21764",
+     "text": "Financial Services",
+     "amt": 69
+    },
+    {
+     "cc": "1000",
+     "gl": "21170",
+     "text": "Municipal Services",
+     "amt": 69
+    },
+    {
+     "cc": "4100",
+     "gl": "21010",
+     "text": "Postage",
+     "amt": 67
+    },
+    {
+     "cc": "4100",
+     "gl": "21374",
+     "text": "Disturbance allowanc",
+     "amt": 65
+    },
+    {
+     "cc": "4100",
+     "gl": "21065",
+     "text": "Official Hospitality",
+     "amt": 63
+    },
+    {
+     "cc": "1000",
+     "gl": "21064",
+     "text": "Official Gifts",
+     "amt": 63
+    },
+    {
+     "cc": "4100",
+     "gl": "21501",
+     "text": "Light and power (B)",
+     "amt": 61
+    },
+    {
+     "cc": "4100",
+     "gl": "21074",
+     "text": "DCP activities - Mat",
+     "amt": 60
+    },
+    {
+     "cc": "4100",
+     "gl": "21703",
+     "text": "Gen Service/Medical",
+     "amt": 59
+    },
+    {
+     "cc": "1000",
+     "gl": "21509",
+     "text": "Housekeeping exp",
+     "amt": -59
+    },
+    {
+     "cc": "4100",
+     "gl": "21949",
+     "text": "Terti Edu Contr Serv",
+     "amt": 55
+    },
+    {
+     "cc": "1000",
+     "gl": "23283",
+     "text": "cost asstdispsl-infr",
+     "amt": 54
+    },
+    {
+     "cc": "1000",
+     "gl": "23008",
+     "text": "Proj Acct - Intang",
+     "amt": 53
+    },
+    {
+     "cc": "4100",
+     "gl": "21947",
+     "text": "APS Trnig Trav-Overs",
+     "amt": 51
+    },
+    {
+     "cc": "4100",
+     "gl": "21944",
+     "text": "APS TrainingOverseas",
+     "amt": 51
+    },
+    {
+     "cc": "4100",
+     "gl": "21317",
+     "text": "Domestic Exercise",
+     "amt": 49
+    },
+    {
+     "cc": "1000",
+     "gl": "21912",
+     "text": "APS Separation Trnig",
+     "amt": 47
+    },
+    {
+     "cc": "4100",
+     "gl": "21415",
+     "text": "SpectrumFeesChgs",
+     "amt": 45
+    },
+    {
+     "cc": "1000",
+     "gl": "21050",
+     "text": "FinAdvic-Sep&Red-APS",
+     "amt": 45
+    },
+    {
+     "cc": "4100",
+     "gl": "24919",
+     "text": "Lease Office Equip",
+     "amt": 40
+    },
+    {
+     "cc": "4100",
+     "gl": "21025",
+     "text": "F&O Code costs",
+     "amt": 39
+    },
+    {
+     "cc": "4100",
+     "gl": "21500",
+     "text": "Cleaning expenses",
+     "amt": 35
+    },
+    {
+     "cc": "4100",
+     "gl": "21188",
+     "text": "Rat exp at O/S",
+     "amt": 35
+    },
+    {
+     "cc": "4100",
+     "gl": "21304",
+     "text": "O/S Spouse Travel",
+     "amt": -34
+    },
+    {
+     "cc": "4100",
+     "gl": "21314",
+     "text": "Part Day Travl Allow",
+     "amt": 34
+    },
+    {
+     "cc": "1000",
+     "gl": "21304",
+     "text": "O/S Spouse Travel",
+     "amt": 31
+    },
+    {
+     "cc": "1000",
+     "gl": "21046",
+     "text": "LsdVehSESOpCost",
+     "amt": 28
+    },
+    {
+     "cc": "1000",
+     "gl": "24507",
+     "text": "PurchGSI:WO othr(II)",
+     "amt": 28
+    },
+    {
+     "cc": "4100",
+     "gl": "24945",
+     "text": "Shrt trm lease payts",
+     "amt": 28
+    },
+    {
+     "cc": "4100",
+     "gl": "21044",
+     "text": "SpecEvntsHospitality",
+     "amt": 28
+    },
+    {
+     "cc": "1000",
+     "gl": "22079",
+     "text": "Certification",
+     "amt": 28
+    },
+    {
+     "cc": "1000",
+     "gl": "21280",
+     "text": "CASG Proj-Oth Gov Ex",
+     "amt": 27
+    },
+    {
+     "cc": "4100",
+     "gl": "21187",
+     "text": "Rations - other",
+     "amt": 25
+    },
+    {
+     "cc": "4100",
+     "gl": "21170",
+     "text": "Municipal Services",
+     "amt": 24
+    },
+    {
+     "cc": "4100",
+     "gl": "24954",
+     "text": "Lease OS Property",
+     "amt": 23
+    },
+    {
+     "cc": "4100",
+     "gl": "21016",
+     "text": "LsdVehNonSESOpCost",
+     "amt": 22
+    },
+    {
+     "cc": "4100",
+     "gl": "23211",
+     "text": "Acctble&Consum-Infra",
+     "amt": 22
+    },
+    {
+     "cc": "4100",
+     "gl": "23260",
+     "text": "Int>ThldCASG4Defence",
+     "amt": 22
+    },
+    {
+     "cc": "1000",
+     "gl": "21770",
+     "text": "Legal Services",
+     "amt": 21
+    },
+    {
+     "cc": "4100",
+     "gl": "24016",
+     "text": "Purch - Auto distal",
+     "amt": 21
+    },
+    {
+     "cc": "4100",
+     "gl": "23105",
+     "text": "Purch SME-FMS-Cases",
+     "amt": 21
+    },
+    {
+     "cc": "1000",
+     "gl": "21716",
+     "text": "Indoor Plants",
+     "amt": 21
+    },
+    {
+     "cc": "4100",
+     "gl": "23006",
+     "text": "Proj Acct  - OP&E",
+     "amt": 21
+    },
+    {
+     "cc": "4100",
+     "gl": "21915",
+     "text": "ADF Training Oversea",
+     "amt": 21
+    },
+    {
+     "cc": "4100",
+     "gl": "21502",
+     "text": "Water",
+     "amt": 20
+    },
+    {
+     "cc": "4100",
+     "gl": "21762",
+     "text": "Prov sponsorship",
+     "amt": 20
+    },
+    {
+     "cc": "1000",
+     "gl": "21321",
+     "text": "StratLift-Int:Land",
+     "amt": 19
+    },
+    {
+     "cc": "4100",
+     "gl": "21540",
+     "text": "Grounds Maintenance",
+     "amt": -19
+    },
+    {
+     "cc": "4100",
+     "gl": "24500",
+     "text": "Purch-GSI: SDSS",
+     "amt": -19
+    },
+    {
+     "cc": "4100",
+     "gl": "21050",
+     "text": "FinAdvic-Sep&Red-APS",
+     "amt": 17
+    },
+    {
+     "cc": "1000",
+     "gl": "21377",
+     "text": "Loss on Sale PTE M/V",
+     "amt": 17
+    },
+    {
+     "cc": "4100",
+     "gl": "21063",
+     "text": "Present/Commemort",
+     "amt": 17
+    },
+    {
+     "cc": "4100",
+     "gl": "21370",
+     "text": "Defence Removl Costs",
+     "amt": 14
+    },
+    {
+     "cc": "4100",
+     "gl": "21904",
+     "text": "APS CseCost Non FBTR",
+     "amt": 14
+    },
+    {
+     "cc": "4100",
+     "gl": "21049",
+     "text": "Representatn Allows",
+     "amt": 13
+    },
+    {
+     "cc": "4100",
+     "gl": "21064",
+     "text": "Official Gifts",
+     "amt": 13
+    },
+    {
+     "cc": "4100",
+     "gl": "21379",
+     "text": "Travel removal incid",
+     "amt": 12
+    },
+    {
+     "cc": "4100",
+     "gl": "21091",
+     "text": "Agency banking fees",
+     "amt": 12
+    },
+    {
+     "cc": "1000",
+     "gl": "21358",
+     "text": "Freight - MILIS",
+     "amt": -11
+    },
+    {
+     "cc": "1000",
+     "gl": "21335",
+     "text": "Domestic Spouse acco",
+     "amt": 10
+    },
+    {
+     "cc": "4100",
+     "gl": "21381",
+     "text": "Relocations agreemen",
+     "amt": 10
+    },
+    {
+     "cc": "4100",
+     "gl": "21766",
+     "text": "Health Services",
+     "amt": 9
+    },
+    {
+     "cc": "4100",
+     "gl": "21032",
+     "text": "Military Handling ch",
+     "amt": 8
+    },
+    {
+     "cc": "1000",
+     "gl": "23215",
+     "text": "Acctble&Consum-H&C",
+     "amt": -8
+    },
+    {
+     "cc": "4100",
+     "gl": "21060",
+     "text": "Prizes and awards",
+     "amt": 7
+    },
+    {
+     "cc": "4100",
+     "gl": "24512",
+     "text": "Purch cntrc held-GSI",
+     "amt": 7
+    },
+    {
+     "cc": "4100",
+     "gl": "21029",
+     "text": "Dom Nav Chart Expens",
+     "amt": 7
+    },
+    {
+     "cc": "1000",
+     "gl": "22071",
+     "text": "MILIS Purch order Re",
+     "amt": 7
+    },
+    {
+     "cc": "4100",
+     "gl": "21185",
+     "text": "Purch in-flight rat",
+     "amt": 7
+    },
+    {
+     "cc": "4100",
+     "gl": "21351",
+     "text": "Storage chg Removal",
+     "amt": 6
+    },
+    {
+     "cc": "4100",
+     "gl": "21356",
+     "text": "Quarantine Expense",
+     "amt": 6
+    },
+    {
+     "cc": "4100",
+     "gl": "21280",
+     "text": "CASG Proj-Oth Gov Ex",
+     "amt": 6
+    },
+    {
+     "cc": "4100",
+     "gl": "21092",
+     "text": "CR Card Merch Chrgs",
+     "amt": 6
+    },
+    {
+     "cc": "4100",
+     "gl": "24931",
+     "text": "Lease EVS SES Vehcle",
+     "amt": 6
+    },
+    {
+     "cc": "4100",
+     "gl": "21503",
+     "text": "Liq Petroleum Prod",
+     "amt": 4
+    },
+    {
+     "cc": "4100",
+     "gl": "21028",
+     "text": "Pho, vid & Int Spprt",
+     "amt": 4
+    },
+    {
+     "cc": "4100",
+     "gl": "21152",
+     "text": "Fines & Infringement",
+     "amt": 4
+    },
+    {
+     "cc": "1000",
+     "gl": "21561",
+     "text": "Base Reprographics",
+     "amt": 4
+    },
+    {
+     "cc": "4100",
+     "gl": "24019",
+     "text": "Purch - Other fuels",
+     "amt": 4
+    },
+    {
+     "cc": "1000",
+     "gl": "22072",
+     "text": "WrkshpOrdRepairMILIS",
+     "amt": 4
+    },
+    {
+     "cc": "4100",
+     "gl": "21178",
+     "text": "Recreation Services",
+     "amt": 3
+    },
+    {
+     "cc": "4100",
+     "gl": "21151",
+     "text": "Employee Family Supp",
+     "amt": 3
+    },
+    {
+     "cc": "4100",
+     "gl": "21452",
+     "text": "BLKD-ICT consumables",
+     "amt": 2
+    },
+    {
+     "cc": "4100",
+     "gl": "24933",
+     "text": "Lease NonSES OS Veh",
+     "amt": 2
+    },
+    {
+     "cc": "1000",
+     "gl": "23133",
+     "text": "Eng Change -Cap Imp",
+     "amt": 2
+    },
+    {
+     "cc": "4100",
+     "gl": "21903",
+     "text": "ADF CseCost Non FBTR",
+     "amt": 2
+    },
+    {
+     "cc": "4100",
+     "gl": "21376",
+     "text": "Reimb-PetRelocation",
+     "amt": 2
+    },
+    {
+     "cc": "1000",
+     "gl": "23122",
+     "text": "Purch SME-SDSSDIR-IN",
+     "amt": -1
+    },
+    {
+     "cc": "4100",
+     "gl": "21110",
+     "text": "Public relations",
+     "amt": 1
+    },
+    {
+     "cc": "1000",
+     "gl": "21051",
+     "text": "Childcare",
+     "amt": 1
+    },
+    {
+     "cc": "1000",
+     "gl": "21332",
+     "text": "Review travel allow",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "24027",
+     "text": "Purch - ULP",
+     "amt": 1
+    },
+    {
+     "cc": "1000",
+     "gl": "21152",
+     "text": "Fines & Infringement",
+     "amt": 1
+    },
+    {
+     "cc": "1000",
+     "gl": "24024",
+     "text": "Excise-AVGAS",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "24946",
+     "text": "Leases of LVA",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "21316",
+     "text": "ADFStud Mov Veh Allo",
+     "amt": 1
+    },
+    {
+     "cc": "1000",
+     "gl": "21372",
+     "text": "Childcare Reimbursmt",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "21750",
+     "text": "AdvtCost-ADF recruit",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "21013",
+     "text": "Newspaper subs",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "21311",
+     "text": "Student Movt Travel",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "21306",
+     "text": "StratLift-Int:Sea",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21118",
+     "text": "Library Resources",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "24026",
+     "text": "Excise - Other fuels",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21712",
+     "text": "DFDA Legal Exp",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "21025",
+     "text": "F&O Code costs",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21037",
+     "text": "Garr supp cont (B)",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21432",
+     "text": "ITusrAp-SwareUFL-Clr",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24000",
+     "text": "Inv consmpt - Fuel",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21116",
+     "text": "Prod Multmedia/CDROM",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "21030",
+     "text": "Int Nav chart Expens",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21115",
+     "text": "Library materials",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "24028",
+     "text": "Excise - ULP",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21072",
+     "text": "Small price differen",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21046",
+     "text": "LsdVehSESOpCost",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "21072",
+     "text": "Small price differen",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "23215",
+     "text": "Acctble&Consum-H&C",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "24050",
+     "text": "Purch-EO on COMSARM",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21553",
+     "text": "Environmental Compli",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21012",
+     "text": "TV Subscriptions",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21375",
+     "text": "Transfer Allowance",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "23353",
+     "text": "LastPricePostMILIS",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24001",
+     "text": "Inv consmpt - EO",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "22073",
+     "text": "Repairs FMS",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "23105",
+     "text": "Purch SME-FMS-Cases",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "23130",
+     "text": "Purch SME ROM NAUC",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "23266",
+     "text": "Impairmnt-OP&E ROU",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "23271",
+     "text": "Impairmnt-Buildings",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "23273",
+     "text": "Impairmnt-Infrast",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "23274",
+     "text": "Impairmnt-OP&E",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "24510",
+     "text": "PurchGSI:SDSS WO(IE)",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "24512",
+     "text": "Purch cntrc held-GSI",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21260",
+     "text": "Ext R&D Industry",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "21573",
+     "text": "Asbestos",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "23002",
+     "text": "Proj Acct- Buildings",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "23007",
+     "text": "Proj Acct only- S/W",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "23106",
+     "text": "Purch SME-LOC-SDSSEX",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "23122",
+     "text": "Purch SME-SDSSDIR-IN",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "23130",
+     "text": "Purch SME ROM NAUC",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "23274",
+     "text": "Impairmnt-OP&E",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24010",
+     "text": "Purch - Marine Dieso",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24018",
+     "text": "Excise- Marine Dieso",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24502",
+     "text": "PurchGSI:SDSS PO(IE)",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24503",
+     "text": "Purch-GSI:Direct(II)",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24504",
+     "text": "Purch-GSI:Direct(IE)",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24506",
+     "text": "PurchGSI:WO cap (II)",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "24510",
+     "text": "PurchGSI:SDSS WO(IE)",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Depreciation and amortisation",
+   "note": "3.2A",
+   "code": "EXP_DEP",
+   "sign": "D",
+   "computed": 9250071,
+   "pub24": 7275933,
+   "pub23": 6657711,
+   "diff": 1974138,
+   "status": "variance",
+   "rule": "GL accounts in series 25xxx",
+   "n": 94,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "25000",
+     "text": "Depn-SME",
+     "amt": 5087611
+    },
+    {
+     "cc": "1000",
+     "gl": "25001",
+     "text": "Depn-Buildings",
+     "amt": 650338
+    },
+    {
+     "cc": "1000",
+     "gl": "25003",
+     "text": "Depn-Infrastructure",
+     "amt": 578481
+    },
+    {
+     "cc": "1000",
+     "gl": "25065",
+     "text": "W/D-SME AUC P/C",
+     "amt": 445096
+    },
+    {
+     "cc": "1000",
+     "gl": "25008",
+     "text": "Amort-Build UFL",
+     "amt": 304080
+    },
+    {
+     "cc": "1000",
+     "gl": "25002",
+     "text": "Depn-OP&E",
+     "amt": 299072
+    },
+    {
+     "cc": "1000",
+     "gl": "25052",
+     "text": "W/O-SME",
+     "amt": 275058
+    },
+    {
+     "cc": "1000",
+     "gl": "25232",
+     "text": "Research Agreements",
+     "amt": 134289
+    },
+    {
+     "cc": "1000",
+     "gl": "25019",
+     "text": "Amort-Software I/G",
+     "amt": 126378
+    },
+    {
+     "cc": "1000",
+     "gl": "25066",
+     "text": "Obs inv - EO",
+     "amt": 95603
+    },
+    {
+     "cc": "1000",
+     "gl": "25330",
+     "text": "Fin Lease Int Chgs",
+     "amt": 82985
+    },
+    {
+     "cc": "1000",
+     "gl": "25085",
+     "text": "Disposals - GSI",
+     "amt": 68682
+    },
+    {
+     "cc": "1000",
+     "gl": "25087",
+     "text": "Quantity adj - GSI",
+     "amt": 67261
+    },
+    {
+     "cc": "1000",
+     "gl": "25332",
+     "text": "LseCost-Other",
+     "amt": 66512
+    },
+    {
+     "cc": "1000",
+     "gl": "25069",
+     "text": "W/D-OP&E AUC",
+     "amt": 60025
+    },
+    {
+     "cc": "1000",
+     "gl": "25105",
+     "text": "Write off - Land",
+     "amt": 57715
+    },
+    {
+     "cc": "4100",
+     "gl": "25014",
+     "text": "Amort-OP&E UFL",
+     "amt": 54992
+    },
+    {
+     "cc": "1000",
+     "gl": "25239",
+     "text": "Grants - Osea",
+     "amt": 51760
+    },
+    {
+     "cc": "1000",
+     "gl": "25064",
+     "text": "Obs inv - GSI",
+     "amt": 50890
+    },
+    {
+     "cc": "4100",
+     "gl": "25052",
+     "text": "W/O-SME",
+     "amt": 50000
+    },
+    {
+     "cc": "1000",
+     "gl": "25204",
+     "text": "Accntng & Fin Suppor",
+     "amt": 49498
+    },
+    {
+     "cc": "4100",
+     "gl": "25110",
+     "text": "FOREX Loss: ROMAN",
+     "amt": 44494
+    },
+    {
+     "cc": "1000",
+     "gl": "25235",
+     "text": "Grants - Private sct",
+     "amt": 40896
+    },
+    {
+     "cc": "1000",
+     "gl": "25009",
+     "text": "Depn-Buildings LHI",
+     "amt": 40674
+    },
+    {
+     "cc": "1000",
+     "gl": "25014",
+     "text": "Amort-OP&E UFL",
+     "amt": 40371
+    },
+    {
+     "cc": "1000",
+     "gl": "25334",
+     "text": "Interest - ROU Asset",
+     "amt": 38838
+    },
+    {
+     "cc": "1000",
+     "gl": "25026",
+     "text": "W/D-Buildings AUC",
+     "amt": 31984
+    },
+    {
+     "cc": "1000",
+     "gl": "25007",
+     "text": "Amort-Intangible Pur",
+     "amt": 31332
+    },
+    {
+     "cc": "1000",
+     "gl": "25114",
+     "text": "ReclasAdjAcct MILIS",
+     "amt": 31154
+    },
+    {
+     "cc": "1000",
+     "gl": "25083",
+     "text": "Write-offs - EO",
+     "amt": 30914
+    },
+    {
+     "cc": "1000",
+     "gl": "25050",
+     "text": "W/O-L&B",
+     "amt": 28885
+    },
+    {
+     "cc": "1000",
+     "gl": "25058",
+     "text": "Decontamin exp-Land",
+     "amt": 26571
+    },
+    {
+     "cc": "1000",
+     "gl": "25340",
+     "text": "Unwinding - Land",
+     "amt": 25064
+    },
+    {
+     "cc": "1000",
+     "gl": "25113",
+     "text": "ConsumpPriceAdjMILIS",
+     "amt": -24139
+    },
+    {
+     "cc": "1000",
+     "gl": "25018",
+     "text": "Amort-Intangible I/G",
+     "amt": 18306
+    },
+    {
+     "cc": "1000",
+     "gl": "25027",
+     "text": "W/D-Infrast auc",
+     "amt": 16418
+    },
+    {
+     "cc": "1000",
+     "gl": "25011",
+     "text": "Depn-H&C",
+     "amt": 16059
+    },
+    {
+     "cc": "1000",
+     "gl": "25006",
+     "text": "Amort-Software Purch",
+     "amt": 14613
+    },
+    {
+     "cc": "1000",
+     "gl": "25049",
+     "text": "W/O-H&C",
+     "amt": 14089
+    },
+    {
+     "cc": "1000",
+     "gl": "25331",
+     "text": "LseCost-PrptyFees",
+     "amt": 13626
+    },
+    {
+     "cc": "1000",
+     "gl": "25345",
+     "text": "Unwinding - SME",
+     "amt": 12413
+    },
+    {
+     "cc": "1000",
+     "gl": "25040",
+     "text": "WO-ROU-BUILD",
+     "amt": 9724
+    },
+    {
+     "cc": "1000",
+     "gl": "25234",
+     "text": "Grants NFP Entities",
+     "amt": 8426
+    },
+    {
+     "cc": "4100",
+     "gl": "25115",
+     "text": "FOREX Loss:NonSysGen",
+     "amt": -8339
+    },
+    {
+     "cc": "1000",
+     "gl": "25110",
+     "text": "FOREX Loss: ROMAN",
+     "amt": 8212
+    },
+    {
+     "cc": "1000",
+     "gl": "25086",
+     "text": "Price adj - GSI",
+     "amt": 8017
+    },
+    {
+     "cc": "1000",
+     "gl": "25025",
+     "text": "W/D-Software AUC",
+     "amt": 7786
+    },
+    {
+     "cc": "1000",
+     "gl": "25051",
+     "text": "W/O-Infrastructure",
+     "amt": 7484
+    },
+    {
+     "cc": "1000",
+     "gl": "25240",
+     "text": "Grant to Cth Entitie",
+     "amt": 7061
+    },
+    {
+     "cc": "1000",
+     "gl": "25046",
+     "text": "W/O- Land UFL",
+     "amt": 6732
+    },
+    {
+     "cc": "4100",
+     "gl": "25002",
+     "text": "Depn-OP&E",
+     "amt": 5629
+    },
+    {
+     "cc": "4100",
+     "gl": "25235",
+     "text": "Grants - Private sct",
+     "amt": 5058
+    },
+    {
+     "cc": "1000",
+     "gl": "25342",
+     "text": "Unwinding - LHI",
+     "amt": 4877
+    },
+    {
+     "cc": "4100",
+     "gl": "25112",
+     "text": "FOREXLossUnrlsd",
+     "amt": -4248
+    },
+    {
+     "cc": "4100",
+     "gl": "25009",
+     "text": "Depn-Buildings LHI",
+     "amt": 4061
+    },
+    {
+     "cc": "4100",
+     "gl": "25334",
+     "text": "Interest - ROU Asset",
+     "amt": 3751
+    },
+    {
+     "cc": "1000",
+     "gl": "25005",
+     "text": "Amort-Infra UFL",
+     "amt": 3422
+    },
+    {
+     "cc": "1000",
+     "gl": "25010",
+     "text": "Goods LVA-OP&E(B)",
+     "amt": 3284
+    },
+    {
+     "cc": "1000",
+     "gl": "25053",
+     "text": "W/O-OP&E",
+     "amt": 3146
+    },
+    {
+     "cc": "1000",
+     "gl": "25100",
+     "text": "Bad debts expense",
+     "amt": 3119
+    },
+    {
+     "cc": "4100",
+     "gl": "25232",
+     "text": "Research Agreements",
+     "amt": 2343
+    },
+    {
+     "cc": "1000",
+     "gl": "25104",
+     "text": "Write-offs - Fuel",
+     "amt": 2137
+    },
+    {
+     "cc": "1000",
+     "gl": "25047",
+     "text": "W/O-Infrast UFL",
+     "amt": 2076
+    },
+    {
+     "cc": "1000",
+     "gl": "25213",
+     "text": "DTC Accrued Expn",
+     "amt": -1567
+    },
+    {
+     "cc": "1000",
+     "gl": "25205",
+     "text": "Defect Administratio",
+     "amt": 1265
+    },
+    {
+     "cc": "1000",
+     "gl": "25212",
+     "text": "Purch Crd Accrd Expn",
+     "amt": 1228
+    },
+    {
+     "cc": "1000",
+     "gl": "25112",
+     "text": "FOREXLossUnrlsd",
+     "amt": -1059
+    },
+    {
+     "cc": "4100",
+     "gl": "25085",
+     "text": "Disposals - GSI",
+     "amt": 990
+    },
+    {
+     "cc": "1000",
+     "gl": "25145",
+     "text": "Decomm exp - SME",
+     "amt": 891
+    },
+    {
+     "cc": "1000",
+     "gl": "25160",
+     "text": "PO Price decrs MILIS",
+     "amt": 745
+    },
+    {
+     "cc": "4100",
+     "gl": "25332",
+     "text": "LseCost-Other",
+     "amt": 695
+    },
+    {
+     "cc": "1000",
+     "gl": "25122",
+     "text": "Loss sys-SME",
+     "amt": 673
+    },
+    {
+     "cc": "1000",
+     "gl": "25106",
+     "text": "Goods-LVA-Build",
+     "amt": 641
+    },
+    {
+     "cc": "1000",
+     "gl": "25200",
+     "text": "Act of Grace Pym S33",
+     "amt": 616
+    },
+    {
+     "cc": "1000",
+     "gl": "25134",
+     "text": "Sale Price Dis-SME",
+     "amt": 586
+    },
+    {
+     "cc": "4100",
+     "gl": "25008",
+     "text": "Amort-Build UFL",
+     "amt": 442
+    },
+    {
+     "cc": "4100",
+     "gl": "25100",
+     "text": "Bad debts expense",
+     "amt": 373
+    },
+    {
+     "cc": "1000",
+     "gl": "25108",
+     "text": "Goods-LVA-Infra",
+     "amt": 327
+    },
+    {
+     "cc": "4100",
+     "gl": "25213",
+     "text": "DTC Accrued Expn",
+     "amt": -323
+    },
+    {
+     "cc": "1000",
+     "gl": "25115",
+     "text": "FOREX Loss:NonSysGen",
+     "amt": 206
+    },
+    {
+     "cc": "4100",
+     "gl": "25205",
+     "text": "Defect Administratio",
+     "amt": 116
+    },
+    {
+     "cc": "1000",
+     "gl": "25123",
+     "text": "Loss on salesys-OP&E",
+     "amt": 101
+    },
+    {
+     "cc": "1000",
+     "gl": "25120",
+     "text": "Loss sys-Build",
+     "amt": 86
+    },
+    {
+     "cc": "4100",
+     "gl": "25212",
+     "text": "Purch Crd Accrd Expn",
+     "amt": 76
+    },
+    {
+     "cc": "4100",
+     "gl": "25204",
+     "text": "Accntng & Fin Suppor",
+     "amt": 75
+    },
+    {
+     "cc": "4100",
+     "gl": "25003",
+     "text": "Depn-Infrastructure",
+     "amt": 71
+    },
+    {
+     "cc": "1000",
+     "gl": "25039",
+     "text": "W/O-OP&E ROU",
+     "amt": 52
+    },
+    {
+     "cc": "4100",
+     "gl": "25053",
+     "text": "W/O-OP&E",
+     "amt": 42
+    },
+    {
+     "cc": "4100",
+     "gl": "25123",
+     "text": "Loss on salesys-OP&E",
+     "amt": 39
+    },
+    {
+     "cc": "1000",
+     "gl": "25161",
+     "text": "StdPricePostMILIS",
+     "amt": 21
+    },
+    {
+     "cc": "4100",
+     "gl": "25010",
+     "text": "Goods LVA-OP&E(B)",
+     "amt": 11
+    },
+    {
+     "cc": "1000",
+     "gl": "25024",
+     "text": "W/D-Land AUC PC",
+     "amt": 4
+    },
+    {
+     "cc": "1000",
+     "gl": "25300",
+     "text": "Int on Bank AGCC",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "25060",
+     "text": "Reval Expn-SME",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "label": "Own-source income"
+  },
+  {
+   "type": "line",
+   "label": "Revenue from contracts with customers",
+   "note": "1.2A",
+   "code": "REV_CON",
+   "sign": "C",
+   "computed": 1041420,
+   "pub24": 570491,
+   "pub23": 443560,
+   "diff": 470929,
+   "status": "variance",
+   "rule": "GL accounts in series 10xxx",
+   "n": 63,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "10285",
+     "text": "Rev -Oth gov/agcy(B)",
+     "amt": -139106
+    },
+    {
+     "cc": "1000",
+     "gl": "10152",
+     "text": "Contb-GRS:Army",
+     "amt": -114284
+    },
+    {
+     "cc": "1000",
+     "gl": "10220",
+     "text": "Sales-Fuel fm gov(B)",
+     "amt": -93017
+    },
+    {
+     "cc": "1000",
+     "gl": "10017",
+     "text": "Rcv -Lspt: frn forc",
+     "amt": -85973
+    },
+    {
+     "cc": "1000",
+     "gl": "10047",
+     "text": "Rev - Staff services",
+     "amt": -79975
+    },
+    {
+     "cc": "4100",
+     "gl": "10056",
+     "text": "FGA Other Revenue",
+     "amt": -74650
+    },
+    {
+     "cc": "1000",
+     "gl": "10170",
+     "text": "Rev - R and q:ADF(B)",
+     "amt": -64081
+    },
+    {
+     "cc": "4100",
+     "gl": "10055",
+     "text": "Revenue - LDs",
+     "amt": -63746
+    },
+    {
+     "cc": "1000",
+     "gl": "10154",
+     "text": "Contb-GRS:AF",
+     "amt": -57031
+    },
+    {
+     "cc": "1000",
+     "gl": "10021",
+     "text": "Refunds (py PGPA s7)",
+     "amt": -51764
+    },
+    {
+     "cc": "1000",
+     "gl": "10153",
+     "text": "Contb-GRS:Navy",
+     "amt": -46236
+    },
+    {
+     "cc": "4100",
+     "gl": "10234",
+     "text": "ProcOD-SME",
+     "amt": -31709
+    },
+    {
+     "cc": "4100",
+     "gl": "10057",
+     "text": "FGA Contract",
+     "amt": -27270
+    },
+    {
+     "cc": "1000",
+     "gl": "10286",
+     "text": "MOU-REV-REVERSAL",
+     "amt": 25598
+    },
+    {
+     "cc": "1000",
+     "gl": "10102",
+     "text": "PrptyRent l,b & infr",
+     "amt": -22413
+    },
+    {
+     "cc": "4100",
+     "gl": "10059",
+     "text": "Rev-CASG proj oth go",
+     "amt": -21224
+    },
+    {
+     "cc": "1000",
+     "gl": "10238",
+     "text": "ProcOD-OP&E",
+     "amt": -12690
+    },
+    {
+     "cc": "1000",
+     "gl": "10044",
+     "text": "Rev - Services(B)",
+     "amt": -12186
+    },
+    {
+     "cc": "1000",
+     "gl": "10048",
+     "text": "Rec-Res medical off",
+     "amt": -12010
+    },
+    {
+     "cc": "1000",
+     "gl": "10032",
+     "text": "Rev - Casual meal",
+     "amt": -11487
+    },
+    {
+     "cc": "1000",
+     "gl": "10104",
+     "text": "INT-REV-SUBLEASE",
+     "amt": -11382
+    },
+    {
+     "cc": "1000",
+     "gl": "10239",
+     "text": "SPOD sys-OP&E",
+     "amt": 10984
+    },
+    {
+     "cc": "1000",
+     "gl": "10185",
+     "text": "Refunds-E/water: ADF",
+     "amt": -6956
+    },
+    {
+     "cc": "1000",
+     "gl": "10026",
+     "text": "Rev-DFACC/DFACP",
+     "amt": -6102
+    },
+    {
+     "cc": "1000",
+     "gl": "10265",
+     "text": "s.74 Sales - Fuel",
+     "amt": -5561
+    },
+    {
+     "cc": "1000",
+     "gl": "10235",
+     "text": "SPOD sys-SME",
+     "amt": 3924
+    },
+    {
+     "cc": "1000",
+     "gl": "10160",
+     "text": "Rent uti cont o'seas",
+     "amt": -3902
+    },
+    {
+     "cc": "1000",
+     "gl": "10248",
+     "text": "ProcOD-Buildings UFL",
+     "amt": -3200
+    },
+    {
+     "cc": "4100",
+     "gl": "10044",
+     "text": "Rev - Services(B)",
+     "amt": -3123
+    },
+    {
+     "cc": "1000",
+     "gl": "10035",
+     "text": "Rev clothing - GSI",
+     "amt": -3025
+    },
+    {
+     "cc": "1000",
+     "gl": "10161",
+     "text": "Non -GRS Rent Cntrib",
+     "amt": -2951
+    },
+    {
+     "cc": "1000",
+     "gl": "10031",
+     "text": "Rcv - Trng fees:forn",
+     "amt": -2777
+    },
+    {
+     "cc": "1000",
+     "gl": "10210",
+     "text": "Rcv-Airservices chgs",
+     "amt": -2573
+    },
+    {
+     "cc": "1000",
+     "gl": "10230",
+     "text": "ProcOD-Land",
+     "amt": -2296
+    },
+    {
+     "cc": "1000",
+     "gl": "10231",
+     "text": "SPOD sys-Build",
+     "amt": 2281
+    },
+    {
+     "cc": "1000",
+     "gl": "10054",
+     "text": "Rev-Goods-Minor",
+     "amt": -1910
+    },
+    {
+     "cc": "1000",
+     "gl": "10182",
+     "text": "s.74 Recpt bnft (B",
+     "amt": -1830
+    },
+    {
+     "cc": "1000",
+     "gl": "10027",
+     "text": "Revenue - Energy(B)",
+     "amt": -1509
+    },
+    {
+     "cc": "1000",
+     "gl": "10236",
+     "text": "SPOD syst-Bldg UFL",
+     "amt": 1451
+    },
+    {
+     "cc": "4100",
+     "gl": "10126",
+     "text": "Sale-obs&surp inv(B)",
+     "amt": -1441
+    },
+    {
+     "cc": "1000",
+     "gl": "10038",
+     "text": "Rcv- unfair w&t",
+     "amt": -1245
+    },
+    {
+     "cc": "1000",
+     "gl": "10010",
+     "text": "Sales charts & maps",
+     "amt": -1244
+    },
+    {
+     "cc": "1000",
+     "gl": "10227",
+     "text": "SPOD sys-Land UFL",
+     "amt": 1219
+    },
+    {
+     "cc": "4100",
+     "gl": "10160",
+     "text": "Rent uti cont o'seas",
+     "amt": -712
+    },
+    {
+     "cc": "1000",
+     "gl": "10016",
+     "text": "Rev - Forgn govt (B)",
+     "amt": -585
+    },
+    {
+     "cc": "1000",
+     "gl": "10169",
+     "text": "Contbrec-MWODchcaccn",
+     "amt": -513
+    },
+    {
+     "cc": "1000",
+     "gl": "10025",
+     "text": "Rebates Corp c/card",
+     "amt": -457
+    },
+    {
+     "cc": "1000",
+     "gl": "10234",
+     "text": "ProcOD-SME",
+     "amt": 442
+    },
+    {
+     "cc": "1000",
+     "gl": "10002",
+     "text": "Rcv - Oncosts",
+     "amt": -334
+    },
+    {
+     "cc": "1000",
+     "gl": "10049",
+     "text": "Insurance recoveries",
+     "amt": -220
+    },
+    {
+     "cc": "1000",
+     "gl": "10173",
+     "text": "Rev - R&Q:CivnonADF",
+     "amt": -213
+    },
+    {
+     "cc": "4100",
+     "gl": "10054",
+     "text": "Rev-Goods-Minor",
+     "amt": -119
+    },
+    {
+     "cc": "1000",
+     "gl": "10126",
+     "text": "Sale-obs&surp inv(B)",
+     "amt": -117
+    },
+    {
+     "cc": "1000",
+     "gl": "10251",
+     "text": "ProcOD-Other",
+     "amt": -88
+    },
+    {
+     "cc": "1000",
+     "gl": "10011",
+     "text": "Sale of non assets",
+     "amt": -50
+    },
+    {
+     "cc": "1000",
+     "gl": "10243",
+     "text": "SPOD sys-LVA",
+     "amt": 41
+    },
+    {
+     "cc": "1000",
+     "gl": "10055",
+     "text": "Revenue - LDs",
+     "amt": -34
+    },
+    {
+     "cc": "4100",
+     "gl": "10161",
+     "text": "Non -GRS Rent Cntrib",
+     "amt": -15
+    },
+    {
+     "cc": "4100",
+     "gl": "10017",
+     "text": "Rcv -Lspt: frn forc",
+     "amt": -12
+    },
+    {
+     "cc": "4100",
+     "gl": "10182",
+     "text": "s.74 Recpt bnft (B",
+     "amt": -8
+    },
+    {
+     "cc": "4100",
+     "gl": "10021",
+     "text": "Refunds (py PGPA s7)",
+     "amt": -4
+    },
+    {
+     "cc": "4100",
+     "gl": "10239",
+     "text": "SPOD sys-OP&E",
+     "amt": 1
+    },
+    {
+     "cc": "4100",
+     "gl": "10210",
+     "text": "Rcv-Airservices chgs",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Revenue in relation to special accounts",
+   "note": "1.2B",
+   "code": "REV_SPA",
+   "sign": "C",
+   "computed": 90495,
+   "pub24": 139448,
+   "pub23": 241387,
+   "diff": -48953,
+   "status": "variance",
+   "rule": "GL 19000 Special account revenue",
+   "n": 1,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "19000",
+     "text": "Special Acct Revenue",
+     "amt": -90495
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Other revenue",
+   "note": "1.2D",
+   "code": "REV_OTH",
+   "sign": "C",
+   "computed": 160230,
+   "pub24": 277710,
+   "pub23": 328368,
+   "diff": -117480,
+   "status": "variance",
+   "rule": "GL accounts in series 11xxx / 15xxx",
+   "n": 17,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "11000",
+     "text": "IntRec - Oth bk acct",
+     "amt": -79933
+    },
+    {
+     "cc": "4100",
+     "gl": "11600",
+     "text": "FOREX gain: ROMAN",
+     "amt": -62098
+    },
+    {
+     "cc": "1000",
+     "gl": "11600",
+     "text": "FOREX gain: ROMAN",
+     "amt": -14107
+    },
+    {
+     "cc": "4100",
+     "gl": "11615",
+     "text": "FOREX gain-Nonsysgen",
+     "amt": 8337
+    },
+    {
+     "cc": "1000",
+     "gl": "11820",
+     "text": "GOS sys-OP&E",
+     "amt": -4408
+    },
+    {
+     "cc": "1000",
+     "gl": "15020",
+     "text": "Resources FOC - Gov",
+     "amt": -3600
+    },
+    {
+     "cc": "1000",
+     "gl": "11620",
+     "text": "FOREX gain:Unrlsd",
+     "amt": -941
+    },
+    {
+     "cc": "4100",
+     "gl": "11620",
+     "text": "FOREX gain:Unrlsd",
+     "amt": -877
+    },
+    {
+     "cc": "1000",
+     "gl": "11806",
+     "text": "GOS sys-Build UFL",
+     "amt": -831
+    },
+    {
+     "cc": "1000",
+     "gl": "11800",
+     "text": "GOS sys-Build",
+     "amt": -565
+    },
+    {
+     "cc": "1000",
+     "gl": "11810",
+     "text": "GOS sys-SME",
+     "amt": -547
+    },
+    {
+     "cc": "1000",
+     "gl": "11803",
+     "text": "GOS sys-Land UFL",
+     "amt": -484
+    },
+    {
+     "cc": "1000",
+     "gl": "11615",
+     "text": "FOREX gain-Nonsysgen",
+     "amt": -135
+    },
+    {
+     "cc": "1000",
+     "gl": "11825",
+     "text": "GOS sys-LVA",
+     "amt": -41
+    },
+    {
+     "cc": "4100",
+     "gl": "11000",
+     "text": "IntRec - Oth bk acct",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "11006",
+     "text": "IntRec-Oth not s.74",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "11861",
+     "text": "Imp revsl-Recvbls",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Other gains",
+   "note": "1.2G",
+   "code": "GAIN_OTH",
+   "sign": "C",
+   "computed": 1040601,
+   "pub24": 169719,
+   "pub23": 55750,
+   "diff": 870882,
+   "status": "variance",
+   "rule": "GL accounts in series 12xxx",
+   "n": 27,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "12072",
+     "text": "Astnowrec SME MILIS",
+     "amt": -357754
+    },
+    {
+     "cc": "1000",
+     "gl": "12009",
+     "text": "Gains from provision",
+     "amt": -169719
+    },
+    {
+     "cc": "1000",
+     "gl": "12025",
+     "text": "Write ons - EO",
+     "amt": -107721
+    },
+    {
+     "cc": "1000",
+     "gl": "12026",
+     "text": "Price adj-GSI",
+     "amt": -91511
+    },
+    {
+     "cc": "1000",
+     "gl": "12021",
+     "text": "Write on GSI",
+     "amt": -80905
+    },
+    {
+     "cc": "1000",
+     "gl": "12027",
+     "text": "Quantity adj - GSI",
+     "amt": -68100
+    },
+    {
+     "cc": "1000",
+     "gl": "12071",
+     "text": "ARFTFT-Building",
+     "amt": -64072
+    },
+    {
+     "cc": "1000",
+     "gl": "12073",
+     "text": "ARFTFT-Infrast",
+     "amt": -45401
+    },
+    {
+     "cc": "1000",
+     "gl": "12020",
+     "text": "ARFTFT-OP&E",
+     "amt": -35377
+    },
+    {
+     "cc": "1000",
+     "gl": "12070",
+     "text": "ARFTFT-Land",
+     "amt": -6090
+    },
+    {
+     "cc": "4100",
+     "gl": "12020",
+     "text": "ARFTFT-OP&E",
+     "amt": -4189
+    },
+    {
+     "cc": "1000",
+     "gl": "12082",
+     "text": "ARFTFT- Land UFL",
+     "amt": -3159
+    },
+    {
+     "cc": "4100",
+     "gl": "12010",
+     "text": "Refunds - FMS(B)",
+     "amt": -2172
+    },
+    {
+     "cc": "1000",
+     "gl": "12077",
+     "text": "ARFTFT-H&C",
+     "amt": -2169
+    },
+    {
+     "cc": "1000",
+     "gl": "12012",
+     "text": "Fuel rebate revenue",
+     "amt": -702
+    },
+    {
+     "cc": "4100",
+     "gl": "12016",
+     "text": "Rev-Conf/crse fees",
+     "amt": -540
+    },
+    {
+     "cc": "1000",
+     "gl": "12016",
+     "text": "Rev-Conf/crse fees",
+     "amt": -393
+    },
+    {
+     "cc": "1000",
+     "gl": "12019",
+     "text": "Spnsrsp, grant, subs",
+     "amt": -259
+    },
+    {
+     "cc": "1000",
+     "gl": "12079",
+     "text": "Assets recog-s/ware",
+     "amt": -202
+    },
+    {
+     "cc": "1000",
+     "gl": "12006",
+     "text": "Recov Fraud investig",
+     "amt": -115
+    },
+    {
+     "cc": "1000",
+     "gl": "12100",
+     "text": "BLKD-Rev PR/YR adjus",
+     "amt": -44
+    },
+    {
+     "cc": "4100",
+     "gl": "12100",
+     "text": "BLKD-Rev PR/YR adjus",
+     "amt": -7
+    },
+    {
+     "cc": "1000",
+     "gl": "12023",
+     "text": "Write on fuel",
+     "amt": 2
+    },
+    {
+     "cc": "1000",
+     "gl": "12017",
+     "text": "Rev-Courtawdedcsts",
+     "amt": -1
+    },
+    {
+     "cc": "1000",
+     "gl": "12056",
+     "text": "RevalIncr-SME",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "12075",
+     "text": "ARFTFT-Software prch",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "12084",
+     "text": "ARFT-ROU-BUILD",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "total",
+   "label": "Revenue from Government",
+   "note": "1.2H",
+   "code": "REV_GOV",
+   "sign": "C",
+   "computed": 35840570,
+   "pub24": 35840570,
+   "pub23": 32839608,
+   "diff": 0,
+   "status": "tied",
+   "rule": "GL 18010 Appropriation for outputs",
+   "n": 1,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "18010",
+     "text": "Appn for outputs",
+     "amt": -35840570
+    }
+   ]
+  }
+ ],
+ "sofp": [
+  {
+   "type": "section",
+   "label": "Financial assets"
+  },
+  {
+   "type": "line",
+   "label": "Cash and cash equivalents",
+   "note": "3.1A",
+   "code": "AST_CASH",
+   "sign": "D",
+   "computed": 178161,
+   "pub24": 332349,
+   "pub23": 427000,
+   "diff": -154188,
+   "status": "variance",
+   "rule": "Curated bank and cash-on-hand accounts",
+   "n": 27,
+   "rows": [
+    {
+     "cc": "4100",
+     "gl": "50520",
+     "text": "CASG FGA Bank A/C",
+     "amt": 102546
+    },
+    {
+     "cc": "1000",
+     "gl": "50100",
+     "text": "Of Dept HO Bank Acct",
+     "amt": 57865
+    },
+    {
+     "cc": "1000",
+     "gl": "50109",
+     "text": "Working Account",
+     "amt": 10199
+    },
+    {
+     "cc": "4100",
+     "gl": "50510",
+     "text": "C130 J Block Upgrade",
+     "amt": 3375
+    },
+    {
+     "cc": "1000",
+     "gl": "50070",
+     "text": "Cash on Hand - USD",
+     "amt": 1635
+    },
+    {
+     "cc": "1000",
+     "gl": "50075",
+     "text": "Cash on hand - AUD",
+     "amt": 874
+    },
+    {
+     "cc": "1000",
+     "gl": "50028",
+     "text": "St BkAcct 39136 USD",
+     "amt": 385
+    },
+    {
+     "cc": "1000",
+     "gl": "50044",
+     "text": "AF Bk Acct 5371- MYR",
+     "amt": 327
+    },
+    {
+     "cc": "1000",
+     "gl": "50027",
+     "text": "St Bk Acct 34541USD",
+     "amt": 295
+    },
+    {
+     "cc": "1000",
+     "gl": "50061",
+     "text": "AF CoH Buttwt - MYR",
+     "amt": 162
+    },
+    {
+     "cc": "1000",
+     "gl": "50030",
+     "text": "St BkAcct95108101AUD",
+     "amt": 132
+    },
+    {
+     "cc": "1000",
+     "gl": "50019",
+     "text": "Army10FSB BkAc850135",
+     "amt": 105
+    },
+    {
+     "cc": "1000",
+     "gl": "50051",
+     "text": "Army 10 FSB COH",
+     "amt": 95
+    },
+    {
+     "cc": "1000",
+     "gl": "50009",
+     "text": "DOD Off UNMISS Acct",
+     "amt": 41
+    },
+    {
+     "cc": "1000",
+     "gl": "50066",
+     "text": "OP Mazurka COH USD",
+     "amt": 33
+    },
+    {
+     "cc": "1000",
+     "gl": "50057",
+     "text": "JOC CoH Sol-SBD",
+     "amt": 31
+    },
+    {
+     "cc": "1000",
+     "gl": "50013",
+     "text": "Cash on hand - PGK",
+     "amt": 20
+    },
+    {
+     "cc": "1000",
+     "gl": "50025",
+     "text": "OP Mazurka Off Bk Ac",
+     "amt": 15
+    },
+    {
+     "cc": "1000",
+     "gl": "50001",
+     "text": "Off Dept LST Account",
+     "amt": 8
+    },
+    {
+     "cc": "1000",
+     "gl": "50071",
+     "text": "Cash on Hand - EUR",
+     "amt": 8
+    },
+    {
+     "cc": "1000",
+     "gl": "50602",
+     "text": "Cash on Hand - MVR",
+     "amt": 7
+    },
+    {
+     "cc": "4100",
+     "gl": "50034",
+     "text": "CASG JPO5962501416US",
+     "amt": 2
+    },
+    {
+     "cc": "4100",
+     "gl": "50040",
+     "text": "CASGCBAS5961867214US",
+     "amt": 2
+    },
+    {
+     "cc": "1000",
+     "gl": "50005",
+     "text": "COH - SSP",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "50600",
+     "text": "O/S Bk Acc Other",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "50099",
+     "text": "COH forex purchase",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "50100",
+     "text": "Of Dept HO Bank Acct",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Trade and other receivables",
+   "note": "3.1B",
+   "code": "AST_RECV",
+   "sign": "D",
+   "computed": 1763763,
+   "pub24": 1957738,
+   "pub23": 2065612,
+   "diff": -193975,
+   "status": "variance",
+   "rule": "GL accounts in series 51xxx",
+   "n": 59,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "51786",
+     "text": "AppnRcvble - OP NC",
+     "amt": 150890084
+    },
+    {
+     "cc": "4100",
+     "gl": "51786",
+     "text": "AppnRcvble - OP NC",
+     "amt": -150890084
+    },
+    {
+     "cc": "4100",
+     "gl": "51600",
+     "text": "Appn Rcvable-OP CURR",
+     "amt": 5113727
+    },
+    {
+     "cc": "1000",
+     "gl": "51600",
+     "text": "Appn Rcvable-OP CURR",
+     "amt": -4896323
+    },
+    {
+     "cc": "1000",
+     "gl": "51783",
+     "text": "Deferred rec-curr",
+     "amt": 484516
+    },
+    {
+     "cc": "1000",
+     "gl": "51703",
+     "text": "GST on purchases",
+     "amt": 217910
+    },
+    {
+     "cc": "1000",
+     "gl": "51613",
+     "text": "Appn Rcvble-EQ Curr",
+     "amt": 208568
+    },
+    {
+     "cc": "4100",
+     "gl": "51703",
+     "text": "GST on purchases",
+     "amt": 165332
+    },
+    {
+     "cc": "1000",
+     "gl": "51900",
+     "text": "Accrued Revenue",
+     "amt": 128840
+    },
+    {
+     "cc": "1000",
+     "gl": "51200",
+     "text": "TrdDebt C/wGovtCtrl",
+     "amt": 117867
+    },
+    {
+     "cc": "1000",
+     "gl": "51201",
+     "text": "Trade Debtors Oseas",
+     "amt": 48570
+    },
+    {
+     "cc": "1000",
+     "gl": "51202",
+     "text": "Trade Debtors Other",
+     "amt": 46096
+    },
+    {
+     "cc": "4100",
+     "gl": "51201",
+     "text": "Trade Debtors Oseas",
+     "amt": 38145
+    },
+    {
+     "cc": "4100",
+     "gl": "51100",
+     "text": "G&S Receivables Curr",
+     "amt": 21503
+    },
+    {
+     "cc": "1000",
+     "gl": "51760",
+     "text": "Marine Diesel Rebate",
+     "amt": 18798
+    },
+    {
+     "cc": "1000",
+     "gl": "51713",
+     "text": "Salary rec - Debts",
+     "amt": 14677
+    },
+    {
+     "cc": "1000",
+     "gl": "51723",
+     "text": "Rcvrbl foreign tax",
+     "amt": 12426
+    },
+    {
+     "cc": "1000",
+     "gl": "51500",
+     "text": "ProvForDoubtfulDebts",
+     "amt": -9726
+    },
+    {
+     "cc": "1000",
+     "gl": "51728",
+     "text": "ComcareCivCompRefund",
+     "amt": -8922
+    },
+    {
+     "cc": "4100",
+     "gl": "51690",
+     "text": "GST for FOREX",
+     "amt": 7447
+    },
+    {
+     "cc": "4100",
+     "gl": "51728",
+     "text": "ComcareCivCompRefund",
+     "amt": 6744
+    },
+    {
+     "cc": "4100",
+     "gl": "51701",
+     "text": "Intrfc GST on Purch",
+     "amt": 6731
+    },
+    {
+     "cc": "4100",
+     "gl": "51202",
+     "text": "Trade Debtors Other",
+     "amt": 6399
+    },
+    {
+     "cc": "4100",
+     "gl": "51900",
+     "text": "Accrued Revenue",
+     "amt": 5568
+    },
+    {
+     "cc": "1000",
+     "gl": "51705",
+     "text": "TrdDebtEmpCurrCtrl",
+     "amt": 5078
+    },
+    {
+     "cc": "1000",
+     "gl": "51711",
+     "text": "ADFPAY Sal Adv Army",
+     "amt": -2886
+    },
+    {
+     "cc": "1000",
+     "gl": "51749",
+     "text": "FOREX Valuation Adj",
+     "amt": 2279
+    },
+    {
+     "cc": "1000",
+     "gl": "51717",
+     "text": "Rent Allow Bond-Mil",
+     "amt": 2245
+    },
+    {
+     "cc": "1000",
+     "gl": "51726",
+     "text": "O/S Allowance - Mil",
+     "amt": 1832
+    },
+    {
+     "cc": "1000",
+     "gl": "51100",
+     "text": "G&S Receivables Curr",
+     "amt": -1663
+    },
+    {
+     "cc": "1000",
+     "gl": "51712",
+     "text": "ADFPAY Sal Adv RAAF",
+     "amt": -1612
+    },
+    {
+     "cc": "1000",
+     "gl": "51710",
+     "text": "ADFPAY Sal Adv Navy",
+     "amt": -1429
+    },
+    {
+     "cc": "1000",
+     "gl": "51729",
+     "text": "Rent Allowance - Mil",
+     "amt": 1225
+    },
+    {
+     "cc": "4100",
+     "gl": "51200",
+     "text": "TrdDebt C/wGovtCtrl",
+     "amt": 1042
+    },
+    {
+     "cc": "4100",
+     "gl": "51713",
+     "text": "Salary rec - Debts",
+     "amt": 1042
+    },
+    {
+     "cc": "1000",
+     "gl": "51782",
+     "text": "Deferred rec-ncurr",
+     "amt": 510
+    },
+    {
+     "cc": "4100",
+     "gl": "51749",
+     "text": "FOREX Valuation Adj",
+     "amt": 494
+    },
+    {
+     "cc": "4100",
+     "gl": "51726",
+     "text": "O/S Allowance - Mil",
+     "amt": -366
+    },
+    {
+     "cc": "1000",
+     "gl": "51722",
+     "text": "Employee Receiv-Civ",
+     "amt": 329
+    },
+    {
+     "cc": "4100",
+     "gl": "51722",
+     "text": "Employee Receiv-Civ",
+     "amt": 257
+    },
+    {
+     "cc": "1000",
+     "gl": "51725",
+     "text": "O/S Allowance - Civ",
+     "amt": 221
+    },
+    {
+     "cc": "1000",
+     "gl": "51719",
+     "text": "BondUtilitRecov-Civ",
+     "amt": 219
+    },
+    {
+     "cc": "4100",
+     "gl": "51705",
+     "text": "TrdDebtEmpCurrCtrl",
+     "amt": 213
+    },
+    {
+     "cc": "4100",
+     "gl": "51500",
+     "text": "ProvForDoubtfulDebts",
+     "amt": -120
+    },
+    {
+     "cc": "4100",
+     "gl": "51712",
+     "text": "ADFPAY Sal Adv RAAF",
+     "amt": -61
+    },
+    {
+     "cc": "1000",
+     "gl": "51701",
+     "text": "Intrfc GST on Purch",
+     "amt": 25
+    },
+    {
+     "cc": "4100",
+     "gl": "51711",
+     "text": "ADFPAY Sal Adv Army",
+     "amt": -11
+    },
+    {
+     "cc": "1000",
+     "gl": "51709",
+     "text": "Lease Prepayments",
+     "amt": 9
+    },
+    {
+     "cc": "4100",
+     "gl": "51719",
+     "text": "BondUtilitRecov-Civ",
+     "amt": -7
+    },
+    {
+     "cc": "4100",
+     "gl": "51723",
+     "text": "Rcvrbl foreign tax",
+     "amt": 5
+    },
+    {
+     "cc": "1000",
+     "gl": "51690",
+     "text": "GST for FOREX",
+     "amt": 4
+    },
+    {
+     "cc": "4100",
+     "gl": "51725",
+     "text": "O/S Allowance - Civ",
+     "amt": -3
+    },
+    {
+     "cc": "1000",
+     "gl": "51102",
+     "text": "R&Q And MQ Recv Curr",
+     "amt": -2
+    },
+    {
+     "cc": "1000",
+     "gl": "51210",
+     "text": "Accts Recv Adj",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "51771",
+     "text": "BLKD_Oth Rec Nn CurA",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "51710",
+     "text": "ADFPAY Sal Adv Navy",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "51704",
+     "text": "Adj for GST on Purch",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "51702",
+     "text": "Intrfc Adj for GST P",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "51704",
+     "text": "Adj for GST on Purch",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "label": "Non-financial assets"
+  },
+  {
+   "type": "line",
+   "label": "Property, plant, equipment & intangibles",
+   "note": "3.2A",
+   "code": "AST_NFA",
+   "sign": "D",
+   "computed": 135387354,
+   "pub24": 130439415,
+   "pub23": 121332334,
+   "diff": 4947939,
+   "status": "variance",
+   "rule": "GL accounts in series 52xxx",
+   "n": 116,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "52304",
+     "text": "GBV-SME-sys",
+     "amt": 42921264
+    },
+    {
+     "cc": "1000",
+     "gl": "52362",
+     "text": "WIP-SME AUC sys",
+     "amt": 29663619
+    },
+    {
+     "cc": "1000",
+     "gl": "52306",
+     "text": "SME assets MILIS",
+     "amt": 23863346
+    },
+    {
+     "cc": "1000",
+     "gl": "52104",
+     "text": "Buildings sys",
+     "amt": 15675582
+    },
+    {
+     "cc": "1000",
+     "gl": "52004",
+     "text": "GBV Sys-Land",
+     "amt": 6974411
+    },
+    {
+     "cc": "1000",
+     "gl": "52504",
+     "text": "Infrastructure sys",
+     "amt": 6880074
+    },
+    {
+     "cc": "1000",
+     "gl": "52562",
+     "text": "WIP-Infrast AUC sys",
+     "amt": 2537283
+    },
+    {
+     "cc": "1000",
+     "gl": "52360",
+     "text": "WIP-SME AUC wip acrl",
+     "amt": -2447157
+    },
+    {
+     "cc": "1000",
+     "gl": "52162",
+     "text": "WIP-Build AUC-ROMAN",
+     "amt": 1882497
+    },
+    {
+     "cc": "1000",
+     "gl": "52286",
+     "text": "GBV-ROU-BUILD",
+     "amt": 1810133
+    },
+    {
+     "cc": "1000",
+     "gl": "52862",
+     "text": "WIP-Intangbl pur-sys",
+     "amt": 1228445
+    },
+    {
+     "cc": "1000",
+     "gl": "52404",
+     "text": "GBV - OP&E sys",
+     "amt": 1196551
+    },
+    {
+     "cc": "1000",
+     "gl": "52762",
+     "text": "WIP-Swar pur AUC sys",
+     "amt": 1107949
+    },
+    {
+     "cc": "1000",
+     "gl": "52766",
+     "text": "GBV-Sware I/G-sys",
+     "amt": 1059331
+    },
+    {
+     "cc": "1000",
+     "gl": "52214",
+     "text": "Buildings UFL sys",
+     "amt": 955893
+    },
+    {
+     "cc": "1000",
+     "gl": "52800",
+     "text": "Intell Prop Purchase",
+     "amt": 942613
+    },
+    {
+     "cc": "1000",
+     "gl": "52303",
+     "text": "SME Asst AUC MILIS",
+     "amt": 827679
+    },
+    {
+     "cc": "1000",
+     "gl": "52287",
+     "text": "Acc dep-ROU-BUILD",
+     "amt": -795635
+    },
+    {
+     "cc": "1000",
+     "gl": "52704",
+     "text": "GBV-Sware pur-sys",
+     "amt": 788695
+    },
+    {
+     "cc": "1000",
+     "gl": "52705",
+     "text": "A/A Software Pur sys",
+     "amt": -769432
+    },
+    {
+     "cc": "1000",
+     "gl": "52767",
+     "text": "A/A Software I/G sys",
+     "amt": -728429
+    },
+    {
+     "cc": "1000",
+     "gl": "52100",
+     "text": "Bldgs cost - CY",
+     "amt": 646992
+    },
+    {
+     "cc": "1000",
+     "gl": "52510",
+     "text": "Infrastructure",
+     "amt": 614644
+    },
+    {
+     "cc": "1000",
+     "gl": "52105",
+     "text": "A/D Buildings sys",
+     "amt": -537100
+    },
+    {
+     "cc": "1000",
+     "gl": "52904",
+     "text": "GBV-H&C-sys",
+     "amt": 417856
+    },
+    {
+     "cc": "1000",
+     "gl": "52307",
+     "text": "SME AccumDepn MILIS",
+     "amt": -388829
+    },
+    {
+     "cc": "1000",
+     "gl": "52505",
+     "text": "A/D Infrast sys",
+     "amt": -364871
+    },
+    {
+     "cc": "4100",
+     "gl": "52488",
+     "text": "GBV-ROU-OP&E",
+     "amt": 358700
+    },
+    {
+     "cc": "1000",
+     "gl": "52300",
+     "text": "GBV-SME-CYP",
+     "amt": -352243
+    },
+    {
+     "cc": "1000",
+     "gl": "52204",
+     "text": "Buildings LHI sys",
+     "amt": 289497
+    },
+    {
+     "cc": "1000",
+     "gl": "52560",
+     "text": "WIP-Infrast wip accr",
+     "amt": -282381
+    },
+    {
+     "cc": "1000",
+     "gl": "52462",
+     "text": "WIP-OP&E AUC sys",
+     "amt": 270297
+    },
+    {
+     "cc": "1000",
+     "gl": "52305",
+     "text": "A/D SME sys",
+     "amt": -258024
+    },
+    {
+     "cc": "1000",
+     "gl": "52301",
+     "text": "A/D SME",
+     "amt": -253725
+    },
+    {
+     "cc": "1000",
+     "gl": "52900",
+     "text": "GBV-LVA sys",
+     "amt": 237741
+    },
+    {
+     "cc": "1000",
+     "gl": "52901",
+     "text": "Acc Depn LVA - OP&E",
+     "amt": -237741
+    },
+    {
+     "cc": "1000",
+     "gl": "52288",
+     "text": "GBV-ROU-BUILD",
+     "amt": 224667
+    },
+    {
+     "cc": "1000",
+     "gl": "52710",
+     "text": "GBV - Software I/G",
+     "amt": 203089
+    },
+    {
+     "cc": "1000",
+     "gl": "52764",
+     "text": "GBV-Intang I/G-sys",
+     "amt": 200508
+    },
+    {
+     "cc": "1000",
+     "gl": "52405",
+     "text": "A/D OP&E sys",
+     "amt": -175851
+    },
+    {
+     "cc": "4100",
+     "gl": "52489",
+     "text": "Acc dep-ROU-OP&E",
+     "amt": -175648
+    },
+    {
+     "cc": "1000",
+     "gl": "52424",
+     "text": "GBV - OP&E UFL sys",
+     "amt": 172036
+    },
+    {
+     "cc": "1000",
+     "gl": "52160",
+     "text": "WIP-Bld wip accrual",
+     "amt": -167969
+    },
+    {
+     "cc": "1000",
+     "gl": "52765",
+     "text": "A/A Intan I/G sys",
+     "amt": -167242
+    },
+    {
+     "cc": "1000",
+     "gl": "52215",
+     "text": "A/D Bldg UFL sys",
+     "amt": -153203
+    },
+    {
+     "cc": "1000",
+     "gl": "52760",
+     "text": "WIP-Software pur AUC",
+     "amt": -151900
+    },
+    {
+     "cc": "1000",
+     "gl": "52902",
+     "text": "GBV-LVA-Build",
+     "amt": 124849
+    },
+    {
+     "cc": "1000",
+     "gl": "52913",
+     "text": "Acc Depn-LVA-Build",
+     "amt": -124847
+    },
+    {
+     "cc": "1000",
+     "gl": "52289",
+     "text": "Acc dep-ROU-BUILD",
+     "amt": -122318
+    },
+    {
+     "cc": "1000",
+     "gl": "52524",
+     "text": "GBV Sys-Infra UFL",
+     "amt": 96641
+    },
+    {
+     "cc": "1000",
+     "gl": "52903",
+     "text": "GBV-LVA-Infrast",
+     "amt": 81866
+    },
+    {
+     "cc": "1000",
+     "gl": "52914",
+     "text": "Acc Depn-LVA-Infrast",
+     "amt": -81866
+    },
+    {
+     "cc": "1000",
+     "gl": "52912",
+     "text": "GBV-LVA-Sftware",
+     "amt": 81363
+    },
+    {
+     "cc": "1000",
+     "gl": "52915",
+     "text": "Acc Depn-LVA-sftware",
+     "amt": -81363
+    },
+    {
+     "cc": "1000",
+     "gl": "52205",
+     "text": "A/D Bldg LHI sys",
+     "amt": -75978
+    },
+    {
+     "cc": "1000",
+     "gl": "52488",
+     "text": "GBV-ROU-OP&E",
+     "amt": 69868
+    },
+    {
+     "cc": "1000",
+     "gl": "52060",
+     "text": "GBV - Land proj stl",
+     "amt": 68890
+    },
+    {
+     "cc": "1000",
+     "gl": "52425",
+     "text": "A/D OP&E UFL sys",
+     "amt": -66672
+    },
+    {
+     "cc": "1000",
+     "gl": "52751",
+     "text": "GBV-Intang pur-sys",
+     "amt": 65222
+    },
+    {
+     "cc": "1000",
+     "gl": "52033",
+     "text": "AHFS-GBV-Land",
+     "amt": -65216
+    },
+    {
+     "cc": "1000",
+     "gl": "52756",
+     "text": "A/A Intan pur sys",
+     "amt": -62523
+    },
+    {
+     "cc": "1000",
+     "gl": "52801",
+     "text": "A/A intellect prop",
+     "amt": -61973
+    },
+    {
+     "cc": "1000",
+     "gl": "52489",
+     "text": "Acc dep-ROU-OP&E",
+     "amt": -56833
+    },
+    {
+     "cc": "1000",
+     "gl": "52024",
+     "text": "GBV Sys-Land UFL",
+     "amt": 53923
+    },
+    {
+     "cc": "1000",
+     "gl": "52400",
+     "text": "GBV - OP&E purch CY",
+     "amt": 49003
+    },
+    {
+     "cc": "1000",
+     "gl": "52604",
+     "text": "RP-Buildings UFL",
+     "amt": 46243
+    },
+    {
+     "cc": "1000",
+     "gl": "52460",
+     "text": "WIP-OP&E AUCwip acrl",
+     "amt": -40747
+    },
+    {
+     "cc": "1000",
+     "gl": "52711",
+     "text": "AccAmort-SWIG-NonCon",
+     "amt": -31775
+    },
+    {
+     "cc": "1000",
+     "gl": "52501",
+     "text": "A/D Infrast purch cy",
+     "amt": -19797
+    },
+    {
+     "cc": "4100",
+     "gl": "52404",
+     "text": "GBV - OP&E sys",
+     "amt": 18381
+    },
+    {
+     "cc": "1000",
+     "gl": "52525",
+     "text": "A/D Infrast UFL sys",
+     "amt": -17182
+    },
+    {
+     "cc": "4100",
+     "gl": "52461",
+     "text": "WIP-OP&E AUC",
+     "amt": 15953
+    },
+    {
+     "cc": "4100",
+     "gl": "52704",
+     "text": "GBV-Sware pur-sys",
+     "amt": 15403
+    },
+    {
+     "cc": "4100",
+     "gl": "52705",
+     "text": "A/A Software Pur sys",
+     "amt": -15403
+    },
+    {
+     "cc": "1000",
+     "gl": "52461",
+     "text": "WIP-OP&E AUC",
+     "amt": 14945
+    },
+    {
+     "cc": "1000",
+     "gl": "52905",
+     "text": "A/D-H&C-sys",
+     "amt": -14909
+    },
+    {
+     "cc": "1000",
+     "gl": "52101",
+     "text": "Acc Depn Bld Cost Pu",
+     "amt": -14832
+    },
+    {
+     "cc": "4100",
+     "gl": "52900",
+     "text": "GBV-LVA sys",
+     "amt": 10797
+    },
+    {
+     "cc": "4100",
+     "gl": "52901",
+     "text": "Acc Depn LVA - OP&E",
+     "amt": -10797
+    },
+    {
+     "cc": "1000",
+     "gl": "52401",
+     "text": "A/D OP&E",
+     "amt": -5430
+    },
+    {
+     "cc": "4100",
+     "gl": "52288",
+     "text": "GBV-ROU-BUILD",
+     "amt": 4727
+    },
+    {
+     "cc": "4100",
+     "gl": "52405",
+     "text": "A/D OP&E sys",
+     "amt": -3772
+    },
+    {
+     "cc": "1000",
+     "gl": "52133",
+     "text": "AHFS-GBV-Build",
+     "amt": -3313
+    },
+    {
+     "cc": "1000",
+     "gl": "52918",
+     "text": "GBV-LVA- H&C",
+     "amt": 2181
+    },
+    {
+     "cc": "1000",
+     "gl": "52919",
+     "text": "AD-LVA-H&C",
+     "amt": -2181
+    },
+    {
+     "cc": "4100",
+     "gl": "52204",
+     "text": "Buildings LHI sys",
+     "amt": 2116
+    },
+    {
+     "cc": "4100",
+     "gl": "52205",
+     "text": "A/D Bldg LHI sys",
+     "amt": -2116
+    },
+    {
+     "cc": "4100",
+     "gl": "52504",
+     "text": "Infrastructure sys",
+     "amt": 1927
+    },
+    {
+     "cc": "1000",
+     "gl": "52010",
+     "text": "Land at cost c'fwd",
+     "amt": 1472
+    },
+    {
+     "cc": "1000",
+     "gl": "52906",
+     "text": "GBV-H&C",
+     "amt": -1276
+    },
+    {
+     "cc": "4100",
+     "gl": "52400",
+     "text": "GBV - OP&E purch CY",
+     "amt": 536
+    },
+    {
+     "cc": "4100",
+     "gl": "52289",
+     "text": "Acc dep-ROU-BUILD",
+     "amt": -507
+    },
+    {
+     "cc": "4100",
+     "gl": "52560",
+     "text": "WIP-Infrast wip accr",
+     "amt": 444
+    },
+    {
+     "cc": "1000",
+     "gl": "52134",
+     "text": "A/D Buildings HFS",
+     "amt": 164
+    },
+    {
+     "cc": "4100",
+     "gl": "52912",
+     "text": "GBV-LVA-Sftware",
+     "amt": 96
+    },
+    {
+     "cc": "4100",
+     "gl": "52915",
+     "text": "Acc Depn-LVA-sftware",
+     "amt": -96
+    },
+    {
+     "cc": "1000",
+     "gl": "52995",
+     "text": "H & C Reval Suspense",
+     "amt": 70
+    },
+    {
+     "cc": "4100",
+     "gl": "52903",
+     "text": "GBV-LVA-Infrast",
+     "amt": 42
+    },
+    {
+     "cc": "4100",
+     "gl": "52914",
+     "text": "Acc Depn-LVA-Infrast",
+     "amt": -42
+    },
+    {
+     "cc": "4100",
+     "gl": "52505",
+     "text": "A/D Infrast sys",
+     "amt": -17
+    },
+    {
+     "cc": "1000",
+     "gl": "52026",
+     "text": "GBV -Land UFL",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52333",
+     "text": "AHFS-GBV-SME",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52334",
+     "text": "AHFS-AD-SME",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52495",
+     "text": "OPE Reval Suspense",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52600",
+     "text": "GBV - OP&E UFL",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52605",
+     "text": "A/A Buildings UFL",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52700",
+     "text": "GBV-Sware pur",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52701",
+     "text": "A/A Software Pur",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52720",
+     "text": "GBV - Oth Intang I/G",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52721",
+     "text": "AccumAmt Oth Int I/G",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52860",
+     "text": "WIP-Intangibles pur",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52907",
+     "text": "A/D-H&C",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52933",
+     "text": "AHFS-GBV-O&PE H&C",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "52934",
+     "text": "AHFS-AD-H&C",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "52300",
+     "text": "GBV-SME-CYP",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "52401",
+     "text": "A/D OP&E",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Inventories",
+   "note": "3.2B",
+   "code": "AST_INV",
+   "sign": "D",
+   "computed": 4648783,
+   "pub24": 9597327,
+   "pub23": 8658044,
+   "diff": -4948544,
+   "status": "variance",
+   "rule": "GL accounts in series 53xxx / 24xxx-inventory",
+   "n": 22,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "53011",
+     "text": "Inv - EO (N/C)",
+     "amt": 6013431
+    },
+    {
+     "cc": "1000",
+     "gl": "53004",
+     "text": "MILIS SME Perm INUN",
+     "amt": -4947868
+    },
+    {
+     "cc": "1000",
+     "gl": "53021",
+     "text": "Inv - GSI (N/C)",
+     "amt": 3454430
+    },
+    {
+     "cc": "1000",
+     "gl": "53901",
+     "text": "Provn obs Inv - GSI",
+     "amt": -565169
+    },
+    {
+     "cc": "1000",
+     "gl": "53020",
+     "text": "Inv - GSI (Curr)",
+     "amt": 499665
+    },
+    {
+     "cc": "1000",
+     "gl": "53900",
+     "text": "Provn obs Inv - EO",
+     "amt": -334132
+    },
+    {
+     "cc": "1000",
+     "gl": "53010",
+     "text": "Inv - EO (Curr)",
+     "amt": 234696
+    },
+    {
+     "cc": "4100",
+     "gl": "53009",
+     "text": "Inventory EO - WIP",
+     "amt": 177473
+    },
+    {
+     "cc": "1000",
+     "gl": "53000",
+     "text": "Inv - Fuel(Curr)",
+     "amt": 127024
+    },
+    {
+     "cc": "1000",
+     "gl": "53022",
+     "text": "InventTransit MILIS",
+     "amt": -10823
+    },
+    {
+     "cc": "1000",
+     "gl": "53057",
+     "text": "Defd Is Val InvMILIS",
+     "amt": 55
+    },
+    {
+     "cc": "4100",
+     "gl": "53020",
+     "text": "Inv - GSI (Curr)",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "53061",
+     "text": "AddTax Inv Clr MILIS",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "53001",
+     "text": "Build WIP Sust MILIS",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "53035",
+     "text": "II AUC Offset",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "53040",
+     "text": "AUC transfers - EO",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "53050",
+     "text": "RepItemCtrl MILIS",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "53068",
+     "text": "RetireCalcAcct MILIS",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "53069",
+     "text": "Deprec Clring MILIS",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "53080",
+     "text": "Inventory - GSI -IMS",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "53011",
+     "text": "Inv - EO (N/C)",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "53080",
+     "text": "Inventory - GSI -IMS",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Prepayments",
+   "note": "3.2C",
+   "code": "AST_PPY",
+   "sign": "D",
+   "computed": 3568440,
+   "pub24": 3500032,
+   "pub23": 3699494,
+   "diff": 68408,
+   "status": "close",
+   "rule": "GL accounts in series 54xxx",
+   "n": 25,
+   "rows": [
+    {
+     "cc": "4100",
+     "gl": "54400",
+     "text": "FMS Prep Cap cur",
+     "amt": 809867
+    },
+    {
+     "cc": "4100",
+     "gl": "54000",
+     "text": "FMS Prep Noncap cur",
+     "amt": 595683
+    },
+    {
+     "cc": "4100",
+     "gl": "54408",
+     "text": "NonFMS Prep Cap cur",
+     "amt": 544359
+    },
+    {
+     "cc": "4100",
+     "gl": "54409",
+     "text": "NonFMS Prep Cap ncur",
+     "amt": 478001
+    },
+    {
+     "cc": "1000",
+     "gl": "54020",
+     "text": "NonFMS PrepNonCapcur",
+     "amt": 436921
+    },
+    {
+     "cc": "4100",
+     "gl": "54406",
+     "text": "CASG-EO Prepatmts-NC",
+     "amt": 144810
+    },
+    {
+     "cc": "1000",
+     "gl": "54021",
+     "text": "NonFMSPrep NCap ncur",
+     "amt": 104323
+    },
+    {
+     "cc": "1000",
+     "gl": "54511",
+     "text": "ADFRetnPayDPCT2NCur",
+     "amt": 101988
+    },
+    {
+     "cc": "1000",
+     "gl": "54409",
+     "text": "NonFMS Prep Cap ncur",
+     "amt": 100070
+    },
+    {
+     "cc": "4100",
+     "gl": "54405",
+     "text": "CASG-EO Prepymts-Cur",
+     "amt": 93661
+    },
+    {
+     "cc": "1000",
+     "gl": "54100",
+     "text": "Asst HFS-Land&Build",
+     "amt": 68366
+    },
+    {
+     "cc": "1000",
+     "gl": "54508",
+     "text": "ADFRetnPpayDPCT2Cur",
+     "amt": 40404
+    },
+    {
+     "cc": "4100",
+     "gl": "54020",
+     "text": "NonFMS PrepNonCapcur",
+     "amt": 38466
+    },
+    {
+     "cc": "4100",
+     "gl": "54021",
+     "text": "NonFMSPrep NCap ncur",
+     "amt": 10743
+    },
+    {
+     "cc": "1000",
+     "gl": "54000",
+     "text": "FMS Prep Noncap cur",
+     "amt": -4737
+    },
+    {
+     "cc": "1000",
+     "gl": "54408",
+     "text": "NonFMS Prep Cap cur",
+     "amt": 4065
+    },
+    {
+     "cc": "1000",
+     "gl": "54514",
+     "text": "Prepayment Clearing",
+     "amt": 1399
+    },
+    {
+     "cc": "1000",
+     "gl": "54102",
+     "text": "Asst HFS-Infrat",
+     "amt": 51
+    },
+    {
+     "cc": "1000",
+     "gl": "54001",
+     "text": "FMS Prep Noncap nonc",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "54400",
+     "text": "FMS Prep Cap cur",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "54001",
+     "text": "FMS Prep Noncap nonc",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "54101",
+     "text": "Asst HFS-SME",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "54401",
+     "text": "FMS Prep Cap noncur",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "54505",
+     "text": "CASG Ppmt MSA Cap",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "54401",
+     "text": "FMS Prep Cap noncur",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "label": "Liabilities"
+  },
+  {
+   "type": "line",
+   "label": "Suppliers and other payables",
+   "note": "3.3",
+   "code": "LIA_PAY",
+   "sign": "C",
+   "computed": 5754108,
+   "pub24": 6100386,
+   "pub23": 6081961,
+   "diff": -346278,
+   "status": "variance",
+   "rule": "GL accounts in series 31xxx",
+   "n": 80,
+   "rows": [
+    {
+     "cc": "4100",
+     "gl": "31364",
+     "text": "Goods & Services Tax",
+     "amt": 3821969
+    },
+    {
+     "cc": "1000",
+     "gl": "31364",
+     "text": "Goods & Services Tax",
+     "amt": -3820824
+    },
+    {
+     "cc": "4100",
+     "gl": "31010",
+     "text": "Acrd.CredCap Curr",
+     "amt": -1020906
+    },
+    {
+     "cc": "4100",
+     "gl": "31020",
+     "text": "TrdCredDomCtrlCurr",
+     "amt": -1010577
+    },
+    {
+     "cc": "4100",
+     "gl": "31000",
+     "text": "Acrd.CredNonCap Curr",
+     "amt": -813523
+    },
+    {
+     "cc": "1000",
+     "gl": "31080",
+     "text": "G/R I/R C/A",
+     "amt": -538611
+    },
+    {
+     "cc": "1000",
+     "gl": "31000",
+     "text": "Acrd.CredNonCap Curr",
+     "amt": -528076
+    },
+    {
+     "cc": "1000",
+     "gl": "31020",
+     "text": "TrdCredDomCtrlCurr",
+     "amt": -521509
+    },
+    {
+     "cc": "4100",
+     "gl": "31080",
+     "text": "G/R I/R C/A",
+     "amt": -432990
+    },
+    {
+     "cc": "1000",
+     "gl": "31230",
+     "text": "FBT A/C Military",
+     "amt": -268220
+    },
+    {
+     "cc": "4100",
+     "gl": "31022",
+     "text": "TrdCredOseaCtrlCurr",
+     "amt": -222971
+    },
+    {
+     "cc": "1000",
+     "gl": "31010",
+     "text": "Acrd.CredCap Curr",
+     "amt": -79351
+    },
+    {
+     "cc": "1000",
+     "gl": "31200",
+     "text": "Other creditors-Curr",
+     "amt": -78635
+    },
+    {
+     "cc": "4100",
+     "gl": "31051",
+     "text": "Unearned revenue",
+     "amt": -60394
+    },
+    {
+     "cc": "1000",
+     "gl": "31102",
+     "text": "Purch card clng-Cash",
+     "amt": -38899
+    },
+    {
+     "cc": "1000",
+     "gl": "31103",
+     "text": "Trav card clng-Cash",
+     "amt": -22092
+    },
+    {
+     "cc": "1000",
+     "gl": "31021",
+     "text": "SmartSalrEmpContb",
+     "amt": -20081
+    },
+    {
+     "cc": "1000",
+     "gl": "31047",
+     "text": "Sp Acct Unerned Rev",
+     "amt": -20028
+    },
+    {
+     "cc": "4100",
+     "gl": "31092",
+     "text": "G/R I/R MILIS",
+     "amt": -19790
+    },
+    {
+     "cc": "1000",
+     "gl": "31068",
+     "text": "O/S Salary Clearing",
+     "amt": 18052
+    },
+    {
+     "cc": "1000",
+     "gl": "31022",
+     "text": "TrdCredOseaCtrlCurr",
+     "amt": -14683
+    },
+    {
+     "cc": "1000",
+     "gl": "31057",
+     "text": "Civ Net Pay Clearing",
+     "amt": -14060
+    },
+    {
+     "cc": "1000",
+     "gl": "31296",
+     "text": "ADFCmpltn-Othr-Curr",
+     "amt": -10702
+    },
+    {
+     "cc": "1000",
+     "gl": "31030",
+     "text": "TrdCred C/wGovtCtrl",
+     "amt": -10175
+    },
+    {
+     "cc": "1000",
+     "gl": "31405",
+     "text": "Other liabilities",
+     "amt": -7014
+    },
+    {
+     "cc": "4100",
+     "gl": "31068",
+     "text": "O/S Salary Clearing",
+     "amt": 6915
+    },
+    {
+     "cc": "1000",
+     "gl": "31051",
+     "text": "Unearned revenue",
+     "amt": -5478
+    },
+    {
+     "cc": "1000",
+     "gl": "31025",
+     "text": "Trd CredEmpCtrl Curr",
+     "amt": -4196
+    },
+    {
+     "cc": "1000",
+     "gl": "31411",
+     "text": "LeasIncen - Non Curr",
+     "amt": -4159
+    },
+    {
+     "cc": "1000",
+     "gl": "31362",
+     "text": "GST on sales",
+     "amt": -3289
+    },
+    {
+     "cc": "1000",
+     "gl": "31241",
+     "text": "PAYG Tax Army Curren",
+     "amt": -2829
+    },
+    {
+     "cc": "1000",
+     "gl": "31242",
+     "text": "PAYG Tax RAAF curr",
+     "amt": -2635
+    },
+    {
+     "cc": "4100",
+     "gl": "31229",
+     "text": "FBT A/C Civilian",
+     "amt": -2511
+    },
+    {
+     "cc": "1000",
+     "gl": "31240",
+     "text": "PAYG Tax Navy Curren",
+     "amt": -2139
+    },
+    {
+     "cc": "4100",
+     "gl": "31058",
+     "text": "Mil Net Pay Clearing",
+     "amt": 1757
+    },
+    {
+     "cc": "1000",
+     "gl": "31244",
+     "text": "Retn Ben Super- Navy",
+     "amt": 1192
+    },
+    {
+     "cc": "1000",
+     "gl": "31202",
+     "text": "TrdCredCtrlCurrent",
+     "amt": -1090
+    },
+    {
+     "cc": "1000",
+     "gl": "31048",
+     "text": "Unearned Rev Leases",
+     "amt": -764
+    },
+    {
+     "cc": "1000",
+     "gl": "31058",
+     "text": "Mil Net Pay Clearing",
+     "amt": -508
+    },
+    {
+     "cc": "1000",
+     "gl": "31245",
+     "text": "Retn Ben Super- Army",
+     "amt": -443
+    },
+    {
+     "cc": "1000",
+     "gl": "31246",
+     "text": "Retn Ben Super- AF",
+     "amt": 395
+    },
+    {
+     "cc": "1000",
+     "gl": "31229",
+     "text": "FBT A/C Civilian",
+     "amt": 391
+    },
+    {
+     "cc": "4100",
+     "gl": "31025",
+     "text": "Trd CredEmpCtrl Curr",
+     "amt": -330
+    },
+    {
+     "cc": "4100",
+     "gl": "31362",
+     "text": "GST on sales",
+     "amt": -329
+    },
+    {
+     "cc": "1000",
+     "gl": "31409",
+     "text": "Rent Prem-Non-curr",
+     "amt": 300
+    },
+    {
+     "cc": "1000",
+     "gl": "31092",
+     "text": "G/R I/R MILIS",
+     "amt": -276
+    },
+    {
+     "cc": "1000",
+     "gl": "31096",
+     "text": "Paid Parental Leave",
+     "amt": -217
+    },
+    {
+     "cc": "1000",
+     "gl": "31067",
+     "text": "DVA-MCRS C/A",
+     "amt": 200
+    },
+    {
+     "cc": "4100",
+     "gl": "31094",
+     "text": "MILIS EOM Offset",
+     "amt": 195
+    },
+    {
+     "cc": "4100",
+     "gl": "31096",
+     "text": "Paid Parental Leave",
+     "amt": -175
+    },
+    {
+     "cc": "4100",
+     "gl": "31030",
+     "text": "TrdCred C/wGovtCtrl",
+     "amt": -163
+    },
+    {
+     "cc": "1000",
+     "gl": "31224",
+     "text": "MSBS Payable Mil Cur",
+     "amt": 117
+    },
+    {
+     "cc": "1000",
+     "gl": "31220",
+     "text": "PAYG Civ Tax - Curr",
+     "amt": 58
+    },
+    {
+     "cc": "4100",
+     "gl": "31203",
+     "text": "Accts Pay Crs MILIS",
+     "amt": -29
+    },
+    {
+     "cc": "1000",
+     "gl": "31091",
+     "text": "ConsigStock MILIS",
+     "amt": -28
+    },
+    {
+     "cc": "1000",
+     "gl": "31284",
+     "text": "ADFPAY With&Owe Navy",
+     "amt": 23
+    },
+    {
+     "cc": "1000",
+     "gl": "31285",
+     "text": "ADFPAY With&Owe Army",
+     "amt": 23
+    },
+    {
+     "cc": "1000",
+     "gl": "31223",
+     "text": "DFRDB Payable MilCur",
+     "amt": 6
+    },
+    {
+     "cc": "4100",
+     "gl": "31202",
+     "text": "TrdCredCtrlCurrent",
+     "amt": -2
+    },
+    {
+     "cc": "1000",
+     "gl": "31095",
+     "text": "UnallocIssCtrl MILIS",
+     "amt": 1
+    },
+    {
+     "cc": "1000",
+     "gl": "31203",
+     "text": "Accts Pay Crs MILIS",
+     "amt": -1
+    },
+    {
+     "cc": "1000",
+     "gl": "31232",
+     "text": "PAYG A/C Military",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31207",
+     "text": "Withhold Tax PAYGCur",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31281",
+     "text": "ADFPAY Nonpub mon Na",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31230",
+     "text": "FBT A/C Military",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31061",
+     "text": "BLKD_DFAT GL Clearin",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31070",
+     "text": "Unearned Approp Rev",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31094",
+     "text": "MILIS EOM Offset",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31101",
+     "text": "BLKD_Interface suspe",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31235",
+     "text": "ADMIN ONLY Clearing",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31365",
+     "text": "Importation Tax",
+     "amt": 0
+    },
+    {
+     "cc": "1000",
+     "gl": "31413",
+     "text": "Deferred pay - ncurr",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31057",
+     "text": "Civ Net Pay Clearing",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31061",
+     "text": "BLKD_DFAT GL Clearin",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31101",
+     "text": "BLKD_Interface suspe",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31102",
+     "text": "Purch card clng-Cash",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31103",
+     "text": "Trav card clng-Cash",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31207",
+     "text": "Withhold Tax PAYGCur",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31405",
+     "text": "Other liabilities",
+     "amt": 0
+    },
+    {
+     "cc": "4100",
+     "gl": "31504",
+     "text": "Prepayments received",
+     "amt": 0
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Leases",
+   "note": "3.4A",
+   "code": "LIA_LEASE",
+   "sign": "C",
+   "computed": 3139113,
+   "pub24": 3139113,
+   "pub23": 3097868,
+   "diff": 0,
+   "status": "tied",
+   "rule": "GL 30015/30016/30017 Lease liabilities",
+   "n": 4,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "30017",
+     "text": "Lease Liabilities",
+     "amt": -1745206
+    },
+    {
+     "cc": "1000",
+     "gl": "30016",
+     "text": "FLease Non Current",
+     "amt": -1166231
+    },
+    {
+     "cc": "4100",
+     "gl": "30017",
+     "text": "Lease Liabilities",
+     "amt": -170612
+    },
+    {
+     "cc": "1000",
+     "gl": "30015",
+     "text": "FLease Current",
+     "amt": -57064
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "label": "Provisions",
+   "note": "3.5",
+   "code": "LIA_PROV",
+   "sign": "C",
+   "computed": 534461,
+   "pub24": 4608734,
+   "pub23": 4528763,
+   "diff": -4074273,
+   "status": "variance",
+   "rule": "GL accounts in series 32xxx / 33xxx",
+   "n": 7,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "32050",
+     "text": "Decontamination-Land",
+     "amt": -527611
+    },
+    {
+     "cc": "4100",
+     "gl": "32119",
+     "text": "Profit & Loss MILIS",
+     "amt": -4514
+    },
+    {
+     "cc": "4100",
+     "gl": "32111",
+     "text": "AddTaxInvPend MILIS",
+     "amt": -1885
+    },
+    {
+     "cc": "1000",
+     "gl": "32119",
+     "text": "Profit & Loss MILIS",
+     "amt": -497
+    },
+    {
+     "cc": "4100",
+     "gl": "33000",
+     "text": "DefDistCtlA/c  MILIS",
+     "amt": 49
+    },
+    {
+     "cc": "1000",
+     "gl": "32111",
+     "text": "AddTaxInvPend MILIS",
+     "amt": -5
+    },
+    {
+     "cc": "1000",
+     "gl": "33000",
+     "text": "DefDistCtlA/c  MILIS",
+     "amt": 2
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "label": "Equity"
+  },
+  {
+   "type": "line",
+   "label": "Total equity",
+   "note": "",
+   "code": "EQ",
+   "sign": "C",
+   "computed": 140163033,
+   "pub24": 132047045,
+   "pub23": 122550490,
+   "diff": 8115988,
+   "status": "variance",
+   "rule": "GL accounts in series 40xxx",
+   "n": 45,
+   "rows": [
+    {
+     "cc": "1000",
+     "gl": "40020",
+     "text": "Approp Cap Injection",
+     "amt": -96540226
+    },
+    {
+     "cc": "1000",
+     "gl": "40000",
+     "text": "Accumulated result",
+     "amt": -70012972
+    },
+    {
+     "cc": "4100",
+     "gl": "40000",
+     "text": "Accumulated result",
+     "amt": 62337620
+    },
+    {
+     "cc": "1000",
+     "gl": "40120",
+     "text": "SME reval res",
+     "amt": -18429377
+    },
+    {
+     "cc": "1000",
+     "gl": "40110",
+     "text": "Buildings reval res",
+     "amt": -6896821
+    },
+    {
+     "cc": "1000",
+     "gl": "40100",
+     "text": "Land reval res",
+     "amt": -6228462
+    },
+    {
+     "cc": "1000",
+     "gl": "40030",
+     "text": "RetuOfEquityToOwner",
+     "amt": 5651165
+    },
+    {
+     "cc": "1000",
+     "gl": "40130",
+     "text": "Infrast reval res",
+     "amt": -4760150
+    },
+    {
+     "cc": "1000",
+     "gl": "40003",
+     "text": "CY Adj for PP Errors",
+     "amt": -2907298
+    },
+    {
+     "cc": "1000",
+     "gl": "40091",
+     "text": "DistToOwner-EmpProvn",
+     "amt": -2414758
+    },
+    {
+     "cc": "4100",
+     "gl": "40003",
+     "text": "CY Adj for PP Errors",
+     "amt": 1278245
+    },
+    {
+     "cc": "4100",
+     "gl": "40066",
+     "text": "Cont by Owner OthAss",
+     "amt": -1158766
+    },
+    {
+     "cc": "1000",
+     "gl": "40086",
+     "text": "Dis to ownr-Oth asst",
+     "amt": 706633
+    },
+    {
+     "cc": "1000",
+     "gl": "40092",
+     "text": "BLKD-DistToOwn-Supp",
+     "amt": -633240
+    },
+    {
+     "cc": "4100",
+     "gl": "40072",
+     "text": "ContByOwner-Supplier",
+     "amt": 633240
+    },
+    {
+     "cc": "1000",
+     "gl": "40170",
+     "text": "H&C reval res",
+     "amt": -343397
+    },
+    {
+     "cc": "1000",
+     "gl": "40062",
+     "text": "Cont by Owner-Land",
+     "amt": 325643
+    },
+    {
+     "cc": "1000",
+     "gl": "40112",
+     "text": "Bldg UFL reval res",
+     "amt": -302580
+    },
+    {
+     "cc": "1000",
+     "gl": "40140",
+     "text": "OP&E reval res",
+     "amt": -272990
+    },
+    {
+     "cc": "1000",
+     "gl": "40004",
+     "text": "ASD Restructure",
+     "amt": 203932
+    },
+    {
+     "cc": "1000",
+     "gl": "40074",
+     "text": "Cont by ownr-Build",
+     "amt": -202044
+    },
+    {
+     "cc": "1000",
+     "gl": "40075",
+     "text": "Cont by ownr-Infrast",
+     "amt": -161706
+    },
+    {
+     "cc": "1000",
+     "gl": "40081",
+     "text": "Dist To Owner - Recv",
+     "amt": 131893
+    },
+    {
+     "cc": "4100",
+     "gl": "40071",
+     "text": "ContByOwner-EmpProvn",
+     "amt": 115414
+    },
+    {
+     "cc": "1000",
+     "gl": "40005",
+     "text": "SPM Migration",
+     "amt": -113566
+    },
+    {
+     "cc": "1000",
+     "gl": "40101",
+     "text": "Land UFL reval res",
+     "amt": -108934
+    },
+    {
+     "cc": "1000",
+     "gl": "40111",
+     "text": "Bldg LHI reval res",
+     "amt": -91116
+    },
+    {
+     "cc": "1000",
+     "gl": "40141",
+     "text": "OP&E UFL reval res",
+     "amt": 35190
+    },
+    {
+     "cc": "1000",
+     "gl": "40006",
+     "text": "ASA Restructure",
+     "amt": 27072
+    },
+    {
+     "cc": "4100",
+     "gl": "40061",
+     "text": "Cont By Owner -Recv",
+     "amt": -18271
+    },
+    {
+     "cc": "1000",
+     "gl": "40087",
+     "text": "Dist To Owner-Intang",
+     "amt": 10069
+    },
+    {
+     "cc": "4100",
+     "gl": "40067",
+     "text": "Cont by ownr-Intang",
+     "amt": -10069
+    },
+    {
+     "cc": "4100",
+     "gl": "40064",
+     "text": "Cont by ownr-OP&E",
+     "amt": -7402
+    },
+    {
+     "cc": "1000",
+     "gl": "40084",
+     "text": "Dis to ownr-IPE",
+     "amt": 7112
+    },
+    {
+     "cc": "1000",
+     "gl": "40131",
+     "text": "Infra UFL reval res",
+     "amt": -3906
+    },
+    {
+     "cc": "1000",
+     "gl": "40064",
+     "text": "Cont by ownr-OP&E",
+     "amt": -3242
+    },
+    {
+     "cc": "4100",
+     "gl": "40004",
+     "text": "ASD Restructure",
+     "amt": -1724
+    },
+    {
+     "cc": "4100",
+     "gl": "40111",
+     "text": "Bldg LHI reval res",
+     "amt": -1684
+    },
+    {
+     "cc": "4100",
+     "gl": "40140",
+     "text": "OP&E reval res",
+     "amt": -1386
+    },
+    {
+     "cc": "1000",
+     "gl": "40093",
+     "text": "DistTo OwnerOthLiabs",
+     "amt": -1286
+    },
+    {
+     "cc": "4100",
+     "gl": "40073",
+     "text": "ContByOwnerOthLiabs",
+     "amt": 1286
+    },
+    {
+     "cc": "4100",
+     "gl": "40006",
+     "text": "ASA Restructure",
+     "amt": -140
+    },
+    {
+     "cc": "4100",
+     "gl": "40130",
+     "text": "Infrast reval res",
+     "amt": -35
+    },
+    {
+     "cc": "1000",
+     "gl": "40001",
+     "text": "Realloc of equity",
+     "amt": -1
+    },
+    {
+     "cc": "4100",
+     "gl": "40001",
+     "text": "Realloc of equity",
+     "amt": 1
+    }
+   ]
+  }
+ ],
+ "unmapped": {
+  "n": 25,
+  "net": 53272,
+  "rows": [
+   {
+    "cc": "1000",
+    "gl": "94100",
+    "text": "Revenue - OTM",
+    "amt": -714726
+   },
+   {
+    "cc": "1000",
+    "gl": "96562",
+    "text": "DoD ATF BAAINBw EUR",
+    "amt": 605792
+   },
+   {
+    "cc": "1000",
+    "gl": "90510",
+    "text": "Proj Paymt Bank A/c",
+    "amt": 135828
+   },
+   {
+    "cc": "1000",
+    "gl": "94200",
+    "text": "Expense  - OTM",
+    "amt": 104852
+   },
+   {
+    "cc": "1000",
+    "gl": "90400",
+    "text": "Projects equity",
+    "amt": -57360
+   },
+   {
+    "cc": "1000",
+    "gl": "90100",
+    "text": "Revenue projects",
+    "amt": -48945
+   },
+   {
+    "cc": "1000",
+    "gl": "90200",
+    "text": "Expenses projects",
+    "amt": 18634
+   },
+   {
+    "cc": "1000",
+    "gl": "99574",
+    "text": "Tax control account",
+    "amt": 5372
+   },
+   {
+    "cc": "4100",
+    "gl": "28000",
+    "text": "CASG-MSA ContractFee",
+    "amt": 3537
+   },
+   {
+    "cc": "1000",
+    "gl": "96561",
+    "text": "DoD ATF BAAINBw AUD",
+    "amt": 558
+   },
+   {
+    "cc": "1000",
+    "gl": "99318",
+    "text": "DTC Clearing",
+    "amt": -174
+   },
+   {
+    "cc": "1000",
+    "gl": "99301",
+    "text": "DPC Clearing",
+    "amt": -73
+   },
+   {
+    "cc": "1000",
+    "gl": "95400",
+    "text": "YEY Equity",
+    "amt": -30
+   },
+   {
+    "cc": "1000",
+    "gl": "95104",
+    "text": "YEY Op Souvenir Sale",
+    "amt": -12
+   },
+   {
+    "cc": "1000",
+    "gl": "92400",
+    "text": "Endowments equity",
+    "amt": 8
+   },
+   {
+    "cc": "1000",
+    "gl": "99576",
+    "text": "Overseas Tr Debtrs",
+    "amt": 8
+   },
+   {
+    "cc": "1000",
+    "gl": "95106",
+    "text": "YEY public donation",
+    "amt": -4
+   },
+   {
+    "cc": "1000",
+    "gl": "92200",
+    "text": "Expenses endowments",
+    "amt": 4
+   },
+   {
+    "cc": "1000",
+    "gl": "95200",
+    "text": "YEY Op Souvenir Purc",
+    "amt": 2
+   },
+   {
+    "cc": "1000",
+    "gl": "95202",
+    "text": "YEY Public Oth Expen",
+    "amt": 2
+   },
+   {
+    "cc": "1000",
+    "gl": "99577",
+    "text": "Other trade debtors",
+    "amt": 0
+   },
+   {
+    "cc": "1000",
+    "gl": "99520",
+    "text": "SPM Offset  ROMAN",
+    "amt": 0
+   },
+   {
+    "cc": "1000",
+    "gl": "99530",
+    "text": "Cash transfers",
+    "amt": 0
+   },
+   {
+    "cc": "1000",
+    "gl": "99575",
+    "text": "Comm Govt Debtors",
+    "amt": 0
+   },
+   {
+    "cc": "4100",
+    "gl": "28201",
+    "text": "CASG Mil Wkfrce-Army",
+    "amt": 0
+   }
+  ]
+ },
+ "elimination": {
+  "n": 28,
+  "net": 183015
+ }
+}

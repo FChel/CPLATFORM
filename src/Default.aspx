@@ -550,6 +550,8 @@
         .tile:nth-child(2) { animation: rise 0.5s ease both 0.28s; }
         .tile:nth-child(3) { animation: rise 0.5s ease both 0.34s; }
         .tile:nth-child(4) { animation: rise 0.5s ease both 0.40s; }
+        .tile:nth-child(5) { animation: rise 0.5s ease both 0.46s; }
+        .tile:nth-child(6) { animation: rise 0.5s ease both 0.52s; }
         .info      { animation: rise 0.5s ease both 0.46s; }
         .meta      { animation: rise 0.5s ease both 0.52s; }
 
@@ -692,8 +694,20 @@
             </a>
             <% } %>
 
-        </div>
+            <% if (IsTileVisible("NORM")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("NORM")) %>" target="_blank" rel="noopener noreferrer">
+                <div>
+                    <div class="icon">
+                        <svg viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><path d="M9 13h6M9 17h6M9 9h2"/></svg>
+                    </div>
+                    <h3>NORM</h3>
+                    <p>The TONY framework</p>
+                </div>
+                <span class="arrow">Open &rarr;</span>
+            </a>
+            <% } %>
 
+        </div>
 
     </div>
     </form>
