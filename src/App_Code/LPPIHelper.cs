@@ -1885,6 +1885,18 @@ PkgDocs AS (
       INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
      WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
        AND d.IsDeactivated = 0
+),
+DeactByProgram AS (
+    SELECT cm.Program,
+           COUNT(DISTINCT d.DocNoAccounting) AS DeactivatedCount
+      FROM dbo.tblLPPI_ReviewPackageDocuments pd
+      INNER JOIN dbo.tblLPPI_Documents d ON d.DocumentID = pd.DocumentID
+      INNER JOIN dbo.tblLPPI_ReviewPackages p ON p.PackageID = pd.PackageID
+      INNER JOIN dbo.tblLPPI_CapabilityManagers cm ON cm.CmID = p.CmID
+     WHERE pd.PackageID IN (SELECT PackageID FROM ScopePkgs)
+       AND d.IsDeactivated = 1
+       AND d.SupersededByDocumentID IS NULL
+     GROUP BY cm.Program
 )
 SELECT
     pd.Program,
@@ -1894,10 +1906,12 @@ SELECT
     COUNT(DISTINCT pd.PocEmailClean)                              AS PocCount,
     SUM(CASE WHEN pd.PocEmailClean IS NULL THEN 1 ELSE 0 END)     AS NoPocCount,
     SUM(CASE WHEN rc.Code = N'RC-RL' THEN 1 ELSE 0 END)           AS FlaggedReloadCount,
+    ISNULL(MAX(dp.DeactivatedCount), 0)                           AS DeactivatedCount,
     ISNULL(SUM(pd.DocInterest), 0)                                AS Interest
   FROM PkgDocs pd
   LEFT JOIN dbo.tblLPPI_Reviews     r  ON r.DocumentID    = pd.FirstLineDocumentID
   LEFT JOIN dbo.tblLPPI_ReasonCodes rc ON rc.ReasonCodeID = r.ReasonCodeID
+  LEFT JOIN DeactByProgram          dp ON dp.Program      = pd.Program
  GROUP BY pd.Program
  ORDER BY pd.Program;";
 

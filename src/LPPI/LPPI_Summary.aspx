@@ -199,6 +199,7 @@
                                 <th>Progress</th>
                                 <th class="num">POCs</th>
                                 <th class="num">Flagged for reload</th>
+                                <th class="num">Deactivated</th>
                                 <th class="num">Interest</th>
                             </tr>
                         </thead>
@@ -212,6 +213,7 @@
                                         <td><%# RenderProgressBar(Eval("ReviewedCount"), Eval("DocCount")) %></td>
                                         <td class="num"><%# FormatInt(Eval("PocCount")) %></td>
                                         <td class="num"><%# FormatReloadCell(Eval("FlaggedReloadCount")) %></td>
+                                        <td class="num"><%# FormatReloadCell(Eval("DeactivatedCount")) %></td>
                                         <td class="num"><%# FormatMoneyCell(Eval("Interest")) %></td>
                                     </tr>
                                 </ItemTemplate>
@@ -225,6 +227,7 @@
                                 <td><%= RenderProgressBar(ProgTotReviewed, ProgTotDocs) %></td>
                                 <td class="num"><strong><asp:Literal ID="litProgTotPocs"     runat="server" Text="0"/></strong><span class="summary-foot-marker">*</span></td>
                                 <td class="num"><strong><asp:Literal ID="litProgTotReload"   runat="server" Text="0"/></strong></td>
+                                <td class="num"><strong><asp:Literal ID="litProgTotDeact"    runat="server" Text="0"/></strong></td>
                                 <td class="num"><strong><asp:Literal ID="litProgTotInterest" runat="server" Text="$0.00"/></strong><span class="summary-foot-marker">*</span></td>
                             </tr>
                         </tfoot>
@@ -236,7 +239,7 @@
             </div>
             <p class="summary-foot-note">
                 <span class="summary-foot-marker">*</span> Documents, POCs and Interest are per-program rollups.
-                A document, POC or dollar that spans more than one program is counted under each, so the Total row
+                A document, POC or amount that spans more than one program is counted under each, so the Total row
                 can exceed the distinct figures on the Cycle overview cards.
             </p>
             <asp:PlaceHolder ID="phReloadNote" runat="server" Visible="false">

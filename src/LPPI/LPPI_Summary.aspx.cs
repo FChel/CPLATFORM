@@ -349,7 +349,7 @@ namespace CPlatform.LPPI
             //     yet finalised) plus the system-wide count of documents
             //     already deactivated and awaiting a corrected reload;
             //   - no-POC: in-scope first-line docs with no POC email.
-            int totPackages = 0, totDocs = 0, totReviewed = 0, totPocs = 0, totNoPoc = 0, totReload = 0;
+            int totPackages = 0, totDocs = 0, totReviewed = 0, totPocs = 0, totNoPoc = 0, totReload = 0, totDeact = 0;
             decimal totInterest = 0m;
 
             foreach (DataRow r in dt.Rows)
@@ -360,6 +360,7 @@ namespace CPlatform.LPPI
                 totPocs     += AsInt(r, "PocCount");
                 totNoPoc    += AsInt(r, "NoPocCount");
                 totReload   += AsInt(r, "FlaggedReloadCount");
+                totDeact    += AsInt(r, "DeactivatedCount");
                 totInterest += AsDec(r, "Interest");
             }
 
@@ -367,6 +368,7 @@ namespace CPlatform.LPPI
             litProgTotDocs.Text     = totDocs.ToString("N0",     CultureInfo.GetCultureInfo("en-AU"));
             litProgTotPocs.Text     = totPocs.ToString("N0",     CultureInfo.GetCultureInfo("en-AU"));
             litProgTotReload.Text   = totReload.ToString("N0",   CultureInfo.GetCultureInfo("en-AU"));
+            litProgTotDeact.Text    = totDeact.ToString("N0",    CultureInfo.GetCultureInfo("en-AU"));
             litProgTotInterest.Text = "$" + totInterest.ToString("N2", CultureInfo.GetCultureInfo("en-AU"));
 
             ProgTotReviewed = totReviewed;
