@@ -905,12 +905,14 @@ SELECT
               .Append(" finalised</h2>");
 
             sb.Append("<p style=\"").Append(FontInline).Append("\">")
-              .Append("This is for your awareness as the responsible AS. ")
+              .Append("This is for your awareness as the responsible AS Fin. ")
               .Append("The LPPI review for ")
               .Append("<strong style=\"").Append(FontInline).Append("\">")
               .Append(LPPIHelper.Enc((program ?? "").ToUpperInvariant()))
               .Append("</strong> has been finalised by a member of your team. ")
-              .Append("No further action is required, the outcome is summarised below.")
+              .Append("You, or your appointed representative, can review the Package using the Begin Review link in this email. ")
+              .Append("Click unfinalise if edits are required prior to the cut-off, then click Finalise again once edits are complete. ")
+              .Append("By finalising the Review Package you are acknowledging that LPPI charges will be processed against the Delivery Manager cost centre for documents where the outcome is payable.")
               .Append("</p>");
 
             // Package metadata table
@@ -992,8 +994,7 @@ SELECT
             }
 
             sb.Append("<p style=\"").Append(FontInline).Append("\">")
-              .Append("Open the package below to view the full line-by-line detail. The reviewer page is read-only since the package is Finalised. ")
-              .Append("The package can be unfinalised if changes are required.")
+              .Append("Open the package below to view the full line-by-line detail.")
               .Append("</p>");
 
             AppendBeginReviewButton(sb, reviewUrl);
