@@ -498,19 +498,8 @@
 
                         <dt>The baseline date in the LPPI Report is incorrect &mdash; what should I do?</dt>
                         <dd>
-                            You need to do two things:
-                            <ol class="instr-list" style="margin-top:6px;">
-                                <li>In LPPI Review, select the Reason Code <strong>Interest Not Payable &mdash; Incorrect data, document eligible for reload</strong> (RC-RL) against the document, and supply Comments and Evidence (Objective Reference) as for any Not&nbsp;payable outcome.</li>
-                                <li>Email <a href="mailto:LPPI.Report@defence.gov.au">LPPI.Report@defence.gov.au</a> with the following details so the data can be corrected upstream:
-                                    <ul class="instr-list" style="margin-top:4px;">
-                                        <li>Document Number</li>
-                                        <li>Correct Baseline Date</li>
-                                        <li>Evidence to support the correct Baseline Date</li>
-                                        <li>Evidence of AS Fin approval</li>
-                                    </ul>
-                                </li>
-                            </ol>
-                            The details emailed to LPPI.Report will be loaded into LPPI Review, and a supplementary review email will be sent to you for completion once the corrected line is available.
+                            You need to select the Reason Code <strong>Interest Not Payable &mdash; Incorrect data, document eligible for reload</strong> (RC-RL) against the document in LPPI Review, and supply Comments and Evidence (Objective Reference) as for any Not&nbsp;payable outcome.
+                            <p style="margin:10px 0 0;">The update will be loaded into LPPI Review, and a supplementary review email will be sent to you for completion once the corrected line is available.</p>
                         </dd>
 
                         <dt>I rejected the invoice off-system (e.g. email to supplier) &mdash; why has the invoice incurred LPPI?</dt>
