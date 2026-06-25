@@ -258,23 +258,21 @@
         <div class="card">
             <h2>Recent export batches</h2>
             <p class="muted" style="font-size:13px;">
-                Re-download a previously generated file. The file bytes are stored against the export batch row in the database.
+                Re-download generated files. Each export batch produces one file per company code, downloadable below; the bytes are stored in the database.
             </p>
             <div class="tbl-wrap">
-                <asp:Repeater ID="rptBatches" runat="server">
+                <asp:Repeater ID="rptBatches" runat="server" OnItemDataBound="rptBatches_ItemDataBound">
                     <HeaderTemplate>
                         <table class="tbl">
                             <thead>
                                 <tr>
                                     <th>Batch</th>
-                                    <th>File</th>
                                     <th>Generated</th>
                                     <th>By</th>
                                     <th class="num">Packages</th>
                                     <th class="num">Docs</th>
-                                    <th class="num">Lines</th>
                                     <th class="num">Total $</th>
-                                    <th></th>
+                                    <th>Files (per company code)</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -282,18 +280,22 @@
                     <ItemTemplate>
                         <tr>
                             <td>#<%# Eval("ExportBatchID") %></td>
-                            <td><%# LPPIHelper.Enc(Eval("FileName")) %></td>
                             <td><%# LPPIHelper.FormatDate(Eval("GeneratedDate"), "dd/MM/yyyy HH:mm") %></td>
                             <td><%# LPPIHelper.Enc(Eval("GeneratedByName")) %></td>
                             <td class="num"><%# Eval("PackageCount") %></td>
                             <td class="num"><%# Eval("DocumentCount") %></td>
-                            <td class="num"><%# Eval("LineCount") %></td>
                             <td class="num">$<%# LPPIHelper.FormatMoney(Eval("TotalAmount")) %></td>
                             <td class="actions">
-                                <a class="btn btn-sm btn-secondary"
-                                   href='<%# "LPPI_Export_Download.ashx?b=" + Eval("ExportBatchID") %>'>
-                                    Download
-                                </a>
+                                <asp:Repeater ID="rptBatchFiles" runat="server">
+                                    <ItemTemplate>
+                                        <a class="btn btn-sm btn-secondary" style="margin:0 4px 4px 0;"
+                                           title='<%# LPPIHelper.Enc(Eval("FileName")) %>'
+                                           href='<%# "LPPI_Export_Download.ashx?f=" + Eval("ExportBatchFileID") %>'>
+                                            <%# LPPIHelper.Enc(Eval("CompanyCode")) %>
+                                        </a>
+                                    </ItemTemplate>
+                                </asp:Repeater>
+                                <asp:Literal ID="litLegacyDownload" runat="server" />
                             </td>
                         </tr>
                     </ItemTemplate>

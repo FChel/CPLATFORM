@@ -1,43 +1,48 @@
 <%@ WebHandler Language="C#" Class="CPlatform.LPPI.LPPI_Export_Download" %>
 
 using System;
+using System.Data;
 using System.Globalization;
 using System.Web;
 
 namespace CPlatform.LPPI
 {
     /// <summary>
-    /// Streams a previously-generated ERP payment file from
-    /// tblLPPI_ExportBatches.FileBytes. Used by the Download buttons in
-    /// the Recent export batches table on LPPI_Export.aspx.
+    /// Streams a previously-generated ERP payment file.
+    ///
+    /// Per-company files (current model) live in tblLPPI_ExportBatchFiles, one
+    /// row per company code under an export batch — requested with
+    /// ?f=ExportBatchFileID. Legacy single-file batches (generated before the
+    /// per-company split) store their bytes on tblLPPI_ExportBatches and are
+    /// requested with ?b=ExportBatchID.
     ///
     /// AUTHENTICATION
-    ///   Admin-only. Validates the current Windows identity against the
-    ///   admin allow-list before streaming. The file contains payment
-    ///   data — vendors, GL accounts, dollar amounts — and must not be
-    ///   served to unauthenticated callers. Same gate as every other
-    ///   admin page in this module.
+    ///   Admin-only. Validates the current Windows identity against the admin
+    ///   allow-list before streaming. The file contains payment data —
+    ///   vendors, GL accounts, dollar amounts — and must not be served to
+    ///   unauthenticated callers.
     ///
     /// QUERY STRING
-    ///   b = ExportBatchID (required)
+    ///   f = ExportBatchFileID (per-company file) — preferred
+    ///   b = ExportBatchID     (legacy combined file) — fallback
     ///
     /// RESPONSE
     ///   200 — Content-Type: xlsx, body = file bytes.
-    ///   400 — bad request (missing/invalid b).
+    ///   400 — bad request (no valid f or b).
     ///   403 — caller is not an admin.
-    ///   404 — batch not found OR file bytes empty/null.
+    ///   404 — file not found OR bytes empty/null.
     /// </summary>
     public class LPPI_Export_Download : IHttpHandler
     {
         public bool IsReusable { get { return false; } }
 
+        private const string XlsxMimeType =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
         public void ProcessRequest(HttpContext ctx)
         {
-            // Admin gate. We deliberately do NOT use LPPIBasePage here
-            // because handlers are not pages — but we replicate the same
-            // check by calling the same helper. IsAdminUser() reads the
-            // current Windows identity from HttpContext.Current.User and
-            // queries tblLPPI_AdminUsers; cached per request.
+            // Admin gate. Handlers are not pages, so we replicate the admin
+            // page check via the same helper.
             if (!LPPIHelper.IsAdminUser())
             {
                 ctx.Response.StatusCode = 403;
@@ -47,55 +52,69 @@ namespace CPlatform.LPPI
                 return;
             }
 
-            // Parse batch id.
-            string raw = (ctx.Request.QueryString["b"] ?? "").Trim();
-            int batchId;
-            if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out batchId)
-                || batchId <= 0)
+            // Per-company file by ExportBatchFileID — the current path.
+            int fileId;
+            if (int.TryParse((ctx.Request.QueryString["f"] ?? "").Trim(),
+                NumberStyles.Integer, CultureInfo.InvariantCulture, out fileId)
+                && fileId > 0)
             {
-                ctx.Response.StatusCode = 400;
-                ctx.Response.ContentType = "text/plain";
-                ctx.Response.Write("Missing or invalid batch id.");
-                ctx.Response.End();
+                DataTable t = LPPIHelper.ExecuteTable(@"
+SELECT FileName, ContentType, FileBytes
+  FROM dbo.tblLPPI_ExportBatchFiles
+ WHERE ExportBatchFileID = @ID;",
+                    LPPIHelper.P("@ID", fileId));
+                StreamRow(ctx, t, "LPPI_Export_File" + fileId + ".xlsx");
                 return;
             }
 
-            // Fetch the row. We pull FileName + ContentType + FileBytes in
-            // a single round-trip; FileBytes is varbinary(max) so this is a
-            // single blob read rather than three separate scalar lookups.
-            var row = LPPIHelper.ExecuteTable(@"
+            // Legacy combined file by ExportBatchID.
+            int batchId;
+            if (int.TryParse((ctx.Request.QueryString["b"] ?? "").Trim(),
+                NumberStyles.Integer, CultureInfo.InvariantCulture, out batchId)
+                && batchId > 0)
+            {
+                DataTable t = LPPIHelper.ExecuteTable(@"
 SELECT FileName, ContentType, FileBytes
   FROM dbo.tblLPPI_ExportBatches
  WHERE ExportBatchID = @ID;",
-                LPPIHelper.P("@ID", batchId));
+                    LPPIHelper.P("@ID", batchId));
+                StreamRow(ctx, t, "LPPI_Export_Batch" + batchId + ".xlsx");
+                return;
+            }
 
-            if (row == null || row.Rows.Count == 0)
+            ctx.Response.StatusCode = 400;
+            ctx.Response.ContentType = "text/plain";
+            ctx.Response.Write("Missing or invalid file/batch id.");
+            ctx.Response.End();
+        }
+
+        private static void StreamRow(HttpContext ctx, DataTable t, string fallbackName)
+        {
+            if (t == null || t.Rows.Count == 0)
             {
                 ctx.Response.StatusCode = 404;
                 ctx.Response.ContentType = "text/plain";
-                ctx.Response.Write("Export batch not found.");
+                ctx.Response.Write("Export file not found.");
                 ctx.Response.End();
                 return;
             }
 
-            var r = row.Rows[0];
+            DataRow r = t.Rows[0];
             byte[] bytes = r["FileBytes"] as byte[];
             if (bytes == null || bytes.Length == 0)
             {
                 ctx.Response.StatusCode = 404;
                 ctx.Response.ContentType = "text/plain";
-                ctx.Response.Write("Export batch has no stored file. It may pre-date the file-storage feature.");
+                ctx.Response.Write("Export file has no stored bytes. It may pre-date the file-storage feature.");
                 ctx.Response.End();
                 return;
             }
 
             string fileName = Convert.ToString(r["FileName"]);
-            if (string.IsNullOrEmpty(fileName))
-                fileName = "LPPI_Export_Batch" + batchId + ".xlsx";
+            if (string.IsNullOrEmpty(fileName)) fileName = fallbackName;
 
             string contentType = Convert.ToString(r["ContentType"]);
-            if (string.IsNullOrEmpty(contentType))
-                contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            if (string.IsNullOrEmpty(contentType)) contentType = XlsxMimeType;
 
             ctx.Response.Clear();
             ctx.Response.ContentType = contentType;

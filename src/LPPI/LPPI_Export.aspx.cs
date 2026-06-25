@@ -118,7 +118,7 @@ SELECT p.PackageID,
         private void BindRecentBatches()
         {
             const string sql = @"
-SELECT TOP 20
+SELECT TOP 50
        ExportBatchID, FileName, GeneratedDate, GeneratedByName,
        PackageCount, DocumentCount, LineCount, TotalAmount
   FROM dbo.tblLPPI_ExportBatches
@@ -127,6 +127,51 @@ SELECT TOP 20
             rptBatches.DataSource = dt;
             rptBatches.DataBind();
             phNoBatches.Visible = dt.Rows.Count == 0;
+        }
+
+        // -------------------------------------------------------------------
+        // Per-batch row bind — attach the company-code download links. New
+        // batches have child files in tblLPPI_ExportBatchFiles (?f= links).
+        // Legacy batches predate the per-company split and serve their single
+        // combined file from the header (?b= link). Zero-payable batches have
+        // neither and show "(no file)".
+        // -------------------------------------------------------------------
+        protected void rptBatches_ItemDataBound(object sender, RepeaterItemEventArgs e)
+        {
+            if (e.Item.ItemType != ListItemType.Item && e.Item.ItemType != ListItemType.AlternatingItem)
+                return;
+
+            DataRowView drv = e.Item.DataItem as DataRowView;
+            if (drv == null) return;
+
+            int batchId  = Convert.ToInt32(drv["ExportBatchID"]);
+            var rptFiles = e.Item.FindControl("rptBatchFiles") as Repeater;
+            var litLegacy = e.Item.FindControl("litLegacyDownload") as Literal;
+
+            DataTable files = LPPIHelper.ExecuteTable(@"
+SELECT ExportBatchFileID, CompanyCode, FileName, FileSizeBytes
+  FROM dbo.tblLPPI_ExportBatchFiles
+ WHERE ExportBatchID = @B
+ ORDER BY CompanyCode;",
+                LPPIHelper.P("@B", batchId));
+
+            if (files.Rows.Count > 0)
+            {
+                if (rptFiles != null) { rptFiles.DataSource = files; rptFiles.DataBind(); }
+                if (litLegacy != null) litLegacy.Text = "";
+                return;
+            }
+
+            if (rptFiles != null) { rptFiles.DataSource = null; rptFiles.DataBind(); }
+
+            int docCount = drv["DocumentCount"] == DBNull.Value ? 0 : Convert.ToInt32(drv["DocumentCount"]);
+            if (litLegacy != null)
+            {
+                litLegacy.Text = docCount == 0
+                    ? "<span class=\"muted\">(no file)</span>"
+                    : "<a class=\"btn btn-sm btn-secondary\" href=\"LPPI_Export_Download.ashx?b=" +
+                      batchId.ToString(CultureInfo.InvariantCulture) + "\">Download</a>";
+            }
         }
 
         // -------------------------------------------------------------------
@@ -154,28 +199,27 @@ SELECT TOP 20
         }
 
         // -------------------------------------------------------------------
-        // Generate ERP file
+        // Generate ERP files
         //
         // Steps, all in sequence:
         //   1. Read selected PackageIDs.
-        //   2. Re-verify each is currently Finalised (defence against a
-        //      racy unfinalise between BindPicker and click).
-        //   3. Call LPPIExport.BuildExport to materialise the xlsx bytes.
-        //   4. Insert tblLPPI_ExportBatches header row, capture new ID.
-        //   5. UPDATE the included packages: Status='Exported',
+        //   2. Re-verify each is currently Finalised (defence against a racy
+        //      unfinalise between BindPicker and click).
+        //   3. Call LPPIExport.BuildExport to materialise one xlsx per
+        //      company code.
+        //   4. Insert the tblLPPI_ExportBatches header row, capture new ID.
+        //   5. Insert one tblLPPI_ExportBatchFiles row per company-code file.
+        //   6. UPDATE the included packages: Status='Exported',
         //      ExportBatchID=<new id>.
-        //   6. UPDATE the included documents: ExportedDate, ExportedBy,
+        //   7. UPDATE the included documents: ExportedDate, ExportedBy,
         //      ExportBatchID.
-        //   7. Stream the bytes to the browser.
+        //   8. Show the per-company download links in Recent batches.
         //
-        // Steps 4-6 are done inside a single transaction-shaped sequence
-        // — if any step fails after the batch row is inserted, the whole
-        // run is undone. We don't have explicit transaction support in
-        // LPPIHelper for cross-statement work yet, so we use an
-        // "insert first / verify last" flow: insert the batch row with
-        // the file bytes, do all the stamping, then commit by streaming
-        // the file. Any exception leaves a rollback opportunity via the
-        // caller seeing the error and reverting via SQL if needed.
+        // The files are not auto-streamed — a batch can produce several
+        // files, so the operator downloads each from the Recent batches
+        // table. Steps 4-7 run as a single transaction-shaped sequence; an
+        // exception after the header insert surfaces a clear message so the
+        // admin can reconcile via the recent-batches table.
         // -------------------------------------------------------------------
 
         protected void btnExport_Click(object sender, EventArgs e)
@@ -187,11 +231,8 @@ SELECT TOP 20
                 return;
             }
 
-            // -----------------------------------------------------------------
-            // Race-safe re-verify. Pull current status for each picked id;
-            // if any is not Finalised, abort with a clear message and rebind
-            // the picker so the user sees the current state.
-            // -----------------------------------------------------------------
+            // Race-safe re-verify. Pull current status for each picked id; if
+            // any is not Finalised, abort and rebind the picker.
             var notFinalised = new List<int>();
             foreach (int pid in selectedPackageIds)
             {
@@ -213,9 +254,7 @@ SELECT TOP 20
                 return;
             }
 
-            // -----------------------------------------------------------------
-            // Build the workbook.
-            // -----------------------------------------------------------------
+            // Build one workbook per company code.
             LPPIExport.ExportResult result;
             try
             {
@@ -229,75 +268,71 @@ SELECT TOP 20
 
             // A zero-payable selection (every document NotPayable / RC-RL) is
             // intentionally NOT bailed here. The packages still need to reach
-            // Exported so they clear the queue, so we persist a header-only
-            // batch, flip the selected packages, then show a message instead
-            // of streaming an empty file — see the LineCount == 0 branch after
-            // persistence.
+            // Exported so they clear the queue, so we record a header-only
+            // batch (no files), flip the selected packages, then show a
+            // message — see the Files.Count == 0 branch after persistence.
 
-            // -----------------------------------------------------------------
-            // Persist — header row first, then stamp packages and documents.
-            // The header row includes the file bytes so the file can be
-            // re-downloaded without regeneration.
-            // -----------------------------------------------------------------
-            string filename;
-            int    batchId;
-
+            int batchId;
             try
             {
-                // We don't yet know the batch id, so we build a placeholder
-                // filename, insert, then update once we know the id. Cheaper
-                // than two-phase preallocation and matches the desired
-                // "<ENV>_LPPI_Export_Batch<id>_<yyyymmdd_hhmm>.xlsx" format.
-                // EnvironmentFileTag puts UAT_ / PROD_ at the front so a
-                // file generated in one environment is never mistaken for
-                // the other if it slips out of an audit folder.
-                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm",
-                    CultureInfo.InvariantCulture);
-                string envTag = LPPIHelper.EnvironmentFileTag;
-                string placeholderName = envTag + "LPPI_Export_Pending_" + timestamp + ".xlsx";
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm", CultureInfo.InvariantCulture);
+                string envTag    = LPPIHelper.EnvironmentFileTag;
+                string by        = LPPIHelper.CurrentUserDisplayName();
+                string byUser    = LPPIHelper.CurrentUserId();
 
-                string by     = LPPIHelper.CurrentUserDisplayName();
-                string byUser = LPPIHelper.CurrentUserId();
-
-                // Use OUTPUT clause to get the new ID back. OLE DB +
-                // SCOPE_IDENTITY worked too but OUTPUT is cleaner with the
-                // existing helper.
+                // Header row first — counts roll up across the per-company
+                // files; the file bytes live on the child rows. LineCount
+                // mirrors DocumentCount now that the file is one row per
+                // document.
                 object newIdObj = LPPIHelper.ExecuteScalar(@"
 INSERT INTO dbo.tblLPPI_ExportBatches
     (FileName, GeneratedDate, GeneratedByUser, GeneratedByName,
-     PackageCount, DocumentCount, LineCount, TotalAmount,
-     FileBytes, FileSizeBytes, ContentType)
+     PackageCount, DocumentCount, LineCount, TotalAmount)
 OUTPUT inserted.ExportBatchID
 VALUES (@FileName, SYSDATETIME(), @ByUser, @ByName,
-        @PackageCount, @DocumentCount, @LineCount, @TotalAmount,
-        @FileBytes, @FileSizeBytes, @ContentType);",
-                    LPPIHelper.P("@FileName",      placeholderName),
+        @PackageCount, @DocumentCount, @LineCount, @TotalAmount);",
+                    LPPIHelper.P("@FileName",      envTag + "LPPI_Export_Pending_" + timestamp),
                     LPPIHelper.P("@ByUser",        byUser ?? ""),
                     LPPIHelper.P("@ByName",        by     ?? ""),
                     LPPIHelper.P("@PackageCount",  selectedPackageIds.Count),
                     LPPIHelper.P("@DocumentCount", result.DocumentCount),
-                    LPPIHelper.P("@LineCount",     result.LineCount),
-                    LPPIHelper.P("@TotalAmount",   result.TotalAmount),
-                    LPPIHelper.P("@FileBytes",     result.Bytes),
-                    LPPIHelper.P("@FileSizeBytes", result.Bytes.Length),
-                    LPPIHelper.P("@ContentType",   XlsxMimeType));
+                    LPPIHelper.P("@LineCount",     result.DocumentCount),
+                    LPPIHelper.P("@TotalAmount",   result.TotalAmount));
 
                 batchId = Convert.ToInt32(newIdObj);
-                filename = string.Format(CultureInfo.InvariantCulture,
-                    "{0}LPPI_Export_Batch{1}_{2}.xlsx", envTag, batchId, timestamp);
 
-                // Update the row with the final filename.
                 LPPIHelper.ExecuteNonQuery(
                     "UPDATE dbo.tblLPPI_ExportBatches SET FileName = @F WHERE ExportBatchID = @ID",
-                    LPPIHelper.P("@F",  filename),
+                    LPPIHelper.P("@F",  string.Format(CultureInfo.InvariantCulture,
+                                        "{0}LPPI_Export_Batch{1}_{2}", envTag, batchId, timestamp)),
                     LPPIHelper.P("@ID", batchId));
 
-                // Stamp the included packages — flip status to Exported and
-                // attach to this export batch. The status guard (= 'Finalised')
-                // is a final race protection: if someone unfinalised in the
-                // last few hundred milliseconds, that package would silently
-                // not flip and the loop count would diverge. We verify
-                // afterwards.
+                // One child row per company-code file. FileName carries the
+                // company code so the audit folder and download are
+                // self-describing.
+                foreach (LPPIExport.ExportFile f in result.Files)
+                {
+                    string fileName = string.Format(CultureInfo.InvariantCulture,
+                        "{0}LPPI_Export_Batch{1}_{2}_{3}.xlsx",
+                        envTag, batchId, SafeCompanyToken(f.CompanyCode), timestamp);
+
+                    LPPIHelper.ExecuteNonQuery(@"
+INSERT INTO dbo.tblLPPI_ExportBatchFiles
+    (ExportBatchID, CompanyCode, FileName, DocumentCount, TotalAmount,
+     FileBytes, FileSizeBytes, ContentType)
+VALUES (@B, @CC, @FN, @DC, @TA, @Bytes, @Size, @CT);",
+                        LPPIHelper.P("@B",     batchId),
+                        LPPIHelper.P("@CC",    f.CompanyCode ?? ""),
+                        LPPIHelper.P("@FN",    fileName),
+                        LPPIHelper.P("@DC",    f.DocumentCount),
+                        LPPIHelper.P("@TA",    f.TotalAmount),
+                        LPPIHelper.P("@Bytes", f.Bytes),
+                        LPPIHelper.P("@Size",  f.Bytes.Length),
+                        LPPIHelper.P("@CT",    XlsxMimeType));
+                }
+
+                // Flip the included packages to Exported. The status guard
+                // (= 'Finalised') is a final race protection.
                 int packagesFlipped = 0;
                 foreach (int pkgId in selectedPackageIds)
                 {
@@ -314,9 +349,6 @@ UPDATE dbo.tblLPPI_ReviewPackages
 
                 if (packagesFlipped != selectedPackageIds.Count)
                 {
-                    // We've already inserted the batch row and got partial
-                    // package-stamping. Rather than try to roll back, we
-                    // surface the discrepancy so the admin can investigate.
                     ShowMessage(string.Format(
                         "Export warning: {0} of {1} packages were stamped as Exported. " +
                         "Some may have been unfinalised concurrently. Batch #{2} was created — please review the recent-batches table.",
@@ -327,9 +359,8 @@ UPDATE dbo.tblLPPI_ReviewPackages
                 }
 
                 // Stamp the included documents — ExportedDate, ExportedBy,
-                // ExportBatchID. One UPDATE per document id; we batch them
-                // through the helper. Acceptable since LPPI volumes are
-                // tens-to-hundreds per export run.
+                // ExportBatchID. One UPDATE per line; LPPI volumes are
+                // tens-to-hundreds per run.
                 foreach (int docId in result.DocumentIds)
                 {
                     LPPIHelper.ExecuteNonQuery(@"
@@ -346,67 +377,49 @@ UPDATE dbo.tblLPPI_Documents
             catch (Exception ex)
             {
                 ShowMessage("Export persistence failed: " + ex.Message +
-                            ". The file may be partially saved — check the recent batches table.", "err");
+                            ". The batch may be partially saved — check the recent batches table.", "err");
                 BindPicker();
                 BindRecentBatches();
                 return;
             }
 
-            // -----------------------------------------------------------------
-            // Zero-payable selection — every selected package has been marked
-            // Exported and a header-only batch recorded, but there is nothing
-            // to ship. Show a message rather than streaming an empty file.
-            // -----------------------------------------------------------------
-            if (result.LineCount == 0)
+            // Zero-payable selection — packages are Exported and a header-only
+            // batch recorded, but there are no files to ship.
+            if (result.Files.Count == 0)
             {
                 ShowMessage(string.Format(CultureInfo.InvariantCulture,
-                    "Selected package(s) had no payable lines. They have been marked Exported (batch #{0}); ERP file is empty (header rows only).",
+                    "Selected package(s) had no payable documents. They have been marked Exported (batch #{0}); no ERP file was produced.",
                     batchId), "ok");
                 BindPicker();
                 BindRecentBatches();
                 return;
             }
 
-            // -----------------------------------------------------------------
-            // Stream the file to the browser. We re-read from the DB rather
-            // than reusing result.Bytes so the download path is identical to
-            // the recent-batches Download button — proves at deploy time
-            // that the persisted bytes match the in-memory bytes.
-            // -----------------------------------------------------------------
-            byte[] bytes;
-            try
-            {
-                object blobObj = LPPIHelper.ExecuteScalar(
-                    "SELECT FileBytes FROM dbo.tblLPPI_ExportBatches WHERE ExportBatchID = @ID",
-                    LPPIHelper.P("@ID", batchId));
-                bytes = blobObj as byte[];
-                if (bytes == null || bytes.Length == 0)
-                {
-                    ShowMessage("Export saved but file bytes are empty. Batch #" + batchId +
-                                " — please re-run.", "err");
-                    BindPicker();
-                    BindRecentBatches();
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                ShowMessage("Export saved as batch #" + batchId + " but file read-back failed: " +
-                            ex.Message + ". Use the Download button in Recent batches.", "warn");
-                BindPicker();
-                BindRecentBatches();
-                return;
-            }
+            // Success — list the company-code files. The operator downloads
+            // each from the Recent batches table below (one file per company
+            // code; a batch can produce several).
+            var codes = new List<string>();
+            foreach (LPPIExport.ExportFile f in result.Files) codes.Add(f.CompanyCode);
+            ShowMessage(string.Format(CultureInfo.InvariantCulture,
+                "Generated {0} ERP file{1} for batch #{2} — company code{1}: {3}. Download each from Recent export batches below.",
+                result.Files.Count,
+                result.Files.Count == 1 ? "" : "s",
+                batchId,
+                string.Join(", ", codes)), "ok");
+            BindPicker();
+            BindRecentBatches();
+        }
 
-            Response.Clear();
-            Response.ContentType = XlsxMimeType;
-            Response.AddHeader("Content-Disposition",
-                "attachment; filename=\"" + filename + "\"");
-            Response.AddHeader("Content-Length", bytes.Length.ToString(CultureInfo.InvariantCulture));
-            Response.BinaryWrite(bytes);
-            Response.Flush();
-            Response.SuppressContent = true;
-            System.Web.HttpContext.Current.ApplicationInstance.CompleteRequest();
+        // Sanitise a company code for use in a file name — keep alphanumerics
+        // and dash/underscore only.
+        private static string SafeCompanyToken(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return "NA";
+            var sb = new StringBuilder();
+            foreach (char c in raw)
+                if (char.IsLetterOrDigit(c) || c == '-' || c == '_') sb.Append(c);
+            string t = sb.ToString();
+            return t.Length == 0 ? "NA" : t;
         }
 
         // -------------------------------------------------------------------

@@ -9,44 +9,41 @@ using OfficeOpenXml;
 namespace CPlatform.LPPI
 {
     /// <summary>
-    /// Builds the ERP Payment Request bulk-upload workbook (.xlsx) for reviewed,
-    /// payable LPPI documents. Layout matches Payment_Request_Bulk_Upload_Template.xlsx
-    /// exactly: 27 columns, Sheet1, plain headers (General format, no bold).
+    /// Builds the ERP Payment Request bulk-upload workbooks (.xlsx) for
+    /// reviewed, payable LPPI documents — ONE FILE PER COMPANY CODE. Layout
+    /// matches Payment_Request_Bulk_Upload_Template.xlsx exactly: 27 columns,
+    /// Sheet1, plain headers (General format, no bold).
     ///
-    /// The export is driven by a LIST OF PACKAGES, Export page presents a picker of Finalised
-    /// packages; the operator selects one or more; this helper pulls the
-    /// payable lines belonging to those packages and builds the workbook.
-    /// Date-range filtering, batch-id filtering and the include-already-
-    /// exported toggle are all gone — Finalised is the gate (you cannot
-    /// finalise without coding every doc), and Exported is terminal so a
-    /// package cannot be re-shipped.
+    /// The export is driven by a LIST OF PACKAGES. The Export page presents a
+    /// picker of Finalised packages; the operator selects one or more; this
+    /// helper pulls the payable documents belonging to those packages and
+    /// builds one workbook per company code across the whole selection,
+    /// regardless of how many Capability Managers are selected. ERP loads one
+    /// file per company code, so the file count equals the number of distinct
+    /// company codes in scope.
     ///
-    /// Row model: ONE ROW PER LINE in tblLPPI_Documents. BODS supplies an
-    /// ITEM_SEQUENCE so a single DocNoAccounting may have many lines and
-    /// Finance pays each line separately. Every payable line carries the
-    /// Defective Administration GL (282000) and the document's Delivery
-    /// Manager charge cost centre; no WBS is emitted. The reason code lives
-    /// at DOCUMENT level (the reviewer codes only the first/dominant line,
-    /// via the smallest-ItemSequence row), and every line of the same
-    /// document inherits that code — this is done via a correlated
-    /// sub-query that maps each document row to its first-line DocumentID
-    /// and joins the review there.
+    /// Row model: ONE ROW PER DOCUMENT (DocNoAccounting). A document's whole
+    /// interest is summed across every live line and paid from a SINGLE row,
+    /// charged to the first-line Delivery Manager cost centre. Where a
+    /// document's lines span different cost centres the first-line wins — this
+    /// is accepted. Every payable document carries the Defective
+    /// Administration GL (282000); no WBS is emitted. The reason code lives at
+    /// DOCUMENT level (the reviewer codes the first/dominant line), and the
+    /// payable gate is read from that first-line review.
     ///
     /// Payment reference quotes the vendor invoice number from the late
-    /// payment, suffixed INT. The ERP payment run de-duplicates references
-    /// across multiple lines of the same document.
+    /// payment, suffixed INT — one reference per document.
     ///
-    /// Tax code: always "P5". After TAX_CODE landed in the BODS extract
-    /// Finance confirmed interest payments are not tax-input or tax-output
-    /// relevant, so the DB value is informational only and not propagated
-    /// to the output.
+    /// Tax code: always "P5". Finance confirmed interest payments are not
+    /// tax-input or tax-output relevant, so the DB TAX_CODE is informational
+    /// only and not propagated to the output.
     ///
-    /// Marking and stamping is done by the caller (LPPI_Export.aspx.cs) so
-    /// the helper stays a pure builder. The caller wraps the build + stamp
-    /// in a single transaction.
+    /// Marking and stamping is done by the caller (LPPI_Export.aspx.cs) so the
+    /// helper stays a pure builder. The caller wraps the build + stamp in a
+    /// single transaction-shaped sequence.
     ///
-    /// Uses EPPlus 4.5.3.3 (LGPL). Do NOT swap this out for ClosedXML — it
-    /// has caused dependency problems on the CPLATFORM server in the past.
+    /// Uses EPPlus 4.5.3.3 (LGPL). Do NOT swap this out for ClosedXML — it has
+    /// caused dependency problems on the CPLATFORM server in the past.
     /// </summary>
     public static class LPPIExport
     {
@@ -86,41 +83,65 @@ namespace CPlatform.LPPI
         };
 
         /// <summary>
-        /// Result from <see cref="BuildExport"/>. Caller is responsible for
-        /// persisting the bytes and the audit row, and for stamping the
-        /// included documents/packages with the resulting ExportBatchID.
+        /// One generated workbook — covers a single company code.
         /// </summary>
-        public class ExportResult
+        public class ExportFile
         {
-            /// <summary>Total line rows in the file (excluding header).</summary>
-            public int LineCount;
+            /// <summary>Company code this file covers.</summary>
+            public string CompanyCode;
 
-            /// <summary>Distinct document count (DocNoAccounting) included.</summary>
+            /// <summary>Document rows in this file (one per DocNoAccounting).</summary>
             public int DocumentCount;
 
-            /// <summary>Distinct package count actually represented in the file.</summary>
-            public int PackageCount;
-
-            /// <summary>Sum of InterestPayable across the included lines.</summary>
+            /// <summary>Sum of document interest in this file.</summary>
             public decimal TotalAmount;
 
-            /// <summary>Distinct DocumentIDs included — one per LINE.</summary>
-            public List<int> DocumentIds;
-
-            /// <summary>Distinct PackageIDs whose docs ended up in the file.</summary>
-            public List<int> PackageIds;
-
-            /// <summary>The .xlsx payload.</summary>
+            /// <summary>The .xlsx payload for this company code.</summary>
             public byte[] Bytes;
         }
 
         /// <summary>
-        /// Build the Excel bulk-upload file covering payable lines of the
-        /// supplied Finalised packages. Returns the bytes and detailed counts;
-        /// does NOT persist anything. Caller is responsible for inserting
-        /// the tblLPPI_ExportBatches row, stamping ExportBatchID on
-        /// documents/packages, and flipping package status to Exported —
-        /// all in a single transaction.
+        /// Result from <see cref="BuildExport"/>. Caller persists each file
+        /// and the audit rows, and stamps the included documents/packages with
+        /// the resulting ExportBatchID.
+        /// </summary>
+        public class ExportResult
+        {
+            /// <summary>Distinct document count (DocNoAccounting) across all files.</summary>
+            public int DocumentCount;
+
+            /// <summary>Distinct package count represented across all files.</summary>
+            public int PackageCount;
+
+            /// <summary>Sum of document interest across all files.</summary>
+            public decimal TotalAmount;
+
+            /// <summary>Every live-line DocumentID included — stamped Exported by the caller.</summary>
+            public List<int> DocumentIds;
+
+            /// <summary>Distinct PackageIDs whose docs ended up in the files.</summary>
+            public List<int> PackageIds;
+
+            /// <summary>One file per company code. Empty when nothing is payable.</summary>
+            public List<ExportFile> Files;
+        }
+
+        // Per-document accumulator — collapses the line-level result set to
+        // one row per document.
+        private class DocAccumulator
+        {
+            public string  DocNoAccounting;
+            public string  CompanyCode;
+            public string  VendorNum;
+            public string  DeliveryManager;
+            public string  VendorInvoiceNo;
+            public decimal DocInterest;
+        }
+
+        /// <summary>
+        /// Build one Excel bulk-upload file per company code covering the
+        /// payable documents of the supplied Finalised packages. Returns the
+        /// files and detailed counts; does NOT persist anything.
         /// </summary>
         /// <param name="packageIds">PackageIDs to include. Must all be Finalised.</param>
         public static ExportResult BuildExport(IList<int> packageIds)
@@ -129,32 +150,26 @@ namespace CPlatform.LPPI
             {
                 return new ExportResult
                 {
-                    LineCount     = 0,
                     DocumentCount = 0,
                     PackageCount  = 0,
                     TotalAmount   = 0m,
                     DocumentIds   = new List<int>(),
                     PackageIds    = new List<int>(),
-                    Bytes         = new byte[0]
+                    Files         = new List<ExportFile>()
                 };
             }
 
             // -----------------------------------------------------------------
-            // 1. Pull the source rows — one row per tblLPPI_Documents row
-            //    (i.e. per LINE, not per DocNoAccounting), restricted to
-            //    documents that are members of the selected packages AND
-            //    whose DOCUMENT-level review (joined via first-line
-            //    DocumentID) carries a Payable outcome.
+            // 1. Pull the source rows — one row per live line of every
+            //    payable, in-scope document. The document-level review (joined
+            //    via the first-line DocumentID) carries the Payable outcome;
+            //    only the first-line pd row matches the review join, and that
+            //    row expands to every live line of the document. Aggregation
+            //    to document level and the split into one file per company
+            //    code both happen in C# below.
             //
             //    OLE DB requires positional ? placeholders. The IN clause is
-            //    built manually with one placeholder per package id and the
-            //    parameter list passed in matching order — the same pattern
-            //    used elsewhere for variable-length lists.
-            //
-            //    Both the INNER JOIN and the WHERE clause assert
-            //    d.IsDeactivated = 0 — deactivated lines never ship to ERP.
-            //    The two are redundant by design: if a future edit removes
-            //    one, the other still keeps deactivated rows out.
+            //    built manually with one placeholder per package id.
             // -----------------------------------------------------------------
             var inPlaceholders = new StringBuilder();
             for (int i = 0; i < packageIds.Count; i++)
@@ -180,110 +195,149 @@ namespace CPlatform.LPPI
                 " WHERE pd.PackageID IN (" + inPlaceholders.ToString() + ") " +
                 "   AND rc.Outcome      = 'Payable' " +
                 "   AND d.IsDeactivated = 0 " +
-                " ORDER BY pd.PackageID, d.DocNoAccounting, d.ItemSequence;";
+                " ORDER BY d.CompanyCode, d.DocNoAccounting, d.DocumentID;";
 
             var parms = new List<OleDbParameter>(packageIds.Count);
             for (int i = 0; i < packageIds.Count; i++)
-            {
                 parms.Add(LPPIHelper.P("@P" + i.ToString(CultureInfo.InvariantCulture), packageIds[i]));
-            }
 
             DataTable dt = LPPIHelper.ExecuteTable(sql, parms.ToArray());
 
             // -----------------------------------------------------------------
-            // 2. Build the workbook.
+            // 2. Collapse to document level. Each document pays its WHOLE
+            //    interest (summed across every live line) from a single row,
+            //    charged to the first-line Delivery Manager cost centre. The
+            //    query orders by DocumentID ascending within each document, so
+            //    the first row seen for a document IS its first line.
             // -----------------------------------------------------------------
-            var docIds          = new List<int>();
-            var distinctDocNos  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var distinctPkgIds  = new HashSet<int>();
-            decimal total       = 0m;
-            byte[]  bytes;
+            var allLineDocIds  = new List<int>();
+            var distinctPkgIds = new HashSet<int>();
+            var docOrder       = new List<string>();
+            var docMap         = new Dictionary<string, DocAccumulator>(StringComparer.OrdinalIgnoreCase);
 
-            using (var pkg = new ExcelPackage())
+            foreach (DataRow row in dt.Rows)
             {
-                ExcelWorksheet ws = pkg.Workbook.Worksheets.Add("Sheet1");
+                int      docId   = AsInt(row["DocumentID"]);
+                string   docNo   = AsString(row["DocNoAccounting"]);
+                decimal? linePay = AsDecimal(row["InterestPayable"]);
+                int      pkgId   = AsInt(row["PackageID"]);
 
-                // Row 1: headers, plain General format (no bold, no fill) to
-                // match the real template.
-                for (int c = 0; c < OutputHeaders.Length; c++)
+                allLineDocIds.Add(docId);
+                distinctPkgIds.Add(pkgId);
+
+                DocAccumulator acc;
+                if (!docMap.TryGetValue(docNo, out acc))
                 {
-                    ws.Cells[1, c + 1].Value = OutputHeaders[c];
+                    acc = new DocAccumulator
+                    {
+                        DocNoAccounting = docNo,
+                        CompanyCode     = AsString(row["CompanyCode"]),
+                        VendorNum       = AsString(row["VendorNum"]),
+                        DeliveryManager = AsString(row["DeliveryManager"]),
+                        VendorInvoiceNo = AsString(row["VendorInvoiceNo"])
+                    };
+                    docMap[docNo] = acc;
+                    docOrder.Add(docNo);
                 }
 
-                // Row 2+: one row per LINE.
-                int excelRow = 2;
-                foreach (DataRow row in dt.Rows)
+                if (linePay.HasValue) acc.DocInterest += linePay.Value;
+            }
+
+            // -----------------------------------------------------------------
+            // 3. Group documents by company code (first-seen order) and build
+            //    one workbook per company code.
+            // -----------------------------------------------------------------
+            var companyOrder = new List<string>();
+            var byCompany    = new Dictionary<string, List<DocAccumulator>>(StringComparer.OrdinalIgnoreCase);
+            foreach (string docNo in docOrder)
+            {
+                DocAccumulator acc = docMap[docNo];
+                List<DocAccumulator> list;
+                if (!byCompany.TryGetValue(acc.CompanyCode, out list))
                 {
-                    string   companyCode       = AsString(row["CompanyCode"]);
-                    string   vendorNum         = AsString(row["VendorNum"]);
-                    string   deliveryManager   = AsString(row["DeliveryManager"]);
-                    decimal? interestPay       = AsDecimal(row["InterestPayable"]);
-                    string   docNoAcct         = AsString(row["DocNoAccounting"]);
-                    string   vendorInvoice     = AsString(row["VendorInvoiceNo"]);
-                    int      pkgIdRow          = AsInt(row["PackageID"]);
+                    list = new List<DocAccumulator>();
+                    byCompany[acc.CompanyCode] = list;
+                    companyOrder.Add(acc.CompanyCode);
+                }
+                list.Add(acc);
+            }
 
-                    // Payment reference quotes the vendor invoice number from
-                    // the late payment, suffixed INT. The ERP payment run
-                    // de-duplicates references across multiple lines of the
-                    // same document.
-                    //
-                    // The ERP Payment reference field caps at 16 characters.
-                    // When VendorInvoiceNo pushes the reference past that, trim
-                    // from the FRONT and keep the rightmost 16 — the trailing
-                    // characters plus the INT suffix are the most distinguishing
-                    // part of the reference.
-                    string paymentRef = vendorInvoice + "INT";
-                    if (paymentRef.Length > 16)
-                        paymentRef = paymentRef.Substring(paymentRef.Length - 16);
+            var files     = new List<ExportFile>();
+            decimal grand = 0m;
 
-                    string itemText = "Late Payment Interest for " + vendorInvoice;
+            foreach (string cc in companyOrder)
+            {
+                List<DocAccumulator> docs = byCompany[cc];
+                decimal fileTotal = 0m;
+                byte[] bytes;
 
-                    // Col 1–10
-                    ws.Cells[excelRow, 1].Value  = companyCode;        // Company code
-                    ws.Cells[excelRow, 2].Value  = "INTEREST";         // Payment type
-                    ws.Cells[excelRow, 3].Value  = "INTEREST";         // Payment sub type
-                    ws.Cells[excelRow, 4].Value  = "NP";               // Document type
-                    ws.Cells[excelRow, 5].Value  = "0023";             // Financial Delegation
-                    ws.Cells[excelRow, 6].Value  = vendorNum;          // Vendor Number
-                    ws.Cells[excelRow, 7].Value  = "282000";           // GL Account Code — Defective Administration
-                    ws.Cells[excelRow, 8].Value  = deliveryManager;    // Cost Centre Code — Delivery Manager charge cost centre
-                    // Col 9 WBS Element — intentionally blank; LPPI interest carries no WBS
-                    // Col 10 Internal Order — blank
+                using (var pkg = new ExcelPackage())
+                {
+                    ExcelWorksheet ws = pkg.Workbook.Worksheets.Add("Sheet1");
 
-                    // Col 11 Amount Paid (GST Incl) — per-line InterestPayable
-                    if (interestPay.HasValue)
+                    // Row 1: headers, plain General format to match the real
+                    // template.
+                    for (int c = 0; c < OutputHeaders.Length; c++)
+                        ws.Cells[1, c + 1].Value = OutputHeaders[c];
+
+                    // Row 2+: one row per DOCUMENT.
+                    int excelRow = 2;
+                    foreach (DocAccumulator acc in docs)
                     {
-                        ws.Cells[excelRow, 11].Value = interestPay.Value;
-                        total += interestPay.Value;
+                        // Payment reference quotes the vendor invoice number,
+                        // suffixed INT, capped at the ERP 16-char limit (keep
+                        // the rightmost 16 — the most distinguishing part).
+                        string paymentRef = acc.VendorInvoiceNo + "INT";
+                        if (paymentRef.Length > 16)
+                            paymentRef = paymentRef.Substring(paymentRef.Length - 16);
+
+                        string itemText = "Late Payment Interest for " + acc.VendorInvoiceNo;
+
+                        ws.Cells[excelRow, 1].Value  = acc.CompanyCode;     // Company code
+                        ws.Cells[excelRow, 2].Value  = "INTEREST";          // Payment type
+                        ws.Cells[excelRow, 3].Value  = "INTEREST";          // Payment sub type
+                        ws.Cells[excelRow, 4].Value  = "NP";                // Document type
+                        ws.Cells[excelRow, 5].Value  = "0023";              // Financial Delegation
+                        ws.Cells[excelRow, 6].Value  = acc.VendorNum;       // Vendor Number
+                        ws.Cells[excelRow, 7].Value  = "282000";            // GL Account Code — Defective Administration
+                        ws.Cells[excelRow, 8].Value  = acc.DeliveryManager; // Cost Centre Code — first-line Delivery Manager charge cost centre
+                        // Col 9 WBS Element — blank; LPPI interest carries no WBS
+                        // Col 10 Internal Order — blank
+
+                        ws.Cells[excelRow, 11].Value = acc.DocInterest;     // Amount Paid (GST Incl) — whole-document interest
+                        fileTotal += acc.DocInterest;
+
+                        ws.Cells[excelRow, 12].Value = "AUD";               // Currency
+                        ws.Cells[excelRow, 13].Value = "P5";                // Tax code — interest is not tax-relevant
+                        ws.Cells[excelRow, 14].Value = paymentRef;          // Payment reference — {VendorInvoiceNo}INT
+                        ws.Cells[excelRow, 15].Value = acc.DocNoAccounting; // Header text — FI accounting document number
+                        ws.Cells[excelRow, 16].Value = itemText;            // Item text
+                        // Col 17–27 all blank (Title, Name, address, bank fields)
+
+                        excelRow++;
                     }
 
-                    ws.Cells[excelRow, 12].Value = "AUD";              // Currency
-                    ws.Cells[excelRow, 13].Value = "P5";               // Tax code — interest is not tax-relevant
-                    ws.Cells[excelRow, 14].Value = paymentRef;         // Payment reference — {VendorInvoiceNo}INT
-                    ws.Cells[excelRow, 15].Value = docNoAcct;          // Header text — FI accounting document number
-                    ws.Cells[excelRow, 16].Value = itemText;          // Item text
-                    // Col 17–27 all blank (Title, Name, address, bank fields)
-
-                    docIds.Add(Convert.ToInt32(row["DocumentID"]));
-                    distinctDocNos.Add(docNoAcct);
-                    distinctPkgIds.Add(pkgIdRow);
-                    excelRow++;
+                    bytes = pkg.GetAsByteArray();
                 }
 
-                // Headers and all cells stay at the default "General" number
-                // format — matches the real template. No bold, no fill.
-                bytes = pkg.GetAsByteArray();
+                files.Add(new ExportFile
+                {
+                    CompanyCode   = cc,
+                    DocumentCount = docs.Count,
+                    TotalAmount   = fileTotal,
+                    Bytes         = bytes
+                });
+                grand += fileTotal;
             }
 
             return new ExportResult
             {
-                LineCount     = docIds.Count,
-                DocumentCount = distinctDocNos.Count,
+                DocumentCount = docMap.Count,
                 PackageCount  = distinctPkgIds.Count,
-                TotalAmount   = total,
-                DocumentIds   = docIds,
+                TotalAmount   = grand,
+                DocumentIds   = allLineDocIds,
                 PackageIds    = new List<int>(distinctPkgIds),
-                Bytes         = bytes
+                Files         = files
             };
         }
 

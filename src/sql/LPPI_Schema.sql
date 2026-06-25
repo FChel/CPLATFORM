@@ -175,6 +175,38 @@ BEGIN
 END
 GO
 
+/* =============================================================================
+   tblLPPI_ExportBatchFiles — one row per company-code file under an export
+   batch. The parent tblLPPI_ExportBatches stays the run header (counts roll
+   up); the per-company .xlsx bytes live here. Re-runnable.
+   ============================================================================= */
+IF OBJECT_ID(N'dbo.tblLPPI_ExportBatchFiles', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.tblLPPI_ExportBatchFiles
+    (
+        ExportBatchFileID INT IDENTITY(1,1) NOT NULL
+            CONSTRAINT PK_tblLPPI_ExportBatchFiles PRIMARY KEY CLUSTERED,
+        ExportBatchID     INT            NOT NULL,
+        CompanyCode       NVARCHAR(10)   NOT NULL,
+        FileName          NVARCHAR(260)  NOT NULL,
+        DocumentCount     INT            NOT NULL
+            CONSTRAINT DF_tblLPPI_ExportBatchFiles_DocumentCount DEFAULT (0),
+        TotalAmount       DECIMAL(18,2)  NOT NULL
+            CONSTRAINT DF_tblLPPI_ExportBatchFiles_TotalAmount DEFAULT (0),
+        FileBytes         VARBINARY(MAX) NULL,
+        FileSizeBytes     INT            NULL,
+        ContentType       NVARCHAR(200)  NULL,
+        GeneratedDate     DATETIME2(3)   NOT NULL
+            CONSTRAINT DF_tblLPPI_ExportBatchFiles_GeneratedDate DEFAULT (SYSDATETIME()),
+        CONSTRAINT FK_tblLPPI_ExportBatchFiles_Batch
+            FOREIGN KEY (ExportBatchID) REFERENCES dbo.tblLPPI_ExportBatches(ExportBatchID)
+    );
+
+    CREATE NONCLUSTERED INDEX IX_tblLPPI_ExportBatchFiles_BatchID
+        ON dbo.tblLPPI_ExportBatchFiles(ExportBatchID);
+END
+GO
+
 /* ----------------------------- tblLPPI_Documents ----------------------------
    One row per LINE. BODS supplies ITEM_SEQUENCE so a single DocNoAccounting
    may have many lines. The reviewer codes the DOCUMENT once (review row
