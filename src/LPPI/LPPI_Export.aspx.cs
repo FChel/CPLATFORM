@@ -112,7 +112,7 @@ SELECT p.PackageID,
         }
 
         // -------------------------------------------------------------------
-        // Recent batches table — last 20, with Download links
+        // Recent batches table — last 50, with Download links
         // -------------------------------------------------------------------
 
         private void BindRecentBatches()
