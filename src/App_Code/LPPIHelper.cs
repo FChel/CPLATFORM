@@ -817,8 +817,10 @@ SELECT cm.Program
         //
         // OpenPackages / Overdue / NearDeadline are scoped to
         // ActivePackageStatusList (NotSent / Sent / InReview / Finalised);
-        // Exported and Cancelled are terminal and drop off. TotalBatches is a
-        // system-wide load count.
+        // Exported and Cancelled are terminal and drop off. CycleBatches
+        // counts the distinct load batches feeding live documents in
+        // current-cycle packages, so it matches the current-cycle Total
+        // documents figure on the tile rather than the all-time load count.
         // -------------------------------------------------------------------
         public static DataRow GetDashboardSummary()
         {
@@ -837,7 +839,12 @@ SELECT
        WHERE Status IN (" + activeIn + @")
          AND DueDate BETWEEN SYSDATETIME() AND DATEADD(day, @WarnDays, SYSDATETIME()))
                                                                                  AS NearDeadlinePackages,
-   (SELECT COUNT(*) FROM dbo.tblLPPI_LoadBatches)                                AS TotalBatches;";
+   (SELECT COUNT(DISTINCT d.BatchID)
+      FROM dbo.tblLPPI_Documents d
+      INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd ON pd.DocumentID = d.DocumentID
+      INNER JOIN dbo.tblLPPI_ReviewPackages         p  ON p.PackageID   = pd.PackageID
+     WHERE d.IsDeactivated = 0
+       AND p.Status IN (" + activeIn + @"))                                      AS CycleBatches;";
             var dt = ExecuteTable(sql, P("@WarnDays", ReminderWindowDays));
             return dt.Rows.Count > 0 ? dt.Rows[0] : null;
         }

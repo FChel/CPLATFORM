@@ -107,7 +107,7 @@ namespace CPlatform.LPPI
                 litOpen.Text    = Convert.ToString(dash["OpenPackages"]);
                 litNear.Text    = Convert.ToString(dash["NearDeadlinePackages"]);
                 litOverdue.Text = Convert.ToString(dash["OverduePackages"]);
-                litBatches.Text = Convert.ToString(dash["TotalBatches"]);
+                litBatches.Text = Convert.ToString(dash["CycleBatches"]);
             }
 
             // -----------------------------------------------------------------
