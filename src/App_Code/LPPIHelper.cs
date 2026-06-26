@@ -1273,7 +1273,8 @@ UPDATE d
  INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd
          ON pd.DocumentID = (SELECT MIN(d2.DocumentID)
                                FROM dbo.tblLPPI_Documents d2
-                              WHERE d2.DocNoAccounting = d.DocNoAccounting)
+                              WHERE d2.DocNoAccounting = d.DocNoAccounting
+                                AND d2.IsDeactivated   = 0)
  INNER JOIN dbo.tblLPPI_Reviews r
          ON r.DocumentID = pd.DocumentID
  WHERE pd.PackageID    = @p
