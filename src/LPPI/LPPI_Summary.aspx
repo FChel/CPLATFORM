@@ -238,9 +238,9 @@
                 </asp:PlaceHolder>
             </div>
             <p class="summary-foot-note">
-                <span class="summary-foot-marker">*</span> Documents, POCs and Interest are per-program rollups.
-                A document, POC or amount that spans more than one program is counted under each, so the Total row
-                can exceed the distinct figures on the Cycle overview cards.
+                <span class="summary-foot-marker">*</span> POCs and Interest are per-program rollups, as is the document
+                count shown in the Progress column. A document, POC or amount that spans more than one program is counted
+                under each, so the Total row can exceed the distinct figures on the Cycle overview cards.
             </p>
             <asp:PlaceHolder ID="phReloadNote" runat="server" Visible="false">
                 <p class="summary-foot-note summary-foot-note-warn">
