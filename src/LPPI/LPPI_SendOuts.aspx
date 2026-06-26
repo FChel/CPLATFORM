@@ -127,6 +127,20 @@
                       + '&audience=' + encodeURIComponent(audience || 'asfin');
             overlay.classList.add('open');
         }
+
+        // Notify AS Fin preview — reuses the shared preview modal. The notify
+        // body is rendered server-side by LPPIEmail.BuildNotifyEmailHtml via
+        // the kind=notify path. Side-effect-free, so it is available in test
+        // mode as well as PROD.
+        function openNotifyPreview(packageId) {
+            var overlay = document.getElementById('previewOverlay');
+            var frame   = document.getElementById('previewFrame');
+            var label   = document.getElementById('previewLabel');
+            label.textContent = 'Email preview — Package #' + packageId + ' · Notify AS Fin';
+            frame.src = 'LPPI_EmailPreview.aspx?id=' + packageId + '&kind=notify';
+            overlay.classList.add('open');
+        }
+
         function closePreview() {
             var overlay = document.getElementById('previewOverlay');
             overlay.classList.remove('open');

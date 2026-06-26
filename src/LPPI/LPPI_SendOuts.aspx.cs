@@ -419,12 +419,20 @@ namespace CPlatform.LPPI
                     ? "Send a courtesy email with the package summary to a typed recipient (CM team mailbox on CC, LPPI support on BCC)."
                     : "Notify AS Fin is a real-send-only action. Set LPPI.ProductionMode = true to enable.";
 
+                // Preview — side-effect-free, so it renders in all modes even
+                // though the notify send itself is real-send-only. Reuses the
+                // shared preview modal via the kind=notify path.
                 sb.AppendFormat(
                     "<button type=\"button\" class=\"btn btn-sm btn-primary\" {0}" +
                     "title=\"{1}\" " +
-                    "onclick=\"openNotify({2});\">Notify AS Fin</button>",
+                    "onclick=\"openNotify({2});\">Notify AS Fin</button>  ",
                     disabledAttr,
                     LPPIHelper.Enc(tip),
+                    packageId);
+
+                sb.AppendFormat(
+                    "<button type=\"button\" class=\"btn btn-sm btn-ghost\" " +
+                    "onclick=\"openNotifyPreview({0})\">Notify Preview</button>",
                     packageId);
             }
 

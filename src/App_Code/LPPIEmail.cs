@@ -280,6 +280,35 @@ namespace CPlatform.LPPI
         }
 
         /// <summary>
+        /// Returns the fully-rendered Notify AS Fin email body for a package
+        /// without sending anything. Safe to call in all environments —
+        /// preview only, no SMTP and no audit row. Used by the preview modal
+        /// on the Send-outs page via the kind=notify path.
+        ///
+        /// Renders from the same builders as NotifyAsFin (ComputeFinalisedSummary
+        /// + BuildBodyNotify), so the preview cannot drift from the real send.
+        /// The notify email only makes sense once a package is finalised, so a
+        /// non-Finalised package returns a short explanatory message rather
+        /// than a body.
+        /// </summary>
+        public static string BuildNotifyEmailHtml(int packageId)
+        {
+            var pkg = LoadPackageRow(packageId);
+            if (pkg == null) return "<p style=\"" + FontInline + "\">Package not found.</p>";
+
+            string status = Convert.ToString(pkg["Status"]);
+            if (!string.Equals(status, LPPIHelper.StatusFinalised, StringComparison.OrdinalIgnoreCase))
+                return "<p style=\"" + FontInline + "\">The Notify AS Fin email is only available once a package is finalised.</p>";
+
+            string   program    = Convert.ToString(pkg["Program"]);
+            DateTime dueDate     = Convert.ToDateTime(pkg["DueDate"]);
+            string   asFinToken  = Convert.ToString(pkg["Token"]);
+
+            FinalisedSummary summary = ComputeFinalisedSummary(packageId);
+            return BuildBodyNotify(program, dueDate, asFinToken, summary, pkg);
+        }
+
+        /// <summary>
         /// Returns a representative AS Fin preview for a CM with no package
         /// yet. Uses the CM's program name and current unreviewed-doc count
         /// across the system (not scoped to any package). No package is

@@ -15,6 +15,9 @@ namespace CPlatform.LPPI
     ///               POC template is rendered with placeholder values so the
     ///               operator can see the template shape without picking a
     ///               specific POC. Real per-POC sends always use real data.
+    ///   kind      — "notify" renders the Notify AS Fin courtesy email for a
+    ///               Finalised package (id required). Mutually exclusive with
+    ///               type/audience/poc, which are ignored on the notify path.
     ///
     ///   cm        — alternate path for previewing for a CM with no package
     ///               yet. Mutually exclusive with id; AS Fin template only.
@@ -35,10 +38,21 @@ namespace CPlatform.LPPI
             }
 
             // ?id=<PackageID>&type=Initial|Reminder&audience=asfin|poc[&poc=email]
+            // or ?id=<PackageID>&kind=notify for the Notify AS Fin preview.
             int packageId;
             if (!int.TryParse(Request.QueryString["id"], out packageId))
             {
                 WriteError("Invalid or missing package ID.");
+                return;
+            }
+
+            // ?kind=notify — Notify AS Fin courtesy email (Finalised packages).
+            // Side-effect-free preview; renders from the same builders as the
+            // real send so the two cannot drift.
+            string kind = (Request.QueryString["kind"] ?? "").Trim();
+            if (kind.Equals("notify", StringComparison.OrdinalIgnoreCase))
+            {
+                WriteHtml(LPPIEmail.BuildNotifyEmailHtml(packageId));
                 return;
             }
 
