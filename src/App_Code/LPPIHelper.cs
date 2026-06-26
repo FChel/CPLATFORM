@@ -1422,13 +1422,15 @@ UPDATE d
  INNER JOIN dbo.tblLPPI_ReviewPackageDocuments pd
          ON pd.DocumentID = (SELECT MIN(d2.DocumentID)
                                FROM dbo.tblLPPI_Documents d2
-                              WHERE d2.DocNoAccounting = d.DocNoAccounting)
+                              WHERE d2.DocNoAccounting          = d.DocNoAccounting
+                                AND d2.IsDeactivated             = 1
+                                AND d2.SupersededByDocumentID IS NULL)
  WHERE pd.PackageID                 = @p
    AND d.IsDeactivated               = 1
    AND d.SupersededByDocumentID IS NULL;",
                             P("@p", packageId));
 
-                        // 3) Flip status back. Race-safe — if it has moved on
+                        // 3) Flip status back. Race-safe if it has moved on
                         //    to Exported (impossible legitimately, but defence
                         //    in depth), this affects 0 rows.
                         int statusUpdated = ExecTx(cn, tx, @"
@@ -1842,6 +1844,8 @@ SELECT
         // Columns:
         //   Program             NVARCHAR(200)
         //   PackageCount        INT  — packages for this program in scope
+        //   Statuses            NVARCHAR — distinct package statuses for the
+        //                        program, lifecycle-ordered, comma-joined
         //   DocCount            INT
         //   ReviewedCount       INT
         //   PocCount            INT  — distinct first-line POC emails
@@ -1909,6 +1913,17 @@ DeactByProgram AS (
 SELECT
     pd.Program,
     COUNT(DISTINCT pd.PackageID)                                  AS PackageCount,
+    (SELECT STUFF((
+        SELECT N', ' + x.Status
+          FROM (SELECT DISTINCT p2.Status
+                  FROM dbo.tblLPPI_ReviewPackages p2
+                  INNER JOIN dbo.tblLPPI_CapabilityManagers cm2 ON cm2.CmID = p2.CmID
+                 WHERE p2.PackageID IN (SELECT PackageID FROM ScopePkgs)
+                   AND cm2.Program = pd.Program) x
+         ORDER BY CASE x.Status WHEN N'NotSent'  THEN 1 WHEN N'Sent'      THEN 2
+                                WHEN N'InReview' THEN 3 WHEN N'Finalised' THEN 4
+                                WHEN N'Exported' THEN 5 WHEN N'Cancelled' THEN 6 ELSE 7 END
+         FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, ''))   AS Statuses,
     COUNT(*)                                                      AS DocCount,
     SUM(CASE WHEN r.ReasonCodeID IS NOT NULL THEN 1 ELSE 0 END)   AS ReviewedCount,
     COUNT(DISTINCT pd.PocEmailClean)                              AS PocCount,

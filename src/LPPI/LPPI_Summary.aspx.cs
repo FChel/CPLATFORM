@@ -365,7 +365,6 @@ namespace CPlatform.LPPI
             }
 
             litProgTotPackages.Text = totPackages.ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
-            litProgTotDocs.Text     = totDocs.ToString("N0",     CultureInfo.GetCultureInfo("en-AU"));
             litProgTotPocs.Text     = totPocs.ToString("N0",     CultureInfo.GetCultureInfo("en-AU"));
             litProgTotReload.Text   = totReload.ToString("N0",   CultureInfo.GetCultureInfo("en-AU"));
             litProgTotDeact.Text    = totDeact.ToString("N0",    CultureInfo.GetCultureInfo("en-AU"));
@@ -518,8 +517,47 @@ namespace CPlatform.LPPI
             var sb = new StringBuilder();
             sb.Append("<div class=\"summary-progress\">");
             sb.Append("<div class=\"track\"><div class=\"fill\" style=\"width:").Append(pct).Append("%\"></div></div>");
-            sb.Append("<div class=\"lbl\">").Append(reviewed).Append(" / ").Append(total).Append("</div>");
+            sb.Append("<div class=\"lbl\">").Append(reviewed).Append(" / ").Append(total).Append(" (").Append(pct).Append("%)").Append("</div>");
             sb.Append("</div>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Renders one lifecycle pill per distinct package status for a
+        /// program, from the comma-joined Statuses column. A program with one
+        /// package shows a single pill; a program whose packages sit at
+        /// different stages (e.g. a finalised package plus a fresh one) shows
+        /// one pill each, lifecycle-ordered. Pill classes are the shared
+        /// .pill.* lifecycle styles from lppi.css.
+        /// </summary>
+        protected string RenderStatusPills(object statusesObj)
+        {
+            string raw = statusesObj == null || statusesObj == DBNull.Value
+                ? "" : Convert.ToString(statusesObj);
+            if (raw.Length == 0) return "";
+
+            var sb = new StringBuilder();
+            string[] parts = raw.Split(',');
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string status = parts[i].Trim();
+                if (status.Length == 0) continue;
+
+                string label;
+                string cls;
+                switch (status.ToLowerInvariant())
+                {
+                    case "notsent":   label = "Not sent";  cls = "notsent";   break;
+                    case "sent":      label = "Sent";      cls = "sent";      break;
+                    case "inreview":  label = "In review"; cls = "inreview";  break;
+                    case "finalised": label = "Finalised"; cls = "finalised"; break;
+                    case "exported":  label = "Exported";  cls = "exported";  break;
+                    case "cancelled": label = "Cancelled"; cls = "cancelled"; break;
+                    default:          label = status;     cls = "";          break;
+                }
+                if (sb.Length > 0) sb.Append(" ");
+                sb.AppendFormat("<span class=\"pill {0}\">{1}</span>", cls, LPPIHelper.Enc(label));
+            }
             return sb.ToString();
         }
 

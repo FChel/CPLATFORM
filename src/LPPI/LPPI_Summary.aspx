@@ -195,7 +195,7 @@
                             <tr>
                                 <th>Program</th>
                                 <th class="num">Packages</th>
-                                <th class="num">Documents</th>
+                                <th>Status</th>
                                 <th>Progress</th>
                                 <th class="num">POCs</th>
                                 <th class="num">Flagged for reload</th>
@@ -209,7 +209,7 @@
                                     <tr>
                                         <td><%# LPPIHelper.Enc(Eval("Program")) %></td>
                                         <td class="num"><%# FormatInt(Eval("PackageCount")) %></td>
-                                        <td class="num"><%# FormatInt(Eval("DocCount")) %></td>
+                                        <td><%# RenderStatusPills(Eval("Statuses")) %></td>
                                         <td><%# RenderProgressBar(Eval("ReviewedCount"), Eval("DocCount")) %></td>
                                         <td class="num"><%# FormatInt(Eval("PocCount")) %></td>
                                         <td class="num"><%# FormatReloadCell(Eval("FlaggedReloadCount")) %></td>
@@ -223,7 +223,7 @@
                             <tr class="summary-row-total">
                                 <td><strong>Total</strong></td>
                                 <td class="num"><strong><asp:Literal ID="litProgTotPackages" runat="server" Text="0"/></strong></td>
-                                <td class="num"><strong><asp:Literal ID="litProgTotDocs"     runat="server" Text="0"/></strong><span class="summary-foot-marker">*</span></td>
+                                <td></td>
                                 <td><%= RenderProgressBar(ProgTotReviewed, ProgTotDocs) %></td>
                                 <td class="num"><strong><asp:Literal ID="litProgTotPocs"     runat="server" Text="0"/></strong><span class="summary-foot-marker">*</span></td>
                                 <td class="num"><strong><asp:Literal ID="litProgTotReload"   runat="server" Text="0"/></strong></td>
