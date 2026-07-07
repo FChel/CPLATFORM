@@ -509,6 +509,7 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     r.ReasonCodeID                          AS SelectedReasonCodeID,
                     r.Comments,
                     r.ObjectiveReference,
+                    r.ReloadBaselineDate,
                     r.ReviewedDate                          AS ReviewedVersion,
                     rc.Code                                 AS ReasonCode,
                     rc.Outcome                              AS ReasonOutcome,
@@ -542,7 +543,7 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     d1.CapabilityManager, d1.CapabilityManagerName, d1.CapabilityManagerProgram,
                     d1.DeliveryManager, d1.DeliveryManagerName, d1.DeliveryManagerProgram,
                     d1.PocEmail,
-                    r.ReasonCodeID, r.Comments, r.ObjectiveReference, r.ReviewedDate,
+                    r.ReasonCodeID, r.Comments, r.ObjectiveReference, r.ReloadBaselineDate, r.ReviewedDate,
                     rc.Code, rc.Outcome, rc.RequiresComments
 
                 ORDER BY SUM(d.InterestPayable) DESC";
@@ -702,7 +703,21 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
             return Convert.ToString(val);
         }
 
-        protected string BuildReasonOptions(object selectedId)
+        // Formats the stored RC-RL believed-correct baseline date as an ISO
+        // yyyy-MM-dd string for the row's hidden field and the native date
+        // input in the modal. Empty when there is no date.
+        protected string FormatReloadBaseline(object val)
+        {
+            if (val == null || val == DBNull.Value) return "";
+            if (val is DateTime)
+                return ((DateTime)val).ToString("yyyy-MM-dd");
+            DateTime dt;
+            if (DateTime.TryParse(Convert.ToString(val), out dt))
+                return dt.ToString("yyyy-MM-dd");
+            return "";
+        }
+
+        protected string BuildReasonOptions(object selectedId, bool forBulk)
         {
             int? sel = null;
             if (selectedId != null && selectedId != DBNull.Value)
@@ -721,7 +736,15 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                 string desc    = Convert.ToString(r["Description"]);
                 string outcome = Convert.ToString(r["Outcome"]);
                 bool   req     = Convert.ToBoolean(r["RequiresComments"]);
+
+                // RC-RL is per-document only — it needs a believed baseline
+                // date captured through the modal, so it is never offered in
+                // the bulk-apply dropdown.
+                if (forBulk && string.Equals(code, LPPIHelper.ReloadReasonCode, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 sb.Append("<option value=\"").Append(id).Append("\"")
+                  .Append(" data-code=\"").Append(LPPIHelper.Enc(code)).Append("\"")
                   .Append(" data-outcome=\"").Append(LPPIHelper.Enc(outcome)).Append("\"")
                   .Append(" data-requires=\"").Append(req ? "1" : "0").Append("\"");
                 if (sel.HasValue && sel.Value == id)
@@ -760,6 +783,7 @@ LEFT JOIN tblLPPI_ReasonCodes rc  ON rc.ReasonCodeID = r.ReasonCodeID;";
                     bool   req     = Convert.ToBoolean(r["RequiresComments"]);
                     string label   = string.IsNullOrEmpty(desc) ? code : desc;
                     sb.Append("<option value=\"").Append(Convert.ToInt32(r["ReasonCodeID"])).Append("\"")
+                      .Append(" data-code=\"").Append(LPPIHelper.Enc(code)).Append("\"")
                       .Append(" data-outcome=\"").Append(LPPIHelper.Enc(outcome)).Append("\"")
                       .Append(" data-requires=\"").Append(req ? "1" : "0").Append("\"")
                       .Append(" disabled selected>")

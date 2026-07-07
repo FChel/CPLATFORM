@@ -138,6 +138,7 @@
 
         bindBulk();
         bindKeyboard();
+        bindReloadModal();
 
         // Beforeunload warning
         window.addEventListener('beforeunload', function (e) {
@@ -234,6 +235,97 @@
     }
 
     /* =========================================================================
+       RC-RL reload-eligible modal
+
+       Selecting RC-RL opens a mandatory baseline-date modal. Confirm stashes
+       the date on the row's hidden .reload-baseline-input and commits the
+       selection; Cancel reverts the dropdown to its previous value. RC-RL is
+       never offered in bulk apply, so this is the only path that sets it.
+       ========================================================================= */
+    var RELOAD_CODE = 'RC-RL';
+    var reasonPrev  = {};
+    var _rlState    = null;   // { row, sel, docNo } while the modal is open
+
+    function openReloadModal(row, sel, docNo) {
+        var modal = document.getElementById('rlModal');
+        if (!modal) {   // markup missing — fail safe by reverting
+            sel.value = reasonPrev[docNo] || '';
+            return;
+        }
+        _rlState = { row: row, sel: sel, docNo: docNo };
+
+        var dateInput = document.getElementById('rlBaselineDate');
+        var errEl     = document.getElementById('rlBaselineError');
+        var hidden    = row.querySelector('.reload-baseline-input');
+        if (dateInput) dateInput.value = (hidden && hidden.value) ? hidden.value : '';
+        if (errEl) errEl.hidden = true;
+
+        modal.hidden = false;
+        if (dateInput) dateInput.focus();
+    }
+
+    function closeReloadModal() {
+        var modal = document.getElementById('rlModal');
+        if (modal) modal.hidden = true;
+        _rlState = null;
+    }
+
+    function confirmReloadModal() {
+        if (!_rlState) return;
+        var dateInput = document.getElementById('rlBaselineDate');
+        var errEl     = document.getElementById('rlBaselineError');
+        var val = dateInput ? (dateInput.value || '').trim() : '';
+        if (!val) {
+            if (errEl) errEl.hidden = false;   // mandatory — stay open
+            if (dateInput) dateInput.focus();
+            return;
+        }
+        var row   = _rlState.row;
+        var sel   = _rlState.sel;
+        var docNo = _rlState.docNo;
+
+        var hidden = row.querySelector('.reload-baseline-input');
+        if (hidden) hidden.value = val;
+        reasonPrev[docNo] = sel.value;   // RC-RL is now the committed value
+
+        closeReloadModal();
+        markDirty(row, docNo);
+        evaluateNeeds(row);
+    }
+
+    function cancelReloadModal() {
+        if (!_rlState) { closeReloadModal(); return; }
+        var sel   = _rlState.sel;
+        var docNo = _rlState.docNo;
+        var row   = _rlState.row;
+        // Revert the dropdown to the previously-committed value and drop any
+        // half-entered date if the reverted code is not itself RC-RL.
+        sel.value = reasonPrev[docNo] || '';
+        var opt  = sel.options[sel.selectedIndex] || {};
+        var code = opt.getAttribute ? (opt.getAttribute('data-code') || '') : '';
+        var hidden = row.querySelector('.reload-baseline-input');
+        if (hidden && code !== RELOAD_CODE) hidden.value = '';
+        closeReloadModal();
+        evaluateNeeds(row);
+    }
+
+    function bindReloadModal() {
+        var confirmBtn = document.getElementById('rlModalConfirm');
+        var cancelBtn  = document.getElementById('rlModalCancel');
+        var modal      = document.getElementById('rlModal');
+        if (confirmBtn) confirmBtn.addEventListener('click', confirmReloadModal);
+        if (cancelBtn)  cancelBtn.addEventListener('click',  cancelReloadModal);
+        if (modal) {
+            var backdrop = modal.querySelector('.rl-modal-backdrop');
+            if (backdrop) backdrop.addEventListener('click', cancelReloadModal);
+        }
+        // Escape cancels (resets the reason code).
+        document.addEventListener('keydown', function (e) {
+            if (_rlState && (e.key === 'Escape' || e.keyCode === 27)) cancelReloadModal();
+        });
+    }
+
+    /* =========================================================================
        Row controls
        ========================================================================= */
     function bindRowControls(rows) {
@@ -242,7 +334,22 @@
 
             var sel = row.querySelector('.reason-select');
             if (sel) {
+                // Remember the committed value so a cancelled RC-RL modal can
+                // revert the dropdown to what it was.
+                reasonPrev[docNo] = sel.value;
                 sel.addEventListener('change', function () {
+                    var opt  = sel.options[sel.selectedIndex] || {};
+                    var code = opt.getAttribute ? (opt.getAttribute('data-code') || '') : '';
+                    if (code === RELOAD_CODE) {
+                        // Hard gate — capture a believed baseline date, or revert.
+                        openReloadModal(row, sel, docNo);
+                        return;   // markDirty / evaluateNeeds happen on confirm
+                    }
+                    // Any non-RC-RL selection clears a previously-entered
+                    // baseline date and commits normally.
+                    var hidden = row.querySelector('.reload-baseline-input');
+                    if (hidden) hidden.value = '';
+                    reasonPrev[docNo] = sel.value;
                     markDirty(row, docNo);
                     evaluateNeeds(row);
                 });
@@ -460,9 +567,12 @@
 
         if (!sel) return;
         var opt     = sel.options[sel.selectedIndex] || {};
+        var code    = opt.getAttribute ? (opt.getAttribute('data-code') || '') : '';
         var outcome = opt.getAttribute ? (opt.getAttribute('data-outcome') || '') : '';
         var req     = opt.getAttribute ? opt.getAttribute('data-requires') === '1' : false;
-        var needs   = (req || outcome === 'NotPayable') && ta && !ta.value.trim();
+        var rbl     = row.querySelector('.reload-baseline-input');
+        var needsBaseline = code === RELOAD_CODE && (!rbl || !rbl.value.trim());
+        var needs   = ((req || outcome === 'NotPayable') && ta && !ta.value.trim()) || needsBaseline;
 
         row.classList.toggle('needs-comment', needs);
 
@@ -473,6 +583,7 @@
                 if (ta  && !ta.value.trim())  msgs.push('Not-Payable requires a comment.');
                 if (inp && !inp.value.trim()) msgs.push('Not-Payable requires an objective reference.');
             }
+            if (needsBaseline) msgs.push('Reload-eligible requires a believed baseline date — reselect the code to enter it.');
             msgEl.textContent = msgs.join(' ');
         }
     }
@@ -517,6 +628,8 @@
             payload.append('rows[' + idx + '].reasonCodeId', sel ? sel.value : '');
             payload.append('rows[' + idx + '].comments',     ta  ? ta.value  : '');
             payload.append('rows[' + idx + '].objref',       inp ? inp.value : '');
+            var rbl = row.querySelector('.reload-baseline-input');
+            payload.append('rows[' + idx + '].reloadBaselineDate', rbl ? rbl.value : '');
             payload.append('rows[' + idx + '].version',      ver);
         });
 
@@ -649,6 +762,7 @@
         var inp = row.querySelector('.objref-input');
 
         if (sel) sel.value = r.newReasonCodeId == null ? '' : String(r.newReasonCodeId);
+        if (sel) reasonPrev[row.getAttribute('data-doc-no')] = sel.value;
         if (ta)  ta.value  = r.newComments || '';
         if (inp) inp.value = r.newObjectiveReference || '';
 
@@ -945,6 +1059,12 @@
             var opt      = bulkSel.options[bulkSel.selectedIndex];
             var outcome  = opt.getAttribute('data-outcome') || '';
             var requires = opt.getAttribute('data-requires') === '1';
+            // RC-RL is per-document only (needs a baseline date via the modal)
+            // and is not offered in this list; guard anyway in case it appears.
+            if ((opt.getAttribute('data-code') || '') === RELOAD_CODE) {
+                alert('RC-RL must be applied to one document at a time, with a baseline date. It cannot be applied in bulk.');
+                return;
+            }
             if (requires || outcome === 'NotPayable') {
                 var msg = outcome === 'NotPayable'
                     ? 'Not-Payable needs a Comment and Objective Reference on every selected row. Stage anyway?'

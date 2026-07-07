@@ -457,6 +457,10 @@ GO
    ReviewedDate doubles as the optimistic-locking version token — the save
    handler reads it on load, posts it back on save, and refuses the update
    if it has changed in between.
+
+   ReloadBaselineDate is mandatory when the reviewer picks RC-RL and holds the
+   date they believe the payment baseline should be; it is the input the LPPI
+   interest recalculation reads. NULL for every other reason code.
    ============================================================================= */
 IF OBJECT_ID(N'dbo.tblLPPI_Reviews', N'U') IS NULL
 BEGIN
@@ -467,6 +471,7 @@ BEGIN
         ReasonCodeID        INT             NULL,
         Comments            NVARCHAR(MAX)   NULL,
         ObjectiveReference  NVARCHAR(200)   NULL,
+        ReloadBaselineDate  DATE            NULL,
         ReviewedByUserId    NVARCHAR(100)   NULL,
         ReviewedByName      NVARCHAR(200)   NULL,
         ReviewedDate        DATETIME2(3)    NULL,
@@ -501,6 +506,7 @@ BEGIN
         ReasonCodeID         INT             NULL,
         Comments             NVARCHAR(MAX)   NULL,
         ObjectiveReference   NVARCHAR(200)   NULL,
+        ReloadBaselineDate   DATE            NULL,
         ChangedByUserId      NVARCHAR(100)   NULL,
         ChangedByName        NVARCHAR(200)   NULL,
         ChangedDate          DATETIME2(3)    NOT NULL CONSTRAINT DF_tblLPPI_ReviewHistory_ChangedDate DEFAULT (SYSDATETIME()),

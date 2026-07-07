@@ -177,6 +177,7 @@ namespace CPlatform.LPPI
                     string reasonRaw    = (ctx.Request.Form[prefix + "reasonCodeId"] ?? "").Trim();
                     string comments     = (ctx.Request.Form[prefix + "comments"]     ?? "").Trim();
                     string objref       = (ctx.Request.Form[prefix + "objref"]       ?? "").Trim();
+                    string reloadRaw    = (ctx.Request.Form[prefix + "reloadBaselineDate"] ?? "").Trim();
                     string loadedVer    = (ctx.Request.Form[prefix + "version"]      ?? "").Trim();
 
                     if (docNo.Length == 0)
@@ -186,7 +187,7 @@ namespace CPlatform.LPPI
                     }
 
                     RowResult rr = ProcessRow(packageId, isPocView, pocEmail,
-                        docNo, reasonRaw, comments, objref, loadedVer);
+                        docNo, reasonRaw, comments, objref, reloadRaw, loadedVer);
                     results.Add(rr);
                     if (rr.Ok && rr.ErrorCode != "noChange") anyRowSaved = true;
                 }
@@ -254,9 +255,15 @@ namespace CPlatform.LPPI
         // -------------------------------------------------------------------
         private static RowResult ProcessRow(int packageId, bool isPocView, string pocEmail,
                                             string docNo, string reasonRaw,
-                                            string comments, string objref, string loadedVersion)
+                                            string comments, string objref,
+                                            string reloadRaw, string loadedVersion)
         {
             var rr = new RowResult { DocNo = docNo };
+
+            // Normalised RC-RL believed-correct baseline date (yyyy-MM-dd) or
+            // null. Set in the validation block once we confirm the code is
+            // RC-RL; passed straight into the review write, NULL otherwise.
+            string reloadBaselineIso = null;
 
             try
             {
@@ -317,13 +324,15 @@ namespace CPlatform.LPPI
                 if (reasonId.HasValue)
                 {
                     DataTable rcRow = LPPIHelper.ExecuteTable(
-                        "SELECT Outcome, RequiresComments FROM tblLPPI_ReasonCodes WHERE ReasonCodeID = @r",
+                        "SELECT Code, Outcome, RequiresComments FROM tblLPPI_ReasonCodes WHERE ReasonCodeID = @r",
                         LPPIHelper.P("@r", reasonId.Value));
                     if (rcRow.Rows.Count == 1)
                     {
+                        string code     = Convert.ToString(rcRow.Rows[0]["Code"]);
                         string outcome  = Convert.ToString(rcRow.Rows[0]["Outcome"]);
                         bool   requires = Convert.ToBoolean(rcRow.Rows[0]["RequiresComments"]);
                         bool   notPay   = string.Equals(outcome, "NotPayable", StringComparison.OrdinalIgnoreCase);
+                        bool   isReload = string.Equals(code, LPPIHelper.ReloadReasonCode, StringComparison.OrdinalIgnoreCase);
 
                         if (requires && comments.Length == 0)
                         {
@@ -343,6 +352,23 @@ namespace CPlatform.LPPI
                             rr.Error = "Objective Reference is required when the outcome is Not Payable.";
                             return rr;
                         }
+
+                        // RC-RL — the believed-correct baseline date is
+                        // mandatory and must be a real date. Authoritative
+                        // server-side gate behind the client modal.
+                        if (isReload)
+                        {
+                            DateTime rbl;
+                            if (reloadRaw.Length == 0
+                                || !DateTime.TryParseExact(reloadRaw, "yyyy-MM-dd",
+                                        CultureInfo.InvariantCulture, DateTimeStyles.None, out rbl))
+                            {
+                                rr.Ok = false; rr.ErrorCode = "validation";
+                                rr.Error = "Reload-eligible (RC-RL) requires a believed baseline date.";
+                                return rr;
+                            }
+                            reloadBaselineIso = rbl.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                        }
                     }
                 }
 
@@ -350,7 +376,7 @@ namespace CPlatform.LPPI
                 //    the optimistic-lock check and the no-change short-
                 //    circuit.
                 DataTable curT = LPPIHelper.ExecuteTable(@"
-                    SELECT ReasonCodeID, Comments, ObjectiveReference, ReviewedDate
+                    SELECT ReasonCodeID, Comments, ObjectiveReference, ReloadBaselineDate, ReviewedDate
                     FROM tblLPPI_Reviews
                     WHERE DocumentID = @d",
                     LPPIHelper.P("@d", firstLineDocId));
@@ -359,6 +385,7 @@ namespace CPlatform.LPPI
                 int?   curReasonId    = null;
                 string curComments    = "";
                 string curObjref      = "";
+                string curReloadIso   = null;
                 string curVersionIso  = "";
 
                 if (reviewExists)
@@ -367,6 +394,9 @@ namespace CPlatform.LPPI
                     if (cur["ReasonCodeID"] != DBNull.Value) curReasonId = Convert.ToInt32(cur["ReasonCodeID"]);
                     curComments    = cur["Comments"]           == DBNull.Value ? "" : Convert.ToString(cur["Comments"]);
                     curObjref      = cur["ObjectiveReference"] == DBNull.Value ? "" : Convert.ToString(cur["ObjectiveReference"]);
+                    curReloadIso   = cur["ReloadBaselineDate"] == DBNull.Value
+                                        ? null
+                                        : Convert.ToDateTime(cur["ReloadBaselineDate"]).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                     curVersionIso  = FormatVersion(cur["ReviewedDate"]);
                 }
 
@@ -403,7 +433,8 @@ namespace CPlatform.LPPI
                                     || (curReasonId == null && !reasonId.HasValue);
                 bool sameComments = string.Equals(curComments, comments, StringComparison.Ordinal);
                 bool sameObjref   = string.Equals(curObjref,   objref,   StringComparison.Ordinal);
-                if (reviewExists && sameReason && sameComments && sameObjref)
+                bool sameReload   = string.Equals(curReloadIso ?? "", reloadBaselineIso ?? "", StringComparison.Ordinal);
+                if (reviewExists && sameReason && sameComments && sameObjref && sameReload)
                 {
                     rr.Ok = true;
                     rr.ErrorCode = "noChange";
@@ -449,6 +480,7 @@ namespace CPlatform.LPPI
                                        SET ReasonCodeID       = @rc,
                                            Comments           = @cm,
                                            ObjectiveReference = @obj,
+                                           ReloadBaselineDate = @rbl,
                                            ReviewedByUserId   = @uid,
                                            ReviewedByName     = @uname,
                                            ReviewedDate       = @nv
@@ -458,6 +490,7 @@ namespace CPlatform.LPPI
                                     LPPIHelper.P("@rc",    (object)reasonId ?? DBNull.Value),
                                     LPPIHelper.P("@cm",    comments),
                                     LPPIHelper.P("@obj",   objref),
+                                    LPPIHelper.P("@rbl",   (object)reloadBaselineIso ?? DBNull.Value),
                                     LPPIHelper.P("@uid",   changedById),
                                     LPPIHelper.P("@uname", changedByName),
                                     LPPIHelper.P("@nv",    newVerIso),
@@ -502,13 +535,15 @@ namespace CPlatform.LPPI
                                     ExecNonQueryTx(cn, tx, @"
                                         INSERT INTO tblLPPI_Reviews
                                             (DocumentID, ReasonCodeID, Comments, ObjectiveReference,
-                                             ReviewedByUserId, ReviewedByName, ReviewedDate, IsFinal)
+                                             ReloadBaselineDate, ReviewedByUserId, ReviewedByName,
+                                             ReviewedDate, IsFinal)
                                         VALUES
-                                            (@d, @rc, @cm, @obj, @uid, @uname, @nv, 0);",
+                                            (@d, @rc, @cm, @obj, @rbl, @uid, @uname, @nv, 0);",
                                         LPPIHelper.P("@d",     firstLineDocId),
                                         LPPIHelper.P("@rc",    (object)reasonId ?? DBNull.Value),
                                         LPPIHelper.P("@cm",    comments),
                                         LPPIHelper.P("@obj",   objref),
+                                        LPPIHelper.P("@rbl",   (object)reloadBaselineIso ?? DBNull.Value),
                                         LPPIHelper.P("@uid",   changedById),
                                         LPPIHelper.P("@uname", changedByName),
                                         LPPIHelper.P("@nv",    newVerIso));
@@ -536,14 +571,15 @@ namespace CPlatform.LPPI
                             ExecNonQueryTx(cn, tx, @"
                                 INSERT INTO tblLPPI_ReviewHistory
                                     (DocumentID, PackageID, ReasonCodeID, Comments,
-                                     ObjectiveReference, ChangedByUserId, ChangedByName,
-                                     ChangedDate)
-                                VALUES (@d, @p, @rc, @cm, @obj, @uid, @uname, @nv);",
+                                     ObjectiveReference, ReloadBaselineDate, ChangedByUserId,
+                                     ChangedByName, ChangedDate)
+                                VALUES (@d, @p, @rc, @cm, @obj, @rbl, @uid, @uname, @nv);",
                                 LPPIHelper.P("@d",     firstLineDocId),
                                 LPPIHelper.P("@p",     packageId),
                                 LPPIHelper.P("@rc",    (object)reasonId ?? DBNull.Value),
                                 LPPIHelper.P("@cm",    comments),
                                 LPPIHelper.P("@obj",   objref),
+                                LPPIHelper.P("@rbl",   (object)reloadBaselineIso ?? DBNull.Value),
                                 LPPIHelper.P("@uid",   changedById),
                                 LPPIHelper.P("@uname", changedByName),
                                 LPPIHelper.P("@nv",    newVerIso));

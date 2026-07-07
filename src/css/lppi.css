@@ -2432,3 +2432,78 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     font-size: 12px;
     line-height: 1.5;
 }
+
+/* =============================================================================
+   RC-RL reload-eligible modal
+   Scoped under .lppi-shell so nothing leaks into shared header/SVG output.
+   ============================================================================= */
+.lppi-shell .rl-modal[hidden] { display: none; }
+
+.lppi-shell .rl-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lppi-shell .rl-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 17, 17, 0.55);
+}
+
+.lppi-shell .rl-modal-card {
+    position: relative;
+    z-index: 1;
+    width: min(30rem, calc(100vw - 2rem));
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+    border-top: 4px solid #d75b07;
+    padding: 1.5rem 1.5rem 1.25rem;
+}
+
+.lppi-shell .rl-modal-title {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+    color: #111;
+}
+
+.lppi-shell .rl-modal-body {
+    margin: 0 0 0.75rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: #333;
+}
+
+.lppi-shell .rl-modal-field {
+    margin: 1rem 0 1.25rem;
+}
+
+.lppi-shell .rl-modal-field label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+    color: #111;
+}
+
+.lppi-shell .rl-modal-field .input {
+    width: 100%;
+}
+
+.lppi-shell .rl-modal-error {
+    margin-top: 0.45rem;
+    color: #b3261e;
+    font-size: 0.82rem;
+}
+
+.lppi-shell .rl-modal-error[hidden] { display: none; }
+
+.lppi-shell .rl-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+}

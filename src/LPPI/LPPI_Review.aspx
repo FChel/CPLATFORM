@@ -814,9 +814,10 @@
                         <td class="col-int num"><%# LPPIHelper.FormatMoney(Eval("TotalInterest")) %></td>
                         <td class="col-reason">
                             <select class="reason-select input">
-                                <option value="" data-outcome="" data-requires="0">—</option>
-                                <%# BuildReasonOptions(Eval("SelectedReasonCodeID")) %>
+                                <option value="" data-code="" data-outcome="" data-requires="0">—</option>
+                                <%# BuildReasonOptions(Eval("SelectedReasonCodeID"), false) %>
                             </select>
+                            <input type="hidden" class="reload-baseline-input" value='<%# FormatReloadBaseline(Eval("ReloadBaselineDate")) %>' />
                         </td>
                         <td class="col-comments">
                             <textarea class="comments-input input" rows="1" title='<%# LPPIHelper.Enc(Eval("Comments")) %>'><%# LPPIHelper.Enc(Eval("Comments")) %></textarea>
@@ -854,14 +855,44 @@
         <div id="bulkBar" class="bulk-bar" aria-live="polite">
             <span><span id="bulkCount">0</span> selected</span>
             <select id="bulkReason" class="input">
-                <option value="" data-outcome="" data-requires="0">Apply reason code…</option>
-                <%= BuildReasonOptions(null) %>
+                <option value="" data-code="" data-outcome="" data-requires="0">Apply reason code…</option>
+                <%= BuildReasonOptions(null, true) %>
             </select>
             <button type="button" id="bulkApply" class="btn btn-primary">Apply</button>
             <button type="button" id="bulkClear" class="btn btn-ghost">Clear</button>
         </div>
 
     </div><%-- /paneReason --%>
+
+    <%-- ================================================================
+         RC-RL baseline-date modal — shown when the reviewer selects the
+         reload-eligible reason code. Mandatory date; Cancel resets the
+         reason code. Deliberately a hard stop so RC-RL is a considered
+         choice, not an easy one.
+         ================================================================ --%>
+    <div id="rlModal" class="rl-modal" role="dialog" aria-modal="true" aria-labelledby="rlModalTitle" hidden>
+        <div class="rl-modal-backdrop"></div>
+        <div class="rl-modal-card" role="document">
+            <h2 id="rlModalTitle" class="rl-modal-title">Reload-eligible — confirm the baseline date</h2>
+            <p class="rl-modal-body">
+                Only choose <strong>Incorrect data, document eligible for reload</strong> when you are confident the
+                payment baseline date used in the interest calculation is wrong. This deactivates the document on
+                finalise and flags it for a corrected reload — it is not a general Not-Payable code.
+            </p>
+            <p class="rl-modal-body">
+                Enter the date you believe the baseline <em>should</em> be. This is mandatory and is used to recalculate the interest.
+            </p>
+            <div class="rl-modal-field">
+                <label for="rlBaselineDate">Believed correct baseline date</label>
+                <input type="date" id="rlBaselineDate" class="input" />
+                <div class="rl-modal-error" id="rlBaselineError" role="alert" hidden>Enter the believed correct baseline date to continue.</div>
+            </div>
+            <div class="rl-modal-actions">
+                <button type="button" id="rlModalCancel" class="btn btn-ghost">Cancel — reset reason code</button>
+                <button type="button" id="rlModalConfirm" class="btn btn-primary">Confirm reload-eligible</button>
+            </div>
+        </div>
+    </div>
 
     <%-- ================================================================
          TAB 2 — All lines (read-only detail)
