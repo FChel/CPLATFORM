@@ -11,8 +11,11 @@ namespace CPlatform.LPPI
     /// <summary>
     /// Builds the ERP Payment Request bulk-upload workbooks (.xlsx) for
     /// reviewed, payable LPPI documents — ONE FILE PER COMPANY CODE. Layout
-    /// matches Payment_Request_Bulk_Upload_Template.xlsx exactly: 27 columns,
-    /// Sheet1, plain headers (General format, no bold).
+    /// matches the SAP Payment Request bulk-upload template exactly: worksheet
+    /// named "SAPUI5 Export", 27 columns, title-case headers on a frozen row
+    /// with an autofilter across the data extent (General format, no bold).
+    /// The SAP importer reads the sheet BY NAME, so the sheet name is
+    /// load-bearing and must not change.
     ///
     /// The export is driven by a LIST OF PACKAGES. The Export page presents a
     /// picker of Finalised packages; the operator selects one or more; this
@@ -53,10 +56,10 @@ namespace CPlatform.LPPI
         // -------------------------------------------------------------------
         public static readonly string[] OutputHeaders = new[]
         {
-            "Company code",          // 1
-            "Payment type",          // 2
-            "Payment sub type",      // 3
-            "Document type",         // 4
+            "Company Code",          // 1
+            "Payment Type",          // 2
+            "Payment Sub Type",      // 3
+            "Document type",         // 4  — template keeps lowercase 't'
             "Financial Delegation",  // 5
             "Vendor Number",         // 6
             "GL Account Code",       // 7
@@ -65,20 +68,20 @@ namespace CPlatform.LPPI
             "Internal Order",        // 10
             "Amount Paid (GST Incl)",// 11
             "Currency",              // 12
-            "Tax code",              // 13
-            "Payment reference",     // 14
-            "Header text",           // 15
-            "Item text",             // 16
+            "Tax Code",              // 13
+            "Payment Reference",     // 14
+            "Header text",           // 15  — template keeps lowercase 't'
+            "Item Text",             // 16
             "Title",                 // 17
             "Name",                  // 18
             "Street",                // 19
             "City",                  // 20
-            "Post code",             // 21
+            "Post Code",             // 21
             "Country",               // 22
             "Region",                // 23
             "E-mail",                // 24
             "Bank Key",              // 25
-            "Bank account",          // 26
+            "Bank Account",          // 26
             "Bank Country"           // 27
         };
 
@@ -279,7 +282,7 @@ namespace CPlatform.LPPI
 
                 using (var pkg = new ExcelPackage())
                 {
-                    ExcelWorksheet ws = pkg.Workbook.Worksheets.Add("Sheet1");
+                    ExcelWorksheet ws = pkg.Workbook.Worksheets.Add("SAPUI5 Export");
 
                     // Row 1: headers, plain General format to match the real
                     // template.
@@ -322,6 +325,12 @@ namespace CPlatform.LPPI
 
                         excelRow++;
                     }
+
+                    // Match the SAP template shape: freeze the header row and
+                    // apply an autofilter across the 27-column data extent.
+                    int lastRow = excelRow - 1;
+                    ws.View.FreezePanes(2, 1);
+                    ws.Cells[1, 1, lastRow, OutputHeaders.Length].AutoFilter = true;
 
                     bytes = pkg.GetAsByteArray();
                 }
