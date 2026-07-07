@@ -119,7 +119,7 @@ namespace CPlatform.LPPI
             /// <summary>Every live-line DocumentID included — stamped Exported by the caller.</summary>
             public List<int> DocumentIds;
 
-            /// <summary>Distinct PackageIDs whose docs ended up in the files.</summary>
+            /// <summary>The selected in-scope PackageIDs.</summary>
             public List<int> PackageIds;
 
             /// <summary>One file per company code. Empty when nothing is payable.</summary>
@@ -160,13 +160,15 @@ namespace CPlatform.LPPI
             }
 
             // -----------------------------------------------------------------
-            // 1. Pull the source rows — one row per live line of every
-            //    payable, in-scope document. The document-level review (joined
-            //    via the first-line DocumentID) carries the Payable outcome;
-            //    only the first-line pd row matches the review join, and that
-            //    row expands to every live line of the document. Aggregation
-            //    to document level and the split into one file per company
-            //    code both happen in C# below.
+            // 1. Pull the source rows. A document can be a live member of more
+            //    than one selected package, so select the DISTINCT payable
+            //    DocNoAccounting in scope first (same shape as
+            //    GetSummaryScopeHeader: pd -> live line, payable per the
+            //    first-line review on MIN(live DocumentID)), then expand each
+            //    document to its live lines exactly once. Summing once per
+            //    document, and the split into one file per company code, both
+            //    happen in C# below. Export totals reconcile to the Summary
+            //    Payable figure by construction.
             //
             //    OLE DB requires positional ? placeholders. The IN clause is
             //    built manually with one placeholder per package id.
@@ -179,22 +181,28 @@ namespace CPlatform.LPPI
             }
 
             string sql =
+                "WITH PayableDocs AS ( " +
+                "  SELECT DISTINCT d.DocNoAccounting " +
+                "    FROM dbo.tblLPPI_ReviewPackageDocuments pd " +
+                "    INNER JOIN dbo.tblLPPI_Documents d " +
+                "            ON d.DocumentID    = pd.DocumentID " +
+                "           AND d.IsDeactivated = 0 " +
+                "    INNER JOIN dbo.tblLPPI_Reviews r " +
+                "            ON r.DocumentID = (SELECT MIN(d2.DocumentID) " +
+                "                                 FROM dbo.tblLPPI_Documents d2 " +
+                "                                WHERE d2.DocNoAccounting = d.DocNoAccounting " +
+                "                                  AND d2.IsDeactivated   = 0) " +
+                "    INNER JOIN dbo.tblLPPI_ReasonCodes rc " +
+                "            ON rc.ReasonCodeID = r.ReasonCodeID " +
+                "   WHERE pd.PackageID IN (" + inPlaceholders.ToString() + ") " +
+                "     AND rc.Outcome = 'Payable' " +
+                ") " +
                 "SELECT d.DocumentID, d.CompanyCode, d.VendorNum, d.DeliveryManager, " +
-                "       d.InterestPayable, d.DocNoAccounting, d.VendorInvoiceNo, " +
-                "       pd.PackageID " +
-                "  FROM dbo.tblLPPI_ReviewPackageDocuments pd " +
+                "       d.InterestPayable, d.DocNoAccounting, d.VendorInvoiceNo " +
+                "  FROM PayableDocs pdoc " +
                 "  INNER JOIN dbo.tblLPPI_Documents d " +
-                "          ON d.DocNoAccounting = (SELECT d2.DocNoAccounting " +
-                "                                    FROM dbo.tblLPPI_Documents d2 " +
-                "                                   WHERE d2.DocumentID = pd.DocumentID) " +
-                "         AND d.IsDeactivated  = 0 " +
-                "  INNER JOIN dbo.tblLPPI_Reviews r " +
-                "          ON r.DocumentID = pd.DocumentID " +
-                "  INNER JOIN dbo.tblLPPI_ReasonCodes rc " +
-                "          ON rc.ReasonCodeID = r.ReasonCodeID " +
-                " WHERE pd.PackageID IN (" + inPlaceholders.ToString() + ") " +
-                "   AND rc.Outcome      = 'Payable' " +
-                "   AND d.IsDeactivated = 0 " +
+                "          ON d.DocNoAccounting = pdoc.DocNoAccounting " +
+                "         AND d.IsDeactivated   = 0 " +
                 " ORDER BY d.CompanyCode, d.DocNoAccounting, d.DocumentID;";
 
             var parms = new List<OleDbParameter>(packageIds.Count);
@@ -211,7 +219,7 @@ namespace CPlatform.LPPI
             //    the first row seen for a document IS its first line.
             // -----------------------------------------------------------------
             var allLineDocIds  = new List<int>();
-            var distinctPkgIds = new HashSet<int>();
+            var distinctPkgIds = new HashSet<int>(packageIds);
             var docOrder       = new List<string>();
             var docMap         = new Dictionary<string, DocAccumulator>(StringComparer.OrdinalIgnoreCase);
 
@@ -220,10 +228,8 @@ namespace CPlatform.LPPI
                 int      docId   = AsInt(row["DocumentID"]);
                 string   docNo   = AsString(row["DocNoAccounting"]);
                 decimal? linePay = AsDecimal(row["InterestPayable"]);
-                int      pkgId   = AsInt(row["PackageID"]);
 
                 allLineDocIds.Add(docId);
-                distinctPkgIds.Add(pkgId);
 
                 DocAccumulator acc;
                 if (!docMap.TryGetValue(docNo, out acc))
