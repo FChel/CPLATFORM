@@ -529,19 +529,6 @@ namespace CPlatform.LPPI
             return string.Format(CultureInfo.InvariantCulture, "{0:000}", Convert.ToInt32(r["ItemSequence"]));
         }
 
-        // Writes a DATE-only value (e.g. the RC-RL proposed baseline date) as
-        // a native Excel date so it sorts and recalculates. Blank when null.
-        private static void PutDate(ExcelWorksheet ws, int row, int col, DataRow r, string column)
-        {
-            object v = r[column];
-            if (v == null || v == DBNull.Value) return;
-            DateTime dt;
-            if (v is DateTime) dt = (DateTime)v;
-            else if (!DateTime.TryParse(Convert.ToString(v), out dt)) return;
-            ws.Cells[row, col].Value = dt;
-            ws.Cells[row, col].Style.Numberformat.Format = "yyyy-mm-dd";
-        }
-
         // -------------------------------------------------------------------
         // Filename helper — sanitise the program / email for use in the
         // file name. Strips anything that is not alphanumeric / dash /

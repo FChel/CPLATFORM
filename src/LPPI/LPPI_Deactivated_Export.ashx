@@ -41,6 +41,7 @@ namespace CPlatform.LPPI
             "Interest ($)",
             "Reviewer Comments",
             "Obj Ref",
+            "Proposed Baseline Date",
             "Reviewed By",
             "Package ID",
             "Package Finalised"
@@ -90,6 +91,7 @@ SELECT  d.DocNoAccounting,
         d.InterestPayable,
         r.Comments,
         r.ObjectiveReference,
+        r.ReloadBaselineDate,
         r.ReviewedByName,
         p.PackageID,
         p.FinalisedDate
@@ -136,6 +138,7 @@ SELECT  d.DocNoAccounting,
                     PutMoney(ws, row, col++, r, "InterestPayable");
                     ws.Cells[row, col++].Value = AsString(r, "Comments");
                     ws.Cells[row, col++].Value = AsString(r, "ObjectiveReference");
+                    PutDate(ws, row, col++, r, "ReloadBaselineDate");
                     ws.Cells[row, col++].Value = AsString(r, "ReviewedByName");
                     ws.Cells[row, col++].Value = AsInt(r, "PackageID");
                     PutDateTime(ws, row, col++, r, "FinalisedDate");
@@ -163,6 +166,13 @@ SELECT  d.DocNoAccounting,
                 ws.Cells[row, col].Value = d.Value;
                 ws.Cells[row, col].Style.Numberformat.Format = "#,##0.00";
             }
+        }
+
+        private static void PutDate(ExcelWorksheet ws, int row, int col, DataRow r, string column)
+        {
+            if (!r.Table.Columns.Contains(column) || r[column] == DBNull.Value) return;
+            ws.Cells[row, col].Value = Convert.ToDateTime(r[column]);
+            ws.Cells[row, col].Style.Numberformat.Format = "dd/mm/yyyy";
         }
 
         private static void PutDateTime(ExcelWorksheet ws, int row, int col, DataRow r, string column)
