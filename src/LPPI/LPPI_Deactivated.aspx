@@ -191,6 +191,7 @@
                                 <th class="col-amt num">Interest ($)</th>
                                 <th class="col-comments">Reviewer comments</th>
                                 <th class="col-objref">Obj Ref</th>
+                                <th class="col-when">Proposed baseline date</th>
                                 <th>Reviewed by</th>
                                 <th class="col-when">Package finalised</th>
                             </tr>
@@ -201,7 +202,7 @@
                                     <%-- Group banner — emitted only on the first row of each CM group --%>
                                     <asp:PlaceHolder ID="phGroup" runat="server" Visible="false">
                                         <tr class="cm-group">
-                                            <td colspan="8">
+                                            <td colspan="9">
                                                 <%# LPPIHelper.Enc(Eval("CapabilityManagerProgram")) %>
                                                 &mdash;
                                                 <asp:Literal ID="litGroupCount" runat="server" />
@@ -220,6 +221,7 @@
                                         <td class="col-amt num"><%# LPPIHelper.FormatMoney(Eval("InterestPayable")) %></td>
                                         <td class="col-comments"><%# LPPIHelper.Enc(Eval("Comments")) %></td>
                                         <td class="col-objref"><%# LPPIHelper.Enc(Eval("ObjectiveReference")) %></td>
+                                        <td class="col-when"><%# LPPIHelper.FormatDate(Eval("ReloadBaselineDate")) %></td>
                                         <td><%# LPPIHelper.Enc(Eval("ReviewedByName")) %></td>
                                         <td class="col-when">
                                             <%# LPPIHelper.FormatDate(Eval("FinalisedDate")) %>

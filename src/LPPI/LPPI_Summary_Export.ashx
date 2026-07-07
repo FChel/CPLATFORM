@@ -314,6 +314,7 @@ SELECT
     rc.Description  AS ReasonDescription,
     r.Comments,
     r.ObjectiveReference,
+    r.ReloadBaselineDate,
     r.ReviewedByName,
     r.ReviewedDate
   FROM dbo.tblLPPI_ReviewPackageDocuments pd
@@ -472,6 +473,7 @@ SELECT
             "Reason Description",
             "Comments",
             "Objective Reference",
+            "Proposed Baseline Date",
             "Reviewed By",
             "Reviewed Date"
         };
@@ -492,7 +494,7 @@ SELECT
             "DaysVariance", "DailyRate", "InvoiceInterestAmount", "InterestPayable",
             "SourceSystem", "PaymentChannel", "DocumentType",
             "FirstSeenDate", "ExportedDate", "ExportedBy",
-            "ReasonCode", "ReasonOutcome", "ReasonDescription", "Comments", "ObjectiveReference", "ReviewedByName", "ReviewedDate"
+            "ReasonCode", "ReasonOutcome", "ReasonDescription", "Comments", "ObjectiveReference", "ReloadBaselineDate", "ReviewedByName", "ReviewedDate"
         };
 
         private static byte[] BuildWorkbook(DataTable dt)
@@ -596,6 +598,7 @@ SELECT
                     ws.Cells[row, col++].Value = AsString(r, "ReasonDescription");
                     ws.Cells[row, col++].Value = AsString(r, "Comments");
                     ws.Cells[row, col++].Value = AsString(r, "ObjectiveReference");
+                    PutDate(ws, row, col++, r, "ReloadBaselineDate");
                     ws.Cells[row, col++].Value = AsString(r, "ReviewedByName");
                     PutDateTime(ws, row, col++, r, "ReviewedDate");
 
@@ -680,6 +683,19 @@ SELECT
         {
             if (!r.Table.Columns.Contains("ItemSequence") || r["ItemSequence"] == DBNull.Value) return "";
             return string.Format(CultureInfo.InvariantCulture, "{0:000}", Convert.ToInt32(r["ItemSequence"]));
+        }
+
+        // Writes a DATE-only value (e.g. the RC-RL proposed baseline date) as
+        // a native Excel date so it sorts and recalculates. Blank when null.
+        private static void PutDate(ExcelWorksheet ws, int row, int col, DataRow r, string column)
+        {
+            object v = r[column];
+            if (v == null || v == DBNull.Value) return;
+            DateTime dt;
+            if (v is DateTime) dt = (DateTime)v;
+            else if (!DateTime.TryParse(Convert.ToString(v), out dt)) return;
+            ws.Cells[row, col].Value = dt;
+            ws.Cells[row, col].Style.Numberformat.Format = "yyyy-mm-dd";
         }
 
         // -------------------------------------------------------------------

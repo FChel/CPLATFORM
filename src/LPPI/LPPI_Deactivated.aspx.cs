@@ -81,6 +81,7 @@ SELECT  d.DocumentID,
         d.InterestPayable,
         r.Comments,
         r.ObjectiveReference,
+        r.ReloadBaselineDate,
         r.ReviewedByName,
         p.PackageID,
         p.FinalisedDate

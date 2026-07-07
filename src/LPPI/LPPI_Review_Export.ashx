@@ -182,6 +182,7 @@ namespace CPlatform.LPPI
                     rc.Description                      AS ReasonDescription,
                     r.Comments,
                     r.ObjectiveReference,
+                    r.ReloadBaselineDate,
                     r.ReviewedByName,
                     r.ReviewedDate
                 FROM tblLPPI_ReviewPackageDocuments pd
@@ -331,6 +332,7 @@ namespace CPlatform.LPPI
             "Reason Description",
             "Comments",
             "Objective Reference",
+            "Proposed Baseline Date",
             "Reviewed By",
             "Reviewed Date"
         };
@@ -444,6 +446,7 @@ namespace CPlatform.LPPI
                     ws.Cells[row, col++].Value = AsString(r, "ReasonDescription");
                     ws.Cells[row, col++].Value = AsString(r, "Comments");
                     ws.Cells[row, col++].Value = AsString(r, "ObjectiveReference");
+                    PutDate(ws, row, col++, r, "ReloadBaselineDate");
                     ws.Cells[row, col++].Value = AsString(r, "ReviewedByName");
                     PutDateTime(ws, row, col++, r, "ReviewedDate");
 
@@ -524,6 +527,19 @@ namespace CPlatform.LPPI
         {
             if (!r.Table.Columns.Contains("ItemSequence") || r["ItemSequence"] == DBNull.Value) return "";
             return string.Format(CultureInfo.InvariantCulture, "{0:000}", Convert.ToInt32(r["ItemSequence"]));
+        }
+
+        // Writes a DATE-only value (e.g. the RC-RL proposed baseline date) as
+        // a native Excel date so it sorts and recalculates. Blank when null.
+        private static void PutDate(ExcelWorksheet ws, int row, int col, DataRow r, string column)
+        {
+            object v = r[column];
+            if (v == null || v == DBNull.Value) return;
+            DateTime dt;
+            if (v is DateTime) dt = (DateTime)v;
+            else if (!DateTime.TryParse(Convert.ToString(v), out dt)) return;
+            ws.Cells[row, col].Value = dt;
+            ws.Cells[row, col].Style.Numberformat.Format = "yyyy-mm-dd";
         }
 
         // -------------------------------------------------------------------

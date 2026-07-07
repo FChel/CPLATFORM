@@ -2437,9 +2437,14 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
    RC-RL reload-eligible modal
    Scoped under .lppi-shell so nothing leaks into shared header/SVG output.
    ============================================================================= */
-.lppi-shell .rl-modal[hidden] { display: none; }
+/* =============================================================================
+   RC-RL reload-eligible modal
+   Scoped under .review-shell (the reviewer-page wrapper) so nothing leaks
+   into shared header/SVG output.
+   ============================================================================= */
+.review-shell .rl-modal[hidden] { display: none; }
 
-.lppi-shell .rl-modal {
+.review-shell .rl-modal {
     position: fixed;
     inset: 0;
     z-index: 1000;
@@ -2448,62 +2453,62 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     justify-content: center;
 }
 
-.lppi-shell .rl-modal-backdrop {
+.review-shell .rl-modal-backdrop {
     position: absolute;
     inset: 0;
     background: rgba(17, 17, 17, 0.55);
 }
 
-.lppi-shell .rl-modal-card {
+.review-shell .rl-modal-card {
     position: relative;
     z-index: 1;
     width: min(30rem, calc(100vw - 2rem));
-    background: #fff;
-    border-radius: 10px;
+    background: var(--white);
+    border-radius: var(--r-lg);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
-    border-top: 4px solid #d75b07;
-    padding: 1.5rem 1.5rem 1.25rem;
+    border-top: 4px solid var(--orange);
+    padding: 24px 24px 20px;
 }
 
-.lppi-shell .rl-modal-title {
-    margin: 0 0 0.75rem;
-    font-size: 1.15rem;
-    color: #111;
+.review-shell .rl-modal-title {
+    margin: 0 0 12px;
+    font-size: 18px;
+    color: var(--ink);
 }
 
-.lppi-shell .rl-modal-body {
-    margin: 0 0 0.75rem;
-    font-size: 0.9rem;
+.review-shell .rl-modal-body {
+    margin: 0 0 12px;
+    font-size: 14px;
     line-height: 1.45;
-    color: #333;
+    color: var(--ink-2);
 }
 
-.lppi-shell .rl-modal-field {
-    margin: 1rem 0 1.25rem;
+.review-shell .rl-modal-field {
+    margin: 16px 0 20px;
 }
 
-.lppi-shell .rl-modal-field label {
+.review-shell .rl-modal-field label {
     display: block;
     font-weight: 600;
-    font-size: 0.85rem;
-    margin-bottom: 0.35rem;
-    color: #111;
+    font-size: 13px;
+    margin-bottom: 6px;
+    color: var(--ink);
 }
 
-.lppi-shell .rl-modal-field .input {
+.review-shell .rl-modal-field .input {
     width: 100%;
 }
 
-.lppi-shell .rl-modal-error {
-    margin-top: 0.45rem;
-    color: #b3261e;
-    font-size: 0.82rem;
+.review-shell .rl-modal-error {
+    margin-top: 7px;
+    color: var(--err);
+    font-size: 13px;
 }
 
-.lppi-shell .rl-modal-error[hidden] { display: none; }
+.review-shell .rl-modal-error[hidden] { display: none; }
 
-.lppi-shell .rl-modal-actions {
+.review-shell .rl-modal-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 0.6rem;
+    gap: 10px;
 }
