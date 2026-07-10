@@ -1036,6 +1036,15 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     font-size: 12px;
 }
 
+/* Reason cell must stack the chip beneath the dropdown. The base
+   .tbl-review td rule is white-space:nowrap + overflow:hidden, which shoves
+   the pill off to the right and clips it — like .col-comments/.col-obj, this
+   cell needs to wrap. */
+.review-shell .tbl-review td.col-reason {
+    white-space: normal;
+    overflow: visible;
+}
+
 .review-shell .tbl-review th,
 .review-shell .tbl-review td {
     padding: 4px 7px;
