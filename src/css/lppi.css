@@ -2435,10 +2435,6 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 
 /* =============================================================================
    RC-RL reload-eligible modal
-   Scoped under .lppi-shell so nothing leaks into shared header/SVG output.
-   ============================================================================= */
-/* =============================================================================
-   RC-RL reload-eligible modal
    Scoped under .review-shell (the reviewer-page wrapper) so nothing leaks
    into shared header/SVG output.
    ============================================================================= */
@@ -2511,4 +2507,45 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+}
+
+/* =============================================================================
+   RC-RL baseline chip — surfaces the revised baseline date on the reason cell
+   ============================================================================= */
+.review-shell .reload-baseline-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--orange-deep, #b34a06);
+    background: var(--orange-soft, #fff3ea);
+    border: 1px solid var(--orange, #d75b07);
+    border-radius: 999px;
+    font-variant-numeric: tabular-nums;
+}
+
+.review-shell button.reload-baseline-chip {
+    cursor: pointer;
+}
+.review-shell button.reload-baseline-chip:hover {
+    background: var(--orange, #d75b07);
+    color: var(--white, #fff);
+}
+.review-shell button.reload-baseline-chip:focus-visible {
+    outline: 2px solid var(--orange, #d75b07);
+    outline-offset: 2px;
+}
+
+.review-shell .reload-baseline-chip.is-readonly {
+    color: var(--ink-2);
+    background: var(--line-2, #eee);
+    border-color: var(--line-2, #ddd);
+}
+
+.review-shell .reload-baseline-chip svg {
+    flex: 0 0 auto;
 }

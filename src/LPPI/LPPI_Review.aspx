@@ -873,20 +873,26 @@
     <div id="rlModal" class="rl-modal" role="dialog" aria-modal="true" aria-labelledby="rlModalTitle" hidden>
         <div class="rl-modal-backdrop"></div>
         <div class="rl-modal-card" role="document">
-            <h2 id="rlModalTitle" class="rl-modal-title">Reload-eligible — confirm the baseline date</h2>
+            <h2 id="rlModalTitle" class="rl-modal-title">Reload-eligible — confirm baseline date</h2>
             <p class="rl-modal-body">
-                Only choose <strong>Incorrect data, document eligible for reload</strong> when you are confident the
-                payment baseline date used in the interest calculation is wrong. This deactivates the document on
-                finalise and flags it for a corrected reload — it is not a general Not-Payable code.
+                Only choose <strong>Incorrect data, document eligible for reload</strong> when you have confirmed the
+                baseline date used in the interest calculation is wrong. It is not a general Not Payable code.
             </p>
+            <p class="rl-modal-note">See <strong>Glossary of Dates</strong> under <strong>Instructions &rarr; FAQ</strong> for baseline date information.</p>
             <p class="rl-modal-body">
-                Enter the date you believe the baseline <em>should</em> be. This is mandatory and is used to recalculate the interest.
+                Enter the revised baseline date. This is mandatory and is used to recalculate the interest.
             </p>
             <div class="rl-modal-field">
-                <label for="rlBaselineDate">Believed correct baseline date</label>
+                <label for="rlBaselineDate">Revised baseline date:</label>
                 <input type="date" id="rlBaselineDate" class="input" />
-                <div class="rl-modal-error" id="rlBaselineError" role="alert" hidden>Enter the believed correct baseline date to continue.</div>
+                <div class="rl-modal-error" id="rlBaselineError" role="alert" hidden>Enter the revised baseline date to continue.</div>
             </div>
+            <p class="rl-modal-body">
+                If interest is not payable following recalculation based on the revised baseline date, the process ends.
+            </p>
+            <p class="rl-modal-body">
+                If interest is payable following recalculation, the document will appear in the next LPPI Review for confirmation of the interest charges.
+            </p>
             <div class="rl-modal-actions">
                 <button type="button" id="rlModalCancel" class="btn btn-ghost">Cancel — reset reason code</button>
                 <button type="button" id="rlModalConfirm" class="btn btn-primary">Confirm reload-eligible</button>

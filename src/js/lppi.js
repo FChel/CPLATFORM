@@ -106,6 +106,7 @@
 
         bindRowControls(allMain);
         allMain.forEach(evaluateNeeds);
+        allMain.forEach(renderBaselineChip);
         bindExpandChevrons();
         bindCommentsExpand();
         bindInstructionsTocLinks();
@@ -291,6 +292,7 @@
         closeReloadModal();
         markDirty(row, docNo);
         evaluateNeeds(row);
+        renderBaselineChip(row);
     }
 
     function cancelReloadModal() {
@@ -307,6 +309,7 @@
         if (hidden && code !== RELOAD_CODE) hidden.value = '';
         closeReloadModal();
         evaluateNeeds(row);
+        renderBaselineChip(row);
     }
 
     function bindReloadModal() {
@@ -323,6 +326,79 @@
         document.addEventListener('keydown', function (e) {
             if (_rlState && (e.key === 'Escape' || e.keyCode === 27)) cancelReloadModal();
         });
+
+        // Editable baseline chip → reopen the modal to revise the date.
+        document.addEventListener('click', function (e) {
+            var chip = e.target && e.target.closest ? e.target.closest('.reload-baseline-chip') : null;
+            if (!chip || chip.tagName !== 'BUTTON' || readOnly) return;
+            var row = chip.closest('tr.doc-main');
+            if (!row) return;
+            var sel   = row.querySelector('.reason-select');
+            var docNo = row.getAttribute('data-doc-no');
+            if (sel && docNo) openReloadModal(row, sel, docNo);
+        });
+    }
+
+    /* =========================================================================
+       RC-RL baseline chip — read-only surfacing of the revised baseline date
+
+       Renders the stored revised baseline date on the reason cell of any RC-RL
+       row so POCs and AS Fin can see it without exporting. The value lives on
+       the row's hidden .reload-baseline-input (seeded server-side on load,
+       updated by the modal). Editable rows get a click-to-revise button;
+       read-only (finalised) rows get a static pill.
+       ========================================================================= */
+    function formatBaselineDisplay(iso) {
+        var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso || '').trim());
+        if (!m) return (iso || '').trim();
+        return m[3] + '/' + m[2] + '/' + m[1];
+    }
+
+    function renderBaselineChip(row) {
+        var cell = row.querySelector('.col-reason');
+        if (!cell) return;
+        var sel      = row.querySelector('.reason-select');
+        var hidden   = row.querySelector('.reload-baseline-input');
+        var existing = cell.querySelector('.reload-baseline-chip');
+
+        var opt  = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+        var code = opt && opt.getAttribute ? (opt.getAttribute('data-code') || '') : '';
+        var iso  = hidden ? (hidden.value || '').trim() : '';
+
+        // Only show for a committed RC-RL row that actually has a date.
+        if (code !== RELOAD_CODE || !iso) {
+            if (existing) existing.parentNode.removeChild(existing);
+            return;
+        }
+
+        var display = formatBaselineDisplay(iso);
+        var wantTag = readOnly ? 'SPAN' : 'BUTTON';
+
+        if (existing && existing.tagName === wantTag) {
+            var valEl = existing.querySelector('.reload-baseline-val');
+            if (valEl) valEl.textContent = display;
+            return;
+        }
+        if (existing) existing.parentNode.removeChild(existing);
+
+        if (readOnly) {
+            var span = document.createElement('span');
+            span.className = 'reload-baseline-chip is-readonly';
+            span.innerHTML = 'Baseline: <span class="reload-baseline-val"></span>';
+            span.querySelector('.reload-baseline-val').textContent = display;
+            cell.appendChild(span);
+            return;
+        }
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'reload-baseline-chip';
+        btn.setAttribute('title', 'Revised baseline date for reload-eligible — click to change');
+        btn.innerHTML = 'Baseline: <span class="reload-baseline-val"></span>'
+            + '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            + '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+        btn.querySelector('.reload-baseline-val').textContent = display;
+        cell.appendChild(btn);
     }
 
     /* =========================================================================
@@ -352,6 +428,7 @@
                     reasonPrev[docNo] = sel.value;
                     markDirty(row, docNo);
                     evaluateNeeds(row);
+                    renderBaselineChip(row);
                 });
             }
 
