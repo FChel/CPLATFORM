@@ -323,14 +323,27 @@ namespace CPlatform.LPPI
                         ws.Cells[excelRow, 16].Value = itemText;            // Item text
                         // Col 17–27 all blank (Title, Name, address, bank fields)
 
+                        // SAP's importer reads cells positionally, not by cell
+                        // reference. EPPlus omits blank cells, so a row with gaps
+                        // (WBS, Internal Order, Title..Bank Country) ships fewer
+                        // than 27 cells and the importer misaligns every column
+                        // after the first gap. Write an explicit empty value into
+                        // any unset column so every row carries all 27 cells,
+                        // matching an Excel-saved file.
+                        for (int c = 1; c <= OutputHeaders.Length; c++)
+                        {
+                            if (ws.Cells[excelRow, c].Value == null)
+                                ws.Cells[excelRow, c].Value = string.Empty;
+                        }
+
                         excelRow++;
                     }
 
-                    // Match the SAP template shape: freeze the header row and
-                    // apply an autofilter across the 27-column data extent.
-                    int lastRow = excelRow - 1;
+                    // Freeze the header row; filter on the header only (A1:AA1),
+                    // matching an Excel-saved template. Filtering the full data
+                    // extent is unnecessary and drifts from the known-good file.
                     ws.View.FreezePanes(2, 1);
-                    ws.Cells[1, 1, lastRow, OutputHeaders.Length].AutoFilter = true;
+                    ws.Cells[1, 1, 1, OutputHeaders.Length].AutoFilter = true;
 
                     bytes = pkg.GetAsByteArray();
                 }

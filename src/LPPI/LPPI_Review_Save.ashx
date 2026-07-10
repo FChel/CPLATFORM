@@ -364,7 +364,7 @@ namespace CPlatform.LPPI
                                         CultureInfo.InvariantCulture, DateTimeStyles.None, out rbl))
                             {
                                 rr.Ok = false; rr.ErrorCode = "validation";
-                                rr.Error = "Reload-eligible (RC-RL) requires a believed baseline date.";
+                                rr.Error = "Reload-eligible (RC-RL) requires a revised baseline date.";
                                 return rr;
                             }
                             reloadBaselineIso = rbl.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
