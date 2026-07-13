@@ -70,6 +70,13 @@ For functional documentation — page-by-page guides, package lifecycle, configu
     LPPI_Schema.sql           Canonical fresh-install schema + seeds
     LPPI_AdminAdd.sql         Admin Admin
     LPPI_DeleteAdmin.sql      Delete Admin
+
+  reference/
+    Payment_Request_Bulk_Upload_Template.xlsx
+                              The genuine SAP Payment Request bulk-upload
+                              template. Layout reference ONLY — not deployed,
+                              not read at runtime. See "ERP export — file
+                              format constraints" below.
 ```
 
 ---
@@ -82,6 +89,26 @@ For functional documentation — page-by-page guides, package lifecycle, configu
 - **Read the `.aspx` `Eval()` bindings before rewriting code-behind SQL** — the markup is the source of truth for column aliases.
 - Design tokens live in CSS custom properties at the top of the stylesheet (DFG palette: orange, black, white).
 - **en-AU spelling everywhere** (`organisation`, `centre`, `colour`). Globalisation is set in `web.config`.
+
+---
+
+## Reference material
+
+`reference/` holds artefacts used to *verify* what the module produces. Nothing in it is deployed or read at runtime.
+
+- **`Payment_Request_Bulk_Upload_Template.xlsx`** — the genuine SAP Payment Request bulk-upload template, as issued by the ERP team. The ERP export must match its shape (sheet name, 27 columns, header casing). When an export is rejected, diff the generated file against this one.
+
+Treat it as read-only. Do not open and re-save it: a re-saved copy has previously drifted (worksheet renamed to `Sheet1`, headers rewritten to sentence case) and was mistaken for the real template, costing a day of debugging.
+
+---
+
+## ERP export — file format constraints
+
+The Payment Request bulk-upload file is consumed by a **custom ERP application, not by Excel**. Its reader is strict, positional, and reports every failure as the same generic exception — it never tells you what it disliked. Three properties of the generated workbook are load-bearing, each confirmed by isolation testing against ERP:
+
+1. **Worksheet name must be `SAPUI5 Export`.** The importer resolves the sheet by name.
+2. **Every data row must carry all 27 cells.** The importer reads cells *positionally*, not by cell reference. EPPlus omits any cell that was never assigned, so a row with blank WBS / Internal Order / bank fields ships only 14 cells and every column after the first gap is misread. `LPPIExport` therefore runs a dense-fill loop after each row, writing `string.Empty` into unset columns. Empty-string cells are fine — the importer only needs the cell to exist.
+3. **The package must contain `docProps/core.xml` and `docProps/app.xml`.** EPPlus omits both parts entirely unless a workbook property is set. The importer throws on a package without them. This is why the three `pkg.Workbook.Properties` assignments in `LPPIExport` exist — **they are the fix, not metadata. Do not remove them as unused.**
 
 ---
 
