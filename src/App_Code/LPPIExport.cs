@@ -13,9 +13,17 @@ namespace CPlatform.LPPI
     /// reviewed, payable LPPI documents — ONE FILE PER COMPANY CODE. Layout
     /// matches the SAP Payment Request bulk-upload template exactly: worksheet
     /// named "SAPUI5 Export", 27 columns, title-case headers on a frozen row
-    /// with an autofilter across the data extent (General format, no bold).
+    /// with an autofilter on the header row (General format, no bold).
     /// The SAP importer reads the sheet BY NAME, so the sheet name is
     /// load-bearing and must not change.
+    ///
+    /// The importer also reads cells POSITIONALLY and requires a complete OPC
+    /// package. Two things are therefore load-bearing and confirmed by test:
+    /// every row must carry all 27 cells (EPPlus omits unset cells, which
+    /// misaligns every column after the first gap — see the dense-fill loop),
+    /// and the package must carry docProps (EPPlus omits them unless a workbook
+    /// property is set — see Workbook.Properties below). Blank cells may be
+    /// empty strings; the theme part is not required.
     ///
     /// The export is driven by a LIST OF PACKAGES. The Export page presents a
     /// picker of Finalised packages; the operator selects one or more; this
@@ -344,6 +352,19 @@ namespace CPlatform.LPPI
                     // extent is unnecessary and drifts from the known-good file.
                     ws.View.FreezePanes(2, 1);
                     ws.Cells[1, 1, 1, OutputHeaders.Length].AutoFilter = true;
+
+                    // The ERP importer requires the package to carry document
+                    // properties (docProps/core.xml and docProps/app.xml) and
+                    // throws a generic exception on a package without them.
+                    // EPPlus omits both parts entirely unless a workbook property
+                    // is set, so these assignments are LOAD-BEARING, not cosmetic —
+                    // removing them breaks the ERP upload. This is why a generated
+                    // file fails but the same file re-saved from Excel loads:
+                    // Excel completes the package on save.
+                    // Title/Author populate core.xml; Company populates app.xml.
+                    pkg.Workbook.Properties.Title   = "LPPI Payment Request Bulk Upload";
+                    pkg.Workbook.Properties.Author  = "FinHub LPPI Review";
+                    pkg.Workbook.Properties.Company = "Defence Finance Group";
 
                     bytes = pkg.GetAsByteArray();
                 }
