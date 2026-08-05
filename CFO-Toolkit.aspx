@@ -22,7 +22,7 @@
                     </span>
                     <span class="wordmark-copy">
                         <strong>CFO Toolkit</strong>
-                        <small>Finance systems, one place</small>
+                        <small>Finance tools, ready to work</small>
                     </span>
                 </a>
 
@@ -38,25 +38,25 @@
             <main>
                 <section class="hero">
                     <div class="hero-copy">
-                        <span class="hero-kicker"><i></i>A clearer way into finance</span>
+                        <span class="hero-kicker"><i></i>Get finance work done</span>
                         <h1>Tools that move<br /><em>finance forward.</em></h1>
-                        <p>Prepare, review, assure and analyse from one focused workspace—built to turn complex finance processes into confident next steps.</p>
+                        <p>Transact, investigate, assure and report from one focused toolkit—built to help you find answers, complete tasks and keep finance work moving.</p>
 
                         <div class="hero-actions">
+                            <a class="button button-primary" href="#toolkit">
+                                Explore the toolkit
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+                            </a>
                             <% if (!String.IsNullOrWhiteSpace(PrimaryLaunchUrl())) { %>
-                            <a class="button button-primary" href="<%= HttpUtility.HtmlAttributeEncode(PrimaryLaunchUrl()) %>" target="_blank" rel="noopener noreferrer">
+                            <a class="button button-quiet button-launch" href="<%= HttpUtility.HtmlAttributeEncode(PrimaryLaunchUrl()) %>" target="_blank" rel="noopener noreferrer">
                                 <span><%= HttpUtility.HtmlEncode(PrimaryLaunchLabel()) %></span>
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                             </a>
                             <% } %>
-                            <a class="button button-quiet" href="#toolkit">
-                                Explore the toolkit
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
-                            </a>
                         </div>
 
                         <div class="hero-modes" aria-label="CFO Toolkit capabilities">
-                            <span>Prepare</span><i></i><span>Review</span><i></i><span>Assure</span><i></i><span>Analyse</span>
+                            <span>Transact</span><i></i><span>Investigate</span><i></i><span>Assure</span><i></i><span>Report</span>
                         </div>
                     </div>
 
@@ -73,15 +73,19 @@
                         </div>
                         <div class="workflow-step step-one">
                             <span class="step-number">01</span>
-                            <span><b>Prepare</b><small>Load and structure</small></span>
+                            <span><b>Transact</b><small>Journals and forms</small></span>
                         </div>
                         <div class="workflow-step step-two">
                             <span class="step-number">02</span>
-                            <span><b>Review</b><small>Resolve and assure</small></span>
+                            <span><b>Investigate</b><small>SAP and accounts</small></span>
                         </div>
                         <div class="workflow-step step-three">
                             <span class="step-number">03</span>
-                            <span><b>Publish</b><small>Share with confidence</small></span>
+                            <span><b>Assure</b><small>Reviews and controls</small></span>
+                        </div>
+                        <div class="workflow-step step-four">
+                            <span class="step-number">04</span>
+                            <span><b>Report</b><small>Statements and outputs</small></span>
                         </div>
                     </div>
                 </section>
