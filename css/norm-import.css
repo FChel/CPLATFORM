@@ -1,0 +1,52 @@
+.norm-transition-note {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border: 1px solid #edc1a7;
+    border-left: 4px solid var(--norm-orange);
+    border-radius: 7px;
+    background: #fff7f1;
+}
+
+.norm-transition-note strong,
+.norm-transition-note span {
+    display: block;
+}
+
+.norm-transition-note span {
+    margin-top: 4px;
+    color: #6b594e;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.norm-form-card label small {
+    margin-left: 6px;
+    color: #77828c;
+    font-weight: 500;
+}
+
+.norm-file-step {
+    display: inline-grid;
+    place-items: center;
+    width: 21px;
+    height: 21px;
+    margin-right: 5px;
+    border-radius: 50%;
+    background: var(--norm-orange);
+    color: #fff;
+    font-size: 10px;
+}
+
+.norm-transition-method {
+    margin: 16px 0 0;
+    padding: 12px;
+    border-radius: 6px;
+    background: #f3f6f8;
+    color: #66727d;
+    font-size: 10.5px;
+    line-height: 1.5;
+}
+
+.norm-transition-method strong {
+    color: #36434e;
+}

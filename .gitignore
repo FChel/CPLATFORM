@@ -1,0 +1,22 @@
+# Local IDE and build output
+.vs/
+obj/
+*.user
+*.suo
+*.pdb
+*.log
+
+# Codex/deployment scratch output
+.waratah-*
+.deployment/
+tools/.aws-patch/
+
+# Server-specific database connections and runtime data
+Database/*.udl
+App_Data/Connections/
+App_Data/Uploads/
+
+# Local backup files
+*.bak
+*.b64
+

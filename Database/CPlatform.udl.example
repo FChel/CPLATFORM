@@ -1,0 +1,4 @@
+[oledb]
+; Copy this file to CPlatform.udl and replace the placeholders locally.
+; Never commit the resulting CPlatform.udl connection file.
+Provider=MSOLEDBSQL;Integrated Security=SSPI;Initial Catalog=CPlatform;Data Source=YOUR-SQL-SERVER;Trust Server Certificate=True;
