@@ -1,6 +1,13 @@
-# CPLATFORM — FinHub
+# CPLATFORM — CFO Toolkit and finance modules
 
-CAPS PLATFORM (externally branded **FinHub**) hosts a set of finance modules including CAPS and other modules that bridge SAP S/4HANA and BODS-driven workflows.
+CAPS PLATFORM hosts a set of finance modules including NORM, LPPI, eJET and utilities that bridge SAP S/4HANA and BODS-driven workflows.
+
+The repository contains two independent landing pages:
+
+- **`Default.aspx`** — the Defence-branded FinHub page retained for Defence environments.
+- **`CFO-Toolkit.aspx`** — the neutral CFO Toolkit page used as WARATAH's AWS homepage.
+
+Both pages live on the same branch and use the same configuration-driven tile URLs. Environment selection belongs in IIS and `web.config`, not in permanent Git branches. WARATAH's `defaultDocument` order places `CFO-Toolkit.aspx` before `Default.aspx`; Defence environments continue to prefer `Default.aspx`.
 
 This repository contains the platform shell plus the **LPPI Review** module.
 
@@ -36,7 +43,9 @@ For functional documentation — page-by-page guides, package lifecycle, configu
 
 ```
 <<<CPLATFORM root/>>>
-  Default.aspx              CPLATFORM landing page (FinHub tiles & hero CTAs)
+  Default.aspx              Defence FinHub landing page
+  CFO-Toolkit.aspx          WARATAH CFO Toolkit landing page
+  CFO-Toolkit.aspx.cs       CFO Toolkit environment and tile helpers
   web.config                Single config file; values differ UAT vs PROD
   README.md                 This file
   App_Code/                 Shared C# (compiled on-the-fly)
@@ -62,6 +71,7 @@ For functional documentation — page-by-page guides, package lifecycle, configu
     LPPI_Review_*.ashx        Reviewer endpoints (Save, Finalise, etc.)
     LPPI_Summary_Export.ashx  Admin-auth full data export for the Summary page
   css/lppi.css              All LPPI styles + design tokens
+  css/cfo-toolkit.css       CFO Toolkit landing-page design
   js/lppi.js                Reviewer-page interactions (vanilla JS)
   Database/
     CPlatform.udl             OLE DB connection file (blocked at IIS)
