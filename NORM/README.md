@@ -39,10 +39,16 @@ the audited statement baseline are present.
 - Deploy `src` as the existing .NET Framework 4.8 WebForms application.
 - Retain `bin/EPPlus-LGPL.dll` version 4.5.3.3.
 - Ensure the application-pool identity can read the configured UDL file.
-- UAT can use `NORM.PreparerAccessMode=AllAuthenticated`.
+- UAT with Windows Authentication can use
+  `NORM.PreparerAccessMode=AllAuthenticated`.
+- An anonymous, non-production demonstration site such as WARATAH can use
+  `NORM.PreparerAccessMode=Demo`. This mode is ignored when
+  `CPlatform.Environment=PROD`; `NORM.DemoUserId` supplies the shared audit
+  identity when required.
 - Production should use `NORM.PreparerAccessMode=Database` after an access row
   has been installed.
-- Keep Windows Authentication enabled and Anonymous Authentication disabled.
+- Except for an explicitly configured non-production demo, keep Windows
+  Authentication enabled and Anonymous Authentication disabled.
 
 The public read-only entry is `NORM/NORM_Statements.aspx`. It presents all four
 departmental primary statements, PRIMA-aligned generated notes and figure-level

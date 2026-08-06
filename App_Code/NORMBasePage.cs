@@ -9,6 +9,8 @@ namespace CPlatform.NORM
     /// <summary>Common identity gate and safe error presentation for NORM pages.</summary>
     public class NORMBasePage : Page
     {
+        private bool accessDenied;
+
         protected virtual bool RequiresPrepareAccess { get { return true; } }
         protected virtual bool RequiresAdministratorAccess { get { return false; } }
 
@@ -33,11 +35,21 @@ namespace CPlatform.NORM
 
         private void DenyAccess(string message)
         {
+            accessDenied = true;
             Response.StatusCode = 403;
             Response.TrySkipIisCustomErrors = true;
             Response.ContentType = "text/plain; charset=utf-8";
             Response.Write(message);
             Context.ApplicationInstance.CompleteRequest();
+        }
+
+        protected override void Render(HtmlTextWriter writer)
+        {
+            // CompleteRequest skips later pipeline events but does not suppress
+            // WebForms rendering. Without this guard, the denied page HTML is
+            // appended after the plain-text 403 message and can show misleading
+            // uninitialised state such as "database objects are not installed".
+            if (!accessDenied) { base.Render(writer); }
         }
 
         protected override void OnError(EventArgs e)
