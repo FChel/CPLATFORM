@@ -113,10 +113,6 @@ public static class NORMHelper
         {
             return HttpContext.Current.User.Identity.Name;
         }
-        if (IsDemoAccessMode())
-        {
-            return Setting("NORM.DemoUserId", "WARATAH\\Demo");
-        }
         return System.Environment.UserName ?? "unknown";
     }
 
@@ -130,12 +126,6 @@ public static class NORMHelper
     public static bool HasPrepareAccess()
     {
         string mode = Setting("NORM.PreparerAccessMode", "Database");
-        if (String.Equals(mode, "Demo", StringComparison.OrdinalIgnoreCase))
-        {
-            // WARATAH is an anonymous UAT/demo site. Never allow this bypass if
-            // the same configuration is accidentally promoted to production.
-            return !String.Equals(Environment, "PROD", StringComparison.OrdinalIgnoreCase);
-        }
         if (String.Equals(mode, "AllAuthenticated", StringComparison.OrdinalIgnoreCase))
         {
             return HttpContext.Current != null && HttpContext.Current.User != null &&
@@ -147,13 +137,6 @@ public static class NORMHelper
             "SELECT COUNT(1) FROM dbo.tblNORM_AdminUser WHERE UserId = @user AND IsDeactivated = 0",
             P("@user", CurrentUserId()));
         return result != null && Convert.ToInt32(result) > 0;
-    }
-
-    private static bool IsDemoAccessMode()
-    {
-        return String.Equals(Setting("NORM.PreparerAccessMode", "Database"), "Demo",
-            StringComparison.OrdinalIgnoreCase) &&
-            !String.Equals(Environment, "PROD", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool HasAdminAccess()
