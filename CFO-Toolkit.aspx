@@ -22,7 +22,7 @@
                     </span>
                     <span class="wordmark-copy">
                         <strong>CFO Toolkit</strong>
-                        <small>Finance tools, ready to work</small>
+                        <small>Finance modules, one place</small>
                     </span>
                 </a>
 
@@ -38,9 +38,9 @@
             <main>
                 <section class="hero">
                     <div class="hero-copy">
-                        <span class="hero-kicker"><i></i>Get finance work done</span>
-                        <h1>Tools that move<br /><em>finance forward.</em></h1>
-                        <p>Transact, investigate, assure and report from one focused toolkit—built to help you find answers, complete tasks and keep finance work moving.</p>
+                        <span class="hero-kicker"><i></i>Australian Government finance</span>
+                        <h1>Prepare. Transact.<br /><em>Assure. Report.</em></h1>
+                        <p>Transact, investigate, assure and report—built to help you find answers, complete tasks and deliver reliable financial information.</p>
 
                         <div class="hero-actions">
                             <a class="button button-primary" href="#toolkit">
@@ -96,7 +96,7 @@
                             <span class="section-kicker">Your finance workspace</span>
                             <h2>Choose your next move.</h2>
                         </div>
-                        <p>Purpose-built utilities for the work behind the numbers.</p>
+                        <p>Purpose-built modules for the work behind the numbers.</p>
                     </div>
 
                     <div class="tool-grid">
