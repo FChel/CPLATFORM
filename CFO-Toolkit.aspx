@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#071514" />
     <title>CFO Toolkit | CPlatform</title>
-    <link rel="stylesheet" href="css/cfo-toolkit.css" />
+    <link rel="stylesheet" href="css/cfo-toolkit.css?v=20260806-2" />
 </head>
 <body>
     <form id="form1" runat="server">
