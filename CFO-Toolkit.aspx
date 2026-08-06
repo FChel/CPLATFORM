@@ -93,10 +93,10 @@
                 <section class="toolkit-section" id="toolkit">
                     <div class="section-heading">
                         <div>
-                            <span class="section-kicker">Your finance workspace</span>
-                            <h2>Choose your next move.</h2>
+                            <span class="section-kicker">Finance modules</span>
+                            <h2>Select the module you need.</h2>
                         </div>
-                        <p>Purpose-built modules for the work behind the numbers.</p>
+                        <p>Purpose-built modules for common government finance activities.</p>
                     </div>
 
                     <div class="tool-grid">
@@ -170,7 +170,7 @@
                         <a class="tool-card theme-gold" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("COA")) %>" target="_blank" rel="noopener noreferrer">
                             <div class="tool-topline">
                                 <span class="tool-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6M11 8v6"/></svg></span>
-                                <span class="tool-label">Reference utility</span>
+                                <span class="tool-label">Reference module</span>
                             </div>
                             <div class="tool-copy">
                                 <span class="eyebrow">Find the right code</span>
@@ -230,13 +230,13 @@
 
                 <section class="principles">
                     <div class="principles-lead">
-                        <span class="section-kicker">Designed around the work</span>
-                        <h2>Less hunting.<br />More doing.</h2>
+                        <span class="section-kicker">Designed for finance teams</span>
+                        <h2>Clear access.<br />Reliable outcomes.</h2>
                     </div>
                     <div class="principle-list">
-                        <div><span>01</span><p><b>One front door</b> to the utilities finance teams use most.</p></div>
-                        <div><span>02</span><p><b>Clear next actions</b> rather than another directory of links.</p></div>
-                        <div><span>03</span><p><b>Connected assurance</b> from source data to finished output.</p></div>
+                        <div><span>01</span><p><b>One access point</b> for the finance modules teams use most.</p></div>
+                        <div><span>02</span><p><b>Clear functions</b> and next steps for each task.</p></div>
+                        <div><span>03</span><p><b>Traceable assurance</b> from source data to final output.</p></div>
                     </div>
                 </section>
             </main>
