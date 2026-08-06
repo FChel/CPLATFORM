@@ -194,6 +194,13 @@ svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: 
 .tool-action svg { width: 15px; height: 15px; transition: transform .2s ease; }
 .tool-card:hover .tool-action svg { transform: translateX(4px); }
 .tool-featured .tool-action { color: #fff; }
+.tool-prominent { grid-column: span 2; min-height: 382px; padding: 30px; background: linear-gradient(135deg, rgba(239,248,244,.98), rgba(255,249,239,.96)); }
+.tool-prominent::before { width: 360px; height: 360px; right: -90px; top: -220px; opacity: .2; }
+.tool-prominent .tool-copy { max-width: 690px; margin-top: 32px; }
+.tool-prominent .tool-copy h3 { font-size: clamp(32px, 3.2vw, 45px); }
+.tool-prominent .tool-copy p { max-width: 690px; font-size: 14px; }
+.tool-prominent .feature-flow { margin-top: 30px; color: #546a62; }
+.tool-prominent .feature-flow i { background: linear-gradient(90deg, #9bb8ad, var(--theme)); }
 .tool-wide-when-last:last-child { grid-column: 1 / -1; min-height: 300px; background: linear-gradient(120deg, rgba(255,254,249,.94), rgba(232,248,241,.9)); }
 .tool-wide-when-last:last-child::before { width: 410px; height: 410px; right: -80px; top: -255px; opacity: .18; }
 .tool-wide-when-last:last-child .tool-copy { max-width: 620px; margin-top: 30px; }
@@ -245,6 +252,7 @@ footer span { font-size: 10px; letter-spacing: .07em; }
     .section-heading > p { margin-top: 18px; }
     .tool-grid { grid-template-columns: 1fr; }
     .tool-featured { grid-column: auto; }
+    .tool-prominent { grid-column: auto; min-height: 390px; }
     .tool-wide-when-last:last-child { grid-column: auto; min-height: 360px; }
     .principles { padding: 36px 28px; grid-template-columns: 1fr; gap: 30px; }
     footer { align-items: flex-start; flex-direction: column; justify-content: center; }

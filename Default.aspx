@@ -481,31 +481,6 @@
             text-transform: uppercase;
             transition: transform 0.25s ease;
         }
-        .tile-norm {
-            border-color: rgba(215,91,7,0.42);
-            background:
-                radial-gradient(90% 75% at 100% 0%, rgba(255,143,70,0.19) 0%, rgba(255,143,70,0) 62%),
-                linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(255,248,242,0.74) 100%);
-        }
-        .tile-norm-statements .icon {
-            background: linear-gradient(135deg, #e9f3fa, #cfe5f4);
-            border-color: #b5d3e5;
-            box-shadow: 0 6px 16px rgba(38, 95, 137, 0.14);
-        }
-        .tile-norm-statements .icon svg { stroke: #245e89; }
-        .tile-badge {
-            display: inline-flex;
-            align-items: center;
-            margin: 0 0 12px 0;
-            border-radius: 999px;
-            background: #1b211f;
-            color: #fff;
-            padding: 5px 9px;
-            font-size: 9px;
-            font-weight: 800;
-            letter-spacing: .12em;
-            text-transform: uppercase;
-        }
 
         /* ---------- Info panel ---------- */
         .info {
@@ -721,31 +696,42 @@
             </a>
             <% } %>
 
+            <% if (IsTileVisible("NORM")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("NORM")) %>" target="_blank" rel="noopener noreferrer">
+                <div>
+                    <div class="icon">
+                        <svg viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><path d="M9 13h6M9 17h6M9 9h2"/></svg>
+                    </div>
+                    <h3>NORM</h3>
+                    <p>Financial statements with source evidence, assurance checks and figure-level traceability.</p>
+                </div>
+                <span class="arrow">View statements &rarr;</span>
+            </a>
+            <% } %>
+
             <% if (IsTileVisible("NORMWorkspace")) { %>
-            <a class="tile tile-norm" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("NORMWorkspace")) %>" target="_blank" rel="noopener noreferrer">
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("NORMWorkspace")) %>" target="_blank" rel="noopener noreferrer">
                 <div>
                     <div class="icon">
                         <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h4M7 12h10M7 16h7"/><path d="M17 8v5M14.5 10.5H19.5"/></svg>
                     </div>
-                    <span class="tile-badge">Control centre</span>
-                    <h3>NORM Workspace</h3>
-                    <p>Load trial balances, see readiness and take the next action in the financial statement process.</p>
+                    <h3>NORM Control Centre</h3>
+                    <p>NORM Workspace (for Fin Statements Preparers).</p>
                 </div>
-                <span class="arrow">Open workspace &rarr;</span>
+                <span class="arrow">Open &rarr;</span>
             </a>
             <% } %>
 
-            <% if (IsTileVisible("NORMStatements")) { %>
-            <a class="tile tile-norm tile-norm-statements" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("NORMStatements")) %>" target="_blank" rel="noopener noreferrer">
+            <% if (IsTileVisible("PrepaymentWorkspace")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("PrepaymentWorkspace")) %>" target="_blank" rel="noopener noreferrer">
                 <div>
                     <div class="icon">
-                        <svg viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><path d="M9 13h6M9 17h6M9 9h2"/><path d="m9 17 1.5 1.5L13 15"/></svg>
+                        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h4M7 12h10M7 16h7"/><path d="M17 8v5M14.5 10.5H19.5"/></svg>
                     </div>
-                    <span class="tile-badge">Published view</span>
-                    <h3>NORM Statements</h3>
-                    <p>Review completed financial statements, assurance checks and G/L-to-figure traceability.</p>
+                    <h3>Prepayments Control Centre</h3>
+                    <p>Prepayments Module</p>
                 </div>
-                <span class="arrow">View statements &rarr;</span>
+                <span class="arrow">Open &rarr;</span>
             </a>
             <% } %>
 

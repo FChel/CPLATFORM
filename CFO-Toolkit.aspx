@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#071514" />
     <title>CFO Toolkit | CPlatform</title>
-    <link rel="stylesheet" href="css/cfo-toolkit.css?v=20260806-2" />
+    <link rel="stylesheet" href="css/cfo-toolkit.css?v=20260806-3" />
 </head>
 <body>
     <form id="form1" runat="server">
@@ -77,15 +77,15 @@
                         </div>
                         <div class="workflow-step step-two">
                             <span class="step-number">02</span>
-                            <span><b>Investigate</b><small>SAP and accounts</small></span>
+                            <span><b>Investigate</b><small>POs, SAP and accounts</small></span>
                         </div>
                         <div class="workflow-step step-three">
                             <span class="step-number">03</span>
-                            <span><b>Assure</b><small>Reviews and controls</small></span>
+                            <span><b>Assure</b><small>Reviews and reconciliations</small></span>
                         </div>
                         <div class="workflow-step step-four">
                             <span class="step-number">04</span>
-                            <span><b>Report</b><small>Statements and outputs</small></span>
+                            <span><b>Report</b><small>Statements and schedules</small></span>
                         </div>
                     </div>
                 </section>
@@ -148,6 +148,26 @@
                                 <p>Review and classify Late Payment Penalty Interest cases efficiently.</p>
                             </div>
                             <span class="tool-action">Open dashboard <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+                        </a>
+                        <% } %>
+
+                        <% if (IsTileVisible("PrepaymentWorkspace")) { %>
+                        <a class="tool-card tool-prominent theme-blue" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("PrepaymentWorkspace")) %>" target="_blank" rel="noopener noreferrer">
+                            <div class="tool-topline">
+                                <span class="tool-icon">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h4M7 16h3M15 12v6M12 15h6"/></svg>
+                                </span>
+                                <span class="tool-label">Prepayment lifecycle</span>
+                            </div>
+                            <div class="tool-copy">
+                                <span class="eyebrow">Recognition and control</span>
+                                <h3>Prepayment Management</h3>
+                                <p>Identify prepayment POs and invoices, establish amortisation schedules, generate journals and reconcile G/L balances.</p>
+                            </div>
+                            <div class="feature-flow" aria-hidden="true">
+                                <span>Identify</span><i></i><span>Recognise</span><i></i><span>Amortise</span><i></i><span>Reconcile</span>
+                            </div>
+                            <span class="tool-action">Open module <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
                         </a>
                         <% } %>
 
