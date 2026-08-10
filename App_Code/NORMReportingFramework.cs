@@ -364,6 +364,11 @@ public static class NORMReportingFramework
         if (!IsInstalled()) { return; }
         string[,] items = new string[,] {
             { "FINANCIAL_STATEMENTS", "DRAFT_FS", "Draft financial statements" },
+            { "FINANCIAL_STATEMENTS", "MANUAL_INPUTS", "Manual disclosure schedules and reconciliations" },
+            { "FINANCIAL_STATEMENTS", "CASH_FLOW_JOURNALS", "Cash-flow classification journals" },
+            { "FINANCIAL_STATEMENTS", "ASSET_MOVEMENTS", "Property, plant and equipment movement table" },
+            { "ANNUAL_PERFORMANCE", "APS_DRAFT", "Annual performance statements" },
+            { "ANNUAL_PERFORMANCE", "APS_ASSURANCE", "Performance measure evidence and assurance" },
             { "AUDIT_COMMITTEE", "FS_SUMMARY", "Financial statement summary" },
             { "AUDIT_COMMITTEE", "JUDGEMENTS", "Significant accounting judgements" },
             { "AUDIT_COMMITTEE", "NEW_STANDARDS", "New accounting standards" },
@@ -372,7 +377,7 @@ public static class NORMReportingFramework
             { "AUDIT_COMMITTEE", "REPRESENTATION", "Management representation checklist" },
             { "AUDIT_COMMITTEE", "CERTIFICATION", "Internal certification status" },
             { "ANNUAL_REPORT", "OUTCOMES", "Outcome reporting tables" },
-            { "ANNUAL_REPORT", "FINANCE_MODULES", "Annual report finance modules" }
+            { "ANNUAL_REPORT", "FINANCE_MODULES", "Annual report financial information" }
         };
         for (int i = 0; i < items.GetLength(0); i++)
         {
@@ -392,7 +397,8 @@ public static class NORMReportingFramework
         return NORMHelper.Query(
             "SELECT WorkflowItemId,ModuleCode,ItemCode,ItemLabel,OwnerUserId,ReviewerUserId,StatusCode,DueDate,Commentary,UpdatedUtc " +
             "FROM dbo.tblNORM_WorkflowItem WHERE CalculationRunId=@run AND IsDeactivated=0 " +
-            "ORDER BY CASE ModuleCode WHEN 'FINANCIAL_STATEMENTS' THEN 1 WHEN 'AUDIT_COMMITTEE' THEN 2 ELSE 3 END,WorkflowItemId",
+            "ORDER BY CASE ModuleCode WHEN 'FINANCIAL_STATEMENTS' THEN 1 WHEN 'ANNUAL_PERFORMANCE' THEN 2 " +
+            "WHEN 'AUDIT_COMMITTEE' THEN 3 WHEN 'ANNUAL_REPORT' THEN 4 ELSE 5 END,WorkflowItemId",
             NORMHelper.P("@run", runId));
     }
 

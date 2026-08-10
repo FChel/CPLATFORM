@@ -69,8 +69,19 @@
             <div class="norm-policy-list"><%= NarrativeHtml %></div>
         </section>
 
+        <section class="norm-reporting-panel" id="manual-inputs">
+            <header><div><span class="norm-step">04</span><h2>Manual inputs and controlled adjustments</h2></div><p>Capture workbook-derived disclosures and cash-flow journals with evidence, ownership and validation status. These inputs remain separate from the frozen trial balance.</p></header>
+            <div class="norm-control-module-head"><div><span class="norm-kicker">Original Budget</span><h3>Approved budget figures and source evidence</h3></div><p>Load from the entity's approved budget extract or enter controlled figures here. Every value carries its source reference and preparation status.</p></div>
+            <%= BudgetFigureHtml %>
+            <aside class="norm-ai-roadmap"><span>Phase 2 · human-reviewed AI assistance</span><strong>Budget variance commentary</strong><p>Use actual-to-budget movements and drill-through evidence to prepare a first draft, with the financial statements team retaining authorship, verification and approval.</p></aside>
+            <div class="norm-control-module-head norm-control-module-head-spaced"><div><span class="norm-kicker">Manual disclosure register</span><h3>Schedules that need accounting input</h3></div><p>Includes lease maturity analysis, contingencies, asset-register reconciliation and budget variance commentary.</p></div>
+            <%= ManualInputHtml %>
+            <div class="norm-control-module-head norm-control-module-head-spaced"><div><span class="norm-kicker">Cash-flow journals</span><h3>Non-cash adjustments and classification journals</h3></div><p>Approved journals are included in cash-flow category balances and figure drill-through.</p></div>
+            <%= CashFlowJournalHtml %>
+        </section>
+
         <section class="norm-reporting-panel" id="workflow">
-            <header><div><span class="norm-step">04</span><h2>Team workflow</h2></div><p>Assign preparation and review across financial statements, Audit Committee and annual report modules.</p></header>
+            <header><div><span class="norm-step">05</span><h2>Team workflow</h2></div><p>Assign preparation and review across financial statements, annual performance statements, Audit Committee and annual report modules.</p></header>
             <div class="norm-workflow-table"><%= WorkflowHtml %></div>
         </section>
 

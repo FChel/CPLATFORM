@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.Text;
 using System.Web;
 
@@ -20,6 +21,10 @@ namespace CPlatform.NORM
         protected string DisclosureHtml = "";
         protected string NarrativeHtml = "";
         protected string WorkflowHtml = "";
+        protected string BudgetFigureHtml = "";
+        protected string ManualInputHtml = "";
+        protected string CashFlowJournalHtml = "";
+        protected bool EnhancementsInstalled;
         protected int RequiredCount;
         protected int GeneratedCount;
         protected int NeedsInputCount;
@@ -32,6 +37,9 @@ namespace CPlatform.NORM
             PlatformInstalled = NORMReportingFramework.IsInstalled();
             if (SelectedRunId <= 0 || !PlatformInstalled) { return; }
             LoadContext();
+            EnhancementsInstalled = NORMStatementEnhancements.IsInstalled();
+            NORMStatementEnhancements.EnsureRunTemplates(SelectedRunId, NORMHelper.CurrentUserId());
+            NORMStatementEnhancements.EnsureBudgetTemplates(SelectedRunId, SelectedReleaseId, NORMHelper.CurrentUserId());
             NORMReportingFramework.EnsureWorkflow(SelectedRunId, NORMHelper.CurrentUserId());
             BuildPage();
         }
@@ -73,6 +81,48 @@ namespace CPlatform.NORM
                 NORMReportingFramework.SaveWorkflowItem(id, SelectedRunId, Request.Form["workflowOwner_" + key],
                     Request.Form["workflowReviewer_" + key], Request.Form["workflowStatus_" + key],
                     Request.Form["workflowComment_" + key], user);
+            }
+
+            if (NORMStatementEnhancements.IsInstalled())
+            {
+                DataTable budgetFigures = NORMStatementEnhancements.LoadBudgetRegister(SelectedRunId);
+                for (int i = 0; i < budgetFigures.Rows.Count; i++)
+                {
+                    long id = NORMHelper.Long(budgetFigures.Rows[i], "BudgetFigureId");
+                    string key = id.ToString(CultureInfo.InvariantCulture);
+                    NORMStatementEnhancements.SaveBudgetFigure(id, SelectedRunId,
+                        DecimalValue(Request.Form["budgetAmount_" + key]), Request.Form["budgetSystem_" + key],
+                        Request.Form["budgetReference_" + key], Request.Form["budgetStatus_" + key], user);
+                }
+                DataTable manualInputs = NORMStatementEnhancements.LoadManualInputs(SelectedRunId);
+                for (int i = 0; i < manualInputs.Rows.Count; i++)
+                {
+                    long id = NORMHelper.Long(manualInputs.Rows[i], "ManualInputId");
+                    string key = id.ToString(CultureInfo.InvariantCulture);
+                    NORMStatementEnhancements.SaveManualInput(id, SelectedRunId,
+                        DecimalValue(Request.Form["manualCurrent_" + key]),
+                        DecimalValue(Request.Form["manualPrior_" + key]),
+                        Request.Form["manualEvidence_" + key], Request.Form["manualCommentary_" + key],
+                        Request.Form["manualStatus_" + key], user);
+                }
+
+                DataTable journals = NORMStatementEnhancements.LoadCashFlowJournals(SelectedRunId);
+                for (int i = 0; i < journals.Rows.Count; i++)
+                {
+                    long id = NORMHelper.Long(journals.Rows[i], "CashFlowJournalId");
+                    string key = id.ToString(CultureInfo.InvariantCulture);
+                    NORMStatementEnhancements.SaveCashFlowJournal(id, SelectedRunId,
+                        Request.Form["cfReference_" + key], Request.Form["cfDescription_" + key],
+                        Request.Form["cfClass_" + key], DecimalValue(Request.Form["cfAmount_" + key]) ?? 0m,
+                        Request.Form["cfEvidence_" + key], Request.Form["cfStatus_" + key], user);
+                }
+                if (!String.IsNullOrWhiteSpace(Request.Form["cfReference_new"]))
+                {
+                    NORMStatementEnhancements.SaveCashFlowJournal(0, SelectedRunId,
+                        Request.Form["cfReference_new"], Request.Form["cfDescription_new"],
+                        Request.Form["cfClass_new"], DecimalValue(Request.Form["cfAmount_new"]) ?? 0m,
+                        Request.Form["cfEvidence_new"], Request.Form["cfStatus_new"], user);
+                }
             }
             Response.Redirect("NORM_Reporting.aspx?run=" + SelectedRunId.ToString() + "&saved=1", true);
         }
@@ -122,6 +172,9 @@ namespace CPlatform.NORM
                 NORMReportingFramework.LoadDisclosures(SelectedRunId, SelectedReleaseId, profile);
             DisclosureHtml = BuildDisclosures(disclosures);
             NarrativeHtml = BuildNarratives(disclosures);
+            BudgetFigureHtml = BuildBudgetFigures(NORMStatementEnhancements.LoadBudgetRegister(SelectedRunId));
+            ManualInputHtml = BuildManualInputs(NORMStatementEnhancements.LoadManualInputs(SelectedRunId));
+            CashFlowJournalHtml = BuildCashFlowJournals(NORMStatementEnhancements.LoadCashFlowJournals(SelectedRunId));
             WorkflowHtml = BuildWorkflow(NORMReportingFramework.LoadWorkflow(SelectedRunId));
             ReadinessLabel = NeedsInputCount == 0 ? "Disclosure plan is ready for review" : NeedsInputCount.ToString() + " required items need input";
         }
@@ -212,6 +265,129 @@ namespace CPlatform.NORM
             }
             html.Append("</tbody></table>");
             return html.ToString();
+        }
+
+        private string BuildManualInputs(DataTable table)
+        {
+            if (!EnhancementsInstalled)
+                return "<div class=\"norm-empty\">Run <code>sql/NORM_05_StatementDemoEnhancements.sql</code> to enable controlled manual schedules.</div>";
+            StringBuilder html = new StringBuilder("<div class=\"norm-manual-grid\">");
+            for (int i = 0; i < table.Rows.Count; i++)
+            {
+                DataRow row = table.Rows[i];
+                string id = NORMHelper.Long(row, "ManualInputId").ToString(CultureInfo.InvariantCulture);
+                string type = NORMHelper.Str(row, "InputTypeCode");
+                html.Append("<article class=\"norm-manual-card\"><header><div><span>")
+                    .Append(Enc(type.Replace("Analysis", " analysis"))).Append("</span><strong>")
+                    .Append(Enc(NORMHelper.Str(row, "InputLabel"))).Append("</strong></div><em>")
+                    .Append(Enc(NORMHelper.Str(row, "DisclosureCode"))).Append("</em></header>");
+                if (!String.Equals(type, "Commentary", StringComparison.OrdinalIgnoreCase))
+                {
+                    html.Append("<div class=\"norm-manual-values\"><label><span>Current year ($'000)</span><input type=\"number\" step=\"0.001\" name=\"manualCurrent_")
+                        .Append(id).Append("\" value=\"").Append(NumberValue(row, "AmountCurrent")).Append("\"></label>")
+                        .Append("<label><span>Comparative ($'000)</span><input type=\"number\" step=\"0.001\" name=\"manualPrior_")
+                        .Append(id).Append("\" value=\"").Append(NumberValue(row, "AmountPrior")).Append("\"></label></div>");
+                }
+                html.Append("<label><span>Evidence / workbook reference</span><input name=\"manualEvidence_").Append(id)
+                    .Append("\" value=\"").Append(Enc(NORMHelper.Str(row, "EvidenceReference"))).Append("\" placeholder=\"Workbook, tab, cell or attachment\"></label>")
+                    .Append("<label><span>").Append(String.Equals(type, "Commentary", StringComparison.OrdinalIgnoreCase) ? "Commentary" : "Preparation note")
+                    .Append("</span><textarea rows=\"3\" name=\"manualCommentary_").Append(id).Append("\">")
+                    .Append(Enc(NORMHelper.Str(row, "Commentary"))).Append("</textarea></label>")
+                    .Append("<label><span>Status</span><select name=\"manualStatus_").Append(id).Append("\">")
+                    .Append(ManualStatusOptions(NORMHelper.Str(row, "StatusCode"))).Append("</select></label></article>");
+            }
+            html.Append("</div>");
+            return html.ToString();
+        }
+
+        private string BuildBudgetFigures(DataTable table)
+        {
+            if (!EnhancementsInstalled)
+                return "<div class=\"norm-empty\">Install the NORM statement enhancement objects to enable Original Budget inputs.</div>";
+            StringBuilder html = new StringBuilder("<div class=\"norm-workflow-table norm-budget-register\"><table><thead><tr><th>Statement line</th><th>Original Budget ($'000)</th><th>Source system</th><th>Source reference / report</th><th>Status</th></tr></thead><tbody>");
+            for (int i = 0; i < table.Rows.Count; i++)
+            {
+                DataRow row = table.Rows[i];
+                string id = NORMHelper.Long(row, "BudgetFigureId").ToString(CultureInfo.InvariantCulture);
+                html.Append("<tr><td><small>").Append(Enc(NORMHelper.Str(row, "StatementCode"))).Append("</small><strong>")
+                    .Append(Enc(NORMHelper.Str(row, "LineCode"))).Append("</strong></td><td><input type=\"number\" step=\"0.001\" name=\"budgetAmount_")
+                    .Append(id).Append("\" value=\"").Append(NumberValue(row, "OriginalBudget")).Append("\"></td><td><input name=\"budgetSystem_")
+                    .Append(id).Append("\" value=\"").Append(Enc(NORMHelper.Str(row, "SourceSystem"))).Append("\" placeholder=\"ERP / budget system\"></td><td><input name=\"budgetReference_")
+                    .Append(id).Append("\" value=\"").Append(Enc(NORMHelper.Str(row, "SourceReference"))).Append("\" placeholder=\"Approved budget report or extract\"></td><td><select name=\"budgetStatus_")
+                    .Append(id).Append("\">").Append(BudgetStatusOptions(NORMHelper.Str(row, "StatusCode"))).Append("</select></td></tr>");
+            }
+            html.Append("</tbody></table></div>");
+            return html.ToString();
+        }
+
+        private string BuildCashFlowJournals(DataTable table)
+        {
+            if (!EnhancementsInstalled)
+                return "<div class=\"norm-empty\">Install the NORM statement enhancement objects to enable cash-flow journals.</div>";
+            StringBuilder html = new StringBuilder("<div class=\"norm-workflow-table norm-cf-journals\"><table><thead><tr><th>Journal and description</th><th>Cash-flow category</th><th>Amount ($'000)</th><th>Evidence</th><th>Status</th></tr></thead><tbody>");
+            for (int i = 0; i < table.Rows.Count; i++)
+            {
+                DataRow row = table.Rows[i];
+                string id = NORMHelper.Long(row, "CashFlowJournalId").ToString(CultureInfo.InvariantCulture);
+                html.Append(CashFlowJournalRow(id, NORMHelper.Str(row, "JournalReference"), NORMHelper.Str(row, "JournalDescription"),
+                    NORMHelper.Str(row, "CashFlowClass"), NumberValue(row, "Amount"), NORMHelper.Str(row, "EvidenceReference"),
+                    NORMHelper.Str(row, "StatusCode"), false));
+            }
+            html.Append(CashFlowJournalRow("new", "", "", "Payments to suppliers", "", "", "Draft", true));
+            html.Append("</tbody></table></div>");
+            return html.ToString();
+        }
+
+        private string CashFlowJournalRow(string id, string reference, string description, string cashClass,
+            string amount, string evidence, string status, bool isNew)
+        {
+            return "<tr" + (isNew ? " class=\"norm-new-row\"" : "") + "><td><input name=\"cfReference_" + id + "\" value=\"" + Enc(reference) + "\" placeholder=\"" + (isNew ? "New journal reference" : "Reference") + "\"><input name=\"cfDescription_" + id + "\" value=\"" + Enc(description) + "\" placeholder=\"Non-cash adjustment or reclassification\"></td>" +
+                "<td><select name=\"cfClass_" + id + "\">" + CashClassOptions(cashClass) + "</select></td>" +
+                "<td><input type=\"number\" step=\"0.001\" name=\"cfAmount_" + id + "\" value=\"" + Enc(amount) + "\"></td>" +
+                "<td><input name=\"cfEvidence_" + id + "\" value=\"" + Enc(evidence) + "\" placeholder=\"Working paper reference\"></td>" +
+                "<td><select name=\"cfStatus_" + id + "\">" + CashStatusOptions(status) + "</select></td></tr>";
+        }
+
+        private string CashClassOptions(string selected)
+        {
+            return Options(new string[,] {
+                { "Receipts from Government", "Operating - receipts from Government" },
+                { "Receipts from customers", "Operating - customer receipts" },
+                { "Payments to employees", "Operating - employees" },
+                { "Payments to suppliers", "Operating - suppliers" },
+                { "Purchase of property plant and equipment", "Investing - PPE purchases" },
+                { "Proceeds from sales of property plant and equipment", "Investing - PPE sales" },
+                { "Contributed equity", "Financing - contributed equity" },
+                { "Principal payments of lease liabilities", "Financing - lease principal" }
+            }, selected);
+        }
+
+        private string ManualStatusOptions(string selected)
+        {
+            return Options(new string[,] { { "NotStarted", "Not started" }, { "Draft", "Draft" }, { "Prepared", "Prepared" }, { "Validated", "Validated" } }, selected);
+        }
+
+        private string CashStatusOptions(string selected)
+        {
+            return Options(new string[,] { { "Draft", "Draft" }, { "Prepared", "Prepared" }, { "Approved", "Approved" }, { "Posted", "Posted" } }, selected);
+        }
+
+        private string BudgetStatusOptions(string selected)
+        {
+            return Options(new string[,] { { "Loaded", "Loaded" }, { "Prepared", "Prepared" }, { "Validated", "Validated" } }, selected);
+        }
+
+        private string NumberValue(DataRow row, string column)
+        {
+            return row.IsNull(column) ? "" : Convert.ToDecimal(row[column]).ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        private decimal? DecimalValue(string value)
+        {
+            decimal parsed;
+            if (Decimal.TryParse(value, NumberStyles.Number | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out parsed)) return parsed;
+            if (Decimal.TryParse(value, NumberStyles.Number | NumberStyles.AllowLeadingSign, CultureInfo.CurrentCulture, out parsed)) return parsed;
+            return null;
         }
 
         private string Options(string[,] values, string selected)

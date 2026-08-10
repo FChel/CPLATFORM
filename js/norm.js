@@ -24,6 +24,7 @@
   }
   function pad2(value) { return Number(value) < 10 ? "0" + Number(value) : String(value); }
   function statusClass(value) { return String(value || "Mapped").toLowerCase(); }
+  function noteId(value) { return "note-" + String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
 
   function initialise() {
     if (!data.meta || !statements.length) {
@@ -39,7 +40,10 @@
     byId("reviewPackLink").hidden = false;
     byId("wordExportLink").href = "NORM_WordExport.ashx?run=" + encodeURIComponent(data.meta.runId);
     byId("wordExportLink").hidden = false;
-    byId("printStatements").addEventListener("click", function () { window.print(); });
+    applyRoute();
+    byId("printStatements").addEventListener("click", requestPrint);
+    byId("cancelPrint").addEventListener("click", closePrintReview);
+    byId("confirmPrint").addEventListener("click", function () { closePrintReview(); buildPrintBook(); window.print(); });
     renderProfile();
     renderNavigation();
     renderStatement();
@@ -47,6 +51,17 @@
     renderReadiness();
     renderUnmapped();
     bindDrawer();
+    window.addEventListener("hashchange", function () { applyRoute(); renderNavigation(); renderStatement(); scrollToRoutedNote(); });
+    scrollToRoutedNote();
+  }
+
+  function applyRoute() {
+    var hash = String(window.location.hash || "").replace(/^#/, "");
+    if (hash.indexOf("note-") === 0) { activeCode = "NOTES"; return; }
+    if (hash === "asset-movement") { activeCode = "ASSET_MOVEMENT"; return; }
+    for (var i = 0; i < statements.length; i++) {
+      if (String(statements[i].code).toLowerCase() === hash.toLowerCase()) { activeCode = statements[i].code; return; }
+    }
   }
 
   function renderProfile() {
@@ -69,6 +84,7 @@
     Array.prototype.forEach.call(byId("statementNav").querySelectorAll("button"), function (button) {
       button.addEventListener("click", function () {
         activeCode = button.getAttribute("data-code");
+        window.history.replaceState(null, "", "#" + (activeCode === "ASSET_MOVEMENT" ? "asset-movement" : String(activeCode).toLowerCase()));
         renderNavigation();
         renderStatement();
       });
@@ -100,11 +116,12 @@
   function renderStatement() {
     var statement = currentStatement();
     if (statement.layout === "notes") { renderNotes(statement); return; }
+    if (statement.layout === "assetMovement") { renderAssetMovement(statement); return; }
     var currentYear = data.meta.yearCurrent;
     var priorYear = data.meta.yearPrior;
     var rows = (statement.rows || []).map(function (row, index) {
-      if (row.type === "section") {
-        return '<tr class="norm-section-row"><th colspan="4">' + esc(row.label) + '</th></tr>';
+      if (row.type === "section" || row.type === "subsection" || row.type === "major") {
+        return '<tr class="norm-section-row ' + esc(row.type) + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
       }
       var sourceCount = (row.sources || []).length;
       var status = statusClass(row.status);
@@ -112,17 +129,18 @@
       var amount = clickable
         ? '<button type="button" class="norm-figure" data-row="' + index + '"><span class="norm-status ' + status + '"></span><span>' + number(row.computed) + '</span></button>'
         : '<span class="norm-figure-static">' + number(row.computed) + '</span>';
+      var note = row.note ? '<button type="button" class="norm-note-jump" data-note="' + esc(row.note) + '" aria-label="Open note ' + esc(row.note) + '">' + esc(row.note) + '</button>' : '';
       return '<tr class="norm-financial-row ' + esc(row.type) + '"><th scope="row">' + esc(row.label) +
         (sourceCount ? '<small>' + sourceCount + ' source account' + (sourceCount === 1 ? '' : 's') + '</small>' : '') +
-        '</th><td class="norm-note">' + esc(row.note || "") + '</td><td class="norm-amount">' + amount +
-        '</td><td class="norm-amount norm-prior">' + number(row.prior) + '</td></tr>';
+        '</th><td class="norm-note">' + note + '</td><td class="norm-amount">' + amount +
+        '</td><td class="norm-amount norm-prior">' + number(row.prior) + '</td><td class="norm-amount norm-budget">' + number(row.budget) + '</td></tr>';
     }).join("");
 
     byId("statementDocument").innerHTML = '<header class="norm-document-head"><span class="norm-kicker">' + esc(data.meta.entity) + '</span>' +
       '<h1>' + esc(statement.title) + '</h1><p>' + (statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + currentYear + '</p>' +
       '<div class="norm-document-meta"><span>Source set: ' + esc(data.meta.file) + '</span><span>Configuration: ' + esc(data.meta.release) + '</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
       renderSourceEvidence() + '</header>' +
-      '<div class="norm-table-scroll"><table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + currentYear + '</b>$\'000</th><th><b>' + priorYear + '</b>$\'000</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="norm-table-scroll"><table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + currentYear + '</b><small>Current</small>$\'000</th><th><b>' + priorYear + '</b><small>Comparative</small>$\'000</th><th><b>Original Budget</b><small>' + currentYear + '</small>$\'000</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<footer class="norm-document-foot">The statement should be read with the accompanying notes. Select any current-year amount to inspect its frozen derivation.</footer>';
 
     Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-row]"), function (button) {
@@ -131,6 +149,54 @@
         openTrace(statement.rows[rowIndex], button);
       });
     });
+    bindNoteJumps();
+  }
+
+  function bindNoteJumps() {
+    Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-note]"), function (button) {
+      button.addEventListener("click", function () { navigateToNote(button.getAttribute("data-note")); });
+    });
+  }
+
+  function navigateToNote(note) {
+    activeCode = "NOTES";
+    window.history.replaceState(null, "", "#" + noteId(note));
+    renderNavigation();
+    renderStatement();
+    scrollToRoutedNote();
+  }
+
+  function scrollToRoutedNote() {
+    var hash = String(window.location.hash || "").replace(/^#/, "");
+    if (hash.indexOf("note-") !== 0) { return; }
+    var target = byId(hash);
+    if (target) { window.setTimeout(function () { target.scrollIntoView({ behavior: "smooth", block: "start" }); target.focus({ preventScroll: true }); }, 30); }
+  }
+
+  function renderAssetMovement(statement) {
+    var rows = (statement.rows || []).map(function (row, index) {
+      var closeSources = row.closingSources || [];
+      var depSources = row.depreciationSources || [];
+      var closing = closeSources.length ? '<button type="button" class="norm-figure" data-asset-row="' + index + '" data-kind="closing"><span class="norm-status mapped"></span><span>' + number(row.closing) + '</span></button>' : number(row.closing);
+      var depreciation = depSources.length ? '<button type="button" class="norm-figure" data-asset-row="' + index + '" data-kind="depreciation"><span class="norm-status mapped"></span><span>' + number(row.depreciation) + '</span></button>' : number(row.depreciation);
+      return '<tr class="' + (row.total ? 'total' : '') + '"><th>' + esc(row.label) + '</th><td><button type="button" class="norm-note-jump" data-note="' + esc(row.note) + '">' + esc(row.note) + '</button></td>' +
+        '<td>' + number(row.opening) + '</td><td>' + number(row.additions) + '</td><td>' + depreciation + '</td><td>' + number(row.revaluations) + '</td><td>' + closing + '</td></tr>';
+    }).join("");
+    byId("statementDocument").innerHTML = '<header class="norm-document-head"><span class="norm-kicker">' + esc(data.meta.entity) + '</span><h1>' + esc(statement.title) + '</h1>' +
+      '<p>Note 3.2A working schedule · for the year ended 30 June ' + esc(data.meta.yearCurrent) + '</p><div class="norm-document-meta"><span>Closing balances and depreciation derive from frozen lineage</span><span>Run #' + esc(data.meta.runId) + '</span></div></header>' +
+      '<div class="norm-input-callout"><strong>Movement schedule control</strong><p>Opening balances, additions, disposals and revaluations are controlled schedule inputs. Dashes are intentional until those inputs are loaded and validated; derived closing balances remain drillable.</p></div>' +
+      '<div class="norm-table-scroll"><table class="norm-asset-table"><thead><tr><th>Asset class</th><th>Note</th><th>Opening</th><th>Additions / disposals</th><th>Depreciation / amortisation</th><th>Revaluations / other</th><th>Closing</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<footer class="norm-document-foot">Presented in $\'000. The final movement table must reconcile to the asset register and Statement of Financial Position before publication.</footer>';
+    Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-asset-row]"), function (button) {
+      button.addEventListener("click", function () {
+        var row = statement.rows[Number(button.getAttribute("data-asset-row"))];
+        var isClosing = button.getAttribute("data-kind") === "closing";
+        openTrace({ label: row.label + (isClosing ? " closing balance" : " depreciation and amortisation"), note: row.note,
+          computed: isClosing ? row.closing : row.depreciation, published: null, variance: null, status: "Mapped",
+          sources: isClosing ? row.closingSources : row.depreciationSources }, button);
+      });
+    });
+    bindNoteJumps();
   }
 
   function renderNotes(statement) {
@@ -152,7 +218,7 @@
             '<tr class="total"><th>Total ' + esc(item.title.toLowerCase()) + '</th><td>' + number(item.amount) + '</td></tr></tbody></table>' :
             '<div class="norm-note-empty"><span>No mapped balance</span><p>The disclosure remains in the set because the entity profile requires it. Add entity narrative or mapping before sign-off.</p></div>';
           var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Accounting policy / entity commentary</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
-          return '<article class="norm-note-card"><div class="norm-note-card-head"><div><span>Note ' + esc(item.note || "") + '</span><h3>' + esc(item.title) + '</h3></div><em class="' + statusClass(item.status) + '">' + esc(item.status) + '</em></div>' +
+          return '<article id="' + noteId(item.note || item.code) + '" class="norm-note-card" tabindex="-1"><div class="norm-note-card-head"><div><span>Note ' + esc(item.note || "") + '</span><h3>' + esc(item.title) + '</h3></div><em class="' + statusClass(item.status) + '">' + esc(item.status) + '</em></div>' +
             '<p class="norm-note-guidance">' + esc(item.guidance) + '</p>' + table + narrative + '</article>';
         }).join("") + '</section>';
     }).join("");
@@ -163,6 +229,73 @@
       '<p>For the year ended 30 June ' + esc(data.meta.yearCurrent) + '</p><div class="norm-document-meta"><span>PRIMA-aligned conditional set</span><span>' + required.length + ' required note disclosures</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
       (data.meta.canPrepare ? '<a class="norm-button norm-button-small" href="' + esc(data.meta.reportingUrl) + '#policies">Edit policy wording and workflow</a>' : '') + '</header>' + notes + na +
       '<footer class="norm-document-foot">Note tables are generated from frozen trial-balance lineage. Policy wording is run-specific working content and must be reviewed for the entity before approval.</footer>';
+    scrollToRoutedNote();
+  }
+
+  function publicationIssues() {
+    return (data.validations || []).filter(function (item) { return item.result !== "Pass"; });
+  }
+
+  function requestPrint() {
+    var issues = publicationIssues();
+    if (!issues.length) { buildPrintBook(); window.print(); return; }
+    var blocking = issues.filter(function (item) { return item.severity === "Blocking" || item.result === "Fail"; });
+    byId("printReviewSummary").textContent = blocking.length
+      ? blocking.length + " blocking or failed control(s) and " + (issues.length - blocking.length) + " review item(s) remain."
+      : issues.length + " review item(s) remain. You may print a clearly marked controlled draft for review.";
+    byId("printReviewIssues").innerHTML = issues.slice(0, 8).map(function (item) {
+      return '<article class="' + statusClass(item.result) + '"><strong>' + esc(item.label) + '</strong><p>' + esc(item.detail) + '</p></article>';
+    }).join("") + (issues.length > 8 ? '<p>+' + (issues.length - 8) + ' further items remain in the assurance panel.</p>' : '');
+    byId("confirmPrint").textContent = blocking.length ? "Print controlled draft with exceptions" : "Print controlled draft";
+    byId("printReview").hidden = false;
+    document.body.classList.add("norm-modal-open");
+    byId("cancelPrint").focus();
+  }
+
+  function closePrintReview() {
+    byId("printReview").hidden = true;
+    document.body.classList.remove("norm-modal-open");
+    byId("printStatements").focus();
+  }
+
+  function printHeader(statement) {
+    var draft = publicationIssues().length ? '<div class="norm-print-draft">CONTROLLED DRAFT · OUTSTANDING ASSURANCE ITEMS</div>' : '';
+    return draft + '<header class="norm-print-head"><span>' + esc(data.meta.entity) + '</span><h1>' + esc(statement.title) + '</h1><p>' +
+      (statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + esc(data.meta.yearCurrent) + '</p></header>';
+  }
+
+  function printStandard(statement) {
+    var rows = (statement.rows || []).map(function (row) {
+      if (row.type === "section" || row.type === "subsection" || row.type === "major")
+        return '<tr class="norm-section-row ' + esc(row.type) + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
+      return '<tr class="norm-financial-row ' + esc(row.type) + '"><th>' + esc(row.label) + '</th><td>' + esc(row.note || '') + '</td><td>' + number(row.computed) + '</td><td>' + number(row.prior) + '</td><td>' + number(row.budget) + '</td></tr>';
+    }).join("");
+    return '<section class="norm-print-page">' + printHeader(statement) + '<table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th><th>Original Budget<small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table></section>';
+  }
+
+  function printAsset(statement) {
+    var rows = (statement.rows || []).map(function (row) {
+      return '<tr class="' + (row.total ? 'total' : '') + '"><th>' + esc(row.label) + '</th><td>' + esc(row.note) + '</td><td>' + number(row.opening) + '</td><td>' + number(row.additions) + '</td><td>' + number(row.depreciation) + '</td><td>' + number(row.revaluations) + '</td><td>' + number(row.closing) + '</td></tr>';
+    }).join("");
+    return '<section class="norm-print-page norm-print-landscape">' + printHeader(statement) + '<p class="norm-print-control">Derived closing and depreciation columns are shown; controlled movement inputs remain blank until validated.</p><table class="norm-asset-table"><thead><tr><th>Asset class</th><th>Note</th><th>Opening</th><th>Additions / disposals</th><th>Depreciation / amortisation</th><th>Revaluations / other</th><th>Closing</th></tr></thead><tbody>' + rows + '</tbody></table></section>';
+  }
+
+  function printNotes(statement) {
+    var disclosures = (statement.disclosures || []).filter(function (item) { return item.required && item.note; });
+    return disclosures.map(function (item) {
+      var rows = (item.lines || []).map(function (line) { return '<tr><th>' + esc(line.label) + '</th><td>' + number(line.amount) + '</td></tr>'; }).join("");
+      return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2><p>' + esc(item.guidance) + '</p>' +
+        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td>' + number(item.amount) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
+        (item.narrative ? '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
+    }).join("");
+  }
+
+  function buildPrintBook() {
+    byId("printBook").innerHTML = statements.map(function (statement) {
+      if (statement.layout === "notes") { return printNotes(statement); }
+      if (statement.layout === "assetMovement") { return printAsset(statement); }
+      return printStandard(statement);
+    }).join("");
   }
 
   function renderValidations() {

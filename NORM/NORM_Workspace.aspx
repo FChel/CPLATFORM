@@ -19,6 +19,21 @@
             <div class="norm-workspace-actions"><a class="norm-button norm-button-dark" href="NORM_Import.aspx">Import trial balance</a><a class="norm-button" href="NORM_Reporting.aspx">Configure reporting set</a></div>
         </section>
         <section class="norm-summary-grid"><%= SummaryHtml %></section>
+        <section class="norm-module-centre">
+            <header><div><span class="norm-kicker">NORM Control Centre</span><h2>Prepare, assure and publish the complete reporting set</h2></div><p>Core financial-statement modules are active. Phase 2 deliverables are separated so the roadmap is visible without crowding the statutory accounts workflow.</p></header>
+            <div class="norm-module-grid">
+                <a class="norm-module-card norm-module-card-primary" href="<%= String.IsNullOrWhiteSpace(LatestStatementsUrl) ? "NORM_Statements.aspx" : LatestStatementsUrl %>"><span>Core module</span><strong>Financial statements</strong><p>PRIMA face statements, notes, comparisons, drill-through and publication controls.</p><em>Open statements &rarr;</em></a>
+                <a class="norm-module-card" href="<%= String.IsNullOrWhiteSpace(LatestStatementsUrl) ? "NORM_Statements.aspx#asset-movement" : LatestStatementsUrl + "#asset-movement" %>"><span>Core module</span><strong>Asset movement table</strong><p>Closing balances and depreciation by PRIMA asset class, with source lineage and controlled register inputs.</p><em>Review movement table &rarr;</em></a>
+                <a class="norm-module-card" href="NORM_Reporting.aspx#manual-inputs"><span>Controlled input</span><strong>Cash-flow journals</strong><p>Non-cash adjustments and category reclassifications included in cash-flow drill-through.</p><em>Open journal register &rarr;</em></a>
+                <a class="norm-module-card" href="NORM_Reporting.aspx#manual-inputs"><span>Controlled input</span><strong>Manual disclosures</strong><p>Lease maturities, contingencies, asset-register reconciliations and evidence references.</p><em>Open input register &rarr;</em></a>
+            </div>
+            <div class="norm-phase-two-head"><span>Phase 2</span><p>Separate reporting streams, using the same controlled source and workflow foundation.</p></div>
+            <div class="norm-module-grid norm-phase-two-grid">
+                <a class="norm-module-card norm-module-card-future" href="NORM_Reporting.aspx#workflow"><span>Phase 2</span><strong>Annual performance statements</strong><p>Performance measures, evidence, assurance and accountable-authority sign-off.</p><em>View workflow &rarr;</em></a>
+                <a class="norm-module-card norm-module-card-future" href="NORM_Reporting.aspx#workflow"><span>Phase 2</span><strong>Audit Committee pack</strong><p>Draft statements, material movements, judgements, risks and certification status.</p><em>View workflow &rarr;</em></a>
+                <a class="norm-module-card norm-module-card-future" href="NORM_Reporting.aspx#workflow"><span>Phase 2</span><strong>Annual report financial information</strong><p>Outcome tables and finance-linked annual report disclosures from the approved reporting set.</p><em>View workflow &rarr;</em></a>
+            </div>
+        </section>
         <section class="norm-workspace-grid">
             <div class="norm-panel"><div class="norm-panel-head"><div><span class="norm-kicker">Reporting runs</span><h2>Import and replay history</h2></div></div><%= RunsHtml %></div>
             <aside class="norm-panel"><div class="norm-panel-head"><div><span class="norm-kicker">Configuration</span><h2>Approved releases</h2></div></div><%= ReleasesHtml %></aside>

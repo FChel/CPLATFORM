@@ -79,6 +79,19 @@
 
     <div id="traceScrim" class="norm-scrim" hidden></div>
     <aside id="traceDrawer" class="norm-trace" aria-hidden="true" aria-label="Figure derivation"></aside>
+    <section id="printReview" class="norm-print-review" role="dialog" aria-modal="true" aria-labelledby="printReviewTitle" hidden>
+        <div>
+            <span class="norm-kicker">Controlled publication check</span>
+            <h2 id="printReviewTitle">Review before printing</h2>
+            <p id="printReviewSummary"></p>
+            <div id="printReviewIssues" class="norm-print-review-issues"></div>
+            <div class="norm-print-review-actions">
+                <button type="button" id="cancelPrint" class="norm-button norm-button-quiet">Return to assurance</button>
+                <button type="button" id="confirmPrint" class="norm-button">Print controlled draft</button>
+            </div>
+        </div>
+    </section>
+    <div id="printBook" class="norm-print-book" aria-hidden="true"></div>
 
     <script>window.NORM_DATA = <%= NormDataJson %>;</script>
     <script src="../js/norm.js"></script>

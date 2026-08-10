@@ -78,6 +78,7 @@ namespace CPlatform.NORM
             int fy = NORMHelper.Int(context, "FinancialYear");
             int importId = NORMHelper.Int(context, "ImportId");
             Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId, fy);
+            Dictionary<string, decimal> budgets = NORMStatementEnhancements.LoadBudgetFigures(runId);
             meta["runId"] = runId;
             meta["runGuid"] = Convert.ToString(context["RunGuid"]);
             meta["fingerprint"] = NORMHelper.Str(context, "InputFingerprint");
@@ -102,21 +103,24 @@ namespace CPlatform.NORM
             payload["sourceFiles"] = LoadSourceFiles(importId, runId);
 
             List<object> statements = new List<object>();
-            statements.Add(BuildStatement(releaseId, runId, "SOCI", "Statement of Comprehensive Income", lineage));
-            statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage));
-            statements.Add(BuildEquityStatement(runId, releaseId, lineage));
-            statements.Add(BuildCashFlowStatement(runId, releaseId, lineage));
+            statements.Add(BuildStatement(releaseId, runId, "SOCI", "Statement of Comprehensive Income", lineage, budgets));
+            statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets));
+            statements.Add(BuildEquityStatement(runId, releaseId, lineage, budgets));
+            statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets));
+            statements.Add(BuildAssetMovementStatement(runId, releaseId, lineage));
 
             NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
             List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()
                 ? NORMReportingFramework.LoadDisclosures(runId, releaseId, profile)
                 : new List<NORMReportingFramework.Disclosure>();
+            NORMStatementEnhancements.ApplyManualInputs(runId, disclosures);
             statements.Add(BuildNotesStatement(disclosures));
             payload["statements"] = statements;
             payload["profile"] = BuildProfilePayload(profile);
             payload["disclosures"] = BuildDisclosurePayload(disclosures);
             List<object> validations = LoadValidations(runId);
             AppendDisclosureValidations(validations, disclosures);
+            AppendEnhancementValidations(validations, runId);
             payload["validations"] = validations;
             payload["unmapped"] = BuildUnmapped(runId, lineage);
             return payload;
@@ -218,7 +222,7 @@ namespace CPlatform.NORM
         }
 
         private Dictionary<string, object> BuildEquityStatement(int runId, int releaseId,
-            Dictionary<long, List<Dictionary<string, object>>> lineage)
+            Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT r.LineCode,r.LineResultId,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_LineResult r " +
@@ -235,7 +239,8 @@ namespace CPlatform.NORM
             decimal ownerTransactions = closing - opening - currentResult;
 
             List<object> rows = new List<object>();
-            rows.Add(SimpleRow("section", null, "Contributed equity, reserves and retained earnings", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("major", null, "EQUITY", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("subsection", null, "Contributed equity, reserves and retained earnings", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("line", "SOCE_OPEN", "Opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("line", "SOCE_RESULT", "Total comprehensive income/(loss)", "1", currentResult,
                 priorResult, result != null, result == null ? 0L : NORMHelper.Long(result, "LineResultId"), SourcesFor(result, lineage)));
@@ -243,6 +248,7 @@ namespace CPlatform.NORM
                 ownerTransactions, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("total", "SOCE_CLOSE", "Closing balance", null, closing, opening,
                 equity != null, equity == null ? 0L : NORMHelper.Long(equity, "LineResultId"), SourcesFor(equity, lineage)));
+            ApplyBudget(rows, "SOCE", budgets);
             Dictionary<string, object> statement = new Dictionary<string, object>();
             statement["code"] = "SOCE";
             statement["title"] = "Statement of Changes in Equity";
@@ -252,7 +258,7 @@ namespace CPlatform.NORM
         }
 
         private Dictionary<string, object> BuildCashFlowStatement(int runId, int releaseId,
-            Dictionary<long, List<Dictionary<string, object>>> lineage)
+            Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets)
         {
             Dictionary<string, List<Dictionary<string, object>>> grouped = new Dictionary<string, List<Dictionary<string, object>>>(StringComparer.OrdinalIgnoreCase);
             foreach (KeyValuePair<long, List<Dictionary<string, object>>> pair in lineage)
@@ -266,6 +272,33 @@ namespace CPlatform.NORM
                     if (!grouped.ContainsKey(cash)) { grouped[cash] = new List<Dictionary<string, object>>(); }
                     grouped[cash].Add(source);
                 }
+            }
+
+            DataTable journals = NORMStatementEnhancements.LoadCashFlowJournals(runId);
+            for (int i = 0; i < journals.Rows.Count; i++)
+            {
+                DataRow journal = journals.Rows[i];
+                string status = NORMHelper.Str(journal, "StatusCode");
+                if (!String.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase) &&
+                    !String.Equals(status, "Posted", StringComparison.OrdinalIgnoreCase)) { continue; }
+                string cash = NORMHelper.Str(journal, "CashFlowClass");
+                if (!grouped.ContainsKey(cash)) { grouped[cash] = new List<Dictionary<string, object>>(); }
+                Dictionary<string, object> source = new Dictionary<string, object>();
+                source["row"] = 0;
+                source["ledger"] = "NORM cash-flow journal";
+                source["gl"] = NORMHelper.Str(journal, "JournalReference");
+                source["text"] = NORMHelper.Str(journal, "JournalDescription");
+                source["sourceAmount"] = NORMHelper.Dec(journal, "Amount") * 1000m;
+                source["amount"] = NORMHelper.Dec(journal, "Amount");
+                source["derivation"] = "CASH_FLOW_JOURNAL";
+                source["mappingId"] = null;
+                source["mapping"] = status + " controlled cash-flow adjustment";
+                source["accountType"] = "Journal";
+                source["note"] = NORMHelper.Str(journal, "EvidenceReference");
+                source["cash"] = cash;
+                source["synthetic"] = true;
+                source["sapUrl"] = "";
+                grouped[cash].Add(source);
             }
 
             List<object> rows = new List<object>();
@@ -293,6 +326,7 @@ namespace CPlatform.NORM
             rows.Add(SimpleRow("total", "CF_CLOSE", "Cash and cash equivalents at the end of the reporting period", "3.1A", ending,
                 cashRow == null || cashRow.IsNull("AmountPrior") ? (decimal?)null : beginning, cashRow != null,
                 cashRow == null ? 0L : NORMHelper.Long(cashRow, "LineResultId"), SourcesFor(cashRow, lineage)));
+            ApplyBudget(rows, "CASH", budgets);
             Dictionary<string, object> statement = new Dictionary<string, object>();
             statement["code"] = "CASH";
             statement["title"] = "Cash Flow Statement";
@@ -330,7 +364,8 @@ namespace CPlatform.NORM
             if (value.IndexOf("purchase") >= 0 || value.IndexOf("proceeds from sale") >= 0 ||
                 value.IndexOf("proceeds from investment") >= 0 || value.IndexOf("investing") >= 0) { return "INVESTING"; }
             if (value.IndexOf("appropriation") >= 0 || value.IndexOf("opa") >= 0 ||
-                value.IndexOf("principal payments of lease") >= 0 || value.IndexOf("special account") >= 0) { return "FINANCING"; }
+                value.IndexOf("contributed equity") >= 0 || value.IndexOf("principal payments of lease") >= 0 ||
+                value.IndexOf("special account") >= 0) { return "FINANCING"; }
             return "OPERATING";
         }
 
@@ -372,6 +407,7 @@ namespace CPlatform.NORM
             row["computed"] = computed;
             row["published"] = null;
             row["prior"] = prior.HasValue ? (object)prior.Value : null;
+            row["budget"] = null;
             row["variance"] = null;
             row["status"] = "Mapped";
             row["sources"] = sources;
@@ -379,7 +415,7 @@ namespace CPlatform.NORM
         }
 
         private Dictionary<string, object> BuildStatement(int releaseId, int runId, string statementCode,
-            string title, Dictionary<long, List<Dictionary<string, object>>> lineage)
+            string title, Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT t.StatementLineId,t.SeqNo,t.LineType,t.LineCode,t.LineLabel,t.NoteRef,t.NaturalSign,t.IsClickable," +
@@ -392,48 +428,99 @@ namespace CPlatform.NORM
                 NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId),
                 NORMHelper.P("@statement", statementCode));
             List<object> rows = new List<object>();
+            decimal ownSourceRevenue = 0m;
+            decimal gains = 0m;
+            bool revenueTotalAdded = false;
+            bool gainsTotalAdded = false;
             for (int i = 0; i < table.Rows.Count; i++)
             {
                 DataRow source = table.Rows[i];
                 string lineCode = NORMHelper.Str(source, "LineCode");
+                string lineType = NORMHelper.Str(source, "LineType");
+                decimal computed = source.IsNull("ComputedAmount") ? 0m : NORMHelper.Dec(source, "ComputedAmount");
+                if (statementCode == "SOCI" && rows.Count == 0)
+                    rows.Add(SimpleRow("major", null, "NET COST OF SERVICES", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 if (statementCode == "SOCI" && lineCode == "Revenue from contracts with customers")
                 {
-                    rows.Add(SimpleRow("section", null, "Own-source revenue", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    rows.Add(SimpleRow("subsection", null, "Own-source revenue", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 }
                 if (statementCode == "SOCI" && lineCode == "Gain on sale of asset")
                 {
-                    rows.Add(SimpleRow("section", null, "Gains", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    rows.Add(SimpleRow("total", "TOTAL_OSR", "Total own-source revenue", null, ownSourceRevenue, null, false, 0L, new List<Dictionary<string, object>>()));
+                    revenueTotalAdded = true;
+                    rows.Add(SimpleRow("subsection", null, "Gains", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                }
+                if (statementCode == "SOCI" && lineCode == "Total own-source income" && !gainsTotalAdded)
+                {
+                    rows.Add(SimpleRow("total", "TOTAL_GAINS", "Total gains", null, gains, null, false, 0L, new List<Dictionary<string, object>>()));
+                    gainsTotalAdded = true;
                 }
                 if (statementCode == "SOCI" && lineCode == "Revenue from Government")
                 {
-                    rows.Add(SimpleRow("section", null, "Income from Government", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    rows.Add(SimpleRow("major", null, "REVENUE FROM GOVERNMENT", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                }
+                if (statementCode == "SOFP" && rows.Count == 0)
+                    rows.Add(SimpleRow("major", null, "ASSETS", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                if (statementCode == "SOFP" && lineType == "section" && String.Equals(NORMHelper.Str(source, "LineLabel"), "Liabilities", StringComparison.OrdinalIgnoreCase))
+                {
+                    rows.Add(SimpleRow("major", null, "LIABILITIES", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    rows.Add(SimpleRow("subsection", null, "Payables", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    continue;
+                }
+                if (statementCode == "SOFP" && lineType == "section" && String.Equals(NORMHelper.Str(source, "LineLabel"), "Equity", StringComparison.OrdinalIgnoreCase))
+                {
+                    rows.Add(SimpleRow("major", null, "EQUITY", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    continue;
                 }
                 if (statementCode == "SOFP" && lineCode == "Leases")
                 {
-                    rows.Add(SimpleRow("section", null, "Interest-bearing liabilities", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    rows.Add(SimpleRow("subsection", null, "Interest-bearing liabilities", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 }
                 if (statementCode == "SOFP" && lineCode == "Employee provisions")
                 {
-                    rows.Add(SimpleRow("section", null, "Provisions", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    rows.Add(SimpleRow("subsection", null, "Provisions", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 }
                 Dictionary<string, object> row = new Dictionary<string, object>();
-                row["type"] = NORMHelper.Str(source, "LineType");
+                row["type"] = lineType == "section" ? "subsection" : lineType;
                 row["code"] = lineCode;
-                row["label"] = NORMHelper.Str(source, "LineLabel");
+                string label = NORMHelper.Str(source, "LineLabel");
+                if (statementCode == "SOCI" && lineCode == "Net cost of services") label = "Net (cost of)/contribution by services";
+                if (statementCode == "SOCI" && lineCode == "Operating result") label = "Surplus/(Deficit)";
+                row["label"] = label;
                 row["note"] = PrimaNoteRef(statementCode, lineCode, NORMHelper.Str(source, "NoteRef"));
                 row["sign"] = NORMHelper.Str(source, "NaturalSign");
                 row["clickable"] = Convert.ToBoolean(source["IsClickable"]);
                 long resultId = source.IsNull("LineResultId") ? 0L : NORMHelper.Long(source, "LineResultId");
                 row["resultId"] = resultId;
-                row["computed"] = source.IsNull("ComputedAmount") ? 0m : NORMHelper.Dec(source, "ComputedAmount");
+                row["computed"] = computed;
                 row["published"] = source.IsNull("PublishedAmount") ? (object)null : NORMHelper.Dec(source, "PublishedAmount");
                 row["prior"] = source.IsNull("AmountPrior") ? (object)null : NORMHelper.Dec(source, "AmountPrior");
+                row["budget"] = BudgetFor(budgets, statementCode, lineCode);
                 row["variance"] = source.IsNull("Variance") ? (object)null : NORMHelper.Dec(source, "Variance");
                 row["status"] = source.IsNull("StatusCode") ? "Mapped" : NORMHelper.Str(source, "StatusCode");
                 row["sources"] = resultId > 0 && lineage.ContainsKey(resultId)
                     ? (object)lineage[resultId] : new List<Dictionary<string, object>>();
-                rows.Add(row);
+                if (statementCode == "SOFP" && lineCode == "Property plant and equipment")
+                {
+                    AddSplitRows(rows, row, AssetClassLabel);
+                }
+                else if (statementCode == "SOFP" && lineCode == "Statement of Changes in Equity")
+                {
+                    AddSplitRows(rows, row, EquityClassLabel);
+                    rows.Add(row);
+                }
+                else { rows.Add(row); }
+                if (statementCode == "SOCI")
+                {
+                    if (lineCode == "Revenue from contracts with customers" || lineCode == "Revenue in relation to special accounts" ||
+                        lineCode == "Rental income" || lineCode == "Other revenue") ownSourceRevenue += computed;
+                    if (lineCode == "Gain on sale of asset" || lineCode == "Reversals of previous asset write-downs" || lineCode == "Other gains") gains += computed;
+                }
             }
+            if (statementCode == "SOCI" && !revenueTotalAdded)
+                rows.Add(SimpleRow("total", "TOTAL_OSR", "Total own-source revenue", null, ownSourceRevenue, null, false, 0L, new List<Dictionary<string, object>>()));
+            if (statementCode == "SOCI" && !gainsTotalAdded)
+                rows.Add(SimpleRow("total", "TOTAL_GAINS", "Total gains", null, gains, null, false, 0L, new List<Dictionary<string, object>>()));
             if (statementCode == "SOCI")
             {
                 rows.Add(SimpleRow("section", null, "Other comprehensive income", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
@@ -444,8 +531,226 @@ namespace CPlatform.NORM
             Dictionary<string, object> statement = new Dictionary<string, object>();
             statement["code"] = statementCode;
             statement["title"] = title;
+            statement["layout"] = "standard";
             statement["rows"] = rows;
             return statement;
+        }
+
+        private object BudgetFor(Dictionary<string, decimal> budgets, string statementCode, string lineCode)
+        {
+            if (budgets == null || String.IsNullOrWhiteSpace(lineCode)) { return null; }
+            decimal value;
+            return budgets.TryGetValue(statementCode + "|" + lineCode, out value) ? (object)value : null;
+        }
+
+        private void ApplyBudget(List<object> rows, string statementCode, Dictionary<string, decimal> budgets)
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                Dictionary<string, object> row = rows[i] as Dictionary<string, object>;
+                if (row == null) { continue; }
+                row["budget"] = BudgetFor(budgets, statementCode, Convert.ToString(row["code"]));
+            }
+        }
+
+        private void AddSplitRows(List<object> rows, Dictionary<string, object> original, Func<string, string> classifier)
+        {
+            List<Dictionary<string, object>> sources = original["sources"] as List<Dictionary<string, object>>;
+            if (sources == null || sources.Count == 0) { rows.Add(original); return; }
+            Dictionary<string, List<Dictionary<string, object>>> groups =
+                new Dictionary<string, List<Dictionary<string, object>>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < sources.Count; i++)
+            {
+                string label = classifier(Convert.ToString(sources[i]["note"]));
+                if (String.IsNullOrWhiteSpace(label)) { label = "Other"; }
+                if (!groups.ContainsKey(label)) { groups[label] = new List<Dictionary<string, object>>(); }
+                groups[label].Add(sources[i]);
+            }
+            foreach (KeyValuePair<string, List<Dictionary<string, object>>> group in groups)
+            {
+                decimal amount = 0m;
+                for (int i = 0; i < group.Value.Count; i++) amount += Convert.ToDecimal(group.Value[i]["amount"]);
+                Dictionary<string, object> split = new Dictionary<string, object>(original);
+                split["code"] = Convert.ToString(original["code"]) + "_" + group.Key.Replace(" ", "_");
+                split["label"] = group.Key;
+                split["computed"] = amount;
+                split["published"] = null;
+                split["prior"] = null;
+                split["budget"] = null;
+                split["variance"] = null;
+                split["sources"] = group.Value;
+                rows.Add(split);
+            }
+        }
+
+        private string AssetClassLabel(string note)
+        {
+            string value = (note ?? "").ToUpperInvariant();
+            if (value.StartsWith("LAND")) return "Land";
+            if (value.StartsWith("BUILD")) return "Buildings";
+            if (value.StartsWith("SME")) return "Specialist military equipment";
+            if (value.StartsWith("IFA")) return "Infrastructure";
+            if (value.StartsWith("P&E")) return "Plant and equipment";
+            if (value.StartsWith("HCA")) return "Heritage and cultural assets";
+            if (value.StartsWith("CS")) return "Computer software";
+            if (value.IndexOf("INTANGIBLE") >= 0) return "Other intangibles";
+            return "Other property, plant and equipment";
+        }
+
+        private string EquityClassLabel(string note)
+        {
+            string value = (note ?? "").ToLowerInvariant();
+            if (value.IndexOf("contributed") >= 0) return "Contributed equity";
+            if (value.IndexOf("reserve") >= 0) return "Reserves";
+            if (value.IndexOf("retained") >= 0 || value.IndexOf("accumulated") >= 0) return "Retained surplus/(Accumulated deficit)";
+            return "Other equity";
+        }
+
+        private Dictionary<string, object> BuildAssetMovementStatement(int runId, int releaseId,
+            Dictionary<long, List<Dictionary<string, object>>> lineage)
+        {
+            DataTable table = NORMHelper.Query(
+                "SELECT r.LineCode,r.LineResultId,r.ComputedAmount FROM dbo.tblNORM_LineResult r " +
+                "WHERE r.CalculationRunId=@run AND r.IsDeactivated=0 " +
+                "AND r.LineCode IN ('Property plant and equipment','Depreciation and amortisation')",
+                NORMHelper.P("@run", runId));
+            DataRow closingRow = FindLine(table, "Property plant and equipment");
+            DataRow depreciationRow = FindLine(table, "Depreciation and amortisation");
+            List<Dictionary<string, object>> closing = SourcesFor(closingRow, lineage);
+            List<Dictionary<string, object>> depreciation = SourcesFor(depreciationRow, lineage);
+            string[] classes = new string[] { "Land", "Buildings", "Specialist military equipment", "Infrastructure", "Plant and equipment", "Heritage and cultural assets", "Computer software", "Other intangibles", "Other property, plant and equipment" };
+            List<object> rows = new List<object>();
+            decimal totalClosing = 0m;
+            decimal totalDepreciation = 0m;
+            for (int c = 0; c < classes.Length; c++)
+            {
+                List<Dictionary<string, object>> closeSources = FilterByClass(closing, classes[c]);
+                List<Dictionary<string, object>> depSources = FilterByClass(depreciation, classes[c]);
+                if (closeSources.Count == 0 && depSources.Count == 0) { continue; }
+                decimal closeAmount = SumSources(closeSources);
+                decimal depAmount = SumSources(depSources);
+                totalClosing += closeAmount;
+                totalDepreciation += depAmount;
+                Dictionary<string, object> row = new Dictionary<string, object>();
+                row["label"] = classes[c];
+                row["note"] = "3.2A";
+                row["opening"] = null;
+                row["additions"] = null;
+                row["depreciation"] = depAmount;
+                row["revaluations"] = null;
+                row["closing"] = closeAmount;
+                row["closingSources"] = closeSources;
+                row["depreciationSources"] = depSources;
+                rows.Add(row);
+            }
+            Dictionary<string, object> total = new Dictionary<string, object>();
+            total["label"] = "Total property, plant and equipment and intangibles";
+            total["note"] = "3.2A";
+            total["opening"] = null;
+            total["additions"] = null;
+            total["depreciation"] = totalDepreciation;
+            total["revaluations"] = null;
+            total["closing"] = totalClosing;
+            total["closingSources"] = closing;
+            total["depreciationSources"] = depreciation;
+            total["total"] = true;
+            rows.Add(total);
+            Dictionary<string, object> statement = new Dictionary<string, object>();
+            statement["code"] = "ASSET_MOVEMENT";
+            statement["title"] = "Asset movement table";
+            statement["layout"] = "assetMovement";
+            statement["rows"] = rows;
+            return statement;
+        }
+
+        private List<Dictionary<string, object>> FilterByClass(List<Dictionary<string, object>> sources, string label)
+        {
+            List<Dictionary<string, object>> values = new List<Dictionary<string, object>>();
+            for (int i = 0; i < sources.Count; i++)
+                if (String.Equals(AssetClassLabel(Convert.ToString(sources[i]["note"])), label, StringComparison.OrdinalIgnoreCase)) values.Add(sources[i]);
+            return values;
+        }
+
+        private decimal SumSources(List<Dictionary<string, object>> sources)
+        {
+            decimal total = 0m;
+            for (int i = 0; i < sources.Count; i++) total += Convert.ToDecimal(sources[i]["amount"]);
+            return total;
+        }
+
+        private void AppendEnhancementValidations(List<object> validations, int runId)
+        {
+            if (!NORMStatementEnhancements.IsInstalled())
+            {
+                AddEnhancementValidation(validations, "NORM_ENHANCEMENTS", "Statement input controls are installed", "Warning", "Warning",
+                    "Run sql/NORM_05_StatementDemoEnhancements.sql to enable budget, manual-input and cash-flow journal controls.");
+                return;
+            }
+            DataTable inputs = NORMStatementEnhancements.LoadManualInputs(runId);
+            int validated = 0;
+            int incomplete = 0;
+            for (int i = 0; i < inputs.Rows.Count; i++)
+            {
+                string status = NORMHelper.Str(inputs.Rows[i], "StatusCode");
+                if (String.Equals(status, "Validated", StringComparison.OrdinalIgnoreCase)) validated++;
+                else incomplete++;
+            }
+            AddEnhancementValidation(validations, "MANUAL_INPUT_READINESS", "Manual disclosure inputs are validated", "Warning",
+                incomplete == 0 ? "Pass" : "Warning", validated + " validated; " + incomplete + " require preparation or validation before final publication.");
+
+            for (int i = 0; i < inputs.Rows.Count; i++)
+            {
+                if (!String.Equals(NORMHelper.Str(inputs.Rows[i], "InputTypeCode"), "Reconciliation", StringComparison.OrdinalIgnoreCase)) { continue; }
+                if (inputs.Rows[i].IsNull("AmountCurrent"))
+                {
+                    AddEnhancementValidation(validations, "ASSET_REGISTER_RECONCILIATION", "Asset register reconciles to the Statement of Financial Position",
+                        "Blocking", "Warning", "Enter the asset-register closing carrying amount and retain the evidence reference to run this reconciliation.");
+                    continue;
+                }
+                string lineCode = NORMHelper.Str(inputs.Rows[i], "ReconcileLineCode");
+                object expectedValue = NORMHelper.Scalar(
+                    "SELECT TOP 1 ComputedAmount FROM dbo.tblNORM_LineResult WHERE CalculationRunId=@run " +
+                    "AND LineCode=@line AND IsDeactivated=0", NORMHelper.P("@run", runId), NORMHelper.P("@line", lineCode));
+                decimal actual = NORMHelper.Dec(inputs.Rows[i], "AmountCurrent");
+                decimal expected = expectedValue == null || expectedValue == DBNull.Value ? 0m : Convert.ToDecimal(expectedValue);
+                decimal difference = actual - expected;
+                AddEnhancementValidation(validations, "ASSET_REGISTER_RECONCILIATION", "Asset register reconciles to the Statement of Financial Position",
+                    "Blocking", Math.Abs(difference) <= 0.5m ? "Pass" : "Fail",
+                    "Controlled register input " + actual.ToString("N3") + "; statement balance " + expected.ToString("N3") + "; difference " + difference.ToString("N3") + " ($'000).");
+            }
+
+            DataTable journals = NORMStatementEnhancements.LoadCashFlowJournals(runId);
+            int journalGaps = 0;
+            for (int i = 0; i < journals.Rows.Count; i++)
+            {
+                string status = NORMHelper.Str(journals.Rows[i], "StatusCode");
+                if (!String.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase) &&
+                    !String.Equals(status, "Posted", StringComparison.OrdinalIgnoreCase)) journalGaps++;
+            }
+            AddEnhancementValidation(validations, "CASH_JOURNAL_APPROVAL", "Cash-flow journals are approved", "Warning",
+                journalGaps == 0 ? "Pass" : "Warning", journals.Rows.Count + " journal(s); " + journalGaps + " are not yet approved and are excluded from the cash-flow statement.");
+
+            Dictionary<string, decimal> budgets = NORMStatementEnhancements.LoadBudgetFigures(runId);
+            DataTable budgetRegister = NORMStatementEnhancements.LoadBudgetRegister(runId);
+            bool budgetComplete = budgetRegister.Rows.Count > 0 && budgets.Count == budgetRegister.Rows.Count;
+            AddEnhancementValidation(validations, "ORIGINAL_BUDGET_INPUT", "Original Budget figures are loaded", "Warning",
+                budgetComplete ? "Pass" : "Warning", budgets.Count + " of " + budgetRegister.Rows.Count +
+                " controlled budget figures are loaded; incomplete PRIMA budget cells show dashes.");
+        }
+
+        private void AddEnhancementValidation(List<object> validations, string code, string label, string severity, string result, string detail)
+        {
+            Dictionary<string, object> item = new Dictionary<string, object>();
+            item["code"] = code;
+            item["label"] = label;
+            item["severity"] = severity;
+            item["result"] = result;
+            item["actual"] = null;
+            item["expected"] = null;
+            item["difference"] = null;
+            item["tolerance"] = null;
+            item["detail"] = detail;
+            validations.Add(item);
         }
 
         private string PrimaNoteRef(string statementCode, string lineCode, string configured)
