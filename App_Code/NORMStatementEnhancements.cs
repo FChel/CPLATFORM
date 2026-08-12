@@ -185,8 +185,10 @@ public static class NORMStatementEnhancements
                 NORMReportingFramework.NoteLine line = new NORMReportingFramework.NoteLine();
                 line.Label = NORMHelper.Str(input, "InputLabel") + " (manual input)";
                 line.Amount = NORMHelper.Dec(input, "AmountCurrent");
+                line.Prior = input.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(input, "AmountPrior");
                 line.SourceCount = 0;
                 disclosures[d].Lines.Add(line);
+                NORMReportingFramework.MoveOtherLinesToEnd(disclosures[d].Lines);
                 disclosures[d].Amount += line.Amount;
                 if (String.Equals(NORMHelper.Str(input, "StatusCode"), "Validated", StringComparison.OrdinalIgnoreCase))
                     disclosures[d].CompletionStatus = "Validated";

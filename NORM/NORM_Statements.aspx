@@ -25,6 +25,7 @@
                 <a class="norm-button norm-button-small" href="NORM_Import.aspx">Import trial balance</a>
             <% } %>
             <button type="button" id="printStatements" class="norm-button norm-button-small norm-button-quiet">Print</button>
+            <a id="excelExportLink" class="norm-button norm-button-small norm-button-quiet" href="#" hidden>Excel statements</a>
             <a id="wordExportLink" class="norm-button norm-button-small norm-button-quiet" href="#" hidden>Editable Word</a>
             <a id="reviewPackLink" class="norm-button norm-button-small norm-review-pack-button" href="#" hidden>Download review pack</a>
         </nav>

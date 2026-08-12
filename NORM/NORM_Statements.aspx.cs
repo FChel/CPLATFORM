@@ -107,7 +107,7 @@ namespace CPlatform.NORM
             statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets));
             statements.Add(BuildEquityStatement(runId, releaseId, lineage, budgets));
             statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets));
-            statements.Add(BuildAssetMovementStatement(runId, releaseId, lineage));
+            payload["assetMovement"] = BuildAssetMovementStatement(runId, releaseId, lineage);
 
             NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
             List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()
@@ -175,6 +175,7 @@ namespace CPlatform.NORM
                     Dictionary<string, object> line = new Dictionary<string, object>();
                     line["label"] = source.Lines[l].Label;
                     line["amount"] = source.Lines[l].Amount;
+                    line["prior"] = source.Lines[l].Prior.HasValue ? (object)source.Lines[l].Prior.Value : null;
                     line["sourceCount"] = source.Lines[l].SourceCount;
                     lines.Add(line);
                 }

@@ -25,6 +25,12 @@
   function pad2(value) { return Number(value) < 10 ? "0" + Number(value) : String(value); }
   function statusClass(value) { return String(value || "Mapped").toLowerCase(); }
   function noteId(value) { return "note-" + String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+  function noteLines(lines) {
+    return (lines || []).slice().sort(function (a, b) {
+      function other(value) { return /^other\b/i.test(String(value || "").trim()) || /^unclassified$/i.test(String(value || "").trim()); }
+      return Number(other(a.label)) - Number(other(b.label));
+    });
+  }
 
   function initialise() {
     if (!data.meta || !statements.length) {
@@ -40,6 +46,8 @@
     byId("reviewPackLink").hidden = false;
     byId("wordExportLink").href = "NORM_WordExport.ashx?run=" + encodeURIComponent(data.meta.runId);
     byId("wordExportLink").hidden = false;
+    byId("excelExportLink").href = "NORM_ExcelExport.ashx?run=" + encodeURIComponent(data.meta.runId);
+    byId("excelExportLink").hidden = false;
     applyRoute();
     byId("printStatements").addEventListener("click", requestPrint);
     byId("cancelPrint").addEventListener("click", closePrintReview);
@@ -58,7 +66,7 @@
   function applyRoute() {
     var hash = String(window.location.hash || "").replace(/^#/, "");
     if (hash.indexOf("note-") === 0) { activeCode = "NOTES"; return; }
-    if (hash === "asset-movement") { activeCode = "ASSET_MOVEMENT"; return; }
+    if (hash === "asset-movement") { activeCode = "NOTES"; window.location.hash = noteId("3.2A"); return; }
     for (var i = 0; i < statements.length; i++) {
       if (String(statements[i].code).toLowerCase() === hash.toLowerCase()) { activeCode = statements[i].code; return; }
     }
@@ -84,7 +92,7 @@
     Array.prototype.forEach.call(byId("statementNav").querySelectorAll("button"), function (button) {
       button.addEventListener("click", function () {
         activeCode = button.getAttribute("data-code");
-        window.history.replaceState(null, "", "#" + (activeCode === "ASSET_MOVEMENT" ? "asset-movement" : String(activeCode).toLowerCase()));
+        window.history.replaceState(null, "", "#" + String(activeCode).toLowerCase());
         renderNavigation();
         renderStatement();
       });
@@ -199,6 +207,30 @@
     bindNoteJumps();
   }
 
+  function assetMovementNoteTable(interactive) {
+    var rows = ((data.assetMovement || {}).rows || []).filter(function (row) { return !row.total; });
+    var total = ((data.assetMovement || {}).rows || []).filter(function (row) { return row.total; })[0] || {};
+    if (!rows.length) { return '<div class="norm-note-empty"><span>Asset movement schedule awaiting mapping</span><p>Complete the asset-class mapping and controlled movement inputs before sign-off.</p></div>'; }
+    var movements = [
+      { label: "Opening carrying amount", key: "opening" },
+      { label: "Additions / disposals", key: "additions" },
+      { label: "Depreciation / amortisation", key: "depreciation" },
+      { label: "Revaluations / other", key: "revaluations" },
+      { label: "Closing carrying amount", key: "closing", total: true }
+    ];
+    var head = '<tr><th>Movement</th>' + rows.map(function (row) { return '<th>' + esc(row.label) + '</th>'; }).join("") + '<th>Total</th></tr>';
+    var body = movements.map(function (movement) {
+      var values = rows.map(function (row, index) {
+        var value = row[movement.key];
+        var drillable = interactive && (movement.key === "closing" ? (row.closingSources || []).length : movement.key === "depreciation" && (row.depreciationSources || []).length);
+        return '<td>' + (drillable ? '<button type="button" class="norm-figure" data-note-asset-row="' + index + '" data-kind="' + movement.key + '"><span class="norm-status mapped"></span><span>' + number(value) + '</span></button>' : number(value)) + '</td>';
+      }).join("");
+      return '<tr class="' + (movement.total ? 'total' : '') + '"><th>' + esc(movement.label) + '</th>' + values + '<td>' + number(total[movement.key]) + '</td></tr>';
+    }).join("");
+    return '<div class="norm-table-scroll"><table class="norm-asset-table norm-asset-note-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+      '<p class="norm-print-control">Derived closing and depreciation figures are shown. Opening balances and other movements remain controlled asset-register inputs until validated.</p>';
+  }
+
   function renderNotes(statement) {
     var disclosures = statement.disclosures || data.disclosures || [];
     var required = disclosures.filter(function (item) { return item.required && item.note; });
@@ -211,15 +243,18 @@
     var notes = sections.map(function (section) {
       return '<section class="norm-note-section"><header><span>' + esc(bySection[section][0].sectionCode) + '</span><h2>' + esc(section) + '</h2></header>' +
         bySection[section].map(function (item) {
-          var rows = (item.lines || []).map(function (line) {
-            return '<tr><th>' + esc(line.label) + '<small>' + Number(line.sourceCount || 0).toLocaleString("en-AU") + ' source rows</small></th><td>' + number(line.amount) + '</td></tr>';
+          var lines = noteLines(item.lines);
+          var rows = lines.map(function (line) {
+            return '<tr><th>' + esc(line.label) + '<small>' + Number(line.sourceCount || 0).toLocaleString("en-AU") + ' source rows</small></th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>';
           }).join("");
-          var table = rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.note || "") + ': ' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th></tr></thead><tbody>' + rows +
-            '<tr class="total"><th>Total ' + esc(item.title.toLowerCase()) + '</th><td>' + number(item.amount) + '</td></tr></tbody></table>' :
-            '<div class="norm-note-empty"><span>No mapped balance</span><p>The disclosure remains in the set because the entity profile requires it. Add entity narrative or mapping before sign-off.</p></div>';
+          var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
+          var priorTotal = priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null;
+          var table = item.code === "N3_2A" ? assetMovementNoteTable(true) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.note || "") + ': ' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows +
+            '<tr class="total"><th>Total ' + esc(item.title.toLowerCase()) + '</th><td>' + number(item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' :
+            '<div class="norm-note-empty"><span>No mapped balance</span><p>The disclosure remains in the set because the entity profile requires it. Add entity narrative or mapping before sign-off.</p></div>');
           var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Accounting policy / entity commentary</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
           return '<article id="' + noteId(item.note || item.code) + '" class="norm-note-card" tabindex="-1"><div class="norm-note-card-head"><div><span>Note ' + esc(item.note || "") + '</span><h3>' + esc(item.title) + '</h3></div><em class="' + statusClass(item.status) + '">' + esc(item.status) + '</em></div>' +
-            '<p class="norm-note-guidance">' + esc(item.guidance) + '</p>' + table + narrative + '</article>';
+            table + narrative + '</article>';
         }).join("") + '</section>';
     }).join("");
     var notApplicable = disclosures.filter(function (item) { return !item.required; });
@@ -229,6 +264,15 @@
       '<p>For the year ended 30 June ' + esc(data.meta.yearCurrent) + '</p><div class="norm-document-meta"><span>PRIMA-aligned conditional set</span><span>' + required.length + ' required note disclosures</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
       (data.meta.canPrepare ? '<a class="norm-button norm-button-small" href="' + esc(data.meta.reportingUrl) + '#policies">Edit policy wording and workflow</a>' : '') + '</header>' + notes + na +
       '<footer class="norm-document-foot">Note tables are generated from frozen trial-balance lineage. Policy wording is run-specific working content and must be reviewed for the entity before approval.</footer>';
+    Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-note-asset-row]"), function (button) {
+      button.addEventListener("click", function () {
+        var row = ((data.assetMovement || {}).rows || [])[Number(button.getAttribute("data-note-asset-row"))];
+        var closing = button.getAttribute("data-kind") === "closing";
+        openTrace({ label: row.label + (closing ? " closing balance" : " depreciation and amortisation"), note: "3.2A",
+          computed: closing ? row.closing : row.depreciation, published: null, variance: null, status: "Mapped",
+          sources: closing ? row.closingSources : row.depreciationSources }, button);
+      });
+    });
     scrollToRoutedNote();
   }
 
@@ -283,9 +327,12 @@
   function printNotes(statement) {
     var disclosures = (statement.disclosures || []).filter(function (item) { return item.required && item.note; });
     return disclosures.map(function (item) {
-      var rows = (item.lines || []).map(function (line) { return '<tr><th>' + esc(line.label) + '</th><td>' + number(line.amount) + '</td></tr>'; }).join("");
-      return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2><p>' + esc(item.guidance) + '</p>' +
-        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td>' + number(item.amount) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
+      var lines = noteLines(item.lines);
+      var rows = lines.map(function (line) { return '<tr><th>' + esc(line.label) + '</th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>'; }).join("");
+      var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
+      var priorTotal = priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null;
+      return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' +
+        (item.code === "N3_2A" ? assetMovementNoteTable(false) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td>' + number(item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>')) +
         (item.narrative ? '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
     }).join("");
   }

@@ -10,6 +10,8 @@ obj/
 .waratah-*
 .deployment/
 tools/.aws-patch/
+.artifact-qa/
+outputs/
 
 # Server-specific database connections and runtime data
 Database/*.udl
@@ -19,4 +21,3 @@ App_Data/Uploads/
 # Local backup files
 *.bak
 *.b64
-

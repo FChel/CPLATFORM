@@ -44,7 +44,7 @@
                     <li>Review all four primary statements, generated note tables, policy wording and the disclosure-completeness check.</li>
                     <li>Open statement figures to inspect classifications and contributing source rows.</li>
                     <li>Assign preparers and reviewers for statements, Audit Committee and annual report modules.</li>
-                    <li>Download the editable Word statement set and the Excel review pack for the accounting review record.</li>
+                    <li>Download the editable Word set, the linked financial-statements Excel workpaper and the Excel review pack for the accounting review record.</li>
                 </ol>
                 <div class="norm-help-callout"><strong>Accounting judgement is not automated.</strong><p>NORM does the assembly, arithmetic and evidence work. DFG accounting staff approve mappings, investigate variances and sign off the result.</p></div>
             </article>

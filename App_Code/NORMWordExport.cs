@@ -43,6 +43,7 @@ public class NORM_WordExport : IHttpHandler
         List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()
             ? NORMReportingFramework.LoadDisclosures(runId, releaseId, profile)
             : new List<NORMReportingFramework.Disclosure>();
+        NORMStatementEnhancements.ApplyManualInputs(runId, disclosures);
 
         string document = BuildDocument(runId, releaseId, year, entity, NORMHelper.Str(header, "VersionCode"), profile, disclosures);
         string fileName = "NORM_FY" + year.ToString(CultureInfo.InvariantCulture) + "_Run_" + runId.ToString(CultureInfo.InvariantCulture) + "_Financial_Statements.doc";
@@ -62,8 +63,8 @@ public class NORM_WordExport : IHttpHandler
         html.Append("<!doctype html><html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" lang=\"en-AU\"><head><meta charset=\"utf-8\">");
         html.Append("<title>").Append(Enc(entity)).Append(" financial statements</title>");
         html.Append("<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->");
-        html.Append("<style>@page{size:A4;margin:20mm 18mm 18mm}body{font-family:Arial,sans-serif;color:#171717;font-size:9.5pt;line-height:1.35}h1{font-size:22pt;margin:0 0 8pt}h2{font-size:15pt;border-bottom:2pt solid #e87722;padding-bottom:5pt;margin:0 0 14pt}h3{font-size:11.5pt;margin:14pt 0 7pt}p{margin:0 0 8pt}.cover{padding-top:65mm}.eyebrow{color:#b64d00;font-weight:bold;text-transform:uppercase;letter-spacing:.7pt}.meta{margin-top:30pt;border-top:1pt solid #bbb;padding-top:10pt}.page{page-break-before:always}.note{page-break-before:always}.section{font-weight:bold;background:#f1f2f4}table{width:100%;border-collapse:collapse;margin:7pt 0 12pt}th,td{padding:4pt 5pt;border-bottom:.5pt solid #c8c8c8;vertical-align:top}th{text-align:left}.amount{text-align:right;width:21%}.total th,.total td{font-weight:bold;border-top:1pt solid #222;border-bottom:2pt double #222}.policy{background:#f7f7f7;border-left:3pt solid #e87722;padding:8pt 10pt;margin:8pt 0 12pt}.small{font-size:8pt;color:#555}.register td:first-child{width:10%}.status{font-weight:bold}.footer{margin-top:18pt;border-top:.5pt solid #aaa;padding-top:6pt;font-size:8pt;color:#555}</style></head><body>");
-        html.Append("<section class=\"cover\"><p class=\"eyebrow\">NORM · Notes, Output, Reporting and Mapping</p><h1>").Append(Enc(entity)).Append("</h1><h2>Financial statements for the year ended 30 June ").Append(year).Append("</h2>");
+        html.Append("<style>@page{size:A4;margin:20mm 18mm 18mm}body{font-family:Arial,sans-serif;color:#171717;font-size:9.5pt;line-height:1.35}h1{font-size:22pt;margin:0 0 8pt}h2{font-size:15pt;border-bottom:2pt solid #e87722;padding-bottom:5pt;margin:0 0 14pt}h3{font-size:11.5pt;margin:14pt 0 7pt}p{margin:0 0 8pt}.cover{padding-top:65mm}.eyebrow{color:#b64d00;font-weight:bold;text-transform:uppercase;letter-spacing:.7pt}.meta{margin-top:30pt;border-top:1pt solid #bbb;padding-top:10pt}.page{page-break-before:always}.note{page-break-before:always}.section{font-weight:bold;background:#f1f2f4}table{width:100%;border-collapse:collapse;margin:7pt 0 12pt}tr{page-break-inside:avoid}th,td{padding:4pt 5pt;border-bottom:.5pt solid #c8c8c8;vertical-align:top}th{text-align:left}.note tbody th{font-weight:normal}.note .total th{font-weight:bold}.amount{text-align:right;width:21%}.total th,.total td{font-weight:bold;border-top:1pt solid #222;border-bottom:2pt double #222}.policy{background:#f7f7f7;border-left:3pt solid #e87722;padding:8pt 10pt;margin:8pt 0 12pt}.small{font-size:8pt;color:#555}.register td:first-child{width:10%}.status{font-weight:bold}.footer{margin-top:18pt;border-top:.5pt solid #aaa;padding-top:6pt;font-size:8pt;color:#555}</style></head><body>");
+        html.Append("<section class=\"cover\"><p class=\"eyebrow\">Financial statements preparation copy</p><h1>").Append(Enc(entity)).Append("</h1><h2>Financial statements for the year ended 30 June ").Append(year).Append("</h2>");
         html.Append("<p>Editable preparation copy generated from NORM calculation run #").Append(runId).Append(".</p><div class=\"meta\"><p><b>Configuration:</b> ").Append(Enc(version)).Append("</p>");
         html.Append("<p><b>Reporting profile:</b> ").Append(Enc(ProfileLabel(profile))).Append("</p><p><b>Generated:</b> ").Append(DateTime.UtcNow.ToString("d MMMM yyyy 'at' HH:mm 'UTC'", CultureInfo.GetCultureInfo("en-AU"))).Append("</p></div></section>");
 
@@ -167,15 +168,20 @@ public class NORM_WordExport : IHttpHandler
         {
             NORMReportingFramework.Disclosure item = disclosures[i];
             if (!item.Required || String.IsNullOrWhiteSpace(item.NoteRef)) { continue; }
-            html.Append("<section class=\"note\"><p class=\"eyebrow\">Note ").Append(Enc(item.NoteRef)).Append("</p><h2>").Append(Enc(item.Title)).Append("</h2><p class=\"small\">").Append(Enc(item.Guidance)).Append("</p>");
+            html.Append("<section class=\"note\"><p class=\"eyebrow\">Note ").Append(Enc(item.NoteRef)).Append("</p><h2>").Append(Enc(item.Title)).Append("</h2>");
             if (item.Lines.Count > 0)
             {
-                html.Append("<table><thead><tr><th></th><th class=\"amount\">").Append(year).Append("<br>$'000</th></tr></thead><tbody>");
+                html.Append("<table><thead><tr><th></th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
+                decimal priorTotal = 0m;
+                bool hasPrior = false;
                 for (int l = 0; l < item.Lines.Count; l++)
                 {
-                    html.Append("<tr><th>").Append(Enc(item.Lines[l].Label)).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Lines[l].Amount)).Append("</td></tr>");
+                    html.Append("<tr><th>").Append(Enc(item.Lines[l].Label)).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Lines[l].Amount)).Append("</td><td class=\"amount\">")
+                        .Append(item.Lines[l].Prior.HasValue ? FormatAmount(item.Lines[l].Prior.Value) : "-").Append("</td></tr>");
+                    if (item.Lines[l].Prior.HasValue) { priorTotal += item.Lines[l].Prior.Value; hasPrior = true; }
                 }
-                html.Append("<tr class=\"total\"><th>Total ").Append(Enc(item.Title.ToLowerInvariant())).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Amount)).Append("</td></tr></tbody></table>");
+                html.Append("<tr class=\"total\"><th>Total ").Append(Enc(item.Title.ToLowerInvariant())).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Amount)).Append("</td><td class=\"amount\">")
+                    .Append(hasPrior ? FormatAmount(priorTotal) : "-").Append("</td></tr></tbody></table>");
             }
             else { html.Append("<p><i>No mapped balance. Complete this required disclosure before sign-off.</i></p>"); }
             if (!String.IsNullOrWhiteSpace(item.Narrative))

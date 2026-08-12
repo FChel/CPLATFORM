@@ -32,3 +32,17 @@
 @media print{
   @page{size:A4 portrait;margin:13mm 14mm}.norm-topbar,.norm-statement-shell,.norm-scrim,.norm-trace,.norm-print-review{display:none!important}.norm-print-book{display:block!important}.norm-print-page{break-after:page;page-break-after:always;color:#111;font-family:Arial,sans-serif}.norm-print-page:last-child{break-after:auto;page-break-after:auto}.norm-print-head{text-align:center;border-bottom:2px solid #111;padding-bottom:7mm;margin-bottom:5mm}.norm-print-head span{font-size:8pt;text-transform:uppercase}.norm-print-head h1{font:700 17pt Georgia,serif;margin:2mm 0}.norm-print-head p{font:italic 9pt Georgia,serif;margin:0}.norm-print-draft{border:1px solid #8d2e2e;color:#8d2e2e;text-align:center;font-size:7pt;font-weight:800;letter-spacing:.08em;padding:2mm;margin-bottom:4mm}.norm-print-page .norm-financial-table{margin-top:0}.norm-print-page .norm-financial-table thead th,.norm-print-page .norm-note-table thead th,.norm-print-page .norm-asset-table thead th{background:#355d4d!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;border-color:#355d4d}.norm-print-page .norm-financial-table thead th:first-child{width:42%}.norm-print-page .norm-financial-row th,.norm-print-page .norm-financial-row td{font-size:8pt;padding:2mm}.norm-print-page .norm-section-row.major th{font:800 8pt Arial,sans-serif;text-transform:uppercase;border-bottom:2px solid #111;padding-top:5mm}.norm-print-page .norm-section-row.subsection th{font:bold 9pt Georgia,serif;border:0;padding-top:4mm}.norm-print-page .norm-financial-row.administered{background:#ddd!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.norm-print-note h2{font:700 13pt Georgia,serif;text-decoration:underline;text-underline-offset:2mm;margin:7mm 0 4mm}.norm-print-note>p{font-size:8pt;line-height:1.45}.norm-print-note .norm-note-table{font-size:8pt}.norm-print-control{border-left:3px solid #777;background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:3mm;font-size:8pt}.norm-print-landscape{font-size:7pt}.norm-print-page .norm-asset-table{margin-top:0}.norm-print-page .norm-asset-table th,.norm-print-page .norm-asset-table td{font-size:6.5pt;padding:1.7mm}.norm-print-page .norm-accounting-policy{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.norm-print-page .norm-accounting-policy p{font-size:8pt}
 }
+
+/* FY26 statement refinements: comparative note columns, workpaper-friendly labels and controlled pagination. */
+.norm-note-table tbody th,.norm-note-table tbody th:last-child{width:auto;text-align:left;font-weight:400}
+.norm-note-table thead th:not(:first-child),.norm-note-table td{width:130px;text-align:right;font-variant-numeric:tabular-nums}
+.norm-note-table thead th{vertical-align:bottom}
+.norm-asset-note-table{min-width:980px}
+.norm-asset-note-table th:first-child{min-width:190px;text-align:left}
+.norm-asset-note-table td{text-align:right;font-variant-numeric:tabular-nums}
+@media print{
+  .norm-print-page table tr,.norm-print-note,.norm-note-card{break-inside:avoid;page-break-inside:avoid}
+  .norm-section-row,.norm-note-card-head,.norm-print-note h2{break-after:avoid;page-break-after:avoid}
+  .norm-note-table tbody th,.norm-note-table tbody th:last-child{text-align:left;font-weight:400}
+  .norm-asset-note-table{min-width:0;font-size:6.5pt}
+}

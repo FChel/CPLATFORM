@@ -33,6 +33,7 @@ public static class NORMReportingFramework
     {
         public string Label;
         public decimal Amount;
+        public decimal? Prior;
         public int SourceCount;
     }
 
@@ -312,6 +313,24 @@ public static class NORMReportingFramework
             disclosure.Amount += source.Amount;
             disclosure.SourceCount += source.SourceCount;
         }
+        MoveOtherLinesToEnd(disclosure.Lines);
+    }
+
+    public static void MoveOtherLinesToEnd(List<NoteLine> lines)
+    {
+        if (lines == null || lines.Count < 2) { return; }
+        List<NoteLine> other = new List<NoteLine>();
+        for (int i = lines.Count - 1; i >= 0; i--)
+        {
+            string label = (lines[i].Label ?? "").Trim();
+            if (label.StartsWith("Other", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(label, "Unclassified", StringComparison.OrdinalIgnoreCase))
+            {
+                other.Insert(0, lines[i]);
+                lines.RemoveAt(i);
+            }
+        }
+        lines.AddRange(other);
     }
 
     private static Dictionary<string, string[]> LoadNarratives(int runId, int releaseId)
