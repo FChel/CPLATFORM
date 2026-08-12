@@ -743,7 +743,8 @@ namespace CPlatform.NORM
                 string sheetName = UniqueSheetName(disclosure.NoteRef + " " + disclosure.Title, usedNames);
                 ExcelWorksheet sheet = package.Workbook.Worksheets.Add(sheetName);
                 AddBackLink(sheet);
-                AddStatementTitle(sheet, model, "Note " + disclosure.NoteRef + ": " + disclosure.Title, false);
+                AddStatementTitle(sheet, model, "Note " + disclosure.NoteRef + ": " + disclosure.Title, false,
+                    disclosure.Code == "N3_2A" ? 8 : 5);
                 if (disclosure.Code == "N3_2A") AddAssetMovementNote(sheet, model, disclosure);
                 else AddStandardNote(sheet, model, disclosure);
                 index.Add(Tuple.Create(disclosure.NoteRef, sheet.Name, "Notes|" + disclosure.Title));
@@ -873,19 +874,24 @@ namespace CPlatform.NORM
 
         private static void AddStatementTitle(ExcelWorksheet sheet, ExportContext model, string title, bool atDate)
         {
+            AddStatementTitle(sheet, model, title, atDate, 5);
+        }
+
+        private static void AddStatementTitle(ExcelWorksheet sheet, ExportContext model, string title, bool atDate, int lastColumn)
+        {
             sheet.View.ShowGridLines = false;
-            sheet.Cells[2, 1, 2, 5].Merge = true;
+            sheet.Cells[2, 1, 2, lastColumn].Merge = true;
             sheet.Cells[2, 1].Value = model.Entity;
-            sheet.Cells[3, 1, 3, 5].Merge = true;
+            sheet.Cells[3, 1, 3, lastColumn].Merge = true;
             sheet.Cells[3, 1].Value = title;
-            sheet.Cells[4, 1, 4, 5].Merge = true;
+            sheet.Cells[4, 1, 4, lastColumn].Merge = true;
             sheet.Cells[4, 1].Value = (atDate ? "As at" : "For the year ended") + " 30 June " + model.Year.ToString();
-            StyleTitle(sheet.Cells[2, 1, 2, 5]);
-            sheet.Cells[3, 1, 3, 5].Style.Font.Size = 16;
-            sheet.Cells[3, 1, 3, 5].Style.Font.Bold = true;
-            sheet.Cells[4, 1, 4, 5].Style.Font.Italic = true;
-            sheet.Cells[5, 1, 5, 5].Style.Border.Bottom.Style = ExcelBorderStyle.Medium;
-            sheet.Cells[5, 1, 5, 5].Style.Border.Bottom.Color.SetColor(Green);
+            StyleTitle(sheet.Cells[2, 1, 2, lastColumn]);
+            sheet.Cells[3, 1, 3, lastColumn].Style.Font.Size = 16;
+            sheet.Cells[3, 1, 3, lastColumn].Style.Font.Bold = true;
+            sheet.Cells[4, 1, 4, lastColumn].Style.Font.Italic = true;
+            sheet.Cells[5, 1, 5, lastColumn].Style.Border.Bottom.Style = ExcelBorderStyle.Medium;
+            sheet.Cells[5, 1, 5, lastColumn].Style.Border.Bottom.Color.SetColor(Green);
         }
 
         private static void AddBackLink(ExcelWorksheet sheet)
