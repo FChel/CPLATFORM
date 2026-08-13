@@ -4,15 +4,15 @@ SET XACT_ABORT ON;
 BEGIN TRANSACTION;
 
 IF COL_LENGTH('dbo.tblNORM_ReportingProfile','OverallMateriality') IS NULL
-    ALTER TABLE dbo.tblNORM_ReportingProfile ADD OverallMateriality DECIMAL(19,3) NULL;
+    EXEC(N'ALTER TABLE dbo.tblNORM_ReportingProfile ADD OverallMateriality DECIMAL(19,3) NULL;');
 IF COL_LENGTH('dbo.tblNORM_ReportingProfile','PerformanceMateriality') IS NULL
-    ALTER TABLE dbo.tblNORM_ReportingProfile ADD PerformanceMateriality DECIMAL(19,3) NULL;
+    EXEC(N'ALTER TABLE dbo.tblNORM_ReportingProfile ADD PerformanceMateriality DECIMAL(19,3) NULL;');
 IF COL_LENGTH('dbo.tblNORM_ReportingProfile','ClearlyTrivialThreshold') IS NULL
-    ALTER TABLE dbo.tblNORM_ReportingProfile ADD ClearlyTrivialThreshold DECIMAL(19,3) NULL;
+    EXEC(N'ALTER TABLE dbo.tblNORM_ReportingProfile ADD ClearlyTrivialThreshold DECIMAL(19,3) NULL;');
 IF COL_LENGTH('dbo.tblNORM_ReportingProfile','BudgetVarianceThreshold') IS NULL
-    ALTER TABLE dbo.tblNORM_ReportingProfile ADD BudgetVarianceThreshold DECIMAL(19,3) NULL;
+    EXEC(N'ALTER TABLE dbo.tblNORM_ReportingProfile ADD BudgetVarianceThreshold DECIMAL(19,3) NULL;');
 IF COL_LENGTH('dbo.tblNORM_ReportingProfile','QualitativeConsiderations') IS NULL
-    ALTER TABLE dbo.tblNORM_ReportingProfile ADD QualitativeConsiderations NVARCHAR(2000) NULL;
+    EXEC(N'ALTER TABLE dbo.tblNORM_ReportingProfile ADD QualitativeConsiderations NVARCHAR(2000) NULL;');
 
 IF OBJECT_ID('dbo.tblNORM_SourceFigure','U') IS NULL
 BEGIN
