@@ -5,6 +5,7 @@
   var statements = data.statements || [];
   var activeCode = statements.length ? statements[0].code : null;
   var lastFocus = null;
+  var viewMode = "preparation";
 
   function byId(id) { return document.getElementById(id); }
   function esc(value) {
@@ -52,6 +53,9 @@
     byId("printStatements").addEventListener("click", requestPrint);
     byId("cancelPrint").addEventListener("click", closePrintReview);
     byId("confirmPrint").addEventListener("click", function () { closePrintReview(); buildPrintBook(); window.print(); });
+    byId("preparationView").addEventListener("click", function () { setView("preparation"); });
+    byId("publicationView").addEventListener("click", function () { setView("publication"); });
+    setView("preparation");
     renderProfile();
     renderNavigation();
     renderStatement();
@@ -61,6 +65,14 @@
     bindDrawer();
     window.addEventListener("hashchange", function () { applyRoute(); renderNavigation(); renderStatement(); scrollToRoutedNote(); });
     scrollToRoutedNote();
+  }
+
+  function setView(mode) {
+    viewMode = mode === "publication" ? "publication" : "preparation";
+    document.body.classList.toggle("norm-publication-view", viewMode === "publication");
+    byId("preparationView").classList.toggle("active", viewMode === "preparation");
+    byId("publicationView").classList.toggle("active", viewMode === "publication");
+    renderStatement();
   }
 
   function applyRoute() {
@@ -138,7 +150,9 @@
         ? '<button type="button" class="norm-figure" data-row="' + index + '"><span class="norm-status ' + status + '"></span><span>' + number(row.computed) + '</span></button>'
         : '<span class="norm-figure-static">' + number(row.computed) + '</span>';
       var note = row.note ? '<button type="button" class="norm-note-jump" data-note="' + esc(row.note) + '" aria-label="Open note ' + esc(row.note) + '">' + esc(row.note) + '</button>' : '';
-      return '<tr class="norm-financial-row ' + esc(row.type) + '"><th scope="row">' + esc(row.label) +
+      var cashWorking = statement.code === "CASH" && (row.original !== undefined || row.adjustment !== undefined)
+        ? '<small class="norm-cash-working">Original ' + number(row.original || 0) + ' · adjustments ' + number(row.adjustment || 0) + '</small>' : '';
+      return '<tr class="norm-financial-row ' + esc(row.type) + '"><th scope="row">' + esc(row.label) + cashWorking +
         (sourceCount ? '<small>' + sourceCount + ' source account' + (sourceCount === 1 ? '' : 's') + '</small>' : '') +
         '</th><td class="norm-note">' + note + '</td><td class="norm-amount">' + amount +
         '</td><td class="norm-amount norm-prior">' + number(row.prior) + '</td><td class="norm-amount norm-budget">' + number(row.budget) + '</td></tr>';
@@ -149,7 +163,8 @@
       '<div class="norm-document-meta"><span>Source set: ' + esc(data.meta.file) + '</span><span>Configuration: ' + esc(data.meta.release) + '</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
       renderSourceEvidence() + '</header>' +
       '<div class="norm-table-scroll"><table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + currentYear + '</b><small>Current</small>$\'000</th><th><b>' + priorYear + '</b><small>Comparative</small>$\'000</th><th><b>Original Budget</b><small>' + currentYear + '</small>$\'000</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<footer class="norm-document-foot">The statement should be read with the accompanying notes. Select any current-year amount to inspect its frozen derivation.</footer>';
+      '<footer class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.' +
+      (viewMode === "preparation" ? ' Select any current-year amount to inspect its frozen derivation.' : '') + '</footer>';
 
     Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-row]"), function (button) {
       button.addEventListener("click", function () {

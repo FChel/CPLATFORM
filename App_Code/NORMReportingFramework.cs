@@ -25,6 +25,11 @@ public static class NORMReportingFramework
         public string ReportingBasis;
         public string DisclosureTier;
         public string MaterialityBasis;
+        public decimal? OverallMateriality;
+        public decimal? PerformanceMateriality;
+        public decimal? ClearlyTrivialThreshold;
+        public decimal? BudgetVarianceThreshold;
+        public string QualitativeConsiderations;
         public Dictionary<string, bool> Requirements = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> Rationales = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
@@ -55,6 +60,9 @@ public static class NORMReportingFramework
         public string Narrative;
         public string NarrativeStatus;
         public string CompletionStatus;
+        public bool Suggested;
+        public bool PotentiallyImmaterial;
+        public string RequirementReason;
         public List<NoteLine> Lines = new List<NoteLine>();
     }
 
@@ -121,7 +129,8 @@ public static class NORMReportingFramework
         if (!IsInstalled()) { return profile; }
 
         DataTable header = NORMHelper.Query(
-            "SELECT EntityTypeCode,ReportingBasisCode,DisclosureTierCode,MaterialityBasis " +
+            "SELECT EntityTypeCode,ReportingBasisCode,DisclosureTierCode,MaterialityBasis,OverallMateriality," +
+            "PerformanceMateriality,ClearlyTrivialThreshold,BudgetVarianceThreshold,QualitativeConsiderations " +
             "FROM dbo.tblNORM_ReportingProfile WHERE ConfigurationReleaseId=@release AND IsDeactivated=0",
             NORMHelper.P("@release", releaseId));
         if (header.Rows.Count > 0)
@@ -130,6 +139,11 @@ public static class NORMReportingFramework
             profile.ReportingBasis = NORMHelper.Str(header.Rows[0], "ReportingBasisCode");
             profile.DisclosureTier = NORMHelper.Str(header.Rows[0], "DisclosureTierCode");
             profile.MaterialityBasis = NORMHelper.Str(header.Rows[0], "MaterialityBasis");
+            profile.OverallMateriality = NullableDecimal(header.Rows[0], "OverallMateriality");
+            profile.PerformanceMateriality = NullableDecimal(header.Rows[0], "PerformanceMateriality");
+            profile.ClearlyTrivialThreshold = NullableDecimal(header.Rows[0], "ClearlyTrivialThreshold");
+            profile.BudgetVarianceThreshold = NullableDecimal(header.Rows[0], "BudgetVarianceThreshold");
+            profile.QualitativeConsiderations = NORMHelper.Str(header.Rows[0], "QualitativeConsiderations");
         }
 
         DataTable requirements = NORMHelper.Query(
@@ -147,13 +161,16 @@ public static class NORMReportingFramework
     }
 
     public static void SaveProfile(int releaseId, string entityType, string reportingBasis, string disclosureTier,
-        string materialityBasis, Dictionary<string, bool> requirements, string updatedBy)
+        string materialityBasis, decimal? overallMateriality, decimal? performanceMateriality,
+        decimal? clearlyTrivialThreshold, decimal? budgetVarianceThreshold, string qualitativeConsiderations,
+        Dictionary<string, bool> requirements, string updatedBy)
     {
         if (!IsInstalled()) { throw new InvalidOperationException("Install NORM_04_GovernmentReportingPlatform.sql first."); }
         entityType = Allowed(entityType, new string[] { "NCE", "CCE", "COMMONWEALTH_COMPANY" }, "NCE");
         reportingBasis = Allowed(reportingBasis, new string[] { "GPFS", "SPFS" }, "GPFS");
         disclosureTier = Allowed(disclosureTier, new string[] { "FULL", "REDUCED" }, "FULL");
         materialityBasis = Limit(materialityBasis, 1000);
+        qualitativeConsiderations = Limit(qualitativeConsiderations, 2000);
 
         using (OleDbConnection connection = NORMHelper.OpenConnection())
         using (OleDbTransaction transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
@@ -162,20 +179,29 @@ public static class NORMReportingFramework
             {
                 int changed = NORMHelper.Exec(connection, transaction,
                     "UPDATE dbo.tblNORM_ReportingProfile SET EntityTypeCode=@type,ReportingBasisCode=@basis," +
-                    "DisclosureTierCode=@tier,MaterialityBasis=@materiality,UpdatedBy=@user,UpdatedUtc=SYSUTCDATETIME() " +
+                    "DisclosureTierCode=@tier,MaterialityBasis=@materiality,OverallMateriality=@overall," +
+                    "PerformanceMateriality=@performance,ClearlyTrivialThreshold=@trivial,BudgetVarianceThreshold=@budget," +
+                    "QualitativeConsiderations=@qualitative,UpdatedBy=@user,UpdatedUtc=SYSUTCDATETIME() " +
                     "WHERE ConfigurationReleaseId=@release AND IsDeactivated=0",
                     NORMHelper.P("@type", entityType), NORMHelper.P("@basis", reportingBasis),
                     NORMHelper.P("@tier", disclosureTier), NORMHelper.P("@materiality", materialityBasis),
+                    NORMHelper.P("@overall", overallMateriality), NORMHelper.P("@performance", performanceMateriality),
+                    NORMHelper.P("@trivial", clearlyTrivialThreshold), NORMHelper.P("@budget", budgetVarianceThreshold),
+                    NORMHelper.P("@qualitative", qualitativeConsiderations),
                     NORMHelper.P("@user", updatedBy), NORMHelper.P("@release", releaseId));
                 if (changed == 0)
                 {
                     NORMHelper.Exec(connection, transaction,
                         "INSERT dbo.tblNORM_ReportingProfile " +
-                        "(ConfigurationReleaseId,EntityTypeCode,ReportingBasisCode,DisclosureTierCode,MaterialityBasis,UpdatedBy) " +
-                        "VALUES (@release,@type,@basis,@tier,@materiality,@user)",
+                        "(ConfigurationReleaseId,EntityTypeCode,ReportingBasisCode,DisclosureTierCode,MaterialityBasis," +
+                        "OverallMateriality,PerformanceMateriality,ClearlyTrivialThreshold,BudgetVarianceThreshold,QualitativeConsiderations,UpdatedBy) " +
+                        "VALUES (@release,@type,@basis,@tier,@materiality,@overall,@performance,@trivial,@budget,@qualitative,@user)",
                         NORMHelper.P("@release", releaseId), NORMHelper.P("@type", entityType),
                         NORMHelper.P("@basis", reportingBasis), NORMHelper.P("@tier", disclosureTier),
-                        NORMHelper.P("@materiality", materialityBasis), NORMHelper.P("@user", updatedBy));
+                        NORMHelper.P("@materiality", materialityBasis),
+                        NORMHelper.P("@overall", overallMateriality), NORMHelper.P("@performance", performanceMateriality),
+                        NORMHelper.P("@trivial", clearlyTrivialThreshold), NORMHelper.P("@budget", budgetVarianceThreshold),
+                        NORMHelper.P("@qualitative", qualitativeConsiderations), NORMHelper.P("@user", updatedBy));
                 }
 
                 List<CapabilityDefinition> definitions = CapabilityDefinitions();
@@ -250,6 +276,17 @@ public static class NORMReportingFramework
                 item.NarrativeStatus = narrative[2];
             }
             AddMatchingSources(item, sources);
+            item.Suggested = item.SourceCount > 0;
+            item.PotentiallyImmaterial = profile.OverallMateriality.HasValue && item.SourceCount > 0 &&
+                Math.Abs(item.Amount) < profile.OverallMateriality.Value;
+            if (baseRequired || String.Equals(item.TriggerCode, "ALWAYS", StringComparison.OrdinalIgnoreCase))
+                item.RequirementReason = "Core PRIMA disclosure";
+            else if (triggerSelected)
+                item.RequirementReason = "Confirmed by the entity reporting profile";
+            else if (item.Suggested)
+                item.RequirementReason = item.SourceCount.ToString() + " mapped TB source rows suggest this disclosure";
+            else
+                item.RequirementReason = "No selected profile trigger or mapped balance";
             if (!item.Required) { item.CompletionStatus = "Not applicable"; }
             else if (item.SourceCount > 0 && (!item.RequiresNarrative || !String.IsNullOrWhiteSpace(item.Narrative)))
             {
@@ -336,10 +373,18 @@ public static class NORMReportingFramework
     private static Dictionary<string, string[]> LoadNarratives(int runId, int releaseId)
     {
         DataTable table = NORMHelper.Query(
-            "SELECT t.DisclosureCode,t.NarrativeType,COALESCE(n.NarrativeText,t.TemplateText) AS NarrativeText," +
-            "COALESCE(n.StatusCode,'Template') AS StatusCode FROM dbo.tblNORM_NarrativeTemplate t " +
+            "SELECT t.DisclosureCode,t.NarrativeType,COALESCE(n.NarrativeText,prior.NarrativeText,t.TemplateText) AS NarrativeText," +
+            "CASE WHEN n.RunNarrativeId IS NOT NULL THEN n.StatusCode WHEN prior.NarrativeText IS NOT NULL THEN 'RolledForward' ELSE 'Template' END AS StatusCode " +
+            "FROM dbo.tblNORM_NarrativeTemplate t " +
             "LEFT JOIN dbo.tblNORM_RunNarrative n ON n.CalculationRunId=@run AND n.DisclosureCode=t.DisclosureCode " +
             "AND n.NarrativeType=t.NarrativeType AND n.IsDeactivated=0 " +
+            "OUTER APPLY (SELECT TOP 1 pn.NarrativeText FROM dbo.tblNORM_RunNarrative pn " +
+            "INNER JOIN dbo.tblNORM_CalculationRun pr ON pr.CalculationRunId=pn.CalculationRunId " +
+            "INNER JOIN dbo.tblNORM_Import pi ON pi.ImportId=pr.ImportId " +
+            "WHERE pn.DisclosureCode=t.DisclosureCode AND pn.NarrativeType=t.NarrativeType AND pn.IsDeactivated=0 " +
+            "AND pn.CalculationRunId<>@run AND pi.EntityCode=(SELECT TOP 1 ci.EntityCode FROM dbo.tblNORM_CalculationRun cr " +
+            "INNER JOIN dbo.tblNORM_Import ci ON ci.ImportId=cr.ImportId WHERE cr.CalculationRunId=@run) " +
+            "ORDER BY pi.FinancialYear DESC,pn.UpdatedUtc DESC) prior " +
             "WHERE t.ConfigurationReleaseId=@release AND t.IsDeactivated=0",
             NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId));
         Dictionary<string, string[]> values = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -435,6 +480,17 @@ public static class NORMReportingFramework
             NORMHelper.P("@user", updatedBy), NORMHelper.P("@id", workflowItemId), NORMHelper.P("@run", runId));
     }
 
+    public static void AuditWorkspaceSave(int runId, string changeReason, string updatedBy)
+    {
+        changeReason = Limit(changeReason, 1000);
+        if (String.IsNullOrWhiteSpace(changeReason)) { changeReason = "Reporting workspace updated."; }
+        NORMHelper.Exec(
+            "INSERT dbo.tblNORM_AuditEvent (EventCode,EntityType,EntityId,DetailText,PerformedBy) " +
+            "VALUES ('REPORTING_WORKSPACE_SAVED','CalculationRun',@id,@detail,@user)",
+            NORMHelper.P("@id", runId.ToString(CultureInfo.InvariantCulture)),
+            NORMHelper.P("@detail", changeReason), NORMHelper.P("@user", updatedBy));
+    }
+
     private static string Allowed(string value, string[] allowed, string fallback)
     {
         for (int i = 0; i < allowed.Length; i++)
@@ -442,6 +498,12 @@ public static class NORMReportingFramework
             if (String.Equals(value, allowed[i], StringComparison.OrdinalIgnoreCase)) { return allowed[i]; }
         }
         return fallback;
+    }
+
+    private static decimal? NullableDecimal(DataRow row, string column)
+    {
+        return row == null || !row.Table.Columns.Contains(column) || row.IsNull(column)
+            ? (decimal?)null : Convert.ToDecimal(row[column], CultureInfo.InvariantCulture);
     }
 
     private static string Limit(string value, int maximum)

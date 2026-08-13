@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
 using System.Text;
@@ -14,6 +15,8 @@ namespace CPlatform.NORM
         protected string ControlStatusHtml = "";
         protected string NextStepsHtml = "";
         protected string LatestStatementsUrl = "";
+        protected string LatestActivityHtml = "";
+        protected string AuditTrailHtml = "";
 
         protected void Page_Load(object sender, EventArgs e)
         {
@@ -66,9 +69,85 @@ namespace CPlatform.NORM
                 html.Append(Card("Assurance", NORMHelper.Int(row, "Passed").ToString() + " of " + NORMHelper.Int(row, "Checks").ToString() + " pass",
                     NORMHelper.Int(row, "Failed") == 0 ? "No blocking failures recorded." : NORMHelper.Int(row, "Failed").ToString() + " checks require attention."));
                 html.Append(Card("Configuration", Enc(NORMHelper.Str(row, "VersionCode")), "Approved FY-versioned accounting content."));
+                BuildLatestActivity(runId, NORMHelper.Int(row, "ImportId"));
+                BuildAuditTrail(runId);
             }
             SummaryHtml = html.ToString();
         }
+
+        private void BuildLatestActivity(int runId, int importId)
+        {
+            object releaseValue = NORMHelper.Scalar("SELECT ConfigurationReleaseId FROM dbo.tblNORM_CalculationRun WHERE CalculationRunId=@run", NORMHelper.P("@run", runId));
+            if (releaseValue == null) { return; }
+            int releaseId = Convert.ToInt32(releaseValue);
+            object priorValue = NORMHelper.Scalar(
+                "SELECT TOP 1 i.ImportId FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId=i.ImportId " +
+                "WHERE r.ConfigurationReleaseId=@release AND i.ImportId<@import AND i.IsTestBreak=0 AND i.IsDeactivated=0 " +
+                "AND r.StatusCode='Complete' AND r.IsDeactivated=0 ORDER BY i.ImportId DESC",
+                NORMHelper.P("@release", releaseId), NORMHelper.P("@import", importId));
+            if (priorValue == null)
+            {
+                LatestActivityHtml = "<div class=\"norm-import-change-empty\"><strong>First controlled import</strong><span>The next TB load will show changed accounts, P&amp;L movement, balance-sheet movement and affected notes here.</span></div>";
+                return;
+            }
+            int priorImportId = Convert.ToInt32(priorValue);
+            Dictionary<string, decimal> current = LoadBalances(importId);
+            Dictionary<string, decimal> prior = LoadBalances(priorImportId);
+            DataTable maps = NORMHelper.Query("SELECT GlCode,AccountType,NoteSubLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0", NORMHelper.P("@release", releaseId));
+            Dictionary<string, string[]> mapping = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < maps.Rows.Count; i++) mapping[NORMHelper.Str(maps.Rows[i], "GlCode")] = new string[] { NORMHelper.Str(maps.Rows[i], "AccountType"), NORMHelper.Str(maps.Rows[i], "NoteSubLine") };
+            HashSet<string> accounts = new HashSet<string>(current.Keys, StringComparer.OrdinalIgnoreCase);
+            accounts.UnionWith(prior.Keys);
+            HashSet<string> notes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int changed = 0;
+            decimal profitLoss = 0m;
+            decimal balanceSheet = 0m;
+            foreach (string gl in accounts)
+            {
+                decimal a = current.ContainsKey(gl) ? current[gl] : 0m;
+                decimal b = prior.ContainsKey(gl) ? prior[gl] : 0m;
+                decimal movement = a - b;
+                if (Math.Abs(movement) < 0.01m) { continue; }
+                changed++;
+                string[] map;
+                if (!mapping.TryGetValue(gl, out map)) { continue; }
+                if (map[0] == "Income" || map[0] == "Expense") profitLoss += movement;
+                else balanceSheet += Math.Abs(movement);
+                if (!String.IsNullOrWhiteSpace(map[1])) notes.Add(map[1]);
+            }
+            LatestActivityHtml = "<div class=\"norm-import-change-grid\">" +
+                ChangeCard(changed.ToString("N0"), "accounts changed", "Since import " + priorImportId.ToString()) +
+                ChangeCard(Money(profitLoss / 1000m), "net P&L movement", "Mapped income and expense accounts") +
+                ChangeCard(Money(balanceSheet / 1000m), "balance-sheet movement", "Absolute mapped movement") +
+                ChangeCard(notes.Count.ToString("N0"), "notes affected", "Mapped disclosure classes") + "</div>";
+        }
+
+        private Dictionary<string, decimal> LoadBalances(int importId)
+        {
+            DataTable table = NORMHelper.Query("SELECT GlAccount,SUM(AccumBalance) Balance FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0 GROUP BY GlAccount", NORMHelper.P("@import", importId));
+            Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < table.Rows.Count; i++) values[NORMHelper.Str(table.Rows[i], "GlAccount")] = NORMHelper.Dec(table.Rows[i], "Balance");
+            return values;
+        }
+
+        private void BuildAuditTrail(int runId)
+        {
+            DataTable table = NORMHelper.Query("SELECT TOP 8 EventCode,DetailText,PerformedBy,PerformedUtc FROM dbo.tblNORM_AuditEvent " +
+                "WHERE (EntityType='CalculationRun' AND EntityId=@run) OR EventCode IN ('IMPORT_COMPLETED','REPORTING_PROFILE_UPDATED') ORDER BY AuditEventId DESC", NORMHelper.P("@run", runId.ToString(CultureInfo.InvariantCulture)));
+            StringBuilder html = new StringBuilder("<div class=\"norm-audit-list\">");
+            for (int i = 0; i < table.Rows.Count; i++)
+            {
+                DataRow row = table.Rows[i];
+                html.Append("<article><i></i><div><strong>").Append(Enc(NORMHelper.Str(row, "EventCode").Replace("_", " "))).Append("</strong><span>")
+                    .Append(Enc(NORMHelper.Str(row, "DetailText"))).Append("</span><small>").Append(Enc(NORMHelper.Str(row, "PerformedBy"))).Append(" · ")
+                    .Append(Enc(Convert.ToString(row["PerformedUtc"]))).Append("</small></div></article>");
+            }
+            html.Append("</div>");
+            AuditTrailHtml = html.ToString();
+        }
+
+        private string ChangeCard(string value, string label, string detail) { return "<article><strong>" + Enc(value) + "</strong><span>" + Enc(label) + "</span><small>" + Enc(detail) + "</small></article>"; }
+        private string Money(decimal value) { return (value < 0m ? "(" : "") + "$" + Math.Abs(value).ToString("N0") + "k" + (value < 0m ? ")" : ""); }
 
         private string BuildNextSteps(int runId, int failed, int warnings)
         {

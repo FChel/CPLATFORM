@@ -48,7 +48,17 @@
                 <label><span>Reporting basis</span><select name="reportingBasis"><%= ReportingBasisOptions %></select></label>
                 <label><span>Disclosure set</span><select name="disclosureTier"><%= DisclosureTierOptions %></select></label>
             </div>
-            <label class="norm-field-wide"><span>Materiality basis</span><textarea name="materialityBasis" rows="3"><%= Server.HtmlEncode(MaterialityBasis) %></textarea><small>Record both quantitative thresholds and qualitative considerations. This becomes part of the preparation evidence.</small></label>
+            <div class="norm-materiality-panel">
+                <div class="norm-capability-head"><h3>Materiality configuration</h3><span>All amounts in $'000</span></div>
+                <div class="norm-materiality-grid">
+                    <label><span>Overall financial materiality</span><input type="number" step="0.001" name="overallMateriality" value="<%= Server.HtmlEncode(OverallMateriality) %>" /></label>
+                    <label><span>Performance materiality</span><input type="number" step="0.001" name="performanceMateriality" value="<%= Server.HtmlEncode(PerformanceMateriality) %>" /></label>
+                    <label><span>Clearly trivial threshold</span><input type="number" step="0.001" name="clearlyTrivialThreshold" value="<%= Server.HtmlEncode(ClearlyTrivialThreshold) %>" /></label>
+                    <label><span>Budget variance commentary threshold</span><input type="number" step="0.001" name="budgetVarianceThreshold" value="<%= Server.HtmlEncode(BudgetVarianceThreshold) %>" /></label>
+                </div>
+                <label class="norm-field-wide"><span>Materiality basis</span><textarea name="materialityBasis" rows="2"><%= Server.HtmlEncode(MaterialityBasis) %></textarea></label>
+                <label class="norm-field-wide"><span>Qualitative materiality considerations</span><textarea name="qualitativeConsiderations" rows="3"><%= Server.HtmlEncode(QualitativeConsiderations) %></textarea><small>NORM flags potentially immaterial disclosures for assessment; it never removes them automatically.</small></label>
+            </div>
             <div class="norm-capability-head"><h3>Entity activities and balances</h3><span>Select everything that applies</span></div>
             <div class="norm-capability-grid"><%= CapabilityHtml %></div>
         </section>
@@ -70,7 +80,7 @@
         </section>
 
         <section class="norm-reporting-panel" id="manual-inputs">
-            <header><div><span class="norm-step">04</span><h2>Manual inputs and controlled adjustments</h2></div><p>Capture workbook-derived disclosures and cash-flow journals with evidence, ownership and validation status. These inputs remain separate from the frozen trial balance.</p></header>
+            <header><div><span class="norm-step">04</span><h2>Budget, comparatives and controlled inputs</h2></div><p>Bring approved budget evidence, comparative figures, workbook-derived disclosures and cash-flow journals together without changing the frozen trial balance.</p></header>
             <div class="norm-control-module-head"><div><span class="norm-kicker">Original Budget</span><h3>Approved budget figures and source evidence</h3></div><p>Load from the entity's approved budget extract or enter controlled figures here. Every value carries its source reference and preparation status.</p></div>
             <%= BudgetFigureHtml %>
             <aside class="norm-ai-roadmap"><span>Phase 2 · human-reviewed AI assistance</span><strong>Budget variance commentary</strong><p>Use actual-to-budget movements and drill-through evidence to prepare a first draft, with the financial statements team retaining authorship, verification and approval.</p></aside>
@@ -86,7 +96,7 @@
         </section>
 
         <div class="norm-reporting-savebar">
-            <div><strong>Run-specific working content</strong><span>Profile selections apply to FY configuration; narratives and workflow are retained against this calculation run.</span></div>
+            <div><strong>Run-specific working content</strong><span>Profile selections apply to FY configuration; narratives and workflow are retained against this calculation run.</span><label class="norm-change-reason"><span>Reason for change</span><input name="changeReason" placeholder="What changed and why?" /></label></div>
             <asp:Button ID="SaveButton" runat="server" Text="Save reporting workspace" CssClass="norm-button norm-button-dark" OnClick="Save_Click" />
         </div>
         <% } %>

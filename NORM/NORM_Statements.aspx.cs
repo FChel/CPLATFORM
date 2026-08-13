@@ -133,6 +133,11 @@ namespace CPlatform.NORM
             value["reportingBasis"] = profile.ReportingBasis;
             value["disclosureTier"] = profile.DisclosureTier;
             value["materiality"] = profile.MaterialityBasis;
+            value["overallMateriality"] = profile.OverallMateriality;
+            value["performanceMateriality"] = profile.PerformanceMateriality;
+            value["clearlyTrivialThreshold"] = profile.ClearlyTrivialThreshold;
+            value["budgetVarianceThreshold"] = profile.BudgetVarianceThreshold;
+            value["qualitativeConsiderations"] = profile.QualitativeConsiderations;
             List<object> requirements = new List<object>();
             List<NORMReportingFramework.CapabilityDefinition> definitions = NORMReportingFramework.CapabilityDefinitions();
             for (int i = 0; i < definitions.Count; i++)
@@ -164,6 +169,9 @@ namespace CPlatform.NORM
                 item["trigger"] = source.TriggerCode;
                 item["guidance"] = source.Guidance;
                 item["required"] = source.Required;
+                item["suggested"] = source.Suggested;
+                item["potentiallyImmaterial"] = source.PotentiallyImmaterial;
+                item["requirementReason"] = source.RequirementReason;
                 item["status"] = source.CompletionStatus;
                 item["sourceCount"] = source.SourceCount;
                 item["amount"] = source.Amount;
@@ -239,16 +247,30 @@ namespace CPlatform.NORM
             decimal opening = equity == null || equity.IsNull("AmountPrior") ? 0m : NORMHelper.Dec(equity, "AmountPrior");
             decimal ownerTransactions = closing - opening - currentResult;
 
+            List<Dictionary<string, object>> equitySources = SourcesFor(equity, lineage);
+            List<Dictionary<string, object>> contributedSources = FilterEquitySources(equitySources, "Contributed equity");
+            List<Dictionary<string, object>> retainedSources = FilterEquitySources(equitySources, "Retained surplus/(Accumulated deficit)");
+            List<Dictionary<string, object>> reserveSources = FilterEquitySources(equitySources, "Reserves");
+            decimal contributedClose = SumSources(contributedSources);
+            decimal retainedClose = SumSources(retainedSources);
+            decimal reserveClose = SumSources(reserveSources);
+
             List<object> rows = new List<object>();
             rows.Add(SimpleRow("major", null, "EQUITY", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("subsection", null, "Contributed equity, reserves and retained earnings", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            AddEquityClassSection(rows, "CONTRIBUTED", "Contributed equity", contributedClose, ownerTransactions, contributedSources);
+            AddEquityClassSection(rows, "RETAINED", "Retained earnings", retainedClose, currentResult, retainedSources);
+            AddEquityClassSection(rows, "RESERVES", "Asset revaluation and other reserves", reserveClose, 0m, reserveSources);
+            rows.Add(SimpleRow("subsection", null, "Total equity", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("line", "SOCE_OPEN", "Opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_ERROR", "Adjustments for errors", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_POLICY", "Changes in accounting policies", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_ADJUSTED_OPEN", "Adjusted opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("line", "SOCE_RESULT", "Total comprehensive income/(loss)", "1", currentResult,
                 priorResult, result != null, result == null ? 0L : NORMHelper.Long(result, "LineResultId"), SourcesFor(result, lineage)));
             rows.Add(SimpleRow("line", "SOCE_OWNER", "Transactions with owners in their capacity as owners", null,
                 ownerTransactions, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("total", "SOCE_CLOSE", "Closing balance", null, closing, opening,
-                equity != null, equity == null ? 0L : NORMHelper.Long(equity, "LineResultId"), SourcesFor(equity, lineage)));
+                equity != null, equity == null ? 0L : NORMHelper.Long(equity, "LineResultId"), equitySources));
             ApplyBudget(rows, "SOCE", budgets);
             Dictionary<string, object> statement = new Dictionary<string, object>();
             statement["code"] = "SOCE";
@@ -256,6 +278,27 @@ namespace CPlatform.NORM
             statement["layout"] = "standard";
             statement["rows"] = rows;
             return statement;
+        }
+
+        private void AddEquityClassSection(List<object> rows, string code, string label, decimal closing,
+            decimal movement, List<Dictionary<string, object>> sources)
+        {
+            decimal opening = closing - movement;
+            rows.Add(SimpleRow("subsection", null, label, null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_" + code + "_OPEN", "Opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_" + code + "_ERROR", "Adjustments for errors", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_" + code + "_POLICY", "Changes in accounting policies", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_" + code + "_ADJUSTED", "Adjusted opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_" + code + "_MOVEMENT", code == "CONTRIBUTED" ? "Transactions with owners" : "Comprehensive income/(loss)", null, movement, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("total", "SOCE_" + code + "_CLOSE", "Closing balance", null, closing, null, sources.Count > 0, -1L, sources));
+        }
+
+        private List<Dictionary<string, object>> FilterEquitySources(List<Dictionary<string, object>> sources, string label)
+        {
+            List<Dictionary<string, object>> values = new List<Dictionary<string, object>>();
+            for (int i = 0; i < sources.Count; i++)
+                if (String.Equals(EquityClassLabel(Convert.ToString(sources[i]["note"])), label, StringComparison.OrdinalIgnoreCase)) values.Add(sources[i]);
+            return values;
         }
 
         private Dictionary<string, object> BuildCashFlowStatement(int runId, int releaseId,
@@ -268,8 +311,8 @@ namespace CPlatform.NORM
                 {
                     Dictionary<string, object> source = pair.Value[i];
                     if (!String.Equals(Convert.ToString(source["derivation"]), "GL_MAPPING", StringComparison.OrdinalIgnoreCase)) { continue; }
-                    string cash = Convert.ToString(source["cash"]);
-                    if (String.IsNullOrWhiteSpace(cash)) { continue; }
+                    string cash = CanonicalCashClass(Convert.ToString(source["cash"]));
+                    if (!IsSafeCashClass(cash)) { continue; }
                     if (!grouped.ContainsKey(cash)) { grouped[cash] = new List<Dictionary<string, object>>(); }
                     grouped[cash].Add(source);
                 }
@@ -282,7 +325,8 @@ namespace CPlatform.NORM
                 string status = NORMHelper.Str(journal, "StatusCode");
                 if (!String.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase) &&
                     !String.Equals(status, "Posted", StringComparison.OrdinalIgnoreCase)) { continue; }
-                string cash = NORMHelper.Str(journal, "CashFlowClass");
+                string cash = CanonicalCashClass(NORMHelper.Str(journal, "CashFlowClass"));
+                if (String.IsNullOrWhiteSpace(cash)) { continue; }
                 if (!grouped.ContainsKey(cash)) { grouped[cash] = new List<Dictionary<string, object>>(); }
                 Dictionary<string, object> source = new Dictionary<string, object>();
                 source["row"] = 0;
@@ -290,6 +334,7 @@ namespace CPlatform.NORM
                 source["gl"] = NORMHelper.Str(journal, "JournalReference");
                 source["text"] = NORMHelper.Str(journal, "JournalDescription");
                 source["sourceAmount"] = NORMHelper.Dec(journal, "Amount") * 1000m;
+                source["movement"] = NORMHelper.Dec(journal, "Amount") * 1000m;
                 source["amount"] = NORMHelper.Dec(journal, "Amount");
                 source["derivation"] = "CASH_FLOW_JOURNAL";
                 source["mappingId"] = null;
@@ -342,18 +387,39 @@ namespace CPlatform.NORM
         {
             rows.Add(SimpleRow("section", null, label, null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
             decimal total = 0m;
-            foreach (KeyValuePair<string, List<Dictionary<string, object>>> pair in grouped)
+            List<string> keys = new List<string>();
+            foreach (string key in grouped.Keys) if (String.Equals(CashCategory(key), category, StringComparison.Ordinal)) keys.Add(key);
+            keys.Sort(delegate(string left, string right) { return CashSortOrder(category, left).CompareTo(CashSortOrder(category, right)); });
+            bool outflowHeadingAdded = false;
+            if (keys.Count > 0 && !IsCashOutflow(keys[0])) rows.Add(SimpleRow("subsection", null, "Cash received", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            for (int k = 0; k < keys.Count; k++)
             {
-                if (!String.Equals(CashCategory(pair.Key), category, StringComparison.Ordinal)) { continue; }
+                KeyValuePair<string, List<Dictionary<string, object>>> pair =
+                    new KeyValuePair<string, List<Dictionary<string, object>>>(keys[k], grouped[keys[k]]);
                 decimal amount = 0m;
+                decimal original = 0m;
+                decimal adjustment = 0m;
                 bool outflow = IsCashOutflow(pair.Key);
+                if (outflow && !outflowHeadingAdded)
+                {
+                    rows.Add(SimpleRow("subsection", null, "Cash used", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    outflowHeadingAdded = true;
+                }
                 for (int i = 0; i < pair.Value.Count; i++)
                 {
-                    decimal source = Convert.ToDecimal(pair.Value[i]["sourceAmount"]) / 1000m;
-                    amount += outflow ? -Math.Abs(source) : Math.Abs(source);
+                    decimal source = Convert.ToDecimal(pair.Value[i]["movement"]) / 1000m;
+                    decimal presented = outflow ? -Math.Abs(source) : Math.Abs(source);
+                    amount += presented;
+                    if (String.Equals(Convert.ToString(pair.Value[i]["derivation"]), "CASH_FLOW_JOURNAL", StringComparison.OrdinalIgnoreCase))
+                        adjustment += presented;
+                    else
+                        original += presented;
                 }
                 total += amount;
-                rows.Add(SimpleRow("line", "CF_" + pair.Key, pair.Key, null, amount, null, true, -1L, pair.Value));
+                Dictionary<string, object> cashRow = SimpleRow("line", "CF_" + pair.Key, pair.Key, null, amount, null, true, -1L, pair.Value);
+                cashRow["original"] = original;
+                cashRow["adjustment"] = adjustment;
+                rows.Add(cashRow);
             }
             rows.Add(SimpleRow("total", "CF_TOTAL_" + category, "Net cash from/(used by) " + label.ToLowerInvariant(), null,
                 total, null, false, 0L, new List<Dictionary<string, object>>()));
@@ -364,10 +430,60 @@ namespace CPlatform.NORM
             string value = (label ?? "").ToLowerInvariant();
             if (value.IndexOf("purchase") >= 0 || value.IndexOf("proceeds from sale") >= 0 ||
                 value.IndexOf("proceeds from investment") >= 0 || value.IndexOf("investing") >= 0) { return "INVESTING"; }
-            if (value.IndexOf("appropriation") >= 0 || value.IndexOf("opa") >= 0 ||
-                value.IndexOf("contributed equity") >= 0 || value.IndexOf("principal payments of lease") >= 0 ||
-                value.IndexOf("special account") >= 0) { return "FINANCING"; }
+            if (value.IndexOf("contributed equity") >= 0 || value.IndexOf("borrow") >= 0 ||
+                value.IndexOf("principal payments of lease") >= 0 || value.IndexOf("return of equity") >= 0 ||
+                value.IndexOf("financing") >= 0) { return "FINANCING"; }
             return "OPERATING";
+        }
+
+        private string CanonicalCashClass(string label)
+        {
+            string value = (label ?? "").Trim().ToLowerInvariant();
+            if (!IsSafeCashClass(label)) return null;
+            if (value.IndexOf("section 74") >= 0 || value.IndexOf("transferred to opa") >= 0) return "Section 74 receipts transferred to the OPA";
+            if (value.IndexOf("gst received") >= 0) return "GST received";
+            if (value.IndexOf("gst paid") >= 0) return "GST paid";
+            if (value.IndexOf("appropriation") >= 0) return "Appropriations";
+            if (value.IndexOf("receipt") >= 0 && value.IndexOf("government") >= 0) return "Receipts from Government";
+            if (value.IndexOf("customer") >= 0 || value.IndexOf("goods and services") >= 0 || value.IndexOf("rendering of services") >= 0) return "Sale of goods and rendering of services";
+            if (value.IndexOf("employee") >= 0 || value.IndexOf("salary") >= 0) return "Employees";
+            if (value.IndexOf("supplier") >= 0) return "Suppliers";
+            if (value.IndexOf("borrowing cost") >= 0) return "Borrowing costs";
+            if (value.IndexOf("interest") >= 0 && value.IndexOf("lease") >= 0) return "Interest payments on lease liabilities";
+            if (value.IndexOf("income tax") >= 0) return "Income taxes paid";
+            if (value.IndexOf("dividend") >= 0 && IsCashOutflow(label)) return "Dividends paid";
+            if (value.IndexOf("dividend") >= 0) return "Dividends";
+            if (value.IndexOf("interest") >= 0) return "Interest";
+            if (value.IndexOf("grant") >= 0) return "Grants";
+            if (value.IndexOf("purchase") >= 0 && (value.IndexOf("property") >= 0 || value.IndexOf("asset") >= 0 || value.IndexOf("equipment") >= 0)) return "Purchase of property, plant and equipment";
+            if ((value.IndexOf("sale") >= 0 || value.IndexOf("proceeds") >= 0) && (value.IndexOf("asset") >= 0 || value.IndexOf("property") >= 0 || value.IndexOf("equipment") >= 0)) return "Proceeds from sale of property, plant and equipment";
+            if (value.IndexOf("contributed equity") >= 0 || value.IndexOf("equity injection") >= 0) return "Contributed equity";
+            if (value.IndexOf("principal") >= 0 && value.IndexOf("lease") >= 0) return "Principal payments of lease liabilities";
+            if (value.IndexOf("return") >= 0 && value.IndexOf("equity") >= 0) return "Return of equity";
+            if (value.IndexOf("repay") >= 0 && value.IndexOf("borrow") >= 0) return "Repayments of borrowings";
+            if (value.IndexOf("borrow") >= 0) return "Borrowings";
+            if (value.IndexOf("investing") >= 0) return IsCashOutflow(label) ? "Other investing cash used" : "Other investing cash received";
+            if (value.IndexOf("financing") >= 0) return IsCashOutflow(label) ? "Other financing cash used" : "Other financing cash received";
+            return IsCashOutflow(label) ? "Other cash used" : "Other cash received";
+        }
+
+        private int CashSortOrder(string category, string label)
+        {
+            string[] operating = new string[] { "Appropriations", "Receipts from Government", "Sale of goods and rendering of services", "Interest", "Dividends", "GST received", "Other cash received", "Employees", "Suppliers", "Borrowing costs", "Interest payments on lease liabilities", "Income taxes paid", "GST paid", "Section 74 receipts transferred to the OPA", "Grants", "Other cash used" };
+            string[] investing = new string[] { "Proceeds from sale of property, plant and equipment", "Other investing cash received", "Purchase of property, plant and equipment", "Other investing cash used" };
+            string[] financing = new string[] { "Contributed equity", "Borrowings", "Other financing cash received", "Return of equity", "Repayments of borrowings", "Principal payments of lease liabilities", "Dividends paid", "Other financing cash used" };
+            string[] order = category == "INVESTING" ? investing : (category == "FINANCING" ? financing : operating);
+            for (int i = 0; i < order.Length; i++) if (String.Equals(order[i], label, StringComparison.OrdinalIgnoreCase)) return i;
+            return order.Length;
+        }
+
+        private bool IsSafeCashClass(string label)
+        {
+            string value = (label ?? "").Trim().ToLowerInvariant();
+            if (value.Length == 0 || value.StartsWith("clearing -")) { return false; }
+            return value.IndexOf("depreciation") < 0 && value.IndexOf("amortisation") < 0 &&
+                value.IndexOf("equity movement") < 0 && value.IndexOf("asset movement") < 0 &&
+                value.IndexOf("cash and cash equivalents") < 0;
         }
 
         private bool IsCashOutflow(string label)
@@ -528,7 +644,11 @@ namespace CPlatform.NORM
                 rows.Add(SimpleRow("line", "OCI_REVALUATION", "Changes in asset revaluation reserve", "1.3", 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 rows.Add(SimpleRow("line", "OCI_OTHER", "Other comprehensive income", "1.3", 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 rows.Add(SimpleRow("total", "OCI_TOTAL", "Total comprehensive income/(loss)", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                ApplyAggregate(rows, "TOTAL_OSR", new string[] { "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue" });
+                ApplyAggregate(rows, "TOTAL_GAINS", new string[] { "Gain on sale of asset", "Reversals of previous asset write-downs", "Other gains" });
+                ApplyAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION", "OCI_OTHER" });
             }
+            if (statementCode == "SOFP") AddSofpSubtotals(rows);
             Dictionary<string, object> statement = new Dictionary<string, object>();
             statement["code"] = statementCode;
             statement["title"] = title;
@@ -542,6 +662,69 @@ namespace CPlatform.NORM
             if (budgets == null || String.IsNullOrWhiteSpace(lineCode)) { return null; }
             decimal value;
             return budgets.TryGetValue(statementCode + "|" + lineCode, out value) ? (object)value : null;
+        }
+
+        private void AddSofpSubtotals(List<object> rows)
+        {
+            InsertAggregateBefore(rows, "Property plant and equipment_*", "TOTAL_FINANCIAL_ASSETS", "Total financial assets",
+                new string[] { "Cash and cash equivalents", "Trade and other receivables" });
+            InsertAggregateBefore(rows, "Total assets", "TOTAL_NON_FINANCIAL_ASSETS", "Total non-financial assets",
+                new string[] { "Property plant and equipment_*", "Inventories", "Prepayments", "Assets held for sale" });
+            InsertAggregateBefore(rows, "Leases", "TOTAL_PAYABLES", "Total payables",
+                new string[] { "Suppliers payables", "Employee payables", "Other payables" });
+            InsertAggregateBefore(rows, "Employee provisions", "TOTAL_INTEREST_LIABILITIES", "Total interest-bearing liabilities",
+                new string[] { "Leases" });
+            InsertAggregateBefore(rows, "Total liabilities", "TOTAL_PROVISIONS", "Total provisions",
+                new string[] { "Employee provisions", "Asset restoration provisions", "Other provisions" });
+        }
+
+        private void InsertAggregateBefore(List<object> rows, string beforeCode, string code, string label, string[] componentCodes)
+        {
+            int index = rows.Count;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                Dictionary<string, object> row = rows[i] as Dictionary<string, object>;
+                if (row == null) { continue; }
+                string rowCode = Convert.ToString(row["code"]);
+                bool matches = beforeCode.EndsWith("*", StringComparison.Ordinal)
+                    ? rowCode.StartsWith(beforeCode.Substring(0, beforeCode.Length - 1), StringComparison.OrdinalIgnoreCase)
+                    : String.Equals(rowCode, beforeCode, StringComparison.OrdinalIgnoreCase);
+                if (matches) { index = i; break; }
+            }
+            Dictionary<string, object> total = SimpleRow("total", code, label, null, 0m, null, false, 0L, new List<Dictionary<string, object>>());
+            rows.Insert(index, total);
+            ApplyAggregate(rows, code, componentCodes);
+        }
+
+        private void ApplyAggregate(List<object> rows, string targetCode, string[] componentCodes)
+        {
+            Dictionary<string, object> target = null;
+            decimal current = 0m, prior = 0m, budget = 0m;
+            bool hasPrior = false, hasBudget = false;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                Dictionary<string, object> row = rows[i] as Dictionary<string, object>;
+                if (row == null) { continue; }
+                string code = Convert.ToString(row["code"]);
+                if (String.Equals(code, targetCode, StringComparison.OrdinalIgnoreCase)) { target = row; continue; }
+                bool include = false;
+                for (int c = 0; c < componentCodes.Length; c++)
+                {
+                    string component = componentCodes[c];
+                    include = component.EndsWith("*", StringComparison.Ordinal)
+                        ? code.StartsWith(component.Substring(0, component.Length - 1), StringComparison.OrdinalIgnoreCase)
+                        : String.Equals(code, component, StringComparison.OrdinalIgnoreCase);
+                    if (include) break;
+                }
+                if (!include) { continue; }
+                current += Convert.ToDecimal(row["computed"]);
+                if (row["prior"] != null) { prior += Convert.ToDecimal(row["prior"]); hasPrior = true; }
+                if (row["budget"] != null) { budget += Convert.ToDecimal(row["budget"]); hasBudget = true; }
+            }
+            if (target == null) { return; }
+            target["computed"] = current;
+            target["prior"] = hasPrior ? (object)prior : null;
+            target["budget"] = hasBudget ? (object)budget : null;
         }
 
         private void ApplyBudget(List<object> rows, string statementCode, Dictionary<string, decimal> budgets)
@@ -567,8 +750,12 @@ namespace CPlatform.NORM
                 if (!groups.ContainsKey(label)) { groups[label] = new List<Dictionary<string, object>>(); }
                 groups[label].Add(sources[i]);
             }
-            foreach (KeyValuePair<string, List<Dictionary<string, object>>> group in groups)
+            List<string> groupKeys = new List<string>(groups.Keys);
+            groupKeys.Sort(delegate(string left, string right) { return SplitSortOrder(left).CompareTo(SplitSortOrder(right)); });
+            for (int g = 0; g < groupKeys.Count; g++)
             {
+                KeyValuePair<string, List<Dictionary<string, object>>> group =
+                    new KeyValuePair<string, List<Dictionary<string, object>>>(groupKeys[g], groups[groupKeys[g]]);
                 decimal amount = 0m;
                 for (int i = 0; i < group.Value.Count; i++) amount += Convert.ToDecimal(group.Value[i]["amount"]);
                 Dictionary<string, object> split = new Dictionary<string, object>(original);
@@ -582,6 +769,13 @@ namespace CPlatform.NORM
                 split["sources"] = group.Value;
                 rows.Add(split);
             }
+        }
+
+        private int SplitSortOrder(string label)
+        {
+            string[] order = new string[] { "Land", "Buildings", "Heritage and cultural assets", "Plant and equipment", "Computer software", "Other intangibles", "Specialist military equipment", "Infrastructure", "Contributed equity", "Retained surplus/(Accumulated deficit)", "Reserves" };
+            for (int i = 0; i < order.Length; i++) if (String.Equals(order[i], label, StringComparison.OrdinalIgnoreCase)) return i;
+            return order.Length;
         }
 
         private string AssetClassLabel(string note)
@@ -737,6 +931,31 @@ namespace CPlatform.NORM
             AddEnhancementValidation(validations, "ORIGINAL_BUDGET_INPUT", "Original Budget figures are loaded", "Warning",
                 budgetComplete ? "Pass" : "Warning", budgets.Count + " of " + budgetRegister.Rows.Count +
                 " controlled budget figures are loaded; incomplete PRIMA budget cells show dashes.");
+
+            DataTable equityCheck = NORMHelper.Query(
+                "SELECT LineCode,ComputedAmount FROM dbo.tblNORM_LineResult WHERE CalculationRunId=@run " +
+                "AND LineCode IN ('Net assets','Statement of Changes in Equity','Operating result') AND IsDeactivated=0",
+                NORMHelper.P("@run", runId));
+            DataRow netAssetsRow = FindLine(equityCheck, "Net assets");
+            DataRow totalEquityRow = FindLine(equityCheck, "Statement of Changes in Equity");
+            decimal netAssets = netAssetsRow == null ? 0m : NORMHelper.Dec(netAssetsRow, "ComputedAmount");
+            decimal totalEquity = totalEquityRow == null ? 0m : NORMHelper.Dec(totalEquityRow, "ComputedAmount");
+            decimal equityDifference = netAssets - totalEquity;
+            AddEnhancementValidation(validations, "NET_ASSETS_EQUAL_EQUITY", "Net assets equal total equity", "Blocking",
+                Math.Abs(equityDifference) <= 0.001m ? "Pass" : "Fail",
+                "Net assets " + netAssets.ToString("N3") + "; total equity " + totalEquity.ToString("N3") +
+                "; difference " + equityDifference.ToString("N3") + " ($'000)." );
+
+            int publicSourceCount = 0;
+            object sourceCount = NORMHelper.Scalar("SELECT CASE WHEN OBJECT_ID('dbo.tblNORM_SourceFigure','U') IS NULL THEN 0 ELSE " +
+                "(SELECT COUNT(*) FROM dbo.tblNORM_SourceFigure f INNER JOIN dbo.tblNORM_CalculationRun r " +
+                "ON r.ConfigurationReleaseId=f.ConfigurationReleaseId WHERE r.CalculationRunId=@run AND f.IsDeactivated=0) END",
+                NORMHelper.P("@run", runId));
+            if (sourceCount != null) publicSourceCount = Convert.ToInt32(sourceCount);
+            AddEnhancementValidation(validations, "COMPARATIVE_BUDGET_PROVENANCE", "Comparatives and budget retain published-source provenance", "Warning",
+                publicSourceCount > 0 ? "Pass" : "Warning", publicSourceCount > 0
+                    ? publicSourceCount.ToString() + " public-source figures retain their report reference."
+                    : "Run sql/NORM_06_PreparationControlCentre.sql to register audited comparatives and Original Budget source evidence.");
         }
 
         private void AddEnhancementValidation(List<object> validations, string code, string label, string severity, string result, string detail)
@@ -779,8 +998,11 @@ namespace CPlatform.NORM
             if (statementCode == "SOFP")
             {
                 if (lineCode == "Prepayments" || lineCode == "Assets held for sale") { return "3.2C"; }
-                if (lineCode == "Employee payables" || lineCode == "Other payables") { return "3.3"; }
-                if (lineCode == "Employee provisions" || lineCode == "Asset restoration provisions" || lineCode == "Other provisions") { return "3.5"; }
+                if (lineCode == "Employee payables") { return "3.3B"; }
+                if (lineCode == "Other payables") { return "3.3C"; }
+                if (lineCode == "Employee provisions") { return "3.5A"; }
+                if (lineCode == "Asset restoration provisions") { return "3.5B"; }
+                if (lineCode == "Other provisions") { return "3.5C"; }
             }
             return configured;
         }
@@ -790,7 +1012,7 @@ namespace CPlatform.NORM
             DataTable table = NORMHelper.Query(
                 "SELECT l.LineResultId,l.AccountMapId,l.SourceAmount,l.PresentedContribution,l.DerivationCode,l.MappingSnapshot," +
                 "l.AccountTypeSnapshot,l.NoteSubLineSnapshot,l.CashFlowClassSnapshot," +
-                "tb.SourceRowNo,tb.SourceLedger,tb.GlAccount,tb.GlText,tb.IsSynthetic " +
+                "tb.SourceRowNo,tb.SourceLedger,tb.GlAccount,tb.GlText,tb.DebitMovement,tb.CreditMovement,tb.IsSynthetic " +
                 "FROM dbo.tblNORM_Lineage l INNER JOIN dbo.tblNORM_TrialBalanceRow tb ON tb.TbRowId = l.TbRowId " +
                 "WHERE l.CalculationRunId = @run ORDER BY l.LineResultId,ABS(l.PresentedContribution) DESC,tb.GlAccount",
                 NORMHelper.P("@run", runId));
@@ -807,6 +1029,7 @@ namespace CPlatform.NORM
                 row["gl"] = NORMHelper.Str(source, "GlAccount");
                 row["text"] = NORMHelper.Str(source, "GlText");
                 row["sourceAmount"] = NORMHelper.Dec(source, "SourceAmount");
+                row["movement"] = NORMHelper.Dec(source, "DebitMovement") + NORMHelper.Dec(source, "CreditMovement");
                 row["amount"] = NORMHelper.Dec(source, "PresentedContribution");
                 row["derivation"] = NORMHelper.Str(source, "DerivationCode");
                 row["mappingId"] = source.IsNull("AccountMapId") ? (object)null : NORMHelper.Int(source, "AccountMapId");

@@ -47,6 +47,11 @@
         </aside>
 
         <section class="norm-document-wrap">
+            <div class="norm-viewbar" role="group" aria-label="Statement view">
+                <div><strong>Statement view</strong><span>Preparation evidence or clean publication presentation</span></div>
+                <div><button type="button" id="preparationView" class="active">Preparation</button><button type="button" id="publicationView">Publication</button></div>
+            </div>
+            <div class="norm-status-legend"><span><i class="tied"></i>Tied to published baseline</span><span><i class="close"></i>Within tolerance</span><span><i class="variance"></i>Review variance</span><span><i class="mapped"></i>Mapped TB result</span></div>
             <div id="testBanner" class="norm-test-banner" hidden>
                 <strong>Deliberate test break</strong>
                 <span>This is a child copy created to prove that NORM catches an out-of-balance trial balance.</span>

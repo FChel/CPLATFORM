@@ -17,6 +17,11 @@ namespace CPlatform.NORM
         protected string ReportingBasisOptions = "";
         protected string DisclosureTierOptions = "";
         protected string MaterialityBasis = "";
+        protected string OverallMateriality = "";
+        protected string PerformanceMateriality = "";
+        protected string ClearlyTrivialThreshold = "";
+        protected string BudgetVarianceThreshold = "";
+        protected string QualitativeConsiderations = "";
         protected string CapabilityHtml = "";
         protected string DisclosureHtml = "";
         protected string NarrativeHtml = "";
@@ -58,7 +63,10 @@ namespace CPlatform.NORM
             }
             string user = NORMHelper.CurrentUserId();
             NORMReportingFramework.SaveProfile(SelectedReleaseId, Request.Form["entityType"], Request.Form["reportingBasis"],
-                Request.Form["disclosureTier"], Request.Form["materialityBasis"], requirements, user);
+                Request.Form["disclosureTier"], Request.Form["materialityBasis"],
+                DecimalValue(Request.Form["overallMateriality"]), DecimalValue(Request.Form["performanceMateriality"]),
+                DecimalValue(Request.Form["clearlyTrivialThreshold"]), DecimalValue(Request.Form["budgetVarianceThreshold"]),
+                Request.Form["qualitativeConsiderations"], requirements, user);
 
             NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(SelectedReleaseId);
             List<NORMReportingFramework.Disclosure> disclosures =
@@ -124,6 +132,7 @@ namespace CPlatform.NORM
                         Request.Form["cfEvidence_new"], Request.Form["cfStatus_new"], user);
                 }
             }
+            NORMReportingFramework.AuditWorkspaceSave(SelectedRunId, Request.Form["changeReason"], user);
             Response.Redirect("NORM_Reporting.aspx?run=" + SelectedRunId.ToString() + "&saved=1", true);
         }
 
@@ -164,6 +173,11 @@ namespace CPlatform.NORM
         {
             NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(SelectedReleaseId);
             MaterialityBasis = profile.MaterialityBasis;
+            OverallMateriality = DecimalText(profile.OverallMateriality);
+            PerformanceMateriality = DecimalText(profile.PerformanceMateriality);
+            ClearlyTrivialThreshold = DecimalText(profile.ClearlyTrivialThreshold);
+            BudgetVarianceThreshold = DecimalText(profile.BudgetVarianceThreshold);
+            QualitativeConsiderations = profile.QualitativeConsiderations;
             EntityTypeOptions = Options(new string[,] { { "NCE", "Non-corporate Commonwealth entity" }, { "CCE", "Corporate Commonwealth entity" }, { "COMMONWEALTH_COMPANY", "Commonwealth company" } }, profile.EntityType);
             ReportingBasisOptions = Options(new string[,] { { "GPFS", "General purpose financial statements" }, { "SPFS", "Special purpose financial statements" } }, profile.ReportingBasis);
             DisclosureTierOptions = Options(new string[,] { { "FULL", "Full disclosures" }, { "REDUCED", "Reduced disclosures (where permitted)" } }, profile.DisclosureTier);
@@ -213,8 +227,10 @@ namespace CPlatform.NORM
                 html.Append("<article class=\"norm-disclosure-row ").Append(item.Required ? "required" : "not-applicable").Append("\">")
                     .Append("<span class=\"norm-disclosure-ref\">").Append(Enc(item.NoteRef ?? item.SectionCode)).Append("</span><div><strong>")
                     .Append(Enc(item.Title)).Append("</strong><small>").Append(Enc(item.Guidance)).Append("</small></div>")
-                    .Append("<span class=\"norm-disclosure-trigger\">").Append(item.Required ? "Required" : "Not applicable").Append("</span>")
+                    .Append("<span class=\"norm-disclosure-trigger\">").Append(item.Required ? "Required" : (item.Suggested ? "Suggested" : "Not applicable")).Append("</span>")
                     .Append("<span class=\"norm-disclosure-status ").Append(statusClass).Append("\">").Append(Enc(item.CompletionStatus)).Append("</span></article>");
+                html.Append("<div class=\"norm-disclosure-reason\"><span>").Append(Enc(item.RequirementReason)).Append("</span>")
+                    .Append(item.PotentiallyImmaterial ? "<em>Below overall materiality—assess qualitative factors</em>" : "").Append("</div>");
                 if (item.Required)
                 {
                     RequiredCount++;
@@ -404,7 +420,7 @@ namespace CPlatform.NORM
 
         private string StatusOptions(string selected)
         {
-            return Options(new string[,] { { "Draft", "Draft" }, { "Prepared", "Prepared" }, { "Reviewed", "Reviewed" }, { "Approved", "Approved" } }, selected);
+            return Options(new string[,] { { "RolledForward", "Rolled forward—confirm" }, { "Template", "PRIMA template—edit" }, { "Draft", "Draft" }, { "Prepared", "Prepared" }, { "Reviewed", "Reviewed" }, { "Approved", "Approved" } }, selected);
         }
 
         private string WorkflowStatusOptions(string selected)
@@ -418,5 +434,10 @@ namespace CPlatform.NORM
         }
 
         private string Enc(string value) { return HttpUtility.HtmlEncode(value ?? ""); }
+
+        private string DecimalText(decimal? value)
+        {
+            return value.HasValue ? value.Value.ToString("0.###", CultureInfo.InvariantCulture) : "";
+        }
     }
 }

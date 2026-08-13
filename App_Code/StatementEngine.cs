@@ -114,7 +114,7 @@ public static class NORMStatementEngine
                 Dictionary<string, TemplateLine> templates = LoadTemplates(connection, transaction, context.ReleaseId);
                 Dictionary<string, decimal> published = LoadPublished(connection, transaction, context.ReleaseId);
                 DataTable rows = NORMHelper.Query(connection, transaction,
-                    "SELECT TbRowId,SourceLedger,GlAccount,GlText,AccumBalance FROM dbo.tblNORM_TrialBalanceRow " +
+                    "SELECT TbRowId,SourceLedger,GlAccount,GlText,DebitMovement,CreditMovement,AccumBalance FROM dbo.tblNORM_TrialBalanceRow " +
                     "WHERE ImportId = @import AND IsDeactivated = 0 ORDER BY TbRowId",
                     NORMHelper.P("@import", context.ImportId));
 
@@ -129,6 +129,7 @@ public static class NORMStatementEngine
                 decimal expense = 0m;
                 decimal classifiedCashMovement = 0m;
                 int unmappedCount = 0;
+                int unsafeCashClassCount = 0;
 
                 for (int i = 0; i < rows.Rows.Count; i++)
                 {
@@ -136,6 +137,7 @@ public static class NORMStatementEngine
                     long tbRowId = NORMHelper.Long(row, "TbRowId");
                     string gl = NORMHelper.Str(row, "GlAccount");
                     decimal sourceAmount = NORMHelper.Dec(row, "AccumBalance");
+                    decimal sourceMovement = NORMHelper.Dec(row, "DebitMovement") + NORMHelper.Dec(row, "CreditMovement");
                     totalNet += sourceAmount;
                     totalAbs += Math.Abs(sourceAmount);
 
@@ -162,7 +164,10 @@ public static class NORMStatementEngine
                         else if (mapping.AccountType == "Expense") { expense += normal; }
                         if (!String.IsNullOrWhiteSpace(mapping.CashFlowClass))
                         {
-                            classifiedCashMovement += CashFlowContribution(mapping.CashFlowClass, normal);
+                            if (IsCashFlowClassSafe(mapping.CashFlowClass))
+                                classifiedCashMovement += CashFlowContribution(mapping.CashFlowClass, sourceMovement / 1000m);
+                            else
+                                unsafeCashClassCount++;
                         }
                     }
                     else { unmappedCount++; }
@@ -254,7 +259,7 @@ public static class NORMStatementEngine
                 }
 
                 WriteValidations(connection, transaction, runId, rows.Rows.Count, totalNet, totalAbs, mappedAbs,
-                    unmappedCount, asset, liability, equity, income, expense, classifiedCashMovement, lines, published);
+                    unmappedCount, asset, liability, equity, income, expense, classifiedCashMovement, unsafeCashClassCount, lines, published);
                 WriteSourceFileValidations(connection, transaction, runId, context);
 
                 NORMHelper.Exec(connection, transaction,
@@ -282,7 +287,7 @@ public static class NORMStatementEngine
     private static void WriteValidations(OleDbConnection connection, OleDbTransaction transaction, int runId,
         int rowCount, decimal totalNet, decimal totalAbs, decimal mappedAbs, int unmappedCount,
         decimal asset, decimal liability, decimal equity, decimal income, decimal expense,
-        decimal classifiedCashMovement, Dictionary<string, LineAccumulation> lines, Dictionary<string, decimal> published)
+        decimal classifiedCashMovement, int unsafeCashClassCount, Dictionary<string, LineAccumulation> lines, Dictionary<string, decimal> published)
     {
         decimal tbDifference = totalNet / 1000m;
         AddValidation(connection, transaction, runId, "DEBITS_EQUAL_CREDITS", "Debits equal credits", "Blocking",
@@ -317,6 +322,10 @@ public static class NORMStatementEngine
         AddValidation(connection, transaction, runId, "CASH_FLOW_TIES", "Cash flow ties to the movement in cash", "Blocking",
             Math.Abs(cashDifference) <= 0.001m ? "Pass" : "Fail", cashDifference, 0m, 0.001m,
             "Configured cash-flow classes less the movement in cash and cash equivalents in $'000.");
+        AddValidation(connection, transaction, runId, "CASH_FLOW_NON_CASH_EXCLUDED", "Non-cash balances are excluded from cash flow", "Blocking",
+            unsafeCashClassCount == 0 ? "Pass" : "Fail", unsafeCashClassCount, 0m, 0m,
+            unsafeCashClassCount == 0 ? "No unsafe or non-cash clearing classes feed the direct-method cash-flow statement."
+                                      : unsafeCashClassCount.ToString() + " mapped account(s) use a non-cash or unsafe cash-flow class and have been excluded.");
 
         int lineageCount = 0;
         decimal maximumLineageDifference = 0m;
@@ -607,6 +616,15 @@ public static class NORMStatementEngine
             value.IndexOf("used") >= 0 || value.IndexOf("paid") >= 0 || value.IndexOf("return") >= 0 ||
             value.IndexOf("selling cost") >= 0;
         return outflow ? -Math.Abs(sourceAmount) : Math.Abs(sourceAmount);
+    }
+
+    private static bool IsCashFlowClassSafe(string cashFlowClass)
+    {
+        string value = (cashFlowClass ?? "").Trim().ToLowerInvariant();
+        if (value.Length == 0 || value.StartsWith("clearing -")) { return false; }
+        return value.IndexOf("depreciation") < 0 && value.IndexOf("amortisation") < 0 &&
+            value.IndexOf("equity movement") < 0 && value.IndexOf("asset movement") < 0 &&
+            value.IndexOf("cash and cash equivalents") < 0;
     }
 
     private static string Truncate(string value, int maximum)

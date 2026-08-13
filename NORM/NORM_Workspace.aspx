@@ -19,6 +19,11 @@
             <div class="norm-workspace-actions"><a class="norm-button norm-button-dark" href="NORM_Import.aspx">Import trial balance</a><a class="norm-button" href="NORM_Reporting.aspx">Configure reporting set</a></div>
         </section>
         <section class="norm-summary-grid"><%= SummaryHtml %></section>
+        <section class="norm-control-strip"><%= ControlStatusHtml %></section>
+        <section class="norm-latest-import">
+            <header><div><span class="norm-kicker">Latest trial-balance activity</span><h2>What changed since the previous import</h2></div><a class="norm-button norm-button-dark" href="NORM_Import.aspx">Import a new trial balance</a></header>
+            <%= LatestActivityHtml %>
+        </section>
         <section class="norm-module-centre">
             <header><div><span class="norm-kicker">NORM Control Centre</span><h2>Prepare, assure and publish the complete reporting set</h2></div><p>Core financial-statement modules are active. Phase 2 deliverables are separated so the roadmap is visible without crowding the statutory accounts workflow.</p></header>
             <div class="norm-module-grid">
@@ -37,6 +42,10 @@
         <section class="norm-workspace-grid">
             <div class="norm-panel"><div class="norm-panel-head"><div><span class="norm-kicker">Reporting runs</span><h2>Import and replay history</h2></div></div><%= RunsHtml %></div>
             <aside class="norm-panel"><div class="norm-panel-head"><div><span class="norm-kicker">Configuration</span><h2>Approved releases</h2></div></div><%= ReleasesHtml %></aside>
+        </section>
+        <section class="norm-workspace-grid norm-workspace-followup">
+            <div class="norm-panel"><%= NextStepsHtml %></div>
+            <aside class="norm-panel"><div class="norm-panel-head"><div><span class="norm-kicker">Audit trail</span><h2>Who changed what and when</h2></div></div><%= AuditTrailHtml %></aside>
         </section>
         <section class="norm-panel norm-process-panel"><div class="norm-panel-head"><div><span class="norm-kicker">Proof-engine workflow</span><h2>What NORM controls</h2></div></div>
             <div class="norm-process-cards"><article><b>1</b><strong>Immutable import</strong><p>Source file, rows and fingerprints retained.</p></article><article><b>2</b><strong>Entity rules</strong><p>Profile selections drive the required PRIMA content.</p></article><article><b>3</b><strong>Versioned mapping</strong><p>Only approved configuration releases calculate.</p></article><article><b>4</b><strong>Statements and notes</strong><p>Every amount retains its contributing rows and policy context.</p></article><article><b>5</b><strong>Team workflow</strong><p>Preparation and review cover statements, Audit Committee and annual report modules.</p></article><article><b>6</b><strong>Assurance and replay</strong><p>Face and note controls, disclosure completeness and audited comparisons run together.</p></article></div>

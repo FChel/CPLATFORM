@@ -48,10 +48,18 @@ public static class NORMStatementEnhancements
     {
         if (!IsInstalled()) { return; }
         NORMHelper.Exec(
+            "IF OBJECT_ID('dbo.tblNORM_SourceFigure','U') IS NOT NULL " +
+            "INSERT dbo.tblNORM_BudgetFigure (CalculationRunId,StatementCode,LineCode,OriginalBudget,SourceSystem,SourceReference,StatusCode,UpdatedBy) " +
+            "SELECT @run,f.StatementCode,f.LineCode,f.Amount,N'Published Defence financial statements',f.SourceReference,'Loaded',@user " +
+            "FROM dbo.tblNORM_SourceFigure f WHERE f.ConfigurationReleaseId=@release AND f.FigureType='OriginalBudget' AND f.IsDeactivated=0 " +
+            "AND NOT EXISTS (SELECT 1 FROM dbo.tblNORM_BudgetFigure b WHERE b.CalculationRunId=@run " +
+            "AND b.StatementCode=f.StatementCode AND b.LineCode=f.LineCode)",
+            NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId), NORMHelper.P("@user", updatedBy));
+        NORMHelper.Exec(
             "INSERT dbo.tblNORM_BudgetFigure (CalculationRunId,StatementCode,LineCode,SourceSystem,StatusCode,UpdatedBy) " +
             "SELECT @run,s.StatementCode,s.LineCode,N'Controlled budget input','Loaded',@user " +
             "FROM dbo.tblNORM_StatementLine s WHERE s.ConfigurationReleaseId=@release " +
-            "AND s.StatementCode IN ('SOCI','SOFP') AND s.LineCode IS NOT NULL AND s.IsDeactivated=0 " +
+            "AND s.StatementCode IN ('SOCI','SOFP','SOCE','CASH') AND s.LineCode IS NOT NULL AND s.IsDeactivated=0 " +
             "AND NOT EXISTS (SELECT 1 FROM dbo.tblNORM_BudgetFigure b WHERE b.CalculationRunId=@run " +
             "AND b.StatementCode=s.StatementCode AND b.LineCode=s.LineCode)",
             NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId), NORMHelper.P("@user", updatedBy));

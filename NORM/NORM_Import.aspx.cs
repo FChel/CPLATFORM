@@ -32,34 +32,18 @@ namespace CPlatform.NORM
                     throw new InvalidOperationException("Select an approved configuration release.");
                 }
                 int financialYear = Convert.ToInt32(financialYearValue);
-
-                NORMImportOutcome outcome;
-                if (financialYear == 2025)
+                if (!TrialBalanceFile.HasFile) { throw new InvalidDataException("Choose the authoritative trial balance file for FY" + financialYear.ToString() + "."); }
+                string sourceType = SourceTypeList.SelectedValue;
+                if (sourceType == "ERP")
                 {
-                    if (!RomanTrialBalanceFile.HasFile) { throw new InvalidDataException("Choose the FY2025 ROMAN periods 01-10 trial balance."); }
-                    if (!ErpTrialBalanceFile.HasFile) { throw new InvalidDataException("Choose the FY2025 ERP periods 11-12 trial balance."); }
-                    ValidateExtension(RomanTrialBalanceFile.FileName, ".txt", "The FY2025 ROMAN trial balance must be a .txt file.");
-                    ValidateExtension(ErpTrialBalanceFile.FileName, ".xlsx", "The FY2025 ERP trial balance must be an .xlsx workbook.");
-                    outcome = NORMImportService.ImportFy2025Transition(
-                        RomanTrialBalanceFile.FileBytes, RomanTrialBalanceFile.FileName,
-                        ErpTrialBalanceFile.FileBytes, ErpTrialBalanceFile.FileName,
-                        releaseId, NORMHelper.CurrentUserId());
+                    ValidateExtension(TrialBalanceFile.FileName, ".xlsx", "The ERP trial balance must be an .xlsx workbook.");
                 }
-                else
+                else if (sourceType == "ROMAN")
                 {
-                    if (!TrialBalanceFile.HasFile) { throw new InvalidDataException("Choose a trial balance file."); }
-                    string sourceType = SourceTypeList.SelectedValue;
-                    if (sourceType == "ERP")
-                    {
-                        ValidateExtension(TrialBalanceFile.FileName, ".xlsx", "The ERP trial balance must be an .xlsx workbook.");
-                    }
-                    else if (sourceType == "ROMAN")
-                    {
-                        ValidateExtension(TrialBalanceFile.FileName, ".txt", "The historical ROMAN trial balance must be a .txt file.");
-                    }
-                    outcome = NORMImportService.Import(TrialBalanceFile.FileBytes,
-                        TrialBalanceFile.FileName, sourceType, releaseId, NORMHelper.CurrentUserId());
+                    ValidateExtension(TrialBalanceFile.FileName, ".txt", "The historical ROMAN trial balance must be a .txt file.");
                 }
+                NORMImportOutcome outcome = NORMImportService.Import(TrialBalanceFile.FileBytes,
+                    TrialBalanceFile.FileName, sourceType, releaseId, NORMHelper.CurrentUserId());
                 Response.Redirect("NORM_Statements.aspx?run=" + outcome.CalculationRunId.ToString(), true);
             }
             catch (System.Threading.ThreadAbortException) { throw; }
