@@ -591,7 +591,7 @@ namespace CPlatform.NORM
                 }
                 if (statementCode == "SOFP" && lineCode == "Leases")
                 {
-                    rows.Add(SimpleRow("subsection", null, "Interest-bearing liabilities", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    rows.Add(SimpleRow("subsection", "HEADING_INTEREST_LIABILITIES", "Interest-bearing liabilities", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 }
                 if (statementCode == "SOFP" && lineCode == "Employee provisions")
                 {
@@ -670,7 +670,7 @@ namespace CPlatform.NORM
                 new string[] { "Cash and cash equivalents", "Trade and other receivables" });
             InsertAggregateBefore(rows, "Total assets", "TOTAL_NON_FINANCIAL_ASSETS", "Total non-financial assets",
                 new string[] { "Property plant and equipment_*", "Inventories", "Prepayments", "Assets held for sale" });
-            InsertAggregateBefore(rows, "Leases", "TOTAL_PAYABLES", "Total payables",
+            InsertAggregateBefore(rows, "HEADING_INTEREST_LIABILITIES", "TOTAL_PAYABLES", "Total payables",
                 new string[] { "Suppliers payables", "Employee payables", "Other payables" });
             InsertAggregateBefore(rows, "Employee provisions", "TOTAL_INTEREST_LIABILITIES", "Total interest-bearing liabilities",
                 new string[] { "Leases" });
