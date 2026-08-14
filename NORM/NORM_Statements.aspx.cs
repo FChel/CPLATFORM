@@ -245,8 +245,6 @@ namespace CPlatform.NORM
             decimal priorResult = result == null || result.IsNull("AmountPrior") ? 0m : NORMHelper.Dec(result, "AmountPrior");
             decimal closing = equity == null ? 0m : NORMHelper.Dec(equity, "ComputedAmount");
             decimal opening = equity == null || equity.IsNull("AmountPrior") ? 0m : NORMHelper.Dec(equity, "AmountPrior");
-            decimal ownerTransactions = closing - opening - currentResult;
-
             List<Dictionary<string, object>> equitySources = SourcesFor(equity, lineage);
             List<Dictionary<string, object>> contributedSources = FilterEquitySources(equitySources, "Contributed equity");
             List<Dictionary<string, object>> retainedSources = FilterEquitySources(equitySources, "Retained surplus/(Accumulated deficit)");
@@ -255,21 +253,42 @@ namespace CPlatform.NORM
             decimal retainedClose = SumSources(retainedSources);
             decimal reserveClose = SumSources(reserveSources);
 
+            Dictionary<string, decimal> audited = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "AuditedActual");
+            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "PriorActual");
+            decimal contributedOpen = SourceFigure(audited, "SOCE_CONTRIBUTED_OPEN", contributedClose);
+            decimal retainedOpen = SourceFigure(audited, "SOCE_RETAINED_OPEN", retainedClose - currentResult);
+            decimal reserveOpen = SourceFigure(audited, "SOCE_RESERVE_OPEN", reserveClose);
+            decimal contributedMovement = contributedClose - contributedOpen;
+            decimal retainedMovement = retainedClose - retainedOpen;
+            decimal reserveMovement = reserveClose - reserveOpen;
+            decimal comprehensiveIncome = retainedMovement + reserveMovement;
+            decimal ownerTransactions = closing - opening - comprehensiveIncome;
+
             List<object> rows = new List<object>();
-            rows.Add(SimpleRow("major", null, "EQUITY", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-            AddEquityClassSection(rows, "CONTRIBUTED", "Contributed equity", contributedClose, ownerTransactions, contributedSources);
-            AddEquityClassSection(rows, "RETAINED", "Retained earnings", retainedClose, currentResult, retainedSources);
-            AddEquityClassSection(rows, "RESERVES", "Asset revaluation and other reserves", reserveClose, 0m, reserveSources);
-            rows.Add(SimpleRow("subsection", null, "Total equity", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_OPEN", "Opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_ERROR", "Adjustments for errors", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_POLICY", "Changes in accounting policies", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_ADJUSTED_OPEN", "Adjusted opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_RESULT", "Total comprehensive income/(loss)", "1", currentResult,
-                priorResult, result != null, result == null ? 0L : NORMHelper.Long(result, "LineResultId"), SourcesFor(result, lineage)));
-            rows.Add(SimpleRow("line", "SOCE_OWNER", "Transactions with owners in their capacity as owners", null,
-                ownerTransactions, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("total", "SOCE_CLOSE", "Closing balance", null, closing, opening,
+            AddEquityClassSection(rows, "CONTRIBUTED", "CONTRIBUTED EQUITY", contributedOpen, contributedMovement,
+                contributedClose, prior, contributedSources);
+            AddEquityClassSection(rows, "RETAINED", "(ACCUMULATED DEFICIT) / RETAINED SURPLUSES", retainedOpen,
+                retainedMovement, retainedClose, prior, retainedSources);
+            AddEquityClassSection(rows, "RESERVE", "ASSET REVALUATION RESERVE", reserveOpen, reserveMovement,
+                reserveClose, prior, reserveSources);
+            rows.Add(SimpleRow("major", null, "TOTAL EQUITY", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("subsection", null, "Opening balance", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_TOTAL_OPEN", "Balance carried forward from previous period", null, opening,
+                SourceFigureNullable(prior, "SOCE_TOTAL_OPEN"), false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("subsection", null, "Comprehensive (loss) / income", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_TOTAL_RESULT", "(Deficit) / Surplus for the period as reported", "1", currentResult,
+                SourceFigureNullable(prior, "SOCE_TOTAL_RESULT") ?? (decimal?)priorResult, result != null,
+                result == null ? 0L : NORMHelper.Long(result, "LineResultId"), SourcesFor(result, lineage)));
+            rows.Add(SimpleRow("line", "SOCE_TOTAL_OCI", "Other comprehensive income / (loss)", "1.3", reserveMovement,
+                SourceFigureNullable(prior, "SOCE_TOTAL_OCI"), false, 0L, reserveSources));
+            rows.Add(SimpleRow("total", "SOCE_TOTAL_COMPREHENSIVE", "Total comprehensive (loss) / income", null,
+                comprehensiveIncome, SourceFigureNullable(prior, "SOCE_TOTAL_COMPREHENSIVE"), false, 0L,
+                new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("subsection", null, "Transactions with owners", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", "SOCE_TOTAL_OWNER", "Transactions with owners in their capacity as owners", null,
+                ownerTransactions, SourceFigureNullable(prior, "SOCE_TOTAL_OWNER"), false, 0L, contributedSources));
+            rows.Add(SimpleRow("total", "SOCE_TOTAL_CLOSE", "Closing balance as at 30 June", null, closing,
+                SourceFigureNullable(prior, "SOCE_TOTAL_CLOSE") ?? (decimal?)opening,
                 equity != null, equity == null ? 0L : NORMHelper.Long(equity, "LineResultId"), equitySources));
             ApplyBudget(rows, "SOCE", budgets);
             Dictionary<string, object> statement = new Dictionary<string, object>();
@@ -280,17 +299,40 @@ namespace CPlatform.NORM
             return statement;
         }
 
-        private void AddEquityClassSection(List<object> rows, string code, string label, decimal closing,
-            decimal movement, List<Dictionary<string, object>> sources)
+        private void AddEquityClassSection(List<object> rows, string code, string label, decimal opening,
+            decimal movement, decimal closing, Dictionary<string, decimal> prior,
+            List<Dictionary<string, object>> sources)
         {
-            decimal opening = closing - movement;
-            rows.Add(SimpleRow("subsection", null, label, null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_" + code + "_OPEN", "Opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_" + code + "_ERROR", "Adjustments for errors", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_" + code + "_POLICY", "Changes in accounting policies", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_" + code + "_ADJUSTED", "Adjusted opening balance", null, opening, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("line", "SOCE_" + code + "_MOVEMENT", code == "CONTRIBUTED" ? "Transactions with owners" : "Comprehensive income/(loss)", null, movement, null, false, 0L, new List<Dictionary<string, object>>()));
-            rows.Add(SimpleRow("total", "SOCE_" + code + "_CLOSE", "Closing balance", null, closing, null, sources.Count > 0, -1L, sources));
+            string prefix = "SOCE_" + code;
+            rows.Add(SimpleRow("major", null, label, null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("subsection", null, "Opening balance", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("line", prefix + "_OPEN", "Balance carried forward from previous period", null,
+                opening, SourceFigureNullable(prior, prefix + "_OPEN"), false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("subsection", null, code == "CONTRIBUTED" ? "Transactions with owners" :
+                (code == "RETAINED" ? "Comprehensive (loss) / income" : "Other comprehensive income"),
+                null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+            string movementLabel = code == "CONTRIBUTED" ? "Contributions by owners" :
+                (code == "RETAINED" ? "(Deficit) / Surplus for the period as reported" : "Other comprehensive income / (loss)");
+            string movementCode = prefix + (code == "CONTRIBUTED" ? "_OWNER" : (code == "RETAINED" ? "_RESULT" : "_OCI"));
+            rows.Add(SimpleRow("line", movementCode, movementLabel, code == "RESERVE" ? "1.3" : null,
+                movement, SourceFigureNullable(prior, movementCode), false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("total", movementCode, code == "CONTRIBUTED" ? "Total transactions with owners" :
+                "Total comprehensive (loss) / income", null, movement, SourceFigureNullable(prior, movementCode),
+                false, 0L, new List<Dictionary<string, object>>()));
+            rows.Add(SimpleRow("total", prefix + "_CLOSE", "Closing balance as at 30 June", null, closing,
+                SourceFigureNullable(prior, prefix + "_CLOSE"), sources.Count > 0, -1L, sources));
+        }
+
+        private decimal SourceFigure(Dictionary<string, decimal> values, string code, decimal fallback)
+        {
+            decimal amount;
+            return values != null && values.TryGetValue(code, out amount) ? amount : fallback;
+        }
+
+        private decimal? SourceFigureNullable(Dictionary<string, decimal> values, string code)
+        {
+            decimal amount;
+            return values != null && values.TryGetValue(code, out amount) ? (decimal?)amount : null;
         }
 
         private List<Dictionary<string, object>> FilterEquitySources(List<Dictionary<string, object>> sources, string label)
@@ -557,6 +599,13 @@ namespace CPlatform.NORM
                 decimal computed = source.IsNull("ComputedAmount") ? 0m : NORMHelper.Dec(source, "ComputedAmount");
                 if (statementCode == "SOCI" && rows.Count == 0)
                     rows.Add(SimpleRow("major", null, "NET COST OF SERVICES", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                if (statementCode == "SOCI" && lineType == "section" &&
+                    String.Equals(NORMHelper.Str(source, "LineLabel"), "Own-source income", StringComparison.OrdinalIgnoreCase))
+                {
+                    rows.Add(SimpleRow("lead", null, "LESS:", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    rows.Add(SimpleRow("lead", null, "INCOME", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    continue;
+                }
                 if (statementCode == "SOCI" && lineCode == "Revenue from contracts with customers")
                 {
                     rows.Add(SimpleRow("subsection", null, "Own-source revenue", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
@@ -601,8 +650,9 @@ namespace CPlatform.NORM
                 row["type"] = lineType == "section" ? "subsection" : lineType;
                 row["code"] = lineCode;
                 string label = NORMHelper.Str(source, "LineLabel");
-                if (statementCode == "SOCI" && lineCode == "Net cost of services") label = "Net (cost of)/contribution by services";
-                if (statementCode == "SOCI" && lineCode == "Operating result") label = "Surplus/(Deficit)";
+                if (statementCode == "SOCI" && lineCode == "Total own-source income") label = "Total income";
+                if (statementCode == "SOCI" && lineCode == "Net cost of services") label = "Net cost of services";
+                if (statementCode == "SOCI" && lineCode == "Operating result") label = "(Deficit) / Surplus";
                 row["label"] = label;
                 row["note"] = PrimaNoteRef(statementCode, lineCode, NORMHelper.Str(source, "NoteRef"));
                 row["sign"] = NORMHelper.Str(source, "NaturalSign");
@@ -640,13 +690,15 @@ namespace CPlatform.NORM
                 rows.Add(SimpleRow("total", "TOTAL_GAINS", "Total gains", null, gains, null, false, 0L, new List<Dictionary<string, object>>()));
             if (statementCode == "SOCI")
             {
-                rows.Add(SimpleRow("section", null, "Other comprehensive income", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                rows.Add(SimpleRow("major", null, "OTHER COMPREHENSIVE INCOME / (LOSS)", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                rows.Add(SimpleRow("subsection", null, "Items not subject to subsequent reclassification to net cost of services", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 rows.Add(SimpleRow("line", "OCI_REVALUATION", "Changes in asset revaluation reserve", "1.3", 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-                rows.Add(SimpleRow("line", "OCI_OTHER", "Other comprehensive income", "1.3", 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-                rows.Add(SimpleRow("total", "OCI_TOTAL", "Total comprehensive income/(loss)", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                rows.Add(SimpleRow("total", "OCI_SUBTOTAL", "Total other comprehensive income / (loss)", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                rows.Add(SimpleRow("total", "OCI_TOTAL", "Total comprehensive (loss) / income", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 ApplyAggregate(rows, "TOTAL_OSR", new string[] { "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue" });
                 ApplyAggregate(rows, "TOTAL_GAINS", new string[] { "Gain on sale of asset", "Reversals of previous asset write-downs", "Other gains" });
-                ApplyAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION", "OCI_OTHER" });
+                ApplyAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
+                ApplyAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION" });
             }
             if (statementCode == "SOFP") AddSofpSubtotals(rows);
             Dictionary<string, object> statement = new Dictionary<string, object>();
@@ -668,8 +720,8 @@ namespace CPlatform.NORM
         {
             InsertAggregateBefore(rows, "Property plant and equipment_*", "TOTAL_FINANCIAL_ASSETS", "Total financial assets",
                 new string[] { "Cash and cash equivalents", "Trade and other receivables" });
-            InsertAggregateBefore(rows, "Total assets", "TOTAL_NON_FINANCIAL_ASSETS", "Total non-financial assets",
-                new string[] { "Property plant and equipment_*", "Inventories", "Prepayments", "Assets held for sale" });
+            InsertAggregateBefore(rows, "Assets held for sale", "TOTAL_NON_FINANCIAL_ASSETS", "Total non-financial assets",
+                new string[] { "Property plant and equipment_*", "Inventories", "Prepayments" });
             InsertAggregateBefore(rows, "HEADING_INTEREST_LIABILITIES", "TOTAL_PAYABLES", "Total payables",
                 new string[] { "Suppliers payables", "Employee payables", "Other payables" });
             InsertAggregateBefore(rows, "Employee provisions", "TOTAL_INTEREST_LIABILITIES", "Total interest-bearing liabilities",
@@ -997,7 +1049,8 @@ namespace CPlatform.NORM
             }
             if (statementCode == "SOFP")
             {
-                if (lineCode == "Prepayments" || lineCode == "Assets held for sale") { return "3.2C"; }
+                if (lineCode == "Prepayments") { return "3.2C"; }
+                if (lineCode == "Assets held for sale") { return "3.2D"; }
                 if (lineCode == "Employee payables") { return "3.3B"; }
                 if (lineCode == "Other payables") { return "3.3C"; }
                 if (lineCode == "Employee provisions") { return "3.5A"; }

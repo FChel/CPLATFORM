@@ -108,6 +108,21 @@ public static class NORMStatementEnhancements
         return values;
     }
 
+    public static Dictionary<string, decimal> LoadSourceFigures(int releaseId, string statementCode, string figureType)
+    {
+        Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        object installed = NORMHelper.Scalar("SELECT CASE WHEN OBJECT_ID('dbo.tblNORM_SourceFigure','U') IS NULL THEN 0 ELSE 1 END");
+        if (installed == null || Convert.ToInt32(installed) == 0) { return values; }
+        DataTable table = NORMHelper.Query(
+            "SELECT LineCode,Amount FROM dbo.tblNORM_SourceFigure WHERE ConfigurationReleaseId=@release " +
+            "AND StatementCode=@statement AND FigureType=@type AND IsDeactivated=0",
+            NORMHelper.P("@release", releaseId), NORMHelper.P("@statement", statementCode),
+            NORMHelper.P("@type", figureType));
+        for (int i = 0; i < table.Rows.Count; i++)
+            values[NORMHelper.Str(table.Rows[i], "LineCode")] = NORMHelper.Dec(table.Rows[i], "Amount");
+        return values;
+    }
+
     public static DataTable LoadBudgetRegister(int runId)
     {
         if (!IsInstalled()) { return new DataTable(); }

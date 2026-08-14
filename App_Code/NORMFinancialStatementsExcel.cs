@@ -328,6 +328,12 @@ namespace CPlatform.NORM
                 string lineCode = NORMHelper.Str(source, "LineCode");
                 string type = NORMHelper.Str(source, "LineType");
                 string label = NORMHelper.Str(source, "LineLabel");
+                if (code == "SOCI" && type == "section" && String.Equals(label, "Own-source income", StringComparison.OrdinalIgnoreCase))
+                {
+                    rows.Add(Heading("subsection", "LESS:"));
+                    rows.Add(Heading("subsection", "INCOME"));
+                    continue;
+                }
                 if (code == "SOFP" && type == "section" && String.Equals(label, "Liabilities", StringComparison.OrdinalIgnoreCase))
                 {
                     rows.Add(Heading("major", "LIABILITIES"));
@@ -369,8 +375,9 @@ namespace CPlatform.NORM
                     continue;
                 }
                 FaceRow row = DataRowToFace(source);
-                if (code == "SOCI" && lineCode == "Net cost of services") row.Label = "Net (cost of)/contribution by services";
-                if (code == "SOCI" && lineCode == "Operating result") row.Label = "Surplus/(Deficit)";
+                if (code == "SOCI" && lineCode == "Total own-source income") row.Label = "Total income";
+                if (code == "SOCI" && lineCode == "Net cost of services") row.Label = "Net cost of services";
+                if (code == "SOCI" && lineCode == "Operating result") row.Label = "(Deficit) / Surplus";
                 if (type == "section") row.Type = "subsection";
                 rows.Add(row);
                 if (code == "SOCI")

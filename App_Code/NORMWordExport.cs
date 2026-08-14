@@ -255,7 +255,8 @@ public class NORM_WordExport : IHttpHandler
         }
         if (statementCode == "SOFP")
         {
-            if (label == "Prepayments" || label == "Assets held for sale") { return "3.2C"; }
+            if (label == "Prepayments") { return "3.2C"; }
+            if (label == "Assets held for sale") { return "3.2D"; }
             if (label == "Employee payables" || label == "Other payables") { return "3.3"; }
             if (label == "Employee provisions" || label == "Asset restoration provisions" || label == "Other provisions") { return "3.5"; }
         }

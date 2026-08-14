@@ -140,12 +140,12 @@
     var currentYear = data.meta.yearCurrent;
     var priorYear = data.meta.yearPrior;
     var rows = (statement.rows || []).map(function (row, index) {
-      if (row.type === "section" || row.type === "subsection" || row.type === "major") {
+      if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead") {
         return '<tr class="norm-section-row ' + esc(row.type) + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
       }
       var sourceCount = (row.sources || []).length;
       var status = statusClass(row.status);
-      var clickable = row.clickable && row.resultId;
+      var clickable = viewMode === "preparation" && row.clickable && row.resultId;
       var amount = clickable
         ? '<button type="button" class="norm-figure" data-row="' + index + '"><span class="norm-status ' + status + '"></span><span>' + number(row.computed) + '</span></button>'
         : '<span class="norm-figure-static">' + number(row.computed) + '</span>';
@@ -153,16 +153,20 @@
       var cashWorking = statement.code === "CASH" && (row.original !== undefined || row.adjustment !== undefined)
         ? '<small class="norm-cash-working">Original ' + number(row.original || 0) + ' · adjustments ' + number(row.adjustment || 0) + '</small>' : '';
       return '<tr class="norm-financial-row ' + esc(row.type) + '"><th scope="row">' + esc(row.label) + cashWorking +
-        (sourceCount ? '<small>' + sourceCount + ' source account' + (sourceCount === 1 ? '' : 's') + '</small>' : '') +
+        (viewMode === "preparation" && sourceCount ? '<small class="norm-source-count">' + sourceCount + ' source account' + (sourceCount === 1 ? '' : 's') + '</small>' : '') +
         '</th><td class="norm-note">' + note + '</td><td class="norm-amount">' + amount +
         '</td><td class="norm-amount norm-prior">' + number(row.prior) + '</td><td class="norm-amount norm-budget">' + number(row.budget) + '</td></tr>';
     }).join("");
+
+    var tableHead = viewMode === "publication"
+      ? '<tr><th></th><th>Notes</th><th><b>' + currentYear + '</b>$\'000</th><th><b>' + priorYear + '</b>$\'000</th><th><b>Original<br>Budget</b>$\'000</th></tr>'
+      : '<tr><th></th><th>Notes</th><th><b>' + currentYear + '</b><small>Current</small>$\'000</th><th><b>' + priorYear + '</b><small>Comparative</small>$\'000</th><th><b>Original Budget</b><small>' + currentYear + '</small>$\'000</th></tr>';
 
     byId("statementDocument").innerHTML = '<header class="norm-document-head"><span class="norm-kicker">' + esc(data.meta.entity) + '</span>' +
       '<h1>' + esc(statement.title) + '</h1><p>' + (statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + currentYear + '</p>' +
       '<div class="norm-document-meta"><span>Source set: ' + esc(data.meta.file) + '</span><span>Configuration: ' + esc(data.meta.release) + '</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
       renderSourceEvidence() + '</header>' +
-      '<div class="norm-table-scroll"><table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + currentYear + '</b><small>Current</small>$\'000</th><th><b>' + priorYear + '</b><small>Comparative</small>$\'000</th><th><b>Original Budget</b><small>' + currentYear + '</small>$\'000</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="norm-table-scroll"><table class="norm-financial-table"><thead>' + tableHead + '</thead><tbody>' + rows + '</tbody></table></div>' +
       '<footer class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.' +
       (viewMode === "preparation" ? ' Select any current-year amount to inspect its frozen derivation.' : '') + '</footer>';
 
@@ -260,7 +264,8 @@
         bySection[section].map(function (item) {
           var lines = noteLines(item.lines);
           var rows = lines.map(function (line) {
-            return '<tr><th>' + esc(line.label) + '<small>' + Number(line.sourceCount || 0).toLocaleString("en-AU") + ' source rows</small></th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>';
+            var sourceRows = viewMode === "preparation" ? '<small class="norm-source-count">' + Number(line.sourceCount || 0).toLocaleString("en-AU") + ' source rows</small>' : '';
+            return '<tr><th>' + esc(line.label) + sourceRows + '</th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>';
           }).join("");
           var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
           var priorTotal = priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null;
@@ -325,11 +330,11 @@
 
   function printStandard(statement) {
     var rows = (statement.rows || []).map(function (row) {
-      if (row.type === "section" || row.type === "subsection" || row.type === "major")
+      if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead")
         return '<tr class="norm-section-row ' + esc(row.type) + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
       return '<tr class="norm-financial-row ' + esc(row.type) + '"><th>' + esc(row.label) + '</th><td>' + esc(row.note || '') + '</td><td>' + number(row.computed) + '</td><td>' + number(row.prior) + '</td><td>' + number(row.budget) + '</td></tr>';
     }).join("");
-    return '<section class="norm-print-page">' + printHeader(statement) + '<table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th><th>Original Budget<small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table></section>';
+    return '<section class="norm-print-page norm-print-' + esc(String(statement.code || '').toLowerCase()) + '">' + printHeader(statement) + '<table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + esc(data.meta.yearCurrent) + '</b><small>$\'000</small></th><th><b>' + esc(data.meta.yearPrior) + '</b><small>$\'000</small></th><th><b>Original<br>Budget</b><small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table><p class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.</p></section>';
   }
 
   function printAsset(statement) {

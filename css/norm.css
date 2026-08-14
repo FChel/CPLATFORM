@@ -49,3 +49,54 @@
 /* Preparation/publication switch and materiality controls */
 .norm-viewbar{display:flex;justify-content:space-between;align-items:center;gap:18px;margin:0 0 10px;padding:12px 16px;border:1px solid #d7dfdc;border-radius:12px;background:#fff}.norm-viewbar>div:first-child{display:flex;flex-direction:column}.norm-viewbar span{font-size:12px;color:#60706b}.norm-viewbar button{border:0;padding:9px 15px;background:#edf2f0;color:#31423c;font-weight:700;cursor:pointer}.norm-viewbar button:first-child{border-radius:8px 0 0 8px}.norm-viewbar button:last-child{border-radius:0 8px 8px 0}.norm-viewbar button.active{background:#175c48;color:#fff}.norm-status-legend{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 14px;font-size:11px;color:#5d6c67}.norm-status-legend span{display:flex;align-items:center;gap:5px}.norm-status-legend i{width:8px;height:8px;border-radius:50%;background:#678078}.norm-status-legend i.tied{background:#16865f}.norm-status-legend i.close{background:#d79713}.norm-status-legend i.variance{background:#bf453b}.norm-cash-working{display:block;color:#71817b;font-weight:500;margin-top:3px}.norm-publication-view .norm-rail,.norm-publication-view .norm-assurance,.norm-publication-view .norm-status-legend,.norm-publication-view .norm-source-evidence,.norm-publication-view .norm-document-meta,.norm-publication-view .norm-cash-working,.norm-publication-view .norm-status{display:none!important}.norm-publication-view .norm-statement-shell{grid-template-columns:minmax(0,1fr);max-width:1040px}.norm-publication-view .norm-document-wrap{grid-column:1}.norm-publication-view .norm-document{box-shadow:none}.norm-publication-view .norm-financial-table thead th{background:#dfeee7;color:#143e32}.norm-publication-view .norm-section-row.major th{text-transform:uppercase}.norm-publication-view .norm-note-jump{text-decoration:underline}.norm-materiality-panel{margin:20px 0;padding:18px;border:1px solid #d7e2de;border-radius:14px;background:#f7faf9}.norm-materiality-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0}.norm-materiality-grid label{display:flex;flex-direction:column;gap:7px}.norm-materiality-grid input,.norm-change-reason input{border:1px solid #cbd7d2;border-radius:8px;padding:10px;background:#fff}.norm-disclosure-reason{display:flex;justify-content:space-between;gap:12px;padding:0 16px 10px 76px;margin-top:-8px;font-size:11px;color:#687771}.norm-disclosure-reason em{color:#9a6300;font-style:normal;font-weight:700}.norm-change-reason{display:flex;align-items:center;gap:8px;margin-top:8px}.norm-change-reason input{min-width:340px;padding:7px 9px}@media(max-width:900px){.norm-materiality-grid{grid-template-columns:1fr 1fr}.norm-disclosure-reason{padding-left:16px}.norm-change-reason{align-items:flex-start;flex-direction:column}.norm-change-reason input{min-width:0;width:100%}}
 .norm-control-strip{margin:18px 0}.norm-control-strip:empty{display:none}.norm-latest-import{margin:22px 0;padding:22px;border:1px solid #d4dfdb;border-radius:16px;background:linear-gradient(135deg,#f6faf8,#eef6f2)}.norm-latest-import>header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:18px}.norm-latest-import h2{margin:3px 0 0}.norm-import-change-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.norm-import-change-grid article{display:flex;flex-direction:column;padding:16px;border-radius:12px;background:#fff;border:1px solid #dce6e2}.norm-import-change-grid strong{font-size:25px;color:#174f40}.norm-import-change-grid span{font-weight:700;margin-top:3px}.norm-import-change-grid small{color:#6e7c77;margin-top:5px}.norm-import-change-empty{display:flex;flex-direction:column;padding:18px;background:#fff;border-radius:12px}.norm-audit-list{padding:0 20px 20px}.norm-audit-list article{display:grid;grid-template-columns:12px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid #e5ebe8}.norm-audit-list i{width:8px;height:8px;margin-top:5px;border-radius:50%;background:#2c7a61}.norm-audit-list article>div{display:flex;flex-direction:column}.norm-audit-list strong{font-size:12px;text-transform:capitalize}.norm-audit-list span,.norm-audit-list small{font-size:11px;color:#64736e;margin-top:3px}@media(max-width:900px){.norm-import-change-grid{grid-template-columns:1fr 1fr}.norm-latest-import>header{align-items:flex-start;flex-direction:column}}@media(max-width:540px){.norm-import-change-grid{grid-template-columns:1fr}}
+
+/* Defence 2024-25 publication presentation. Preparation mode retains NORM evidence UI. */
+.norm-section-row.lead th{padding-top:5px;border:0;font:800 13px var(--norm-sans);letter-spacing:0;text-transform:uppercase}
+.norm-publication-view .norm-document{max-width:794px;min-height:1123px;padding:72px 62px 58px;font-family:Arial,Helvetica,sans-serif;color:#171717}
+.norm-publication-view .norm-document-head{text-align:left;border:0;padding:0 0 20px}
+.norm-publication-view .norm-document-head .norm-kicker{color:#171717;font:700 15px Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none}
+.norm-publication-view .norm-document-head h1{font:700 16px/1.15 Arial,Helvetica,sans-serif;text-transform:uppercase;margin:1px 0}
+.norm-publication-view .norm-document-head p{color:#171717;font:italic 15px Arial,Helvetica,sans-serif;margin:0}
+.norm-publication-view .norm-financial-table{margin-top:0;font-family:Arial,Helvetica,sans-serif}
+.norm-publication-view .norm-financial-table thead th{background:#fff;color:#171717;border-bottom:1px solid #171717;padding:4px 7px;font:400 11px/1.1 Arial,Helvetica,sans-serif}
+.norm-publication-view .norm-financial-table thead th b{color:#171717;font-size:11px}
+.norm-publication-view .norm-financial-row th,.norm-publication-view .norm-financial-row td{border:0;padding:3px 7px;font:400 11px/1.15 Arial,Helvetica,sans-serif}
+.norm-publication-view .norm-financial-row th{padding-left:8px}
+.norm-publication-view .norm-financial-row.total th{border:0;font-weight:700}
+.norm-publication-view .norm-financial-row.total td{border-top:1px solid #171717;border-bottom:1px solid #171717;font-weight:700}
+.norm-publication-view .norm-section-row.major th{border:0;padding:17px 7px 2px;font:700 11px Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:uppercase}
+.norm-publication-view .norm-financial-table tbody .norm-section-row.major:first-child th{padding-top:3px}
+.norm-publication-view .norm-section-row.subsection th{border:0;padding:7px 7px 2px;font:700 11px Arial,Helvetica,sans-serif}
+.norm-publication-view .norm-section-row.lead th{border:0;padding:3px 7px 0;font:700 11px Arial,Helvetica,sans-serif}
+.norm-publication-view .norm-budget{background:#fff;color:#171717}
+.norm-publication-view .norm-source-count{display:none!important}
+.norm-publication-view .norm-document-foot{border:0;margin-top:18px;padding:0;color:#171717;font:400 10px/1.35 Arial,Helvetica,sans-serif}
+.norm-publication-view .norm-note-jump{color:#171717;font:400 10px Arial,Helvetica,sans-serif}
+.norm-publication-view .norm-note-card-head em,.norm-publication-view .norm-input-callout,.norm-publication-view .norm-print-control{display:none!important}
+
+@media print{
+  @page{size:A4 portrait;margin:17mm 18mm 16mm}
+  .norm-print-page{font-family:Arial,Helvetica,sans-serif;color:#171717;font-size:8.5pt}
+  .norm-print-head{text-align:left;border:0;padding:0;margin:0 0 5mm}
+  .norm-print-head span{font:700 10pt Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none}
+  .norm-print-head h1{font:700 10pt/1.1 Arial,Helvetica,sans-serif;text-transform:uppercase;margin:.4mm 0}
+  .norm-print-head p{font:italic 10pt Arial,Helvetica,sans-serif;margin:0}
+  .norm-print-page .norm-financial-table{margin:0;font-family:Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-financial-table thead{display:table-header-group}
+  .norm-print-page .norm-financial-table thead th,
+  .norm-print-page .norm-note-table thead th,
+  .norm-print-page .norm-asset-table thead th{background:#fff!important;color:#171717!important;border:0;border-bottom:1px solid #171717;padding:1.2mm 1.5mm;font:400 8pt/1.05 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .norm-print-page .norm-financial-table thead th b{display:block;color:#171717;font-size:8pt}
+  .norm-print-page .norm-financial-row th,.norm-print-page .norm-financial-row td{border:0;padding:.7mm 1.5mm;font:400 8pt/1.12 Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-financial-row th{padding-left:1.5mm}
+  .norm-print-page .norm-financial-row.total th{border:0;font-weight:700}
+  .norm-print-page .norm-financial-row.total td{border-top:.6pt solid #171717;border-bottom:.6pt solid #171717;font-weight:700}
+  .norm-print-page .norm-section-row.major th{border:0;padding:4mm 1.5mm .5mm;font:700 8pt Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:uppercase}
+  .norm-print-page .norm-financial-table tbody .norm-section-row.major:first-child th{padding-top:.8mm}
+  .norm-print-page .norm-section-row.subsection th{border:0;padding:2mm 1.5mm .5mm;font:700 8pt Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-section-row.lead th{border:0;padding:.7mm 1.5mm 0;font:700 8pt Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-document-foot{border:0;margin:5mm 0 0;padding:0;color:#171717;font:400 8pt/1.3 Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-budget{background:#fff!important;color:#171717}
+  .norm-print-page .norm-note-table thead th,.norm-print-page .norm-asset-table thead th{font-weight:700}
+  .norm-print-page .norm-financial-row.administered{background:#ddd!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
