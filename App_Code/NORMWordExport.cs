@@ -95,6 +95,31 @@ public class NORM_WordExport : IHttpHandler
         for (int i = 0; i < table.Rows.Count; i++)
             if (String.Equals(NORMHelper.Str(table.Rows[i], "LineCode"), "Foreign exchange gains", StringComparison.OrdinalIgnoreCase))
                 hasForeignExchangeGains = true;
+        decimal totalIncomeCurrent = 0m, totalIncomePrior = 0m;
+        bool hasTotalIncomeCurrent = false, hasTotalIncomePrior = false;
+        HashSet<string> incomeComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue",
+            "Gain on sale of asset", "Reversals of previous asset write-downs", "Foreign exchange gains", "Other gains"
+        };
+        if (code == "SOCI")
+        {
+            for (int i = 0; i < table.Rows.Count; i++)
+            {
+                DataRow source = table.Rows[i];
+                string sourceCode = NORMHelper.Str(source, "LineCode");
+                if (!incomeComponents.Contains(sourceCode)) { continue; }
+                if (!source.IsNull("ComputedAmount")) { totalIncomeCurrent += NORMHelper.Dec(source, "ComputedAmount"); hasTotalIncomeCurrent = true; }
+                decimal? baseline = source.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(source, "AmountPrior");
+                decimal? effective = NORMStartOfYearSetup.FigureValue(priorFigures, code, sourceCode, baseline);
+                if (effective.HasValue) { totalIncomePrior += effective.Value; hasTotalIncomePrior = true; }
+            }
+            if (!hasForeignExchangeGains)
+            {
+                decimal? foreignExchangePrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "Foreign exchange gains", null);
+                if (foreignExchangePrior.HasValue) { totalIncomePrior += foreignExchangePrior.Value; hasTotalIncomePrior = true; }
+            }
+        }
         html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>").Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
         html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
         for (int i = 0; i < table.Rows.Count; i++)
@@ -114,9 +139,18 @@ public class NORM_WordExport : IHttpHandler
                 continue;
             }
             decimal? baselinePrior = row.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(row, "AmountPrior");
-            decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, code, NORMHelper.Str(row, "LineCode"), baselinePrior);
-            html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(NORMHelper.Str(row, "LineLabel"))).Append("</th><td>")
-                .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(row, "ComputedAmount")).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
+            string lineCode = NORMHelper.Str(row, "LineCode");
+            decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, code, lineCode, baselinePrior);
+            decimal? effectiveCurrent = row.IsNull("ComputedAmount") ? (decimal?)null : NORMHelper.Dec(row, "ComputedAmount");
+            string displayLabel = NORMHelper.Str(row, "LineLabel");
+            if (code == "SOCI" && String.Equals(lineCode, "Total own-source income", StringComparison.OrdinalIgnoreCase))
+            {
+                displayLabel = "Total income";
+                effectiveCurrent = hasTotalIncomeCurrent ? (decimal?)totalIncomeCurrent : null;
+                effectivePrior = hasTotalIncomePrior ? (decimal?)totalIncomePrior : null;
+            }
+            html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
+                .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
         }
         html.Append("</tbody></table><p class=\"footer\">This statement should be read with the accompanying notes.</p></section>");
     }

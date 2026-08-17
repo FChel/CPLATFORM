@@ -110,10 +110,10 @@ IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleas
 
 IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_PublishedFigure WHERE ConfigurationReleaseId = @ReleaseId AND LineCode = 'Total expenses')
     INSERT dbo.tblNORM_PublishedFigure (ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,LineCode,AmountCurrent,AmountPrior,SourceReference) VALUES
-      (@ReleaseId,2025,'DEPT','SOCI','Total expenses',50386401,46297957,N'Defence Annual Report 2024-25, audited financial statements'),
-      (@ReleaseId,2025,'DEPT','SOCI','Total own-source income',2677797,2293753,N'Defence Annual Report 2024-25, audited financial statements'),
-      (@ReleaseId,2025,'DEPT','SOCI','Net cost of services',47708604,44004204,N'Defence Annual Report 2024-25, audited financial statements'),
-      (@ReleaseId,2025,'DEPT','SOCI','Operating result',-8730925,-8163634,N'Defence Annual Report 2024-25, audited financial statements'),
+      (@ReleaseId,2025,'DEPT','SOCI','Total expenses',50386401,46336444,N'Defence Annual Report 2024-25, audited financial statements'),
+      (@ReleaseId,2025,'DEPT','SOCI','Total own-source income',2677797,2324309,N'Defence Annual Report 2024-25, audited financial statements'),
+      (@ReleaseId,2025,'DEPT','SOCI','Net cost of services',47708604,44012135,N'Defence Annual Report 2024-25, audited financial statements'),
+      (@ReleaseId,2025,'DEPT','SOCI','Operating result',-8730925,-8171565,N'Defence Annual Report 2024-25, audited financial statements'),
       (@ReleaseId,2025,'DEPT','SOFP','Total assets',158436070,146458730,N'Defence Annual Report 2024-25, audited financial statements'),
       (@ReleaseId,2025,'DEPT','SOFP','Total liabilities',15800563,13848233,N'Defence Annual Report 2024-25, audited financial statements'),
       (@ReleaseId,2025,'DEPT','SOFP','Net assets',142635507,132610497,N'Defence Annual Report 2024-25, audited financial statements'),

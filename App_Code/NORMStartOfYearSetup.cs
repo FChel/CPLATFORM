@@ -320,6 +320,9 @@ public static class NORMStartOfYearSetup
             result.Add(new TemplateLine { StatementCode = "SOCI", LineCode = "Foreign exchange gains",
                 Label = gainLabel, Normalised = NormaliseLabel(gainLabel) });
         }
+        const string totalIncomeLabel = "Total income";
+        result.Add(new TemplateLine { StatementCode = "SOCI", LineCode = "Total own-source income",
+            Label = totalIncomeLabel, Normalised = NormaliseLabel(totalIncomeLabel) });
         return result;
     }
 

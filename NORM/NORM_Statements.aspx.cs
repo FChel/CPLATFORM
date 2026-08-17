@@ -726,6 +726,7 @@ namespace CPlatform.NORM
                 rows.Add(SimpleRow("total", "OCI_TOTAL", "Total comprehensive (loss) / income", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 ApplyAggregate(rows, "TOTAL_OSR", new string[] { "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue" });
                 ApplyAggregate(rows, "TOTAL_GAINS", new string[] { "Gain on sale of asset", "Reversals of previous asset write-downs", "Foreign exchange gains", "Other gains" });
+                ApplyAggregate(rows, "Total own-source income", new string[] { "TOTAL_OSR", "TOTAL_GAINS" });
                 ApplyAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
                 ApplyAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION" });
             }

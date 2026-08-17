@@ -416,6 +416,7 @@ namespace CPlatform.NORM
             }
             if (code == "SOCI" && !ownSourceTotalAdded) AddSyntheticTotal(rows, ownSource, "TOTAL_OSR", "Total own-source revenue");
             if (code == "SOCI" && !gainsTotalAdded) AddSyntheticTotal(rows, gains, "TOTAL_GAINS", "Total gains");
+            if (code == "SOCI") ApplyFaceAggregate(rows, "Total own-source income", new string[] { "TOTAL_OSR", "TOTAL_GAINS" });
             return rows;
         }
 
@@ -431,6 +432,22 @@ namespace CPlatform.NORM
             if (components.Any(x => x.Budget.HasValue)) row.Budget = components.Where(x => x.Budget.HasValue).Sum(x => x.Budget.Value);
             row.FormulaSpec = String.Join("|", components.Where(x => !String.IsNullOrWhiteSpace(x.Code)).Select(x => "+" + x.Code).ToArray());
             target.Add(row);
+        }
+
+        private static void ApplyFaceAggregate(List<FaceRow> rows, string targetCode, string[] componentCodes)
+        {
+            FaceRow target = rows.FirstOrDefault(x => String.Equals(x.Code, targetCode, StringComparison.OrdinalIgnoreCase));
+            if (target == null) { return; }
+            List<FaceRow> components = rows.Where(x => componentCodes.Any(code =>
+                String.Equals(x.Code, code, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (components.Count == 0) { return; }
+            target.Current = components.Any(x => x.Current.HasValue)
+                ? (decimal?)components.Where(x => x.Current.HasValue).Sum(x => x.Current.Value) : null;
+            target.Prior = components.Any(x => x.Prior.HasValue)
+                ? (decimal?)components.Where(x => x.Prior.HasValue).Sum(x => x.Prior.Value) : null;
+            target.Budget = components.Any(x => x.Budget.HasValue)
+                ? (decimal?)components.Where(x => x.Budget.HasValue).Sum(x => x.Budget.Value) : null;
+            target.FormulaSpec = String.Join("|", componentCodes.Select(x => "+" + x).ToArray());
         }
 
         private static FaceRow DataRowToFace(DataRow source)
