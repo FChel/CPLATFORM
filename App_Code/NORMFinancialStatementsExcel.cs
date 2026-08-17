@@ -411,11 +411,14 @@ namespace CPlatform.NORM
                     rows.Add(new FaceRow { Type = "total", Code = "TOTAL_NON_FINANCIAL_ASSETS", Label = "Total non-financial assets" });
                 if (code == "SOFP" && lineCode == "Statement of Changes in Equity")
                 {
-                    AddEquitySplits(rows, model.RunId);
+                    AddEquitySplits(rows, model);
                     FaceRow totalEquity = DataRowToFace(source);
-                    if (!source.IsNull("PublishedCurrent")) totalEquity.Current = NORMHelper.Dec(source, "PublishedCurrent");
-                    totalEquity.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, lineCode, totalEquity.Prior);
-                    totalEquity.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, lineCode, totalEquity.Budget);
+                    Dictionary<string, decimal> currentEquity = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "AuditedActual");
+                    Dictionary<string, decimal> priorEquity = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "PriorActual");
+                    Dictionary<string, decimal> budgetEquity = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "OriginalBudget");
+                    totalEquity.Current = SourceValue(currentEquity, "EQUITY_TOTAL") ?? totalEquity.Current;
+                    totalEquity.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, "EQUITY_TOTAL", SourceValue(priorEquity, "EQUITY_TOTAL"));
+                    totalEquity.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, "EQUITY_TOTAL", SourceValue(budgetEquity, "EQUITY_TOTAL"));
                     totalEquity.Label = "Total equity";
                     totalEquity.Type = "total";
                     rows.Add(totalEquity);
@@ -597,7 +600,7 @@ namespace CPlatform.NORM
             return label;
         }
 
-        private static void AddEquitySplits(List<FaceRow> rows, int runId)
+        private static void AddEquitySplits(List<FaceRow> rows, ExportContext model)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT CASE WHEN LOWER(NoteSubLineSnapshot) LIKE '%contributed%' THEN 'Contributed equity' " +
@@ -609,14 +612,29 @@ namespace CPlatform.NORM
                 "GROUP BY CASE WHEN LOWER(NoteSubLineSnapshot) LIKE '%contributed%' THEN 'Contributed equity' " +
                 "WHEN LOWER(NoteSubLineSnapshot) LIKE '%reserve%' THEN 'Reserves' " +
                 "WHEN LOWER(NoteSubLineSnapshot) LIKE '%retained%' OR LOWER(NoteSubLineSnapshot) LIKE '%accumulated%' THEN 'Retained surplus/(Accumulated deficit)' ELSE 'Other equity' END",
-                NORMHelper.P("@run", runId));
-            for (int i = 0; i < table.Rows.Count; i++)
+                NORMHelper.P("@run", model.RunId));
+            Dictionary<string, decimal> mapped = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < table.Rows.Count; i++) mapped[NORMHelper.Str(table.Rows[i], "EquityClass")] = NORMHelper.Dec(table.Rows[i], "Amount");
+            Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "AuditedActual");
+            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "PriorActual");
+            Dictionary<string, decimal> budget = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "OriginalBudget");
+            string[,] classes = new string[,]
             {
+                { "EQUITY_CONTRIBUTED", "Contributed equity", "Contributed equity" },
+                { "EQUITY_RETAINED", "(Accumulated Deficit) / Retained surpluses", "Retained surplus/(Accumulated deficit)" },
+                { "EQUITY_RESERVES", "Reserves", "Reserves" }
+            };
+            for (int i = 0; i < classes.GetLength(0); i++)
+            {
+                decimal mappedAmount;
+                mapped.TryGetValue(classes[i, 2], out mappedAmount);
                 FaceRow row = new FaceRow();
                 row.Type = "line";
-                row.Code = "EQUITY_" + i.ToString(CultureInfo.InvariantCulture);
-                row.Label = NORMHelper.Str(table.Rows[i], "EquityClass");
-                row.Current = NORMHelper.Dec(table.Rows[i], "Amount");
+                row.Code = classes[i, 0];
+                row.Label = classes[i, 1];
+                row.Current = SourceValue(current, row.Code) ?? (decimal?)mappedAmount;
+                row.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", row.Code, SourceValue(prior, row.Code));
+                row.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOFP", row.Code, SourceValue(budget, row.Code));
                 rows.Add(row);
             }
         }

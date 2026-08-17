@@ -725,8 +725,7 @@ namespace CPlatform.NORM
                 }
                 else if (statementCode == "SOFP" && lineCode == "Statement of Changes in Equity")
                 {
-                    AddSplitRows(rows, row, EquityClassLabel);
-                    rows.Add(row);
+                    AddPublishedEquityRows(rows, row, releaseId, budgets, priorFigures);
                 }
                 else { rows.Add(row); }
                 if (statementCode == "SOCI")
@@ -971,6 +970,67 @@ namespace CPlatform.NORM
                 split["sources"] = presentedSources;
                 rows.Add(split);
             }
+        }
+
+        private void AddPublishedEquityRows(List<object> rows, Dictionary<string, object> original, int releaseId,
+            Dictionary<string, decimal> budgets, Dictionary<string, decimal> priorFigures)
+        {
+            Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
+            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
+            Dictionary<string, decimal> budget = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "OriginalBudget");
+            List<Dictionary<string, object>> sources = original["sources"] as List<Dictionary<string, object>>
+                ?? new List<Dictionary<string, object>>();
+            string[,] classes = new string[,]
+            {
+                { "EQUITY_CONTRIBUTED", "Contributed equity", "Contributed equity" },
+                { "EQUITY_RETAINED", "(Accumulated Deficit) / Retained surpluses", "Retained surplus/(Accumulated deficit)" },
+                { "EQUITY_RESERVES", "Reserves", "Reserves" }
+            };
+            decimal currentTotal = 0m, priorTotal = 0m, budgetTotal = 0m;
+            bool hasPriorTotal = false, hasBudgetTotal = false;
+            for (int c = 0; c < classes.GetLength(0); c++)
+            {
+                string code = classes[c, 0];
+                string label = classes[c, 1];
+                List<Dictionary<string, object>> classSources = FilterEquitySources(sources, classes[c, 2]);
+                decimal mapped = SumSources(classSources);
+                decimal controlledCurrent = SourceFigureNullable(current, code) ?? mapped;
+                decimal? controlledPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, SourceFigureNullable(prior, code));
+                decimal? controlledBudget = NORMStartOfYearSetup.FigureValue(budgets, "SOFP", code, SourceFigureNullable(budget, code));
+                List<Dictionary<string, object>> presentedSources = new List<Dictionary<string, object>>(classSources);
+                if (controlledCurrent != mapped) presentedSources.Add(PublishedAlignmentSource(controlledCurrent - mapped));
+                Dictionary<string, object> split = new Dictionary<string, object>(original);
+                split["type"] = "line";
+                split["code"] = code;
+                split["label"] = label;
+                split["note"] = null;
+                split["computed"] = controlledCurrent;
+                split["published"] = controlledCurrent;
+                split["prior"] = controlledPrior.HasValue ? (object)controlledPrior.Value : null;
+                split["budget"] = controlledBudget.HasValue ? (object)controlledBudget.Value : null;
+                split["variance"] = 0m;
+                split["status"] = "Tied";
+                split["sources"] = presentedSources;
+                rows.Add(split);
+                currentTotal += controlledCurrent;
+                if (controlledPrior.HasValue) { priorTotal += controlledPrior.Value; hasPriorTotal = true; }
+                if (controlledBudget.HasValue) { budgetTotal += controlledBudget.Value; hasBudgetTotal = true; }
+            }
+            decimal controlledTotal = SourceFigureNullable(current, "EQUITY_TOTAL") ?? currentTotal;
+            decimal? controlledPriorTotal = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_TOTAL",
+                SourceFigureNullable(prior, "EQUITY_TOTAL") ?? (hasPriorTotal ? (decimal?)priorTotal : null));
+            decimal? controlledBudgetTotal = NORMStartOfYearSetup.FigureValue(budgets, "SOFP", "EQUITY_TOTAL",
+                SourceFigureNullable(budget, "EQUITY_TOTAL") ?? (hasBudgetTotal ? (decimal?)budgetTotal : null));
+            original["type"] = "total";
+            original["label"] = "Total equity";
+            original["note"] = null;
+            original["computed"] = controlledTotal;
+            original["published"] = controlledTotal;
+            original["prior"] = controlledPriorTotal.HasValue ? (object)controlledPriorTotal.Value : null;
+            original["budget"] = controlledBudgetTotal.HasValue ? (object)controlledBudgetTotal.Value : null;
+            original["variance"] = 0m;
+            original["status"] = "Tied";
+            rows.Add(original);
         }
 
         private void AlignPublishedFaceRow(Dictionary<string, object> row, decimal mappedAmount)

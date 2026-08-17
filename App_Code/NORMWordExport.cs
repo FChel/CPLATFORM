@@ -237,6 +237,11 @@ public class NORM_WordExport : IHttpHandler
                 AppendStatementAmountRow(html, "Total interest-bearing liabilities", "", totalInterestLiabilitiesCurrent, totalInterestLiabilitiesPrior, true);
                 html.Append("<tr class=\"section\"><th colspan=\"4\">Provisions</th></tr>");
             }
+            if (code == "SOFP" && String.Equals(lineCode, "Statement of Changes in Equity", StringComparison.OrdinalIgnoreCase))
+            {
+                AppendWordEquityRows(html, releaseId, priorFigures);
+                continue;
+            }
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
                 .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
         }
@@ -286,6 +291,31 @@ public class NORM_WordExport : IHttpHandler
             decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, SourceValue(prior, code));
             AppendStatementAmountRow(html, classes[i, 1], "3.2A", SourceValue(current, code), effectivePrior, false);
         }
+    }
+
+    private void AppendWordEquityRows(StringBuilder html, int releaseId, Dictionary<string, decimal> priorFigures)
+    {
+        Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
+        Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
+        string[,] classes = new string[,] {
+            { "EQUITY_CONTRIBUTED", "Contributed equity" },
+            { "EQUITY_RETAINED", "(Accumulated Deficit) / Retained surpluses" },
+            { "EQUITY_RESERVES", "Reserves" }
+        };
+        decimal currentTotal = 0m, priorTotal = 0m;
+        bool hasCurrent = false, hasPrior = false;
+        for (int i = 0; i < classes.GetLength(0); i++)
+        {
+            decimal? currentValue = SourceValue(current, classes[i, 0]);
+            decimal? priorValue = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", classes[i, 0], SourceValue(prior, classes[i, 0]));
+            AppendStatementAmountRow(html, classes[i, 1], "", currentValue, priorValue, false);
+            if (currentValue.HasValue) { currentTotal += currentValue.Value; hasCurrent = true; }
+            if (priorValue.HasValue) { priorTotal += priorValue.Value; hasPrior = true; }
+        }
+        decimal? controlledCurrentTotal = SourceValue(current, "EQUITY_TOTAL") ?? (hasCurrent ? (decimal?)currentTotal : null);
+        decimal? controlledPriorTotal = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_TOTAL",
+            SourceValue(prior, "EQUITY_TOTAL") ?? (hasPrior ? (decimal?)priorTotal : null));
+        AppendStatementAmountRow(html, "Total equity", "", controlledCurrentTotal, controlledPriorTotal, true);
     }
 
     private decimal? EffectivePriorAmount(DataTable table, string statementCode, string lineCode)
