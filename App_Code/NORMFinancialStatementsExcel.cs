@@ -403,7 +403,7 @@ namespace CPlatform.NORM
                     AddAssetSplits(rows, model, source);
                     continue;
                 }
-                if (code == "SOFP" && lineCode == "Total assets")
+                if (code == "SOFP" && lineCode == "Assets held for sale")
                     rows.Add(new FaceRow { Type = "total", Code = "TOTAL_NON_FINANCIAL_ASSETS", Label = "Total non-financial assets" });
                 if (code == "SOFP" && lineCode == "Statement of Changes in Equity")
                 {
@@ -464,8 +464,8 @@ namespace CPlatform.NORM
                 ApplyFaceAggregate(rows, "TOTAL_NON_FINANCIAL_ASSETS", new string[] {
                     "PPE_LAND", "PPE_BUILDINGS", "PPE_SPECIALIST_MILITARY_EQUIPMENT", "PPE_INFRASTRUCTURE",
                     "PPE_PLANT_AND_EQUIPMENT", "PPE_HERITAGE_AND_CULTURAL_ASSETS", "PPE_INTANGIBLES",
-                    "Inventories", "Prepayments", "Assets held for sale" });
-                ApplyFaceAggregate(rows, "Total assets", new string[] { "TOTAL_FINANCIAL_ASSETS", "TOTAL_NON_FINANCIAL_ASSETS" });
+                    "Inventories", "Prepayments" });
+                ApplyFaceAggregate(rows, "Total assets", new string[] { "TOTAL_FINANCIAL_ASSETS", "TOTAL_NON_FINANCIAL_ASSETS", "Assets held for sale" });
             }
             return rows;
         }

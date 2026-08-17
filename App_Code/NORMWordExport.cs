@@ -158,7 +158,7 @@ public class NORM_WordExport : IHttpHandler
                 if (currentValue.HasValue) { currentNonFinancial += currentValue.Value; hasCurrentNonFinancial = true; }
                 if (priorValue.HasValue) { priorNonFinancial += priorValue.Value; hasPriorNonFinancial = true; }
             }
-            string[] otherNonFinancial = new string[] { "Inventories", "Prepayments", "Assets held for sale" };
+            string[] otherNonFinancial = new string[] { "Inventories", "Prepayments" };
             for (int i = 0; i < otherNonFinancial.Length; i++)
             {
                 decimal? currentValue = StatementAmount(table, otherNonFinancial[i], "PublishedCurrent") ?? StatementAmount(table, otherNonFinancial[i], "ComputedAmount");
@@ -168,10 +168,12 @@ public class NORM_WordExport : IHttpHandler
             }
             if (hasCurrentNonFinancial) nonFinancialAssetsCurrent = currentNonFinancial;
             if (hasPriorNonFinancial) nonFinancialAssetsPrior = priorNonFinancial;
-            if (financialAssetsCurrent.HasValue && nonFinancialAssetsCurrent.HasValue)
-                totalAssetsCurrent = financialAssetsCurrent.Value + nonFinancialAssetsCurrent.Value;
-            if (financialAssetsPrior.HasValue && nonFinancialAssetsPrior.HasValue)
-                totalAssetsPrior = financialAssetsPrior.Value + nonFinancialAssetsPrior.Value;
+            decimal? heldCurrent = StatementAmount(table, "Assets held for sale", "PublishedCurrent") ?? StatementAmount(table, "Assets held for sale", "ComputedAmount");
+            decimal? heldPrior = EffectivePriorAmount(table, code, "Assets held for sale");
+            if (financialAssetsCurrent.HasValue && nonFinancialAssetsCurrent.HasValue && heldCurrent.HasValue)
+                totalAssetsCurrent = financialAssetsCurrent.Value + nonFinancialAssetsCurrent.Value + heldCurrent.Value;
+            if (financialAssetsPrior.HasValue && nonFinancialAssetsPrior.HasValue && heldPrior.HasValue)
+                totalAssetsPrior = financialAssetsPrior.Value + nonFinancialAssetsPrior.Value + heldPrior.Value;
         }
         html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>").Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
         html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
@@ -225,10 +227,10 @@ public class NORM_WordExport : IHttpHandler
                 effectiveCurrent = totalAssetsCurrent;
                 effectivePrior = totalAssetsPrior;
             }
-            html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
-                .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
             if (code == "SOFP" && String.Equals(lineCode, "Assets held for sale", StringComparison.OrdinalIgnoreCase))
                 AppendStatementAmountRow(html, "Total non-financial assets", "", nonFinancialAssetsCurrent, nonFinancialAssetsPrior, true);
+            html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
+                .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
         }
         if (code == "SOCI")
         {
