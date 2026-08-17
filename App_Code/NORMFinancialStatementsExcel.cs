@@ -154,8 +154,7 @@ namespace CPlatform.NORM
             model.Profile = NORMReportingFramework.LoadProfile(model.ReleaseId);
             model.Disclosures = NORMReportingFramework.LoadDisclosures(runId, model.ReleaseId, model.Profile);
             NORMStatementEnhancements.ApplyManualInputs(runId, model.Disclosures);
-            model.Budgets = NORMStatementEnhancements.LoadBudgetFigures(runId);
-            NORMStartOfYearSetup.OverlayFigures(model.Budgets, NORMStartOfYearSetup.LoadOriginalBudgetFigures(model.EntityCode));
+            model.Budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(model.EntityCode);
             model.PriorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(model.EntityCode);
             model.ManualInputs = NORMStatementEnhancements.LoadManualInputs(runId);
             return model;
@@ -314,11 +313,9 @@ namespace CPlatform.NORM
         {
             DataTable table = NORMHelper.Query(
                 "SELECT t.SeqNo,t.LineType,t.LineCode,t.LineLabel,t.NoteRef,t.CalculationKind,t.FormulaSpec," +
-                "r.LineResultId,r.ComputedAmount,p.AmountCurrent AS PublishedCurrent,p.AmountPrior,b.OriginalBudget " +
+                "r.LineResultId,r.ComputedAmount " +
                 "FROM dbo.tblNORM_StatementLine t " +
                 "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
-                "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId=t.ConfigurationReleaseId AND p.StatementCode=t.StatementCode AND p.LineCode=t.LineCode AND p.IsDeactivated=0 " +
-                "LEFT JOIN dbo.tblNORM_BudgetFigure b ON b.CalculationRunId=@run AND b.StatementCode=t.StatementCode AND b.LineCode=t.LineCode AND b.IsDeactivated=0 " +
                 "WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code AND t.IsDeactivated=0 ORDER BY t.SeqNo",
                 NORMHelper.P("@run", model.RunId), NORMHelper.P("@release", model.ReleaseId), NORMHelper.P("@code", code));
             List<FaceRow> rows = new List<FaceRow>();
@@ -413,21 +410,16 @@ namespace CPlatform.NORM
                 {
                     AddEquitySplits(rows, model);
                     FaceRow totalEquity = DataRowToFace(source);
-                    Dictionary<string, decimal> currentEquity = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "AuditedActual");
-                    Dictionary<string, decimal> priorEquity = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "PriorActual");
-                    Dictionary<string, decimal> budgetEquity = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "OriginalBudget");
-                    totalEquity.Current = SourceValue(currentEquity, "EQUITY_TOTAL") ?? totalEquity.Current;
-                    totalEquity.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, "EQUITY_TOTAL", SourceValue(priorEquity, "EQUITY_TOTAL"));
-                    totalEquity.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, "EQUITY_TOTAL", SourceValue(budgetEquity, "EQUITY_TOTAL"));
+                    totalEquity.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, "EQUITY_TOTAL", null);
+                    totalEquity.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, "EQUITY_TOTAL", null);
                     totalEquity.Label = "Total equity";
                     totalEquity.Type = "total";
                     rows.Add(totalEquity);
                     continue;
                 }
                 FaceRow row = DataRowToFace(source);
-                if (code == "SOFP" && !source.IsNull("PublishedCurrent")) row.Current = NORMHelper.Dec(source, "PublishedCurrent");
-                row.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, lineCode, row.Prior);
-                row.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, lineCode, row.Budget);
+                row.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, lineCode, null);
+                row.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, lineCode, null);
                 if (code == "SOCI" && lineCode == "Total own-source income") row.Label = "Total income";
                 if (code == "SOCI" && lineCode == "Net cost of services") row.Label = "Net cost of services";
                 if (code == "SOCI" && lineCode == "Operating result") row.Label = "(Deficit) / Surplus";
@@ -447,18 +439,17 @@ namespace CPlatform.NORM
             {
                 ApplyFaceAggregate(rows, "Total own-source income", new string[] { "TOTAL_OSR", "TOTAL_GAINS" });
                 ApplyFaceDifference(rows, "Operating result", "Revenue from Government", "Net cost of services");
-                Dictionary<string, decimal> auditedOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "AuditedActual");
-                Dictionary<string, decimal> priorOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "PriorActual");
-                Dictionary<string, decimal> budgetOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "OriginalBudget");
                 decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCE", "SOCE_TOTAL_OCI",
-                    SourceValue(priorOci, "SOCE_TOTAL_OCI"));
+                    null);
                 effectivePrior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCI", "OCI_REVALUATION", effectivePrior);
                 decimal? effectiveBudget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOCE", "SOCE_TOTAL_OCI",
-                    SourceValue(budgetOci, "SOCE_TOTAL_OCI"));
+                    null);
+                effectiveBudget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOCI", "OCI_REVALUATION", effectiveBudget);
                 rows.Add(Heading("major", "OTHER COMPREHENSIVE INCOME / (LOSS)"));
                 rows.Add(Heading("subsection", "Items not subject to subsequent reclassification to net cost of services"));
                 rows.Add(new FaceRow { Type = "line", Code = "OCI_REVALUATION", Label = "Changes in asset revaluation reserves",
-                    Note = "1.3", Current = SourceValue(auditedOci, "SOCE_TOTAL_OCI"), Prior = effectivePrior, Budget = effectiveBudget });
+                    Note = "1.3", Current = LineResultValue(model.RunId, "SOCE_TOTAL_OCI") ?? LineResultValue(model.RunId, "OCI_REVALUATION"),
+                    Prior = effectivePrior, Budget = effectiveBudget });
                 rows.Add(new FaceRow { Type = "total", Code = "OCI_SUBTOTAL", Label = "Total other comprehensive income / (loss)" });
                 rows.Add(new FaceRow { Type = "total", Code = "OCI_TOTAL", Label = "Total comprehensive (loss) / income" });
                 ApplyFaceAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
@@ -520,10 +511,13 @@ namespace CPlatform.NORM
             target.FormulaSpec = "+" + positiveCode + "|-" + negativeCode;
         }
 
-        private static decimal? SourceValue(Dictionary<string, decimal> values, string code)
+        private static decimal? LineResultValue(int runId, string lineCode)
         {
-            decimal value;
-            return values != null && values.TryGetValue(code, out value) ? (decimal?)value : null;
+            object value = NORMHelper.Scalar(
+                "SELECT TOP 1 ComputedAmount FROM dbo.tblNORM_LineResult WHERE CalculationRunId=@run " +
+                "AND LineCode=@line AND IsDeactivated=0 ORDER BY LineResultId DESC",
+                NORMHelper.P("@run", runId), NORMHelper.P("@line", lineCode));
+            return value == null || value == DBNull.Value ? (decimal?)null : Convert.ToDecimal(value);
         }
 
         private static FaceRow DataRowToFace(DataRow source)
@@ -534,8 +528,8 @@ namespace CPlatform.NORM
             row.Label = NORMHelper.Str(source, "LineLabel");
             row.Note = NORMHelper.Str(source, "NoteRef");
             row.Current = NullableDecimal(source, "ComputedAmount");
-            row.Prior = NullableDecimal(source, "AmountPrior");
-            row.Budget = NullableDecimal(source, "OriginalBudget");
+            row.Prior = null;
+            row.Budget = null;
             row.FormulaSpec = NORMHelper.Str(source, "FormulaSpec");
             return row;
         }
@@ -568,18 +562,15 @@ namespace CPlatform.NORM
                 decimal amount = NORMHelper.Dec(table.Rows[i], "Amount");
                 mapped[label] = mapped.ContainsKey(label) ? mapped[label] + amount : amount;
             }
-            Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "AuditedActual");
-            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "PriorActual");
-            Dictionary<string, decimal> budget = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "OriginalBudget");
             string[,] classes = AssetFaceClasses();
             for (int i = 0; i < classes.GetLength(0); i++)
             {
                 string classCode = classes[i, 0], label = classes[i, 1];
                 decimal mappedAmount; mapped.TryGetValue(label, out mappedAmount);
                 rows.Add(new FaceRow { Type = "line", Code = classCode, Label = label, Note = "3.2A",
-                    Current = SourceValue(current, classCode) ?? (decimal?)mappedAmount,
-                    Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", classCode, SourceValue(prior, classCode)),
-                    Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOFP", classCode, SourceValue(budget, classCode)) });
+                    Current = mapped.ContainsKey(label) ? (decimal?)mappedAmount : null,
+                    Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", classCode, null),
+                    Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOFP", classCode, null) });
             }
         }
 
@@ -615,9 +606,6 @@ namespace CPlatform.NORM
                 NORMHelper.P("@run", model.RunId));
             Dictionary<string, decimal> mapped = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < table.Rows.Count; i++) mapped[NORMHelper.Str(table.Rows[i], "EquityClass")] = NORMHelper.Dec(table.Rows[i], "Amount");
-            Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "AuditedActual");
-            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "PriorActual");
-            Dictionary<string, decimal> budget = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "OriginalBudget");
             string[,] classes = new string[,]
             {
                 { "EQUITY_CONTRIBUTED", "Contributed equity", "Contributed equity" },
@@ -632,9 +620,9 @@ namespace CPlatform.NORM
                 row.Type = "line";
                 row.Code = classes[i, 0];
                 row.Label = classes[i, 1];
-                row.Current = SourceValue(current, row.Code) ?? (decimal?)mappedAmount;
-                row.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", row.Code, SourceValue(prior, row.Code));
-                row.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOFP", row.Code, SourceValue(budget, row.Code));
+                row.Current = mapped.ContainsKey(classes[i, 2]) ? (decimal?)mappedAmount : null;
+                row.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", row.Code, null);
+                row.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOFP", row.Code, null);
                 rows.Add(row);
             }
         }
@@ -685,14 +673,14 @@ namespace CPlatform.NORM
             sheet.Cells[11, 1].Value = "Closing balance";
 
             DataTable equity = NORMHelper.Query(
-                "SELECT r.LineCode,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_LineResult r " +
-                "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId=@release AND p.StatementCode=r.StatementCode AND p.LineCode=r.LineCode AND p.IsDeactivated=0 " +
+                "SELECT r.LineCode,r.ComputedAmount FROM dbo.tblNORM_LineResult r " +
                 "WHERE r.CalculationRunId=@run AND r.LineCode IN ('Operating result','Statement of Changes in Equity') AND r.IsDeactivated=0",
-                NORMHelper.P("@release", model.ReleaseId), NORMHelper.P("@run", model.RunId));
+                NORMHelper.P("@run", model.RunId));
             decimal result = FindAmount(equity, "Operating result", "ComputedAmount");
             decimal closing = FindAmount(equity, "Statement of Changes in Equity", "ComputedAmount");
-            decimal baselineOpening = FindAmount(equity, "Statement of Changes in Equity", "AmountPrior");
-            decimal opening = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCE", "Statement of Changes in Equity", baselineOpening) ?? 0m;
+            decimal opening = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", "EQUITY_TOTAL",
+                NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", "Statement of Changes in Equity",
+                    NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCE", "Statement of Changes in Equity", null))) ?? 0m;
             sheet.Cells[8, 5].Value = Round(opening);
             sheet.Cells[9, 4].Value = Round(result);
             sheet.Cells[9, 5].Formula = "SUM(B9:D9)";
@@ -764,13 +752,12 @@ namespace CPlatform.NORM
             StyleTotal(sheet.Cells[rowNumber, 1, rowNumber, 5]);
             rowNumber++;
             DataTable cash = NORMHelper.Query(
-                "SELECT r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_LineResult r LEFT JOIN dbo.tblNORM_PublishedFigure p " +
-                "ON p.ConfigurationReleaseId=@release AND p.StatementCode=r.StatementCode AND p.LineCode=r.LineCode AND p.IsDeactivated=0 " +
+                "SELECT r.ComputedAmount FROM dbo.tblNORM_LineResult r " +
                 "WHERE r.CalculationRunId=@run AND r.LineCode='Cash and cash equivalents' AND r.IsDeactivated=0",
-                NORMHelper.P("@release", model.ReleaseId), NORMHelper.P("@run", model.RunId));
+                NORMHelper.P("@run", model.RunId));
             decimal closing = cash.Rows.Count == 0 ? 0m : NORMHelper.Dec(cash.Rows[0], "ComputedAmount");
-            decimal? baselineOpening = cash.Rows.Count == 0 || cash.Rows[0].IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(cash.Rows[0], "AmountPrior");
-            decimal opening = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "CASH", "Cash and cash equivalents", baselineOpening) ?? 0m;
+            decimal opening = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", "Cash and cash equivalents",
+                NORMStartOfYearSetup.FigureValue(model.PriorFigures, "CASH", "Cash and cash equivalents", null)) ?? 0m;
             sheet.Cells[rowNumber, 1].Value = "Cash and cash equivalents at the beginning of the reporting period";
             sheet.Cells[rowNumber, 3].Value = Round(opening);
             rowNumber++;

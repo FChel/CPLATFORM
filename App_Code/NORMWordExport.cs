@@ -85,10 +85,9 @@ public class NORM_WordExport : IHttpHandler
     private void AppendStatement(StringBuilder html, int runId, int releaseId, int year, string code, string title, bool atDate)
     {
         DataTable table = NORMHelper.Query(
-            "SELECT t.LineType,t.LineCode,t.LineLabel,t.NoteRef,r.ComputedAmount,p.AmountCurrent AS PublishedCurrent,p.AmountPrior FROM dbo.tblNORM_StatementLine t " +
+            "SELECT t.LineType,t.LineCode,t.LineLabel,t.NoteRef,r.ComputedAmount FROM dbo.tblNORM_StatementLine t " +
             "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
-            "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId=t.ConfigurationReleaseId AND p.StatementCode=t.StatementCode " +
-            "AND p.LineCode=t.LineCode AND p.IsDeactivated=0 WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code " +
+            "WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code " +
             "AND t.IsDeactivated=0 ORDER BY t.SeqNo",
             NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code));
         bool hasForeignExchangeGains = false;
@@ -121,8 +120,7 @@ public class NORM_WordExport : IHttpHandler
                 string sourceCode = NORMHelper.Str(source, "LineCode");
                 if (!incomeComponents.Contains(sourceCode)) { continue; }
                 if (!source.IsNull("ComputedAmount")) { totalIncomeCurrent += NORMHelper.Dec(source, "ComputedAmount"); hasTotalIncomeCurrent = true; }
-                decimal? baseline = source.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(source, "AmountPrior");
-                decimal? effective = NORMStartOfYearSetup.FigureValue(priorFigures, code, sourceCode, baseline);
+                decimal? effective = NORMStartOfYearSetup.FigureValue(priorFigures, code, sourceCode, null);
                 if (effective.HasValue) { totalIncomePrior += effective.Value; hasTotalIncomePrior = true; }
             }
             if (!hasForeignExchangeGains)
@@ -139,43 +137,42 @@ public class NORM_WordExport : IHttpHandler
         }
         if (code == "SOFP")
         {
-            decimal? cashCurrent = StatementAmount(table, "Cash and cash equivalents", "PublishedCurrent") ?? StatementAmount(table, "Cash and cash equivalents", "ComputedAmount");
-            decimal? receivablesCurrent = StatementAmount(table, "Trade and other receivables", "PublishedCurrent") ?? StatementAmount(table, "Trade and other receivables", "ComputedAmount");
+            decimal? cashCurrent = StatementAmount(table, "Cash and cash equivalents", "ComputedAmount");
+            decimal? receivablesCurrent = StatementAmount(table, "Trade and other receivables", "ComputedAmount");
             decimal? cashPrior = EffectivePriorAmount(table, code, "Cash and cash equivalents");
             decimal? receivablesPrior = EffectivePriorAmount(table, code, "Trade and other receivables");
             if (cashCurrent.HasValue && receivablesCurrent.HasValue) financialAssetsCurrent = cashCurrent.Value + receivablesCurrent.Value;
             if (cashPrior.HasValue && receivablesPrior.HasValue) financialAssetsPrior = cashPrior.Value + receivablesPrior.Value;
 
-            Dictionary<string, decimal> auditedAssets = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
-            Dictionary<string, decimal> priorAssets = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
+            Dictionary<string, decimal> mappedAssets = LoadMappedAssetFigures(runId);
             string[] assetClasses = new string[] { "PPE_LAND", "PPE_BUILDINGS", "PPE_SPECIALIST_MILITARY_EQUIPMENT",
                 "PPE_INFRASTRUCTURE", "PPE_PLANT_AND_EQUIPMENT", "PPE_HERITAGE_AND_CULTURAL_ASSETS", "PPE_INTANGIBLES" };
             decimal currentNonFinancial = 0m, priorNonFinancial = 0m;
             bool hasCurrentNonFinancial = false, hasPriorNonFinancial = false;
             for (int i = 0; i < assetClasses.Length; i++)
             {
-                decimal? currentValue = SourceValue(auditedAssets, assetClasses[i]);
-                decimal? priorValue = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", assetClasses[i], SourceValue(priorAssets, assetClasses[i]));
+                decimal? currentValue = SourceValue(mappedAssets, assetClasses[i]);
+                decimal? priorValue = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", assetClasses[i], null);
                 if (currentValue.HasValue) { currentNonFinancial += currentValue.Value; hasCurrentNonFinancial = true; }
                 if (priorValue.HasValue) { priorNonFinancial += priorValue.Value; hasPriorNonFinancial = true; }
             }
             string[] otherNonFinancial = new string[] { "Inventories", "Prepayments" };
             for (int i = 0; i < otherNonFinancial.Length; i++)
             {
-                decimal? currentValue = StatementAmount(table, otherNonFinancial[i], "PublishedCurrent") ?? StatementAmount(table, otherNonFinancial[i], "ComputedAmount");
+                decimal? currentValue = StatementAmount(table, otherNonFinancial[i], "ComputedAmount");
                 decimal? priorValue = EffectivePriorAmount(table, code, otherNonFinancial[i]);
                 if (currentValue.HasValue) { currentNonFinancial += currentValue.Value; hasCurrentNonFinancial = true; }
                 if (priorValue.HasValue) { priorNonFinancial += priorValue.Value; hasPriorNonFinancial = true; }
             }
             if (hasCurrentNonFinancial) nonFinancialAssetsCurrent = currentNonFinancial;
             if (hasPriorNonFinancial) nonFinancialAssetsPrior = priorNonFinancial;
-            decimal? heldCurrent = StatementAmount(table, "Assets held for sale", "PublishedCurrent") ?? StatementAmount(table, "Assets held for sale", "ComputedAmount");
+            decimal? heldCurrent = StatementAmount(table, "Assets held for sale", "ComputedAmount");
             decimal? heldPrior = EffectivePriorAmount(table, code, "Assets held for sale");
             if (financialAssetsCurrent.HasValue && nonFinancialAssetsCurrent.HasValue && heldCurrent.HasValue)
                 totalAssetsCurrent = financialAssetsCurrent.Value + nonFinancialAssetsCurrent.Value + heldCurrent.Value;
             if (financialAssetsPrior.HasValue && nonFinancialAssetsPrior.HasValue && heldPrior.HasValue)
                 totalAssetsPrior = financialAssetsPrior.Value + nonFinancialAssetsPrior.Value + heldPrior.Value;
-            totalInterestLiabilitiesCurrent = StatementAmount(table, "Leases", "PublishedCurrent") ?? StatementAmount(table, "Leases", "ComputedAmount");
+            totalInterestLiabilitiesCurrent = StatementAmount(table, "Leases", "ComputedAmount");
             totalInterestLiabilitiesPrior = EffectivePriorAmount(table, code, "Leases");
         }
         html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>").Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
@@ -198,13 +195,11 @@ public class NORM_WordExport : IHttpHandler
                 html.Append("<tr class=\"section\"><th colspan=\"4\">").Append(Enc(NORMHelper.Str(row, "LineLabel"))).Append("</th></tr>");
                 continue;
             }
-            decimal? baselinePrior = row.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(row, "AmountPrior");
             string lineCode = NORMHelper.Str(row, "LineCode");
             if (code == "SOFP" && !hasFinancialAssetsHeading && String.Equals(lineCode, "Cash and cash equivalents", StringComparison.OrdinalIgnoreCase))
                 html.Append("<tr class=\"section\"><th colspan=\"4\">Financial assets</th></tr>");
-            decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, code, lineCode, baselinePrior);
+            decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, code, lineCode, null);
             decimal? effectiveCurrent = row.IsNull("ComputedAmount") ? (decimal?)null : NORMHelper.Dec(row, "ComputedAmount");
-            if (code == "SOFP" && !row.IsNull("PublishedCurrent")) effectiveCurrent = NORMHelper.Dec(row, "PublishedCurrent");
             string displayLabel = NORMHelper.Str(row, "LineLabel");
             if (code == "SOCI" && String.Equals(lineCode, "Total own-source income", StringComparison.OrdinalIgnoreCase))
             {
@@ -222,7 +217,7 @@ public class NORM_WordExport : IHttpHandler
             {
                 AppendStatementAmountRow(html, "Total financial assets", "", financialAssetsCurrent, financialAssetsPrior, true);
                 html.Append("<tr class=\"section\"><th colspan=\"4\">Non-financial assets</th></tr>");
-                AppendWordAssetSplits(html, releaseId);
+                AppendWordAssetSplits(html, runId, priorFigures);
                 continue;
             }
             if (code == "SOFP" && String.Equals(lineCode, "Total assets", StringComparison.OrdinalIgnoreCase))
@@ -239,7 +234,7 @@ public class NORM_WordExport : IHttpHandler
             }
             if (code == "SOFP" && String.Equals(lineCode, "Statement of Changes in Equity", StringComparison.OrdinalIgnoreCase))
             {
-                AppendWordEquityRows(html, releaseId, priorFigures);
+                AppendWordEquityRows(html, runId, priorFigures);
                 continue;
             }
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
@@ -247,11 +242,8 @@ public class NORM_WordExport : IHttpHandler
         }
         if (code == "SOCI")
         {
-            Dictionary<string, decimal> auditedOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "AuditedActual");
-            Dictionary<string, decimal> priorOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "PriorActual");
-            decimal? currentOci = SourceValue(auditedOci, "SOCE_TOTAL_OCI");
-            decimal? effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "SOCE_TOTAL_OCI",
-                SourceValue(priorOci, "SOCE_TOTAL_OCI"));
+            decimal? currentOci = LineResultValue(runId, "SOCE_TOTAL_OCI") ?? LineResultValue(runId, "OCI_REVALUATION");
+            decimal? effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "SOCE_TOTAL_OCI", null);
             effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "OCI_REVALUATION", effectiveOciPrior);
             decimal? currentResult = operatingResultCurrent;
             decimal? priorResult = operatingResultPrior;
@@ -277,10 +269,9 @@ public class NORM_WordExport : IHttpHandler
         return null;
     }
 
-    private void AppendWordAssetSplits(StringBuilder html, int releaseId)
+    private void AppendWordAssetSplits(StringBuilder html, int runId, Dictionary<string, decimal> priorFigures)
     {
-        Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
-        Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
+        Dictionary<string, decimal> current = LoadMappedAssetFigures(runId);
         string[,] classes = new string[,] { { "PPE_LAND", "Land" }, { "PPE_BUILDINGS", "Buildings" },
             { "PPE_SPECIALIST_MILITARY_EQUIPMENT", "Specialist military equipment" },
             { "PPE_INFRASTRUCTURE", "Infrastructure" }, { "PPE_PLANT_AND_EQUIPMENT", "Plant and equipment" },
@@ -288,15 +279,14 @@ public class NORM_WordExport : IHttpHandler
         for (int i = 0; i < classes.GetLength(0); i++)
         {
             string code = classes[i, 0];
-            decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, SourceValue(prior, code));
+            decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, null);
             AppendStatementAmountRow(html, classes[i, 1], "3.2A", SourceValue(current, code), effectivePrior, false);
         }
     }
 
-    private void AppendWordEquityRows(StringBuilder html, int releaseId, Dictionary<string, decimal> priorFigures)
+    private void AppendWordEquityRows(StringBuilder html, int runId, Dictionary<string, decimal> priorFigures)
     {
-        Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
-        Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
+        Dictionary<string, decimal> current = LoadMappedEquityFigures(runId);
         string[,] classes = new string[,] {
             { "EQUITY_CONTRIBUTED", "Contributed equity" },
             { "EQUITY_RETAINED", "(Accumulated Deficit) / Retained surpluses" },
@@ -307,14 +297,14 @@ public class NORM_WordExport : IHttpHandler
         for (int i = 0; i < classes.GetLength(0); i++)
         {
             decimal? currentValue = SourceValue(current, classes[i, 0]);
-            decimal? priorValue = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", classes[i, 0], SourceValue(prior, classes[i, 0]));
+            decimal? priorValue = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", classes[i, 0], null);
             AppendStatementAmountRow(html, classes[i, 1], "", currentValue, priorValue, false);
             if (currentValue.HasValue) { currentTotal += currentValue.Value; hasCurrent = true; }
             if (priorValue.HasValue) { priorTotal += priorValue.Value; hasPrior = true; }
         }
-        decimal? controlledCurrentTotal = SourceValue(current, "EQUITY_TOTAL") ?? (hasCurrent ? (decimal?)currentTotal : null);
+        decimal? controlledCurrentTotal = LineResultValue(runId, "Statement of Changes in Equity") ?? (hasCurrent ? (decimal?)currentTotal : null);
         decimal? controlledPriorTotal = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_TOTAL",
-            SourceValue(prior, "EQUITY_TOTAL") ?? (hasPrior ? (decimal?)priorTotal : null));
+            hasPrior ? (decimal?)priorTotal : null);
         AppendStatementAmountRow(html, "Total equity", "", controlledCurrentTotal, controlledPriorTotal, true);
     }
 
@@ -324,8 +314,7 @@ public class NORM_WordExport : IHttpHandler
         {
             DataRow row = table.Rows[i];
             if (!String.Equals(NORMHelper.Str(row, "LineCode"), lineCode, StringComparison.OrdinalIgnoreCase)) { continue; }
-            decimal? baseline = row.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(row, "AmountPrior");
-            return NORMStartOfYearSetup.FigureValue(priorFigures, statementCode, lineCode, baseline);
+            return NORMStartOfYearSetup.FigureValue(priorFigures, statementCode, lineCode, null);
         }
         return null;
     }
@@ -333,16 +322,16 @@ public class NORM_WordExport : IHttpHandler
     private void AppendEquity(StringBuilder html, int runId, int releaseId, int year)
     {
         DataTable table = NORMHelper.Query(
-            "SELECT r.LineCode,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_LineResult r LEFT JOIN dbo.tblNORM_PublishedFigure p " +
-            "ON p.ConfigurationReleaseId=@release AND p.StatementCode=r.StatementCode AND p.LineCode=r.LineCode AND p.IsDeactivated=0 " +
+            "SELECT r.LineCode,r.ComputedAmount FROM dbo.tblNORM_LineResult r " +
             "WHERE r.CalculationRunId=@run AND r.LineCode IN ('Operating result','Statement of Changes in Equity') AND r.IsDeactivated=0",
-            NORMHelper.P("@release", releaseId), NORMHelper.P("@run", runId));
+            NORMHelper.P("@run", runId));
         decimal result = LineAmount(table, "Operating result", "ComputedAmount");
-        decimal baselinePriorResult = LineAmount(table, "Operating result", "AmountPrior");
-        decimal priorResult = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Operating result", baselinePriorResult) ?? 0m;
+        decimal priorResult = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Operating result",
+            NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "Operating result", null)) ?? 0m;
         decimal closing = LineAmount(table, "Statement of Changes in Equity", "ComputedAmount");
-        decimal baselineOpening = LineAmount(table, "Statement of Changes in Equity", "AmountPrior");
-        decimal opening = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Statement of Changes in Equity", baselineOpening) ?? 0m;
+        decimal opening = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_TOTAL",
+            NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "Statement of Changes in Equity",
+                NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Statement of Changes in Equity", null))) ?? 0m;
         html.Append("<section class=\"page\"><h2>Statement of Changes in Equity</h2><p>For the year ended 30 June ").Append(year).Append("</p><table><thead><tr><th></th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
         AppendAmountRow(html, "Opening balance", opening, null, false);
         AppendAmountRow(html, "Total comprehensive income/(loss)", result, priorResult, false);
@@ -359,13 +348,12 @@ public class NORM_WordExport : IHttpHandler
             "ORDER BY CashFlowClassSnapshot",
             NORMHelper.P("@run", runId));
         DataTable cash = NORMHelper.Query(
-            "SELECT r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_LineResult r LEFT JOIN dbo.tblNORM_PublishedFigure p " +
-            "ON p.ConfigurationReleaseId=@release AND p.StatementCode=r.StatementCode AND p.LineCode=r.LineCode AND p.IsDeactivated=0 " +
+            "SELECT r.ComputedAmount FROM dbo.tblNORM_LineResult r " +
             "WHERE r.CalculationRunId=@run AND r.LineCode='Cash and cash equivalents' AND r.IsDeactivated=0",
-            NORMHelper.P("@release", releaseId), NORMHelper.P("@run", runId));
+            NORMHelper.P("@run", runId));
         decimal ending = cash.Rows.Count == 0 ? 0m : NORMHelper.Dec(cash.Rows[0], "ComputedAmount");
-        decimal? baselineBeginning = cash.Rows.Count == 0 || cash.Rows[0].IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(cash.Rows[0], "AmountPrior");
-        decimal beginning = NORMStartOfYearSetup.FigureValue(priorFigures, "CASH", "Cash and cash equivalents", baselineBeginning) ?? 0m;
+        decimal beginning = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "Cash and cash equivalents",
+            NORMStartOfYearSetup.FigureValue(priorFigures, "CASH", "Cash and cash equivalents", null)) ?? 0m;
         html.Append("<section class=\"page\"><h2>Cash Flow Statement</h2><p>For the year ended 30 June ").Append(year).Append("</p><table><thead><tr><th></th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
         string[] categories = new string[] { "OPERATING", "INVESTING", "FINANCING" };
         decimal net = 0m;
@@ -450,6 +438,61 @@ public class NORM_WordExport : IHttpHandler
     {
         decimal value;
         return values != null && values.TryGetValue(code, out value) ? (decimal?)value : null;
+    }
+
+    private decimal? LineResultValue(int runId, string lineCode)
+    {
+        object value = NORMHelper.Scalar(
+            "SELECT TOP 1 ComputedAmount FROM dbo.tblNORM_LineResult WHERE CalculationRunId=@run " +
+            "AND LineCode=@line AND IsDeactivated=0 ORDER BY LineResultId DESC",
+            NORMHelper.P("@run", runId), NORMHelper.P("@line", lineCode));
+        return value == null || value == DBNull.Value ? (decimal?)null : Convert.ToDecimal(value);
+    }
+
+    private Dictionary<string, decimal> LoadMappedAssetFigures(int runId)
+    {
+        DataTable table = NORMHelper.Query(
+            "SELECT CASE WHEN UPPER(NoteSubLineSnapshot) LIKE 'LAND%' THEN 'PPE_LAND' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'BUILD%' THEN 'PPE_BUILDINGS' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'SME%' THEN 'PPE_SPECIALIST_MILITARY_EQUIPMENT' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'IFA%' THEN 'PPE_INFRASTRUCTURE' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'HCA%' THEN 'PPE_HERITAGE_AND_CULTURAL_ASSETS' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS%' OR UPPER(NoteSubLineSnapshot) LIKE '%INTANGIBLE%' THEN 'PPE_INTANGIBLES' " +
+            "ELSE 'PPE_PLANT_AND_EQUIPMENT' END AS ClassCode,SUM(PresentedContribution) AS Amount " +
+            "FROM dbo.tblNORM_Lineage l INNER JOIN dbo.tblNORM_LineResult r ON r.LineResultId=l.LineResultId " +
+            "WHERE l.CalculationRunId=@run AND r.LineCode='Property plant and equipment' AND l.DerivationCode='GL_MAPPING' " +
+            "GROUP BY CASE WHEN UPPER(NoteSubLineSnapshot) LIKE 'LAND%' THEN 'PPE_LAND' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'BUILD%' THEN 'PPE_BUILDINGS' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'SME%' THEN 'PPE_SPECIALIST_MILITARY_EQUIPMENT' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'IFA%' THEN 'PPE_INFRASTRUCTURE' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'HCA%' THEN 'PPE_HERITAGE_AND_CULTURAL_ASSETS' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS%' OR UPPER(NoteSubLineSnapshot) LIKE '%INTANGIBLE%' THEN 'PPE_INTANGIBLES' " +
+            "ELSE 'PPE_PLANT_AND_EQUIPMENT' END", NORMHelper.P("@run", runId));
+        return FigureDictionary(table, "ClassCode");
+    }
+
+    private Dictionary<string, decimal> LoadMappedEquityFigures(int runId)
+    {
+        DataTable table = NORMHelper.Query(
+            "SELECT CASE WHEN LOWER(NoteSubLineSnapshot) LIKE '%contributed%' THEN 'EQUITY_CONTRIBUTED' " +
+            "WHEN LOWER(NoteSubLineSnapshot) LIKE '%reserve%' THEN 'EQUITY_RESERVES' " +
+            "WHEN LOWER(NoteSubLineSnapshot) LIKE '%retained%' OR LOWER(NoteSubLineSnapshot) LIKE '%accumulated%' THEN 'EQUITY_RETAINED' " +
+            "ELSE 'EQUITY_OTHER' END AS ClassCode,SUM(PresentedContribution) AS Amount " +
+            "FROM dbo.tblNORM_Lineage l INNER JOIN dbo.tblNORM_LineResult r ON r.LineResultId=l.LineResultId " +
+            "WHERE l.CalculationRunId=@run AND r.LineCode='Statement of Changes in Equity' " +
+            "GROUP BY CASE WHEN LOWER(NoteSubLineSnapshot) LIKE '%contributed%' THEN 'EQUITY_CONTRIBUTED' " +
+            "WHEN LOWER(NoteSubLineSnapshot) LIKE '%reserve%' THEN 'EQUITY_RESERVES' " +
+            "WHEN LOWER(NoteSubLineSnapshot) LIKE '%retained%' OR LOWER(NoteSubLineSnapshot) LIKE '%accumulated%' THEN 'EQUITY_RETAINED' " +
+            "ELSE 'EQUITY_OTHER' END", NORMHelper.P("@run", runId));
+        return FigureDictionary(table, "ClassCode");
+    }
+
+    private Dictionary<string, decimal> FigureDictionary(DataTable table, string codeColumn)
+    {
+        Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < table.Rows.Count; i++)
+            values[NORMHelper.Str(table.Rows[i], codeColumn)] = NORMHelper.Dec(table.Rows[i], "Amount");
+        return values;
     }
 
     private decimal LineAmount(DataTable table, string lineCode, string column)

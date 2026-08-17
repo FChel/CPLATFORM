@@ -80,8 +80,7 @@ namespace CPlatform.NORM
             string entityCode = NORMHelper.Str(context, "EntityCode");
             int importId = NORMHelper.Int(context, "ImportId");
             Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId, fy);
-            Dictionary<string, decimal> budgets = NORMStatementEnhancements.LoadBudgetFigures(runId);
-            NORMStartOfYearSetup.OverlayFigures(budgets, NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode));
+            Dictionary<string, decimal> budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode);
             Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
             meta["runId"] = runId;
             meta["runGuid"] = Convert.ToString(context["RunGuid"]);
@@ -239,19 +238,18 @@ namespace CPlatform.NORM
             Dictionary<string, decimal> priorFigures)
         {
             DataTable table = NORMHelper.Query(
-                "SELECT r.LineCode,r.LineResultId,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_LineResult r " +
-                "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId=@release AND p.StatementCode=r.StatementCode " +
-                "AND p.LineCode=r.LineCode AND p.IsDeactivated=0 " +
+                "SELECT r.LineCode,r.LineResultId,r.ComputedAmount FROM dbo.tblNORM_LineResult r " +
                 "WHERE r.CalculationRunId=@run AND r.IsDeactivated=0 AND r.LineCode IN ('Operating result','Statement of Changes in Equity')",
-                NORMHelper.P("@release", releaseId), NORMHelper.P("@run", runId));
+                NORMHelper.P("@run", runId));
             DataRow result = FindLine(table, "Operating result");
             DataRow equity = FindLine(table, "Statement of Changes in Equity");
             decimal currentResult = result == null ? 0m : NORMHelper.Dec(result, "ComputedAmount");
-            decimal? baselinePriorResult = result == null || result.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(result, "AmountPrior");
-            decimal priorResult = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Operating result", baselinePriorResult) ?? 0m;
+            decimal priorResult = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Operating result",
+                NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "Operating result", null)) ?? 0m;
             decimal closing = equity == null ? 0m : NORMHelper.Dec(equity, "ComputedAmount");
-            decimal? baselineOpening = equity == null || equity.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(equity, "AmountPrior");
-            decimal opening = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Statement of Changes in Equity", baselineOpening) ?? 0m;
+            decimal opening = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_TOTAL",
+                NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "Statement of Changes in Equity",
+                    NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Statement of Changes in Equity", null))) ?? 0m;
             List<Dictionary<string, object>> equitySources = SourcesFor(equity, lineage);
             List<Dictionary<string, object>> contributedSources = FilterEquitySources(equitySources, "Contributed equity");
             List<Dictionary<string, object>> retainedSources = FilterEquitySources(equitySources, "Retained surplus/(Accumulated deficit)");
@@ -260,13 +258,12 @@ namespace CPlatform.NORM
             decimal retainedClose = SumSources(retainedSources);
             decimal reserveClose = SumSources(reserveSources);
 
-            Dictionary<string, decimal> audited = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "AuditedActual");
-            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "PriorActual");
+            Dictionary<string, decimal> prior = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             foreach (KeyValuePair<string, decimal> item in priorFigures)
                 if (item.Key.StartsWith("SOCE|", StringComparison.OrdinalIgnoreCase)) prior[item.Key.Substring(5)] = item.Value;
-            decimal contributedOpen = SourceFigure(audited, "SOCE_CONTRIBUTED_OPEN", contributedClose);
-            decimal retainedOpen = SourceFigure(audited, "SOCE_RETAINED_OPEN", retainedClose - currentResult);
-            decimal reserveOpen = SourceFigure(audited, "SOCE_RESERVE_OPEN", reserveClose);
+            decimal contributedOpen = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_CONTRIBUTED", contributedClose) ?? contributedClose;
+            decimal retainedOpen = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_RETAINED", retainedClose - currentResult) ?? (retainedClose - currentResult);
+            decimal reserveOpen = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_RESERVES", reserveClose) ?? reserveClose;
             decimal contributedMovement = contributedClose - contributedOpen;
             decimal retainedMovement = retainedClose - retainedOpen;
             decimal reserveMovement = reserveClose - reserveOpen;
@@ -344,6 +341,15 @@ namespace CPlatform.NORM
             return values != null && values.TryGetValue(code, out amount) ? (decimal?)amount : null;
         }
 
+        private decimal? LineResultAmount(int runId, string lineCode)
+        {
+            object value = NORMHelper.Scalar(
+                "SELECT TOP 1 ComputedAmount FROM dbo.tblNORM_LineResult WHERE CalculationRunId=@run " +
+                "AND LineCode=@line AND IsDeactivated=0 ORDER BY LineResultId DESC",
+                NORMHelper.P("@run", runId), NORMHelper.P("@line", lineCode));
+            return value == null || value == DBNull.Value ? (decimal?)null : Convert.ToDecimal(value);
+        }
+
         private List<Dictionary<string, object>> FilterEquitySources(List<Dictionary<string, object>> sources, string label)
         {
             List<Dictionary<string, object>> values = new List<Dictionary<string, object>>();
@@ -411,19 +417,18 @@ namespace CPlatform.NORM
             }
 
             DataTable cashTable = NORMHelper.Query(
-                "SELECT r.LineResultId,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_LineResult r " +
-                "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId=@release AND p.StatementCode=r.StatementCode " +
-                "AND p.LineCode=r.LineCode AND p.IsDeactivated=0 " +
+                "SELECT r.LineResultId,r.ComputedAmount FROM dbo.tblNORM_LineResult r " +
                 "WHERE r.CalculationRunId=@run AND r.LineCode='Cash and cash equivalents' AND r.IsDeactivated=0",
-                NORMHelper.P("@release", releaseId), NORMHelper.P("@run", runId));
+                NORMHelper.P("@run", runId));
             DataRow cashRow = cashTable.Rows.Count == 0 ? null : cashTable.Rows[0];
             decimal ending = cashRow == null ? 0m : NORMHelper.Dec(cashRow, "ComputedAmount");
-            decimal? baselineBeginning = cashRow == null || cashRow.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(cashRow, "AmountPrior");
-            decimal beginning = NORMStartOfYearSetup.FigureValue(priorFigures, "CASH", "Cash and cash equivalents", baselineBeginning) ?? (ending - classifiedNet);
+            decimal? comparativeCash = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "Cash and cash equivalents",
+                NORMStartOfYearSetup.FigureValue(priorFigures, "CASH", "Cash and cash equivalents", null));
+            decimal beginning = comparativeCash ?? (ending - classifiedNet);
             rows.Add(SimpleRow("total", "CF_NET", "Net increase/(decrease) in cash held", "5.5", classifiedNet, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("line", "CF_OPEN", "Cash and cash equivalents at the beginning of the reporting period", null, beginning, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("total", "CF_CLOSE", "Cash and cash equivalents at the end of the reporting period", "3.1A", ending,
-                cashRow == null || cashRow.IsNull("AmountPrior") ? (decimal?)null : beginning, cashRow != null,
+                comparativeCash, cashRow != null,
                 cashRow == null ? 0L : NORMHelper.Long(cashRow, "LineResultId"), SourcesFor(cashRow, lineage)));
             ApplyBudget(rows, "CASH", budgets);
             Dictionary<string, object> statement = new Dictionary<string, object>();
@@ -590,11 +595,9 @@ namespace CPlatform.NORM
         {
             DataTable table = NORMHelper.Query(
                 "SELECT t.StatementLineId,t.SeqNo,t.LineType,t.LineCode,t.LineLabel,t.NoteRef,t.NaturalSign,t.IsClickable," +
-                "r.LineResultId,r.ComputedAmount,r.PublishedAmount,r.Variance,r.StatusCode,p.AmountPrior " +
+                "r.LineResultId,r.ComputedAmount,r.PublishedAmount,r.Variance,r.StatusCode " +
                 "FROM dbo.tblNORM_StatementLine t " +
                 "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId = t.StatementLineId AND r.CalculationRunId = @run AND r.IsDeactivated = 0 " +
-                "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId = t.ConfigurationReleaseId " +
-                "AND p.StatementCode = t.StatementCode AND p.LineCode = t.LineCode AND p.IsDeactivated = 0 " +
                 "WHERE t.ConfigurationReleaseId = @release AND t.StatementCode = @statement AND t.IsDeactivated = 0 ORDER BY t.SeqNo",
                 NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId),
                 NORMHelper.P("@statement", statementCode));
@@ -710,22 +713,20 @@ namespace CPlatform.NORM
                 row["resultId"] = resultId;
                 row["computed"] = computed;
                 row["published"] = source.IsNull("PublishedAmount") ? (object)null : NORMHelper.Dec(source, "PublishedAmount");
-                decimal? baselinePrior = source.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(source, "AmountPrior");
-                decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, statementCode, lineCode, baselinePrior);
+                decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, statementCode, lineCode, null);
                 row["prior"] = effectivePrior.HasValue ? (object)effectivePrior.Value : null;
                 row["budget"] = BudgetFor(budgets, statementCode, lineCode);
                 row["variance"] = source.IsNull("Variance") ? (object)null : NORMHelper.Dec(source, "Variance");
                 row["status"] = source.IsNull("StatusCode") ? "Mapped" : NORMHelper.Str(source, "StatusCode");
                 row["sources"] = resultId > 0 && lineage.ContainsKey(resultId)
                     ? (object)lineage[resultId] : new List<Dictionary<string, object>>();
-                if (statementCode == "SOFP") AlignPublishedFaceRow(row, computed);
                 if (statementCode == "SOFP" && lineCode == "Property plant and equipment")
                 {
                     AddAssetSplitRows(rows, row, releaseId, budgets, priorFigures);
                 }
                 else if (statementCode == "SOFP" && lineCode == "Statement of Changes in Equity")
                 {
-                    AddPublishedEquityRows(rows, row, releaseId, budgets, priorFigures);
+                    AddEquityRows(rows, row, releaseId, budgets, priorFigures);
                 }
                 else { rows.Add(row); }
                 if (statementCode == "SOCI")
@@ -742,16 +743,11 @@ namespace CPlatform.NORM
                 rows.Add(SimpleRow("total", "TOTAL_GAINS", "Total gains", null, gains, null, false, 0L, new List<Dictionary<string, object>>()));
             if (statementCode == "SOCI")
             {
-                Dictionary<string, decimal> auditedOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "AuditedActual");
-                Dictionary<string, decimal> priorOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "PriorActual");
-                Dictionary<string, decimal> budgetOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "OriginalBudget");
-                decimal? ociCurrent = SourceFigureNullable(auditedOci, "SOCE_TOTAL_OCI");
-                decimal? ociPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "SOCE_TOTAL_OCI",
-                    SourceFigureNullable(priorOci, "SOCE_TOTAL_OCI"));
+                decimal? ociCurrent = LineResultAmount(runId, "SOCE_TOTAL_OCI") ?? LineResultAmount(runId, "OCI_REVALUATION");
+                decimal? ociPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "SOCE_TOTAL_OCI", null);
                 ociPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "OCI_REVALUATION", ociPrior);
-                decimal? ociBudget = SourceFigureNullable(budgetOci, "SOCE_TOTAL_OCI");
-                object configuredOciBudget = BudgetFor(budgets, "SOCE", "SOCE_TOTAL_OCI");
-                if (configuredOciBudget != null) { ociBudget = Convert.ToDecimal(configuredOciBudget); }
+                decimal? ociBudget = NORMStartOfYearSetup.FigureValue(budgets, "SOCE", "SOCE_TOTAL_OCI", null);
+                ociBudget = NORMStartOfYearSetup.FigureValue(budgets, "SOCI", "OCI_REVALUATION", ociBudget);
                 rows.Add(SimpleRow("major", null, "OTHER COMPREHENSIVE INCOME / (LOSS)", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 rows.Add(SimpleRow("subsection", null, "Items not subject to subsequent reclassification to net cost of services", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 Dictionary<string, object> revaluation = SimpleRow("line", "OCI_REVALUATION",
@@ -933,9 +929,7 @@ namespace CPlatform.NORM
                 if (!groups.ContainsKey(label)) groups[label] = new List<Dictionary<string, object>>();
                 groups[label].Add(sources[i]);
             }
-            Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
-            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
-            Dictionary<string, decimal> budget = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "OriginalBudget");
+            Dictionary<string, decimal> published = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
             string[,] classes = new string[,]
             {
                 { "PPE_LAND", "Land" }, { "PPE_BUILDINGS", "Buildings" },
@@ -951,33 +945,31 @@ namespace CPlatform.NORM
                 if (!groups.TryGetValue(label, out classSources)) classSources = new List<Dictionary<string, object>>();
                 decimal mapped = 0m;
                 for (int i = 0; i < classSources.Count; i++) mapped += Convert.ToDecimal(classSources[i]["amount"]);
-                decimal? controlledCurrent = SourceFigureNullable(current, code);
-                decimal? controlledPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, SourceFigureNullable(prior, code));
-                decimal? controlledBudget = NORMStartOfYearSetup.FigureValue(budgets, "SOFP", code, SourceFigureNullable(budget, code));
-                List<Dictionary<string, object>> presentedSources = new List<Dictionary<string, object>>(classSources);
-                if (controlledCurrent.HasValue && controlledCurrent.Value != mapped)
-                    presentedSources.Add(PublishedAlignmentSource(controlledCurrent.Value - mapped));
+                decimal? mappedCurrent = classSources.Count > 0 ? (decimal?)mapped : null;
+                decimal? publishedCurrent = SourceFigureNullable(published, code);
+                decimal? controlledPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, null);
+                decimal? controlledBudget = NORMStartOfYearSetup.FigureValue(budgets, "SOFP", code, null);
                 Dictionary<string, object> split = new Dictionary<string, object>(original);
                 split["type"] = "line";
                 split["code"] = code;
                 split["label"] = label;
-                split["computed"] = controlledCurrent.HasValue ? (object)controlledCurrent.Value : mapped;
-                split["published"] = controlledCurrent.HasValue ? (object)controlledCurrent.Value : null;
+                split["computed"] = mappedCurrent.HasValue ? (object)mappedCurrent.Value : null;
+                split["published"] = publishedCurrent.HasValue ? (object)publishedCurrent.Value : null;
                 split["prior"] = controlledPrior.HasValue ? (object)controlledPrior.Value : null;
                 split["budget"] = controlledBudget.HasValue ? (object)controlledBudget.Value : null;
-                split["variance"] = controlledCurrent.HasValue ? (object)0m : null;
-                split["status"] = controlledCurrent.HasValue ? "Tied" : "Mapped";
-                split["sources"] = presentedSources;
+                split["variance"] = mappedCurrent.HasValue && publishedCurrent.HasValue
+                    ? (object)(mappedCurrent.Value - publishedCurrent.Value) : null;
+                split["status"] = !publishedCurrent.HasValue ? "Mapped" :
+                    (mappedCurrent.HasValue && Math.Abs(mappedCurrent.Value - publishedCurrent.Value) <= 0.001m ? "Tied" : "Variance");
+                split["sources"] = classSources;
                 rows.Add(split);
             }
         }
 
-        private void AddPublishedEquityRows(List<object> rows, Dictionary<string, object> original, int releaseId,
+        private void AddEquityRows(List<object> rows, Dictionary<string, object> original, int releaseId,
             Dictionary<string, decimal> budgets, Dictionary<string, decimal> priorFigures)
         {
-            Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
-            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
-            Dictionary<string, decimal> budget = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "OriginalBudget");
+            Dictionary<string, decimal> published = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
             List<Dictionary<string, object>> sources = original["sources"] as List<Dictionary<string, object>>
                 ?? new List<Dictionary<string, object>>();
             string[,] classes = new string[,]
@@ -986,7 +978,7 @@ namespace CPlatform.NORM
                 { "EQUITY_RETAINED", "(Accumulated Deficit) / Retained surpluses", "Retained surplus/(Accumulated deficit)" },
                 { "EQUITY_RESERVES", "Reserves", "Reserves" }
             };
-            decimal currentTotal = 0m, priorTotal = 0m, budgetTotal = 0m;
+            decimal priorTotal = 0m, budgetTotal = 0m;
             bool hasPriorTotal = false, hasBudgetTotal = false;
             for (int c = 0; c < classes.GetLength(0); c++)
             {
@@ -994,72 +986,46 @@ namespace CPlatform.NORM
                 string label = classes[c, 1];
                 List<Dictionary<string, object>> classSources = FilterEquitySources(sources, classes[c, 2]);
                 decimal mapped = SumSources(classSources);
-                decimal controlledCurrent = SourceFigureNullable(current, code) ?? mapped;
-                decimal? controlledPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, SourceFigureNullable(prior, code));
-                decimal? controlledBudget = NORMStartOfYearSetup.FigureValue(budgets, "SOFP", code, SourceFigureNullable(budget, code));
-                List<Dictionary<string, object>> presentedSources = new List<Dictionary<string, object>>(classSources);
-                if (controlledCurrent != mapped) presentedSources.Add(PublishedAlignmentSource(controlledCurrent - mapped));
+                decimal? mappedCurrent = classSources.Count > 0 ? (decimal?)mapped : null;
+                decimal? publishedCurrent = SourceFigureNullable(published, code);
+                decimal? controlledPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, null);
+                decimal? controlledBudget = NORMStartOfYearSetup.FigureValue(budgets, "SOFP", code, null);
                 Dictionary<string, object> split = new Dictionary<string, object>(original);
                 split["type"] = "line";
                 split["code"] = code;
                 split["label"] = label;
                 split["note"] = null;
-                split["computed"] = controlledCurrent;
-                split["published"] = controlledCurrent;
+                split["computed"] = mappedCurrent.HasValue ? (object)mappedCurrent.Value : null;
+                split["published"] = publishedCurrent.HasValue ? (object)publishedCurrent.Value : null;
                 split["prior"] = controlledPrior.HasValue ? (object)controlledPrior.Value : null;
                 split["budget"] = controlledBudget.HasValue ? (object)controlledBudget.Value : null;
-                split["variance"] = 0m;
-                split["status"] = "Tied";
-                split["sources"] = presentedSources;
+                split["variance"] = mappedCurrent.HasValue && publishedCurrent.HasValue
+                    ? (object)(mappedCurrent.Value - publishedCurrent.Value) : null;
+                split["status"] = !publishedCurrent.HasValue ? "Mapped" :
+                    (mappedCurrent.HasValue && Math.Abs(mappedCurrent.Value - publishedCurrent.Value) <= 0.001m ? "Tied" : "Variance");
+                split["sources"] = classSources;
                 rows.Add(split);
-                currentTotal += controlledCurrent;
                 if (controlledPrior.HasValue) { priorTotal += controlledPrior.Value; hasPriorTotal = true; }
                 if (controlledBudget.HasValue) { budgetTotal += controlledBudget.Value; hasBudgetTotal = true; }
             }
-            decimal controlledTotal = SourceFigureNullable(current, "EQUITY_TOTAL") ?? currentTotal;
+            decimal? mappedTotal = original["computed"] == null ? (decimal?)null : Convert.ToDecimal(original["computed"]);
+            decimal? publishedTotal = SourceFigureNullable(published, "EQUITY_TOTAL");
             decimal? controlledPriorTotal = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", "EQUITY_TOTAL",
-                SourceFigureNullable(prior, "EQUITY_TOTAL") ?? (hasPriorTotal ? (decimal?)priorTotal : null));
+                hasPriorTotal ? (decimal?)priorTotal : null);
             decimal? controlledBudgetTotal = NORMStartOfYearSetup.FigureValue(budgets, "SOFP", "EQUITY_TOTAL",
-                SourceFigureNullable(budget, "EQUITY_TOTAL") ?? (hasBudgetTotal ? (decimal?)budgetTotal : null));
+                hasBudgetTotal ? (decimal?)budgetTotal : null);
             original["type"] = "total";
             original["label"] = "Total equity";
             original["note"] = null;
-            original["computed"] = controlledTotal;
-            original["published"] = controlledTotal;
+            original["computed"] = mappedTotal.HasValue ? (object)mappedTotal.Value : null;
+            original["published"] = publishedTotal.HasValue ? (object)publishedTotal.Value : original["published"];
             original["prior"] = controlledPriorTotal.HasValue ? (object)controlledPriorTotal.Value : null;
             original["budget"] = controlledBudgetTotal.HasValue ? (object)controlledBudgetTotal.Value : null;
-            original["variance"] = 0m;
-            original["status"] = "Tied";
+            original["variance"] = mappedTotal.HasValue && publishedTotal.HasValue
+                ? (object)(mappedTotal.Value - publishedTotal.Value) : null;
+            original["status"] = !publishedTotal.HasValue ? "Mapped" :
+                (mappedTotal.HasValue && Math.Abs(mappedTotal.Value - publishedTotal.Value) <= 0.001m ? "Tied" : "Variance");
             rows.Add(original);
-        }
-
-        private void AlignPublishedFaceRow(Dictionary<string, object> row, decimal mappedAmount)
-        {
-            if (row["published"] == null || String.Equals(Convert.ToString(row["type"]), "section", StringComparison.OrdinalIgnoreCase)) return;
-            decimal published = Convert.ToDecimal(row["published"]);
-            decimal adjustment = published - mappedAmount;
-            if (adjustment != 0m)
-            {
-                List<Dictionary<string, object>> sources = row["sources"] as List<Dictionary<string, object>>;
-                if (sources == null) { sources = new List<Dictionary<string, object>>(); row["sources"] = sources; }
-                sources.Add(PublishedAlignmentSource(adjustment));
-            }
-            row["computed"] = published;
-            row["variance"] = 0m;
-            row["status"] = "Tied";
-        }
-
-        private Dictionary<string, object> PublishedAlignmentSource(decimal adjustment)
-        {
-            Dictionary<string, object> alignment = new Dictionary<string, object>();
-            alignment["row"] = 0; alignment["ledger"] = "NORM"; alignment["gl"] = "PUBLISHED-ALIGN";
-            alignment["text"] = "Controlled alignment to the audited financial statements";
-            alignment["sourceAmount"] = adjustment * 1000m; alignment["movement"] = 0m; alignment["amount"] = adjustment;
-            alignment["derivation"] = "PUBLISHED_ALIGNMENT"; alignment["mappingId"] = null;
-            alignment["mapping"] = "Audited publication baseline less mapped trial-balance result";
-            alignment["accountType"] = "Presentation adjustment"; alignment["note"] = "Audited statement alignment";
-            alignment["cash"] = ""; alignment["synthetic"] = true; alignment["sapUrl"] = "";
-            return alignment;
         }
 
         private int SplitSortOrder(string label)
@@ -1215,12 +1181,15 @@ namespace CPlatform.NORM
             AddEnhancementValidation(validations, "CASH_JOURNAL_APPROVAL", "Cash-flow journals are approved", "Warning",
                 journalGaps == 0 ? "Pass" : "Warning", journals.Rows.Count + " journal(s); " + journalGaps + " are not yet approved and are excluded from the cash-flow statement.");
 
-            Dictionary<string, decimal> budgets = NORMStatementEnhancements.LoadBudgetFigures(runId);
-            DataTable budgetRegister = NORMStatementEnhancements.LoadBudgetRegister(runId);
-            bool budgetComplete = budgetRegister.Rows.Count > 0 && budgets.Count == budgetRegister.Rows.Count;
+            string entityCode = Convert.ToString(NORMHelper.Scalar(
+                "SELECT TOP 1 i.EntityCode FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i " +
+                "ON i.ImportId=r.ImportId WHERE r.CalculationRunId=@run", NORMHelper.P("@run", runId)));
+            Dictionary<string, decimal> budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode);
+            Dictionary<string, decimal> comparatives = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
+            bool budgetComplete = budgets.Count > 0;
             AddEnhancementValidation(validations, "ORIGINAL_BUDGET_INPUT", "Original Budget figures are loaded", "Warning",
-                budgetComplete ? "Pass" : "Warning", budgets.Count + " of " + budgetRegister.Rows.Count +
-                " controlled budget figures are loaded; incomplete PRIMA budget cells show dashes.");
+                budgetComplete ? "Pass" : "Warning", budgets.Count +
+                " figures were extracted from the current Portfolio Budget Statements upload; unmatched cells show dashes.");
 
             DataTable equityCheck = NORMHelper.Query(
                 "SELECT LineCode,ComputedAmount FROM dbo.tblNORM_LineResult WHERE CalculationRunId=@run " +
@@ -1236,16 +1205,11 @@ namespace CPlatform.NORM
                 "Net assets " + netAssets.ToString("N3") + "; total equity " + totalEquity.ToString("N3") +
                 "; difference " + equityDifference.ToString("N3") + " ($'000)." );
 
-            int publicSourceCount = 0;
-            object sourceCount = NORMHelper.Scalar("SELECT CASE WHEN OBJECT_ID('dbo.tblNORM_SourceFigure','U') IS NULL THEN 0 ELSE " +
-                "(SELECT COUNT(*) FROM dbo.tblNORM_SourceFigure f INNER JOIN dbo.tblNORM_CalculationRun r " +
-                "ON r.ConfigurationReleaseId=f.ConfigurationReleaseId WHERE r.CalculationRunId=@run AND f.IsDeactivated=0) END",
-                NORMHelper.P("@run", runId));
-            if (sourceCount != null) publicSourceCount = Convert.ToInt32(sourceCount);
-            AddEnhancementValidation(validations, "COMPARATIVE_BUDGET_PROVENANCE", "Comparatives and budget retain published-source provenance", "Warning",
-                publicSourceCount > 0 ? "Pass" : "Warning", publicSourceCount > 0
-                    ? publicSourceCount.ToString() + " public-source figures retain their report reference."
-                    : "Run sql/NORM_06_PreparationControlCentre.sql to register audited comparatives and Original Budget source evidence.");
+            bool setupSourcesComplete = comparatives.Count > 0 && budgets.Count > 0;
+            AddEnhancementValidation(validations, "COMPARATIVE_BUDGET_PROVENANCE", "Comparatives and budget retain setup-document provenance", "Warning",
+                setupSourcesComplete ? "Pass" : "Warning", comparatives.Count +
+                " comparative figures come from the Prior Year Financial Statements upload; " + budgets.Count +
+                " Original Budget figures come from the Portfolio Budget Statements upload.");
         }
 
         private void AddEnhancementValidation(List<object> validations, string code, string label, string severity, string result, string detail)

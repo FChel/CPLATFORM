@@ -334,6 +334,15 @@ public static class NORMStartOfYearSetup
         for (int i = 0; i < assetClasses.GetLength(0); i++)
             result.Add(new TemplateLine { StatementCode = "SOFP", LineCode = assetClasses[i, 0],
                 Label = assetClasses[i, 1], Normalised = NormaliseLabel(assetClasses[i, 1]) });
+        string[,] equityClasses = new string[,] {
+            { "EQUITY_CONTRIBUTED", "Contributed equity" },
+            { "EQUITY_RETAINED", "(Accumulated Deficit) / Retained surpluses" },
+            { "EQUITY_RESERVES", "Reserves" },
+            { "EQUITY_TOTAL", "Total equity" }
+        };
+        for (int i = 0; i < equityClasses.GetLength(0); i++)
+            result.Add(new TemplateLine { StatementCode = "SOFP", LineCode = equityClasses[i, 0],
+                Label = equityClasses[i, 1], Normalised = NormaliseLabel(equityClasses[i, 1]) });
         return result;
     }
 
