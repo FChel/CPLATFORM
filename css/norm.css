@@ -107,6 +107,16 @@
   .norm-print-page .norm-financial-table thead th b{display:block;color:#171717;font-size:8pt}
   .norm-print-page .norm-financial-row th,.norm-print-page .norm-financial-row td{border:0;padding:.7mm 1.5mm;font:400 8pt/1.12 Arial,Helvetica,sans-serif}
   .norm-print-page .norm-financial-row th{padding-left:1.5mm}
+  .norm-print-page .norm-financial-table thead th:nth-child(n+3),
+  .norm-print-page .norm-financial-table tbody td:nth-child(n+3),
+  .norm-print-page .norm-note-table thead th:not(:first-child),
+  .norm-print-page .norm-note-table tbody td,
+  .norm-print-page .norm-asset-table thead th:nth-child(n+3),
+  .norm-print-page .norm-asset-table tbody td:nth-child(n+3){text-align:right!important;font-variant-numeric:tabular-nums}
+  .norm-print-page .norm-financial-table thead th:nth-child(2),
+  .norm-print-page .norm-financial-table tbody td:nth-child(2),
+  .norm-print-page .norm-asset-table thead th:nth-child(2),
+  .norm-print-page .norm-asset-table tbody td:nth-child(2){text-align:center}
   .norm-print-page .norm-financial-row.total th{border:0;font-weight:700}
   .norm-print-page .norm-financial-row.total td{border-top:.6pt solid #171717;border-bottom:.6pt solid #171717;font-weight:700}
   .norm-print-page .norm-section-row.major th{border:0;padding:4mm 1.5mm .5mm;font:700 8pt Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:uppercase}
