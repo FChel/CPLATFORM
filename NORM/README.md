@@ -38,6 +38,13 @@ model.
    comparative and original-budget statement baselines.
 9. Run `../sql/NORM_07_DefencePublicationAlignment.sql` to install the published
    statement-of-changes-in-equity baseline and budget seed rows.
+10. Run `../sql/NORM_08_StartOfFinancialYearSetup.sql` through
+    `../sql/NORM_17_AdministeredStatements.sql` in numeric order for retained
+    start-of-year sources, departmental presentation corrections and the
+    administered schedules and notes.
+11. Run `../sql/NORM_18_DepartmentalSourceReconciliation.sql` last. It makes the
+    uploaded Defence Annual Report FY2024 column the controlled comparative and
+    the Defence PBS 2024-25 Budget column the controlled original budget.
 
 The promotion script refuses to complete when fewer than 850 FY2025 mappings or
 the audited statement baseline are present.

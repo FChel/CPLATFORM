@@ -948,6 +948,7 @@ namespace CPlatform.NORM
             Dictionary<string, object> negative, string column)
         {
             if (positive[column] == null || negative[column] == null) { return; }
+            if (!String.Equals(column, "computed", StringComparison.OrdinalIgnoreCase) && target[column] != null) { return; }
             target[column] = Convert.ToDecimal(positive[column]) - Convert.ToDecimal(negative[column]);
         }
 

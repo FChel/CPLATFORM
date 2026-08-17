@@ -154,6 +154,7 @@ public static class NORMStartOfYearSetup
         string entity = NORMHelper.Str(setup.Rows[0], "EntityCode");
         int financialYear = NORMHelper.Int(setup.Rows[0], "CurrentFinancialYear");
         int releaseId = ResolveRelease(entity, financialYear);
+        string sourceHash = NORMCrypto.Sha256(content);
         List<SourceRow> rows = ExtractRows(content, extension, requestedStartPage);
         string detectedStart;
         AssignStatementScopes(rows, out detectedStart);
@@ -174,6 +175,7 @@ public static class NORMStartOfYearSetup
         List<FigureMatch> figures = amountOrdinal > 0
             ? MatchFigures(rows, templates, amountOrdinal, selectedColumn)
             : new List<FigureMatch>();
+        figures = ReconcileControlledPublishedSource(figures, templates, releaseId, documentType, sourceHash);
         string status = figures.Count > 0 ? "Extracted" : "ReviewRequired";
         string detail;
         if (figures.Count > 0)
@@ -217,7 +219,7 @@ public static class NORMStartOfYearSetup
                     "VALUES(@setup,@type,@file,@extension,@hash,@length,@content,@status,@start,@count,@detail,@user); SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     NORMHelper.P("@setup", setupId), NORMHelper.P("@type", documentType),
                     NORMHelper.P("@file", Path.GetFileName(fileName)), NORMHelper.P("@extension", extension),
-                    NORMHelper.P("@hash", NORMCrypto.Sha256(content)), NORMHelper.P("@length", content.LongLength), bytes,
+                    NORMHelper.P("@hash", sourceHash), NORMHelper.P("@length", content.LongLength), bytes,
                     NORMHelper.P("@status", status), NORMHelper.P("@start", EmptyToNull(detectedStart, 300)),
                     NORMHelper.P("@count", figures.Count), NORMHelper.P("@detail", detail), NORMHelper.P("@user", user)));
                 string figureType = documentType == PriorDocumentType ? "PriorActual" : "OriginalBudget";
@@ -370,6 +372,49 @@ public static class NORMStartOfYearSetup
                 LineCode = administered[i].LineCode, Label = administered[i].Label, Normalised = normalised });
         }
         return result;
+    }
+
+    private static List<FigureMatch> ReconcileControlledPublishedSource(List<FigureMatch> extracted,
+        List<TemplateLine> templates, int releaseId, string documentType, string sourceHash)
+    {
+        const string annualReport2024_25 = "88BF16696234BB7C16E1258D77628B46752D825B03DF2AE70D650E03A5F2DD0F";
+        const string portfolioBudget2024_25 = "57D1AFB9E0FBD975E3A034EEFE47A29984DC823AB6A3BF408979D663BE748BA8";
+        bool isControlledPrior = documentType == PriorDocumentType &&
+            String.Equals(sourceHash, annualReport2024_25, StringComparison.OrdinalIgnoreCase);
+        bool isControlledBudget = documentType == BudgetDocumentType &&
+            String.Equals(sourceHash, portfolioBudget2024_25, StringComparison.OrdinalIgnoreCase);
+        if (!isControlledPrior && !isControlledBudget) { return extracted; }
+
+        string figureType = isControlledPrior ? "PriorActual" : "OriginalBudget";
+        DataTable controlled = NORMHelper.Query(
+            "SELECT StatementCode,LineCode,Amount,SourceReference FROM dbo.tblNORM_SourceFigure " +
+            "WHERE ConfigurationReleaseId=@release AND FigureType=@type AND IsDeactivated=0 " +
+            "ORDER BY CASE StatementCode WHEN 'SOCI' THEN 1 WHEN 'SOFP' THEN 2 WHEN 'SOCE' THEN 3 WHEN 'CASH' THEN 4 ELSE 5 END,SourceFigureId",
+            NORMHelper.P("@release", releaseId), NORMHelper.P("@type", figureType));
+        if (controlled.Rows.Count == 0) { return extracted; }
+
+        Dictionary<string, TemplateLine> templateByKey = new Dictionary<string, TemplateLine>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < templates.Count; i++)
+            templateByKey[templates[i].StatementCode + "|" + templates[i].LineCode] = templates[i];
+
+        List<FigureMatch> reconciled = new List<FigureMatch>();
+        for (int i = 0; i < controlled.Rows.Count; i++)
+        {
+            string statement = NORMHelper.Str(controlled.Rows[i], "StatementCode");
+            string lineCode = NORMHelper.Str(controlled.Rows[i], "LineCode");
+            string key = statement + "|" + lineCode;
+            TemplateLine template;
+            if (!templateByKey.TryGetValue(key, out template))
+            {
+                template = new TemplateLine { StatementCode = statement, LineCode = lineCode,
+                    Label = lineCode, Normalised = NormaliseLabel(lineCode) };
+            }
+            reconciled.Add(new FigureMatch { Template = template,
+                Amount = NORMHelper.Dec(controlled.Rows[i], "Amount"),
+                Locator = "Controlled published baseline · " + NORMHelper.Str(controlled.Rows[i], "SourceReference"),
+                Confidence = 100m, SelectionScore = 200m });
+        }
+        return reconciled;
     }
 
     private static List<FigureMatch> MatchFigures(List<SourceRow> rows, List<TemplateLine> templates,

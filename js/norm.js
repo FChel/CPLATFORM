@@ -16,6 +16,7 @@
   function number(value) {
     if (value === null || value === undefined || value === "") { return "–"; }
     var n = Number(value);
+    if (n === 0) { return "–"; }
     var text = Math.abs(Math.round(n)).toLocaleString("en-AU");
     return n < 0 ? "(" + text + ")" : text;
   }
