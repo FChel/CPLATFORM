@@ -242,9 +242,9 @@
       var values = rows.map(function (row, index) {
         var value = row[movement.key];
         var drillable = interactive && (movement.key === "closing" ? (row.closingSources || []).length : movement.key === "depreciation" && (row.depreciationSources || []).length);
-        return '<td>' + (drillable ? '<button type="button" class="norm-figure" data-note-asset-row="' + index + '" data-kind="' + movement.key + '"><span class="norm-status mapped"></span><span>' + number(value) + '</span></button>' : number(value)) + '</td>';
+        return '<td class="norm-amount">' + (drillable ? '<button type="button" class="norm-figure" data-note-asset-row="' + index + '" data-kind="' + movement.key + '"><span class="norm-status mapped"></span><span>' + number(value) + '</span></button>' : number(value)) + '</td>';
       }).join("");
-      return '<tr class="' + (movement.total ? 'total' : '') + '"><th>' + esc(movement.label) + '</th>' + values + '<td>' + number(total[movement.key]) + '</td></tr>';
+      return '<tr class="' + (movement.total ? 'total' : '') + '"><th>' + esc(movement.label) + '</th>' + values + '<td class="norm-amount">' + number(total[movement.key]) + '</td></tr>';
     }).join("");
     return '<div class="norm-table-scroll"><table class="norm-asset-table norm-asset-note-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
       '<p class="norm-print-control">Derived closing and depreciation figures are shown. Opening balances and other movements remain controlled asset-register inputs until validated.</p>';
@@ -332,14 +332,14 @@
     var rows = (statement.rows || []).map(function (row) {
       if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead")
         return '<tr class="norm-section-row ' + esc(row.type) + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
-      return '<tr class="norm-financial-row ' + esc(row.type) + '"><th>' + esc(row.label) + '</th><td>' + esc(row.note || '') + '</td><td>' + number(row.computed) + '</td><td>' + number(row.prior) + '</td><td>' + number(row.budget) + '</td></tr>';
+      return '<tr class="norm-financial-row ' + esc(row.type) + '"><th>' + esc(row.label) + '</th><td class="norm-note">' + esc(row.note || '') + '</td><td class="norm-print-number">' + number(row.computed) + '</td><td class="norm-print-number">' + number(row.prior) + '</td><td class="norm-print-number">' + number(row.budget) + '</td></tr>';
     }).join("");
     return '<section class="norm-print-page norm-print-' + esc(String(statement.code || '').toLowerCase()) + '">' + printHeader(statement) + '<table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + esc(data.meta.yearCurrent) + '</b><small>$\'000</small></th><th><b>' + esc(data.meta.yearPrior) + '</b><small>$\'000</small></th><th><b>Original<br>Budget</b><small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table><p class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.</p></section>';
   }
 
   function printAsset(statement) {
     var rows = (statement.rows || []).map(function (row) {
-      return '<tr class="' + (row.total ? 'total' : '') + '"><th>' + esc(row.label) + '</th><td>' + esc(row.note) + '</td><td>' + number(row.opening) + '</td><td>' + number(row.additions) + '</td><td>' + number(row.depreciation) + '</td><td>' + number(row.revaluations) + '</td><td>' + number(row.closing) + '</td></tr>';
+      return '<tr class="' + (row.total ? 'total' : '') + '"><th>' + esc(row.label) + '</th><td class="norm-note">' + esc(row.note) + '</td><td class="norm-print-number">' + number(row.opening) + '</td><td class="norm-print-number">' + number(row.additions) + '</td><td class="norm-print-number">' + number(row.depreciation) + '</td><td class="norm-print-number">' + number(row.revaluations) + '</td><td class="norm-print-number">' + number(row.closing) + '</td></tr>';
     }).join("");
     return '<section class="norm-print-page norm-print-landscape">' + printHeader(statement) + '<p class="norm-print-control">Derived closing and depreciation columns are shown; controlled movement inputs remain blank until validated.</p><table class="norm-asset-table"><thead><tr><th>Asset class</th><th>Note</th><th>Opening</th><th>Additions / disposals</th><th>Depreciation / amortisation</th><th>Revaluations / other</th><th>Closing</th></tr></thead><tbody>' + rows + '</tbody></table></section>';
   }
@@ -348,11 +348,11 @@
     var disclosures = (statement.disclosures || []).filter(function (item) { return item.required && item.note; });
     return disclosures.map(function (item) {
       var lines = noteLines(item.lines);
-      var rows = lines.map(function (line) { return '<tr><th>' + esc(line.label) + '</th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>'; }).join("");
+      var rows = lines.map(function (line) { return '<tr><th>' + esc(line.label) + '</th><td class="norm-print-number">' + number(line.amount) + '</td><td class="norm-print-number">' + number(line.prior) + '</td></tr>'; }).join("");
       var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
       var priorTotal = priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null;
       return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' +
-        (item.code === "N3_2A" ? assetMovementNoteTable(false) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td>' + number(item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>')) +
+        (item.code === "N3_2A" ? assetMovementNoteTable(false) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td class="norm-print-number">' + number(item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>')) +
         (item.narrative ? '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
     }).join("");
   }

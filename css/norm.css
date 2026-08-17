@@ -99,14 +99,21 @@
   .norm-print-head span{font:700 10pt Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none}
   .norm-print-head h1{font:700 10pt/1.1 Arial,Helvetica,sans-serif;text-transform:uppercase;margin:.4mm 0}
   .norm-print-head p{font:italic 10pt Arial,Helvetica,sans-serif;margin:0}
-  .norm-print-page .norm-financial-table{margin:0;font-family:Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-financial-table{display:table!important;width:100%;margin:0;font-family:Arial,Helvetica,sans-serif;table-layout:fixed}
   .norm-print-page .norm-financial-table thead{display:table-header-group}
+  .norm-print-page .norm-financial-table tbody{display:table-row-group!important}
+  .norm-print-page .norm-financial-table tr{display:table-row!important}
+  .norm-print-page .norm-financial-table th,.norm-print-page .norm-financial-table td{display:table-cell!important}
   .norm-print-page .norm-financial-table thead th,
   .norm-print-page .norm-note-table thead th,
   .norm-print-page .norm-asset-table thead th{background:#fff!important;color:#171717!important;border:0;border-bottom:1px solid #171717;padding:1.2mm 1.5mm;font:400 8pt/1.05 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .norm-print-page .norm-financial-table thead th b{display:block;color:#171717;font-size:8pt}
   .norm-print-page .norm-financial-row th,.norm-print-page .norm-financial-row td{border:0;padding:.7mm 1.5mm;font:400 8pt/1.12 Arial,Helvetica,sans-serif}
   .norm-print-page .norm-financial-row th{padding-left:1.5mm}
+  .norm-print-page .norm-financial-table thead th:first-child{width:43%;text-align:left}
+  .norm-print-page .norm-financial-table thead th:nth-child(2){width:7%;text-align:center}
+  .norm-print-page .norm-financial-table thead th:nth-child(n+3){width:16.666%}
+  .norm-print-page .norm-print-number,.norm-print-page td.norm-amount{text-align:right!important;font-variant-numeric:tabular-nums}
   .norm-print-page .norm-financial-table thead th:nth-child(n+3),
   .norm-print-page .norm-financial-table tbody td:nth-child(n+3),
   .norm-print-page .norm-note-table thead th:not(:first-child),
