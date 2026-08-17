@@ -27,11 +27,10 @@
         <section class="norm-year-setup-panel">
             <header><div><span class="norm-step">01</span><div><span class="norm-kicker">Reporting period</span><h2>Set the current financial year</h2></div></div><p>This year drives statement headings. The comparative year is calculated automatically as current year minus one.</p></header>
             <div class="norm-year-field-row">
-                <label for="CurrentFinancialYear"><span>Current financial year</span><asp:TextBox ID="CurrentFinancialYear" runat="server" CssClass="norm-input" MaxLength="4" inputmode="numeric" placeholder="2025" /></label>
+                <label for="CurrentFinancialYear"><span>Current financial year</span><asp:TextBox ID="CurrentFinancialYear" runat="server" CssClass="norm-input" MaxLength="4" inputmode="numeric" pattern="[0-9]{4}" required="required" title="Enter exactly four digits, for example 2025." placeholder="2025" /></label>
                 <div class="norm-year-preview"><span>Previous financial year</span><strong id="priorYearPreview"><%= Server.HtmlEncode(PriorYearDisplay) %></strong><small>Calculated automatically</small></div>
                 <asp:Button ID="SaveYearButton" runat="server" Text="Save financial year" CssClass="norm-button" OnClick="SaveYearButton_Click" />
             </div>
-            <asp:RegularExpressionValidator ID="YearValidator" runat="server" ControlToValidate="CurrentFinancialYear" ValidationExpression="^[0-9]{4}$" ErrorMessage="Enter the financial year as exactly four digits, for example 2025." CssClass="norm-field-error" Display="Dynamic" />
         </section>
 
         <section class="norm-year-setup-panel">
