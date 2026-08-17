@@ -73,6 +73,28 @@
 .norm-panel>.norm-next-step .norm-button{align-self:flex-start;margin-top:7px}
 @media(max-width:620px){.norm-next-step{grid-template-columns:30px minmax(0,1fr);gap:11px}.norm-next-step>em{grid-column:2;margin-top:2px}.norm-next-step-priority{padding-left:17px}}
 
+/* Start-of-year document upload progress */
+body.norm-upload-busy{overflow:hidden}
+.norm-upload-progress[hidden]{display:none}
+.norm-upload-progress{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:24px;background:rgba(8,25,21,.72);backdrop-filter:blur(7px)}
+.norm-upload-progress-card{width:min(580px,100%);padding:34px;border:1px solid rgba(255,255,255,.7);border-radius:22px;background:#fff;box-shadow:0 28px 80px rgba(4,18,14,.32)}
+.norm-upload-progress-mark{position:relative;display:grid;place-items:center;width:54px;height:54px;margin-bottom:22px;border-radius:16px;background:#123f34;color:#fff;font:800 25px var(--norm-serif);box-shadow:0 10px 25px rgba(18,63,52,.24)}
+.norm-upload-progress-mark i{position:absolute;right:-4px;bottom:-4px;width:17px;height:17px;border:3px solid #fff;border-radius:50%;background:var(--norm-orange);animation:norm-upload-pulse 1.25s ease-in-out infinite}
+.norm-upload-progress-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin:9px 0 22px}
+.norm-upload-progress-heading h2{margin:0;color:var(--norm-ink);font:700 28px/1.15 var(--norm-serif)}
+.norm-upload-progress-heading p{margin:7px 0 0;color:#65746f;font-size:13px;font-weight:700}
+.norm-upload-progress-heading>strong{flex:0 0 auto;color:#175c48;font:800 36px/1 var(--norm-sans);font-variant-numeric:tabular-nums}
+.norm-upload-progress-track{height:12px;overflow:hidden;border-radius:999px;background:#e5ece9;box-shadow:inset 0 1px 2px rgba(13,47,38,.08)}
+.norm-upload-progress-track i{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,#1a6f56,#2c9674);box-shadow:0 0 18px rgba(44,150,116,.32);transition:width .35s ease}
+.norm-upload-progress-detail{min-height:42px;margin:17px 0 20px;color:#40524c;font-size:14px;line-height:1.5}
+.norm-upload-progress-stages{display:grid;grid-template-columns:auto 1fr auto 1fr auto;align-items:center;gap:9px;margin:0 0 22px}
+.norm-upload-progress-stages span{color:#89948f;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap}
+.norm-upload-progress-stages span.active{color:#175c48}.norm-upload-progress-stages span.complete{color:#2c9674}
+.norm-upload-progress-stages i{height:2px;background:#e0e7e4}.norm-upload-progress-card>small{display:block;padding-top:17px;border-top:1px solid #e5ebe8;color:#75827d;font-size:11px;line-height:1.45}
+.norm-upload-progress-card>.norm-button{margin-top:20px}.norm-upload-progress.failed .norm-upload-progress-mark i{background:#b9362d;animation:none}.norm-upload-progress.failed .norm-upload-progress-track i{background:#b9362d}
+@keyframes norm-upload-pulse{0%,100%{transform:scale(.82);opacity:.72}50%{transform:scale(1.08);opacity:1}}
+@media(max-width:620px){.norm-upload-progress{padding:14px}.norm-upload-progress-card{padding:25px 21px;border-radius:17px}.norm-upload-progress-heading{align-items:flex-start}.norm-upload-progress-heading h2{font-size:23px}.norm-upload-progress-heading>strong{font-size:30px}.norm-upload-progress-stages{grid-template-columns:1fr;gap:5px}.norm-upload-progress-stages i{display:none}}
+
 /* Defence 2024-25 publication presentation. Preparation mode retains NORM evidence UI. */
 .norm-section-row.lead th{padding-top:5px;border:0;font:800 13px var(--norm-sans);letter-spacing:0;text-transform:uppercase}
 .norm-publication-view .norm-document{max-width:794px;min-height:1123px;padding:72px 62px 58px;font-family:Arial,Helvetica,sans-serif;color:#171717}
