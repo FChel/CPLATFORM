@@ -163,13 +163,23 @@ public static class NORMStartOfYearSetup
             detectedStart = String.IsNullOrWhiteSpace(detectedStart) ? requested : requested + " · first statement at " + detectedStart;
         }
         List<TemplateLine> templates = LoadTemplates(releaseId);
-        List<FigureMatch> figures = MatchFigures(rows, templates);
+        string selectedBudgetColumn = documentType == BudgetDocumentType ? FinancialYearColumn(financialYear) : null;
+        int amountOrdinal = documentType == BudgetDocumentType
+            ? DetectBudgetAmountOrdinal(rows, financialYear)
+            : 1;
+        List<FigureMatch> figures = amountOrdinal > 0
+            ? MatchFigures(rows, templates, amountOrdinal, selectedBudgetColumn)
+            : new List<FigureMatch>();
         string status = figures.Count > 0 ? "Extracted" : "ReviewRequired";
         string detail;
         if (figures.Count > 0)
             detail = figures.Count.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) + " high-confidence statement figure(s) extracted and applied" +
+                (documentType == BudgetDocumentType ? " from the " + selectedBudgetColumn + " Budget Estimate column" : "") +
                 (requestedStartPage.HasValue ? " from PDF page " + requestedStartPage.Value.ToString(CultureInfo.InvariantCulture) + " onward" : "") +
                 ". Review source locators before sign-off.";
+        else if (documentType == BudgetDocumentType && amountOrdinal <= 0)
+            detail = "NORM could not identify the " + selectedBudgetColumn +
+                " Budget Estimate column. The document was retained, but no figures were applied; check the nominated page or provide a searchable PDF, Word document or Excel workbook.";
         else if (extension == ".doc" || extension == ".xls")
             detail = "The legacy binary format was retained, but automatic extraction requires a .docx or .xlsx copy. No figures were applied.";
         else if (extension == ".pdf" && rows.Count == 0)
@@ -346,14 +356,15 @@ public static class NORMStartOfYearSetup
         return result;
     }
 
-    private static List<FigureMatch> MatchFigures(List<SourceRow> rows, List<TemplateLine> templates)
+    private static List<FigureMatch> MatchFigures(List<SourceRow> rows, List<TemplateLine> templates,
+        int amountOrdinal, string selectedColumn)
     {
         Dictionary<string, FigureMatch> best = new Dictionary<string, FigureMatch>(StringComparer.OrdinalIgnoreCase);
         for (int r = 0; r < rows.Count; r++)
         {
             SourceRow row = rows[r];
             decimal amount;
-            if (!TryAmount(row, out amount)) { continue; }
+            if (!TryAmount(row, amountOrdinal, out amount)) { continue; }
             string candidate = NormaliseLabel(RemoveAmounts(row.Text));
             if (candidate.Length < 3) { continue; }
             for (int t = 0; t < templates.Count; t++)
@@ -366,7 +377,8 @@ public static class NORMStartOfYearSetup
                 string key = template.StatementCode + "|" + template.LineCode;
                 FigureMatch existing;
                 if (!best.TryGetValue(key, out existing) || selectionScore > existing.SelectionScore)
-                    best[key] = new FigureMatch { Template = template, Amount = amount, Locator = row.Locator,
+                    best[key] = new FigureMatch { Template = template, Amount = amount,
+                        Locator = String.IsNullOrWhiteSpace(selectedColumn) ? row.Locator : row.Locator + " · " + selectedColumn + " column",
                         Confidence = confidence, SelectionScore = selectionScore };
             }
         }
@@ -382,10 +394,30 @@ public static class NORMStartOfYearSetup
         return 0m;
     }
 
-    private static bool TryAmount(SourceRow row, out decimal amount)
+    private static bool TryAmount(SourceRow row, int amountOrdinal, out decimal amount)
     {
         amount = 0m;
-        for (int i = 1; i < row.Cells.Count; i++) if (TryParseAmount(row.Cells[i], out amount)) { return true; }
+        if (amountOrdinal < 1) { return false; }
+        List<string> amountCells = new List<string>();
+        for (int i = 1; i < row.Cells.Count; i++)
+        {
+            decimal parsed;
+            if (TryParseAmount(row.Cells[i], out parsed) || IsAmountPlaceholder(row.Cells[i]))
+            {
+                amountCells.Add(row.Cells[i]);
+                continue;
+            }
+            MatchCollection cellAmounts = Regex.Matches(row.Cells[i] ?? "",
+                @"(?<![A-Za-z0-9])(?:\(?\$?\s*-?\d{1,3}(?:,\d{3})*(?:\.\d+)?\)?|[-–—])(?![A-Za-z0-9])");
+            for (int m = 0; m < cellAmounts.Count; m++)
+            {
+                string token = cellAmounts[m].Value.Trim();
+                if (TryParseAmount(token, out parsed) || IsAmountPlaceholder(token)) amountCells.Add(token);
+            }
+        }
+        if (amountCells.Count >= amountOrdinal)
+            return TryParseAmount(amountCells[amountOrdinal - 1], out amount);
+        if (amountOrdinal > 1) { return false; }
         MatchCollection matches = Regex.Matches(row.Text, @"(?<![A-Za-z0-9])\(?\$?\s*-?\d{1,3}(?:,\d{3})*(?:\.\d+)?\)?(?![A-Za-z])");
         for (int i = 0; i < matches.Count; i++)
         {
@@ -397,6 +429,44 @@ public static class NORMStartOfYearSetup
             amount = value; return true;
         }
         return false;
+    }
+
+    private static bool IsAmountPlaceholder(string value)
+    {
+        string text = (value ?? "").Trim();
+        return text == "-" || text == "–" || text == "—" ||
+            String.Equals(text, "nil", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FinancialYearColumn(int financialYear)
+    {
+        return (financialYear - 1).ToString("0000", CultureInfo.InvariantCulture) + "-" +
+            (financialYear % 100).ToString("00", CultureInfo.InvariantCulture);
+    }
+
+    private static int DetectBudgetAmountOrdinal(List<SourceRow> rows, int financialYear)
+    {
+        int startYear = financialYear - 1;
+        int endYear = financialYear;
+        Dictionary<int, int> votes = new Dictionary<int, int>();
+        Regex fiscalYear = new Regex(@"(?<!\d)(?<start>\d{4})\s*[-–—/]\s*(?<end>\d{2}|\d{4})(?!\d)", RegexOptions.CultureInvariant);
+        for (int r = 0; r < rows.Count; r++)
+        {
+            MatchCollection years = fiscalYear.Matches(rows[r].Text ?? "");
+            if (years.Count < 2) { continue; }
+            for (int i = 0; i < years.Count; i++)
+            {
+                int detectedStart;
+                int detectedEnd;
+                if (!Int32.TryParse(years[i].Groups["start"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out detectedStart) ||
+                    !Int32.TryParse(years[i].Groups["end"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out detectedEnd)) { continue; }
+                if (detectedEnd < 100) detectedEnd += (detectedStart / 100) * 100;
+                if (detectedStart != startYear || detectedEnd != endYear) { continue; }
+                int ordinal = i + 1;
+                votes[ordinal] = votes.ContainsKey(ordinal) ? votes[ordinal] + 1 : 1;
+            }
+        }
+        return votes.Count == 0 ? 0 : votes.OrderByDescending(x => x.Value).ThenBy(x => x.Key).First().Key;
     }
 
     private static int CountAmounts(SourceRow row)
