@@ -100,7 +100,7 @@
     <div id="printBook" class="norm-print-book" aria-hidden="true"></div>
 
     <script>window.NORM_DATA = <%= NormDataJson %>;</script>
-    <script src="../js/norm.js?v=20260817-2"></script>
+    <script src="../js/norm.js?v=20260817-3"></script>
 </form>
 </body>
 </html>
