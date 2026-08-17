@@ -31,11 +31,13 @@ namespace CPlatform.NORM
             public int RunId;
             public int ReleaseId;
             public int Year;
+            public string EntityCode;
             public string Entity;
             public string Version;
             public NORMReportingFramework.ReportingProfile Profile;
             public List<NORMReportingFramework.Disclosure> Disclosures;
             public Dictionary<string, decimal> Budgets;
+            public Dictionary<string, decimal> PriorFigures;
             public DataTable ManualInputs;
         }
 
@@ -146,12 +148,15 @@ namespace CPlatform.NORM
             model.ReleaseId = NORMHelper.Int(row, "ConfigurationReleaseId");
             model.Year = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
                 NORMHelper.Str(row, "EntityCode"), NORMHelper.Int(row, "FinancialYear"));
+            model.EntityCode = NORMHelper.Str(row, "EntityCode");
             model.Entity = NORMHelper.Str(row, "EntityName") ?? NORMHelper.Str(row, "EntityCode");
             model.Version = NORMHelper.Str(row, "VersionCode");
             model.Profile = NORMReportingFramework.LoadProfile(model.ReleaseId);
             model.Disclosures = NORMReportingFramework.LoadDisclosures(runId, model.ReleaseId, model.Profile);
             NORMStatementEnhancements.ApplyManualInputs(runId, model.Disclosures);
             model.Budgets = NORMStatementEnhancements.LoadBudgetFigures(runId);
+            NORMStartOfYearSetup.OverlayFigures(model.Budgets, NORMStartOfYearSetup.LoadOriginalBudgetFigures(model.EntityCode));
+            model.PriorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(model.EntityCode);
             model.ManualInputs = NORMStatementEnhancements.LoadManualInputs(runId);
             return model;
         }
@@ -370,12 +375,16 @@ namespace CPlatform.NORM
                 {
                     AddEquitySplits(rows, model.RunId);
                     FaceRow totalEquity = DataRowToFace(source);
+                    totalEquity.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, lineCode, totalEquity.Prior);
+                    totalEquity.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, lineCode, totalEquity.Budget);
                     totalEquity.Label = "Total equity";
                     totalEquity.Type = "total";
                     rows.Add(totalEquity);
                     continue;
                 }
                 FaceRow row = DataRowToFace(source);
+                row.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, lineCode, row.Prior);
+                row.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, lineCode, row.Budget);
                 if (code == "SOCI" && lineCode == "Total own-source income") row.Label = "Total income";
                 if (code == "SOCI" && lineCode == "Net cost of services") row.Label = "Net cost of services";
                 if (code == "SOCI" && lineCode == "Operating result") row.Label = "(Deficit) / Surplus";
@@ -538,7 +547,8 @@ namespace CPlatform.NORM
                 NORMHelper.P("@release", model.ReleaseId), NORMHelper.P("@run", model.RunId));
             decimal result = FindAmount(equity, "Operating result", "ComputedAmount");
             decimal closing = FindAmount(equity, "Statement of Changes in Equity", "ComputedAmount");
-            decimal opening = FindAmount(equity, "Statement of Changes in Equity", "AmountPrior");
+            decimal baselineOpening = FindAmount(equity, "Statement of Changes in Equity", "AmountPrior");
+            decimal opening = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCE", "Statement of Changes in Equity", baselineOpening) ?? 0m;
             sheet.Cells[8, 5].Value = Round(opening);
             sheet.Cells[9, 4].Value = Round(result);
             sheet.Cells[9, 5].Formula = "SUM(B9:D9)";
@@ -615,7 +625,8 @@ namespace CPlatform.NORM
                 "WHERE r.CalculationRunId=@run AND r.LineCode='Cash and cash equivalents' AND r.IsDeactivated=0",
                 NORMHelper.P("@release", model.ReleaseId), NORMHelper.P("@run", model.RunId));
             decimal closing = cash.Rows.Count == 0 ? 0m : NORMHelper.Dec(cash.Rows[0], "ComputedAmount");
-            decimal opening = cash.Rows.Count == 0 || cash.Rows[0].IsNull("AmountPrior") ? 0m : NORMHelper.Dec(cash.Rows[0], "AmountPrior");
+            decimal? baselineOpening = cash.Rows.Count == 0 || cash.Rows[0].IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(cash.Rows[0], "AmountPrior");
+            decimal opening = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "CASH", "Cash and cash equivalents", baselineOpening) ?? 0m;
             sheet.Cells[rowNumber, 1].Value = "Cash and cash equivalents at the beginning of the reporting period";
             sheet.Cells[rowNumber, 3].Value = Round(opening);
             rowNumber++;

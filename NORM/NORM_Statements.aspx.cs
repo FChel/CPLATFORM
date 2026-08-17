@@ -77,9 +77,12 @@ namespace CPlatform.NORM
             Dictionary<string, object> meta = new Dictionary<string, object>();
             int fy = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
                 NORMHelper.Str(context, "EntityCode"), NORMHelper.Int(context, "FinancialYear"));
+            string entityCode = NORMHelper.Str(context, "EntityCode");
             int importId = NORMHelper.Int(context, "ImportId");
             Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId, fy);
             Dictionary<string, decimal> budgets = NORMStatementEnhancements.LoadBudgetFigures(runId);
+            NORMStartOfYearSetup.OverlayFigures(budgets, NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode));
+            Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
             meta["runId"] = runId;
             meta["runGuid"] = Convert.ToString(context["RunGuid"]);
             meta["fingerprint"] = NORMHelper.Str(context, "InputFingerprint");
@@ -104,10 +107,10 @@ namespace CPlatform.NORM
             payload["sourceFiles"] = LoadSourceFiles(importId, runId);
 
             List<object> statements = new List<object>();
-            statements.Add(BuildStatement(releaseId, runId, "SOCI", "Statement of Comprehensive Income", lineage, budgets));
-            statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets));
-            statements.Add(BuildEquityStatement(runId, releaseId, lineage, budgets));
-            statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets));
+            statements.Add(BuildStatement(releaseId, runId, "SOCI", "Statement of Comprehensive Income", lineage, budgets, priorFigures));
+            statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets, priorFigures));
+            statements.Add(BuildEquityStatement(runId, releaseId, lineage, budgets, priorFigures));
+            statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets, priorFigures));
             payload["assetMovement"] = BuildAssetMovementStatement(runId, releaseId, lineage);
 
             NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
@@ -232,7 +235,8 @@ namespace CPlatform.NORM
         }
 
         private Dictionary<string, object> BuildEquityStatement(int runId, int releaseId,
-            Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets)
+            Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets,
+            Dictionary<string, decimal> priorFigures)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT r.LineCode,r.LineResultId,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_LineResult r " +
@@ -243,9 +247,11 @@ namespace CPlatform.NORM
             DataRow result = FindLine(table, "Operating result");
             DataRow equity = FindLine(table, "Statement of Changes in Equity");
             decimal currentResult = result == null ? 0m : NORMHelper.Dec(result, "ComputedAmount");
-            decimal priorResult = result == null || result.IsNull("AmountPrior") ? 0m : NORMHelper.Dec(result, "AmountPrior");
+            decimal? baselinePriorResult = result == null || result.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(result, "AmountPrior");
+            decimal priorResult = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Operating result", baselinePriorResult) ?? 0m;
             decimal closing = equity == null ? 0m : NORMHelper.Dec(equity, "ComputedAmount");
-            decimal opening = equity == null || equity.IsNull("AmountPrior") ? 0m : NORMHelper.Dec(equity, "AmountPrior");
+            decimal? baselineOpening = equity == null || equity.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(equity, "AmountPrior");
+            decimal opening = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Statement of Changes in Equity", baselineOpening) ?? 0m;
             List<Dictionary<string, object>> equitySources = SourcesFor(equity, lineage);
             List<Dictionary<string, object>> contributedSources = FilterEquitySources(equitySources, "Contributed equity");
             List<Dictionary<string, object>> retainedSources = FilterEquitySources(equitySources, "Retained surplus/(Accumulated deficit)");
@@ -256,6 +262,8 @@ namespace CPlatform.NORM
 
             Dictionary<string, decimal> audited = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "AuditedActual");
             Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "PriorActual");
+            foreach (KeyValuePair<string, decimal> item in priorFigures)
+                if (item.Key.StartsWith("SOCE|", StringComparison.OrdinalIgnoreCase)) prior[item.Key.Substring(5)] = item.Value;
             decimal contributedOpen = SourceFigure(audited, "SOCE_CONTRIBUTED_OPEN", contributedClose);
             decimal retainedOpen = SourceFigure(audited, "SOCE_RETAINED_OPEN", retainedClose - currentResult);
             decimal reserveOpen = SourceFigure(audited, "SOCE_RESERVE_OPEN", reserveClose);
@@ -345,7 +353,8 @@ namespace CPlatform.NORM
         }
 
         private Dictionary<string, object> BuildCashFlowStatement(int runId, int releaseId,
-            Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets)
+            Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets,
+            Dictionary<string, decimal> priorFigures)
         {
             Dictionary<string, List<Dictionary<string, object>>> grouped = new Dictionary<string, List<Dictionary<string, object>>>(StringComparer.OrdinalIgnoreCase);
             foreach (KeyValuePair<long, List<Dictionary<string, object>>> pair in lineage)
@@ -409,7 +418,8 @@ namespace CPlatform.NORM
                 NORMHelper.P("@release", releaseId), NORMHelper.P("@run", runId));
             DataRow cashRow = cashTable.Rows.Count == 0 ? null : cashTable.Rows[0];
             decimal ending = cashRow == null ? 0m : NORMHelper.Dec(cashRow, "ComputedAmount");
-            decimal beginning = cashRow == null || cashRow.IsNull("AmountPrior") ? ending - classifiedNet : NORMHelper.Dec(cashRow, "AmountPrior");
+            decimal? baselineBeginning = cashRow == null || cashRow.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(cashRow, "AmountPrior");
+            decimal beginning = NORMStartOfYearSetup.FigureValue(priorFigures, "CASH", "Cash and cash equivalents", baselineBeginning) ?? (ending - classifiedNet);
             rows.Add(SimpleRow("total", "CF_NET", "Net increase/(decrease) in cash held", "5.5", classifiedNet, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("line", "CF_OPEN", "Cash and cash equivalents at the beginning of the reporting period", null, beginning, null, false, 0L, new List<Dictionary<string, object>>()));
             rows.Add(SimpleRow("total", "CF_CLOSE", "Cash and cash equivalents at the end of the reporting period", "3.1A", ending,
@@ -575,7 +585,8 @@ namespace CPlatform.NORM
         }
 
         private Dictionary<string, object> BuildStatement(int releaseId, int runId, string statementCode,
-            string title, Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets)
+            string title, Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets,
+            Dictionary<string, decimal> priorFigures)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT t.StatementLineId,t.SeqNo,t.LineType,t.LineCode,t.LineLabel,t.NoteRef,t.NaturalSign,t.IsClickable," +
@@ -662,7 +673,9 @@ namespace CPlatform.NORM
                 row["resultId"] = resultId;
                 row["computed"] = computed;
                 row["published"] = source.IsNull("PublishedAmount") ? (object)null : NORMHelper.Dec(source, "PublishedAmount");
-                row["prior"] = source.IsNull("AmountPrior") ? (object)null : NORMHelper.Dec(source, "AmountPrior");
+                decimal? baselinePrior = source.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(source, "AmountPrior");
+                decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, statementCode, lineCode, baselinePrior);
+                row["prior"] = effectivePrior.HasValue ? (object)effectivePrior.Value : null;
                 row["budget"] = BudgetFor(budgets, statementCode, lineCode);
                 row["variance"] = source.IsNull("Variance") ? (object)null : NORMHelper.Dec(source, "Variance");
                 row["status"] = source.IsNull("StatusCode") ? "Mapped" : NORMHelper.Str(source, "StatusCode");

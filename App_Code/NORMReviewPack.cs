@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.Globalization;
@@ -61,7 +62,7 @@ namespace CPlatform.NORM
                 AddSummary(package, run);
                 AddSourceFiles(package, NORMHelper.Int(run, "ImportId"));
                 AddAssurance(package, runId);
-                AddStatements(package, runId);
+                AddStatements(package, runId, NORMHelper.Str(run, "EntityCode"));
                 if (NORMReportingFramework.IsInstalled())
                 {
                     int releaseId = NORMHelper.Int(run, "ConfigurationReleaseId");
@@ -189,8 +190,9 @@ namespace CPlatform.NORM
             sheet.Cells[headerRow + 1, 9, headerRow + table.Rows.Count, 9].Style.WrapText = true;
         }
 
-        private static void AddStatements(ExcelPackage package, int runId)
+        private static void AddStatements(ExcelPackage package, int runId, string entityCode)
         {
+            Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
             DataTable table = NORMHelper.Query(
                 "SELECT r.StatementCode,t.SeqNo,t.LineType,r.LineCode,ISNULL(t.LineLabel,r.LineCode) AS LineLabel,t.NoteRef," +
                 "r.ComputedAmount,r.PublishedAmount,p.AmountPrior,r.Variance,r.StatusCode " +
@@ -219,7 +221,10 @@ namespace CPlatform.NORM
                 sheet.Cells[row, 6].Value = NORMHelper.Str(source, "NoteRef");
                 sheet.Cells[row, 7].Value = NORMHelper.Dec(source, "ComputedAmount");
                 SetNullableDecimal(sheet.Cells[row, 8], source, "PublishedAmount");
-                SetNullableDecimal(sheet.Cells[row, 9], source, "AmountPrior");
+                decimal? baselinePrior = source.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(source, "AmountPrior");
+                decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures,
+                    NORMHelper.Str(source, "StatementCode"), NORMHelper.Str(source, "LineCode"), baselinePrior);
+                if (effectivePrior.HasValue) sheet.Cells[row, 9].Value = effectivePrior.Value;
                 SetNullableDecimal(sheet.Cells[row, 10], source, "Variance");
                 sheet.Cells[row, 11].Value = NORMHelper.Str(source, "StatusCode");
             }

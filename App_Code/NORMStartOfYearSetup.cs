@@ -212,9 +212,6 @@ public static class NORMStartOfYearSetup
                         NORMHelper.P("@statement", figure.Template.StatementCode), NORMHelper.P("@line", figure.Template.LineCode),
                         NORMHelper.P("@label", figure.Template.Label), NORMHelper.P("@amount", figure.Amount),
                         NORMHelper.P("@locator", EmptyToNull(figure.Locator, 300)), NORMHelper.P("@confidence", figure.Confidence));
-                    ApplyFigure(connection, transaction, releaseId, entity, financialYear, documentType,
-                        figure.Template.StatementCode, figure.Template.LineCode, figure.Amount,
-                        Path.GetFileName(fileName) + (String.IsNullOrWhiteSpace(figure.Locator) ? "" : " · " + figure.Locator), user);
                 }
                 WriteAudit(connection, transaction, "YEAR_SETUP_DOCUMENT_UPLOADED", "YearSetup", setupId.ToString(CultureInfo.InvariantCulture),
                     DisplayName(documentType) + " uploaded: " + Path.GetFileName(fileName) + "; " + detail, user);
@@ -247,59 +244,49 @@ public static class NORMStartOfYearSetup
             NORMHelper.P("@setup", setupId));
     }
 
-    private static void ApplyFigure(OleDbConnection connection, OleDbTransaction transaction, int releaseId,
-        string entity, int financialYear, string documentType, string statement, string line, decimal amount, string source, string user)
+    public static Dictionary<string, decimal> LoadPriorActualFigures(string entityCode)
     {
-        if (documentType == PriorDocumentType)
-        {
-            int updated = NORMHelper.Exec(connection, transaction,
-                "UPDATE dbo.tblNORM_PublishedFigure SET AmountPrior=@amount,SourceReference=@source " +
-                "WHERE ConfigurationReleaseId=@release AND StatementCode=@statement AND LineCode=@line AND IsDeactivated=0",
-                NORMHelper.P("@amount", amount), NORMHelper.P("@source", source), NORMHelper.P("@release", releaseId),
-                NORMHelper.P("@statement", statement), NORMHelper.P("@line", line));
-            if (updated == 0)
-            {
-                NORMHelper.Exec(connection, transaction,
-                    "INSERT dbo.tblNORM_PublishedFigure(ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,LineCode,AmountPrior,SourceReference) " +
-                    "VALUES(@release,@year,@entity,@statement,@line,@amount,@source)",
-                    NORMHelper.P("@release", releaseId), NORMHelper.P("@year", financialYear), NORMHelper.P("@entity", entity),
-                    NORMHelper.P("@statement", statement), NORMHelper.P("@line", line), NORMHelper.P("@amount", amount), NORMHelper.P("@source", source));
-            }
-            return;
-        }
+        return LoadSetupFigures(entityCode, "PriorActual");
+    }
 
-        int sourceUpdated = NORMHelper.Exec(connection, transaction,
-            "UPDATE dbo.tblNORM_SourceFigure SET FinancialYear=@year,EntityCode=@entity,Amount=@amount,SourceReference=@source,SourceUrl=NULL,IsDeactivated=0 " +
-            "WHERE ConfigurationReleaseId=@release AND StatementCode=@statement AND LineCode=@line AND FigureType='OriginalBudget'",
-            NORMHelper.P("@year", financialYear), NORMHelper.P("@entity", entity), NORMHelper.P("@amount", amount),
-            NORMHelper.P("@source", source), NORMHelper.P("@release", releaseId), NORMHelper.P("@statement", statement), NORMHelper.P("@line", line));
-        if (sourceUpdated == 0)
+    public static Dictionary<string, decimal> LoadOriginalBudgetFigures(string entityCode)
+    {
+        return LoadSetupFigures(entityCode, "OriginalBudget");
+    }
+
+    public static decimal? FigureValue(Dictionary<string, decimal> values, string statementCode, string lineCode, decimal? fallback)
+    {
+        if (values != null && !String.IsNullOrWhiteSpace(statementCode) && !String.IsNullOrWhiteSpace(lineCode))
         {
-            NORMHelper.Exec(connection, transaction,
-                "INSERT dbo.tblNORM_SourceFigure(ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,LineCode,FigureType,Amount,SourceReference) " +
-                "VALUES(@release,@year,@entity,@statement,@line,'OriginalBudget',@amount,@source)",
-                NORMHelper.P("@release", releaseId), NORMHelper.P("@year", financialYear), NORMHelper.P("@entity", entity),
-                NORMHelper.P("@statement", statement), NORMHelper.P("@line", line), NORMHelper.P("@amount", amount), NORMHelper.P("@source", source));
+            decimal amount;
+            if (values.TryGetValue(statementCode + "|" + lineCode, out amount)) { return amount; }
         }
-        object runValue = NORMHelper.Scalar(connection, transaction,
-            "SELECT TOP 1 r.CalculationRunId FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
-            "WHERE r.ConfigurationReleaseId=@release AND i.EntityCode=@entity AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsTestBreak=0 ORDER BY r.CalculationRunId DESC",
-            NORMHelper.P("@release", releaseId), NORMHelper.P("@entity", entity));
-        if (runValue == null) { return; }
-        int runId = Convert.ToInt32(runValue);
-        int budgetUpdated = NORMHelper.Exec(connection, transaction,
-            "UPDATE dbo.tblNORM_BudgetFigure SET OriginalBudget=@amount,SourceSystem='Portfolio Budget Statements',SourceReference=@source," +
-            "StatusCode='Loaded',UpdatedBy=@user,UpdatedUtc=SYSUTCDATETIME() WHERE CalculationRunId=@run AND StatementCode=@statement AND LineCode=@line AND IsDeactivated=0",
-            NORMHelper.P("@amount", amount), NORMHelper.P("@source", source), NORMHelper.P("@user", user),
-            NORMHelper.P("@run", runId), NORMHelper.P("@statement", statement), NORMHelper.P("@line", line));
-        if (budgetUpdated == 0)
+        return fallback;
+    }
+
+    public static void OverlayFigures(Dictionary<string, decimal> target, Dictionary<string, decimal> overlay)
+    {
+        if (target == null || overlay == null) { return; }
+        foreach (KeyValuePair<string, decimal> item in overlay) { target[item.Key] = item.Value; }
+    }
+
+    private static Dictionary<string, decimal> LoadSetupFigures(string entityCode, string figureType)
+    {
+        Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        if (!IsInstalled() || String.IsNullOrWhiteSpace(entityCode)) { return values; }
+        DataTable table = NORMHelper.Query(
+            "SELECT f.StatementCode,f.LineCode,f.Amount FROM dbo.tblNORM_YearSetup y " +
+            "INNER JOIN dbo.tblNORM_YearSetupDocument d ON d.YearSetupId=y.YearSetupId AND d.IsDeactivated=0 " +
+            "INNER JOIN dbo.tblNORM_YearSetupFigure f ON f.YearSetupDocumentId=d.YearSetupDocumentId AND f.IsDeactivated=0 " +
+            "WHERE y.EntityCode=@entity AND y.IsCurrent=1 AND y.IsDeactivated=0 AND f.FigureType=@type " +
+            "ORDER BY d.UploadedUtc,f.YearSetupFigureId",
+            NORMHelper.P("@entity", entityCode), NORMHelper.P("@type", figureType));
+        for (int i = 0; i < table.Rows.Count; i++)
         {
-            NORMHelper.Exec(connection, transaction,
-                "INSERT dbo.tblNORM_BudgetFigure(CalculationRunId,StatementCode,LineCode,OriginalBudget,SourceSystem,SourceReference,StatusCode,UpdatedBy) " +
-                "VALUES(@run,@statement,@line,@amount,'Portfolio Budget Statements',@source,'Loaded',@user)",
-                NORMHelper.P("@run", runId), NORMHelper.P("@statement", statement), NORMHelper.P("@line", line),
-                NORMHelper.P("@amount", amount), NORMHelper.P("@source", source), NORMHelper.P("@user", user));
+            values[NORMHelper.Str(table.Rows[i], "StatementCode") + "|" + NORMHelper.Str(table.Rows[i], "LineCode")] =
+                NORMHelper.Dec(table.Rows[i], "Amount");
         }
+        return values;
     }
 
     private static int ResolveRelease(string entity, int financialYear)

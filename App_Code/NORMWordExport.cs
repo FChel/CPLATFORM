@@ -12,6 +12,8 @@ using System.Web;
 /// </summary>
 public class NORM_WordExport : IHttpHandler
 {
+    private Dictionary<string, decimal> priorFigures;
+
     public bool IsReusable { get { return false; } }
 
     public void ProcessRequest(HttpContext context)
@@ -40,6 +42,7 @@ public class NORM_WordExport : IHttpHandler
         int year = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
             NORMHelper.Str(header, "EntityCode"), NORMHelper.Int(header, "FinancialYear"));
         string entity = NORMHelper.Str(header, "EntityName") ?? NORMHelper.Str(header, "EntityCode");
+        priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(NORMHelper.Str(header, "EntityCode"));
         NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
         List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()
             ? NORMReportingFramework.LoadDisclosures(runId, releaseId, profile)
@@ -82,7 +85,7 @@ public class NORM_WordExport : IHttpHandler
     private void AppendStatement(StringBuilder html, int runId, int releaseId, int year, string code, string title, bool atDate)
     {
         DataTable table = NORMHelper.Query(
-            "SELECT t.LineType,t.LineLabel,t.NoteRef,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_StatementLine t " +
+            "SELECT t.LineType,t.LineCode,t.LineLabel,t.NoteRef,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_StatementLine t " +
             "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
             "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId=t.ConfigurationReleaseId AND p.StatementCode=t.StatementCode " +
             "AND p.LineCode=t.LineCode AND p.IsDeactivated=0 WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code " +
@@ -99,8 +102,10 @@ public class NORM_WordExport : IHttpHandler
                 html.Append("<tr class=\"section\"><th colspan=\"4\">").Append(Enc(NORMHelper.Str(row, "LineLabel"))).Append("</th></tr>");
                 continue;
             }
+            decimal? baselinePrior = row.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(row, "AmountPrior");
+            decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, code, NORMHelper.Str(row, "LineCode"), baselinePrior);
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(NORMHelper.Str(row, "LineLabel"))).Append("</th><td>")
-                .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(row, "ComputedAmount")).Append("</td><td class=\"amount\">").Append(Amount(row, "AmountPrior")).Append("</td></tr>");
+                .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(row, "ComputedAmount")).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
         }
         html.Append("</tbody></table><p class=\"footer\">This statement should be read with the accompanying notes.</p></section>");
     }
@@ -113,9 +118,11 @@ public class NORM_WordExport : IHttpHandler
             "WHERE r.CalculationRunId=@run AND r.LineCode IN ('Operating result','Statement of Changes in Equity') AND r.IsDeactivated=0",
             NORMHelper.P("@release", releaseId), NORMHelper.P("@run", runId));
         decimal result = LineAmount(table, "Operating result", "ComputedAmount");
-        decimal priorResult = LineAmount(table, "Operating result", "AmountPrior");
+        decimal baselinePriorResult = LineAmount(table, "Operating result", "AmountPrior");
+        decimal priorResult = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Operating result", baselinePriorResult) ?? 0m;
         decimal closing = LineAmount(table, "Statement of Changes in Equity", "ComputedAmount");
-        decimal opening = LineAmount(table, "Statement of Changes in Equity", "AmountPrior");
+        decimal baselineOpening = LineAmount(table, "Statement of Changes in Equity", "AmountPrior");
+        decimal opening = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "Statement of Changes in Equity", baselineOpening) ?? 0m;
         html.Append("<section class=\"page\"><h2>Statement of Changes in Equity</h2><p>For the year ended 30 June ").Append(year).Append("</p><table><thead><tr><th></th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
         AppendAmountRow(html, "Opening balance", opening, null, false);
         AppendAmountRow(html, "Total comprehensive income/(loss)", result, priorResult, false);
@@ -137,7 +144,8 @@ public class NORM_WordExport : IHttpHandler
             "WHERE r.CalculationRunId=@run AND r.LineCode='Cash and cash equivalents' AND r.IsDeactivated=0",
             NORMHelper.P("@release", releaseId), NORMHelper.P("@run", runId));
         decimal ending = cash.Rows.Count == 0 ? 0m : NORMHelper.Dec(cash.Rows[0], "ComputedAmount");
-        decimal beginning = cash.Rows.Count == 0 || cash.Rows[0].IsNull("AmountPrior") ? 0m : NORMHelper.Dec(cash.Rows[0], "AmountPrior");
+        decimal? baselineBeginning = cash.Rows.Count == 0 || cash.Rows[0].IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(cash.Rows[0], "AmountPrior");
+        decimal beginning = NORMStartOfYearSetup.FigureValue(priorFigures, "CASH", "Cash and cash equivalents", baselineBeginning) ?? 0m;
         html.Append("<section class=\"page\"><h2>Cash Flow Statement</h2><p>For the year ended 30 June ").Append(year).Append("</p><table><thead><tr><th></th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
         string[] categories = new string[] { "OPERATING", "INVESTING", "FINANCING" };
         decimal net = 0m;
@@ -224,6 +232,7 @@ public class NORM_WordExport : IHttpHandler
     }
 
     private string Amount(DataRow row, string column) { return row.IsNull(column) ? "-" : FormatAmount(NORMHelper.Dec(row, column)); }
+    private string Amount(decimal? amount) { return amount.HasValue ? FormatAmount(amount.Value) : "-"; }
 
     private string FormatAmount(decimal amount)
     {
