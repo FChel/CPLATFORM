@@ -326,6 +326,10 @@ namespace CPlatform.NORM
             List<FaceRow> gains = new List<FaceRow>();
             bool ownSourceTotalAdded = false;
             bool gainsTotalAdded = false;
+            bool hasForeignExchangeGains = false;
+            for (int i = 0; i < table.Rows.Count; i++)
+                if (String.Equals(NORMHelper.Str(table.Rows[i], "LineCode"), "Foreign exchange gains", StringComparison.OrdinalIgnoreCase))
+                    hasForeignExchangeGains = true;
             if (code == "SOCI") rows.Add(Heading("major", "NET COST OF SERVICES"));
             if (code == "SOFP") rows.Add(Heading("major", "ASSETS"));
             for (int i = 0; i < table.Rows.Count; i++)
@@ -363,6 +367,18 @@ namespace CPlatform.NORM
                     AddSyntheticTotal(rows, gains, "TOTAL_GAINS", "Total gains");
                     gainsTotalAdded = true;
                 }
+                if (code == "SOCI" && lineCode == "Other gains" && !hasForeignExchangeGains)
+                {
+                    FaceRow foreignExchangeGain = new FaceRow();
+                    foreignExchangeGain.Type = "line";
+                    foreignExchangeGain.Code = "Foreign exchange gains";
+                    foreignExchangeGain.Label = "Net foreign exchange gains";
+                    foreignExchangeGain.Note = "1.2F";
+                    foreignExchangeGain.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, foreignExchangeGain.Code, null);
+                    foreignExchangeGain.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, foreignExchangeGain.Code, null);
+                    rows.Add(foreignExchangeGain);
+                    gains.Add(foreignExchangeGain);
+                }
                 if (code == "SOCI" && lineCode == "Revenue from Government") rows.Add(Heading("major", "REVENUE FROM GOVERNMENT"));
                 if (code == "SOFP" && lineCode == "Leases") rows.Add(Heading("subsection", "Interest-bearing liabilities"));
                 if (code == "SOFP" && lineCode == "Employee provisions") rows.Add(Heading("subsection", "Provisions"));
@@ -394,7 +410,7 @@ namespace CPlatform.NORM
                 {
                     if (lineCode == "Revenue from contracts with customers" || lineCode == "Revenue in relation to special accounts" ||
                         lineCode == "Rental income" || lineCode == "Other revenue") ownSource.Add(row);
-                    if (lineCode == "Gain on sale of asset" || lineCode == "Reversals of previous asset write-downs" ||
+                    if (lineCode == "Gain on sale of asset" || lineCode == "Reversals of previous asset write-downs" || lineCode == "Foreign exchange gains" ||
                         lineCode == "Other gains") gains.Add(row);
                 }
             }

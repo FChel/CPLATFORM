@@ -91,12 +91,23 @@ public class NORM_WordExport : IHttpHandler
             "AND p.LineCode=t.LineCode AND p.IsDeactivated=0 WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code " +
             "AND t.IsDeactivated=0 ORDER BY t.SeqNo",
             NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code));
+        bool hasForeignExchangeGains = false;
+        for (int i = 0; i < table.Rows.Count; i++)
+            if (String.Equals(NORMHelper.Str(table.Rows[i], "LineCode"), "Foreign exchange gains", StringComparison.OrdinalIgnoreCase))
+                hasForeignExchangeGains = true;
         html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>").Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
         html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
         for (int i = 0; i < table.Rows.Count; i++)
         {
             DataRow row = table.Rows[i];
             string type = NORMHelper.Str(row, "LineType");
+            if (code == "SOCI" && !hasForeignExchangeGains &&
+                String.Equals(NORMHelper.Str(row, "LineCode"), "Other gains", StringComparison.OrdinalIgnoreCase))
+            {
+                decimal? foreignExchangePrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "Foreign exchange gains", null);
+                html.Append("<tr><th>Net foreign exchange gains</th><td>1.2F</td><td class=\"amount\">-</td><td class=\"amount\">")
+                    .Append(Amount(foreignExchangePrior)).Append("</td></tr>");
+            }
             if (type == "section")
             {
                 html.Append("<tr class=\"section\"><th colspan=\"4\">").Append(Enc(NORMHelper.Str(row, "LineLabel"))).Append("</th></tr>");
@@ -252,10 +263,10 @@ public class NORM_WordExport : IHttpHandler
             string[,] values = new string[,] {
                 { "Employee benefits", "1.1A" }, { "Supplier expenses", "1.1B" }, { "Grants", "1.1C" },
                 { "Finance costs", "1.1D" }, { "Impairment loss allowance on financial instruments", "1.1E" },
-                { "Write-down of non-financial assets", "1.1F" }, { "Net foreign exchange losses", "1.1G" },
+                { "Write-down of non-financial assets", "1.1F" }, { "Net foreign exchange losses", "1.2F" },
                 { "Other expenses", "1.1H" }, { "Revenue from contracts with customers", "1.2A" },
                 { "Rental income", "1.2E" }, { "Other revenue", "1.2F" },
-                { "Reversals of previous asset write-downs", "1.2H" }, { "Other gains", "1.2I" },
+                { "Net foreign exchange gains", "1.2F" }, { "Reversals of previous asset write-downs", "1.2H" }, { "Other gains", "1.2I" },
                 { "Revenue from Government", "1.2J" }
             };
             for (int i = 0; i < values.GetLength(0); i++)

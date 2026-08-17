@@ -599,6 +599,10 @@ namespace CPlatform.NORM
                 NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId),
                 NORMHelper.P("@statement", statementCode));
             List<object> rows = new List<object>();
+            bool hasForeignExchangeGains = false;
+            for (int i = 0; i < table.Rows.Count; i++)
+                if (String.Equals(NORMHelper.Str(table.Rows[i], "LineCode"), "Foreign exchange gains", StringComparison.OrdinalIgnoreCase))
+                    hasForeignExchangeGains = true;
             decimal ownSourceRevenue = 0m;
             decimal gains = 0m;
             bool revenueTotalAdded = false;
@@ -632,6 +636,16 @@ namespace CPlatform.NORM
                 {
                     rows.Add(SimpleRow("total", "TOTAL_GAINS", "Total gains", null, gains, null, false, 0L, new List<Dictionary<string, object>>()));
                     gainsTotalAdded = true;
+                }
+                if (statementCode == "SOCI" && lineCode == "Other gains" && !hasForeignExchangeGains)
+                {
+                    Dictionary<string, object> foreignExchangeGain = SimpleRow("line", "Foreign exchange gains",
+                        "Net foreign exchange gains", "1.2F", 0m,
+                        NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "Foreign exchange gains", null),
+                        false, 0L, new List<Dictionary<string, object>>());
+                    foreignExchangeGain["computed"] = null;
+                    foreignExchangeGain["budget"] = BudgetFor(budgets, "SOCI", "Foreign exchange gains");
+                    rows.Add(foreignExchangeGain);
                 }
                 if (statementCode == "SOCI" && lineCode == "Revenue from Government")
                 {
@@ -695,7 +709,8 @@ namespace CPlatform.NORM
                 {
                     if (lineCode == "Revenue from contracts with customers" || lineCode == "Revenue in relation to special accounts" ||
                         lineCode == "Rental income" || lineCode == "Other revenue") ownSourceRevenue += computed;
-                    if (lineCode == "Gain on sale of asset" || lineCode == "Reversals of previous asset write-downs" || lineCode == "Other gains") gains += computed;
+                    if (lineCode == "Gain on sale of asset" || lineCode == "Reversals of previous asset write-downs" ||
+                        lineCode == "Foreign exchange gains" || lineCode == "Other gains") gains += computed;
                 }
             }
             if (statementCode == "SOCI" && !revenueTotalAdded)
@@ -710,7 +725,7 @@ namespace CPlatform.NORM
                 rows.Add(SimpleRow("total", "OCI_SUBTOTAL", "Total other comprehensive income / (loss)", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 rows.Add(SimpleRow("total", "OCI_TOTAL", "Total comprehensive (loss) / income", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 ApplyAggregate(rows, "TOTAL_OSR", new string[] { "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue" });
-                ApplyAggregate(rows, "TOTAL_GAINS", new string[] { "Gain on sale of asset", "Reversals of previous asset write-downs", "Other gains" });
+                ApplyAggregate(rows, "TOTAL_GAINS", new string[] { "Gain on sale of asset", "Reversals of previous asset write-downs", "Foreign exchange gains", "Other gains" });
                 ApplyAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
                 ApplyAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION" });
             }
@@ -783,7 +798,7 @@ namespace CPlatform.NORM
                     if (include) break;
                 }
                 if (!include) { continue; }
-                current += Convert.ToDecimal(row["computed"]);
+                if (row["computed"] != null) current += Convert.ToDecimal(row["computed"]);
                 if (row["prior"] != null) { prior += Convert.ToDecimal(row["prior"]); hasPrior = true; }
                 if (row["budget"] != null) { budget += Convert.ToDecimal(row["budget"]); hasBudget = true; }
             }
@@ -1050,7 +1065,9 @@ namespace CPlatform.NORM
                 notes["Finance costs"] = "1.1D";
                 notes["Impairment loss on financial instruments"] = "1.1E";
                 notes["Write-down of non-financial assets"] = "1.1F";
-                notes["Foreign exchange"] = "1.1G";
+                notes["Foreign exchange"] = "1.2F";
+                notes["Foreign exchange losses"] = "1.2F";
+                notes["Foreign exchange gains"] = "1.2F";
                 notes["Other expenses"] = "1.1H";
                 notes["Revenue from contracts with customers"] = "1.2A";
                 notes["Rental income"] = "1.2E";

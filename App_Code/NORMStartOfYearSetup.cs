@@ -314,6 +314,12 @@ public static class NORMStartOfYearSetup
             result.Add(new TemplateLine { StatementCode = NORMHelper.Str(table.Rows[i], "StatementCode"),
                 LineCode = NORMHelper.Str(table.Rows[i], "LineCode"), Label = label, Normalised = normalised });
         }
+        if (!result.Any(x => x.StatementCode == "SOCI" && x.LineCode == "Foreign exchange gains"))
+        {
+            const string gainLabel = "Net foreign exchange gains";
+            result.Add(new TemplateLine { StatementCode = "SOCI", LineCode = "Foreign exchange gains",
+                Label = gainLabel, Normalised = NormaliseLabel(gainLabel) });
+        }
         return result;
     }
 

@@ -57,14 +57,14 @@ IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleas
         (ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,NaturalSign,CalculationKind,FormulaSpec,IsClickable)
     VALUES
         (@ReleaseId,2025,'DEPT','SOCI',115,'total','Total expenses',N'Total expenses','D','Formula',
-         N'+Employee benefits|+Supplier expenses|+Grants|+Finance costs|+Impairment loss on financial instruments|+Write-down of non-financial assets|+Expenses in relation to special accounts|+Other expenses|+Foreign exchange|+Depreciation and amortisation',1);
+         N'+Employee benefits|+Supplier expenses|+Grants|+Finance costs|+Impairment loss on financial instruments|+Write-down of non-financial assets|+Expenses in relation to special accounts|+Other expenses|+Foreign exchange losses|+Depreciation and amortisation',1);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId = @ReleaseId AND StatementCode = 'SOCI' AND LineCode = 'Total own-source income')
     INSERT dbo.tblNORM_StatementLine
         (ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,NaturalSign,CalculationKind,FormulaSpec,IsClickable)
     VALUES
         (@ReleaseId,2025,'DEPT','SOCI',195,'total','Total own-source income',N'Total own-source income','C','Formula',
-         N'+Revenue from contracts with customers|+Revenue in relation to special accounts|+Rental income|+Other revenue|+Gain on sale of asset|+Reversals of previous asset write-downs|+Other gains',1);
+         N'+Revenue from contracts with customers|+Revenue in relation to special accounts|+Rental income|+Other revenue|+Gain on sale of asset|+Reversals of previous asset write-downs|+Foreign exchange gains|+Other gains',1);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId = @ReleaseId AND StatementCode = 'SOCI' AND LineCode = 'Net cost of services')
     INSERT dbo.tblNORM_StatementLine
