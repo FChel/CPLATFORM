@@ -48,15 +48,15 @@ namespace CPlatform.NORM
 
         protected void UploadPriorButton_Click(object sender, EventArgs e)
         {
-            Upload(PriorYearFile, NORMStartOfYearSetup.PriorDocumentType);
+            Upload(PriorYearFile, PriorYearStartPage, NORMStartOfYearSetup.PriorDocumentType);
         }
 
         protected void UploadBudgetButton_Click(object sender, EventArgs e)
         {
-            Upload(BudgetFile, NORMStartOfYearSetup.BudgetDocumentType);
+            Upload(BudgetFile, BudgetStartPage, NORMStartOfYearSetup.BudgetDocumentType);
         }
 
-        private void Upload(FileUpload upload, string documentType)
+        private void Upload(FileUpload upload, TextBox startPageInput, string documentType)
         {
             ClearMessages();
             try
@@ -65,13 +65,29 @@ namespace CPlatform.NORM
                 int setupId = NORMStartOfYearSetup.SaveYear(EntityCode(), year, NORMHelper.CurrentUserId());
                 if (!upload.HasFile) throw new InvalidDataException("Choose the " +
                     (documentType == NORMStartOfYearSetup.PriorDocumentType ? "Prior Year Financial Statements" : "Portfolio Budget Statements") + " document.");
+                int? startPage = ReadStartPage(upload, startPageInput);
                 NORMStartOfYearSetup.UploadOutcome outcome = NORMStartOfYearSetup.Upload(setupId, documentType,
-                    upload.FileBytes, upload.FileName, NORMHelper.CurrentUserId());
+                    upload.FileBytes, upload.FileName, startPage, NORMHelper.CurrentUserId());
                 string label = documentType == NORMStartOfYearSetup.PriorDocumentType ? "Prior Year Financial Statements" : "Portfolio Budget Statements";
                 ShowMessage("<strong>" + Enc(label) + " retained and scanned.</strong><span>" + Enc(outcome.Detail) + "</span>");
                 BuildDisplay();
             }
             catch (Exception error) { ShowError(error); BuildDisplay(); }
+        }
+
+        private static int? ReadStartPage(FileUpload upload, TextBox input)
+        {
+            string value = (input.Text ?? "").Trim();
+            bool isPdf = String.Equals(Path.GetExtension(upload.FileName), ".pdf", StringComparison.OrdinalIgnoreCase);
+            if (value.Length == 0)
+            {
+                if (isPdf) throw new InvalidDataException("Enter the PDF page where the financial-statement tables commence.");
+                return null;
+            }
+            int page;
+            if (!Int32.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out page) || page < 1 || page > 9999)
+                throw new InvalidDataException("Enter a valid PDF start page between 1 and 9999.");
+            return page;
         }
 
         private int ReadYear()
@@ -106,10 +122,12 @@ namespace CPlatform.NORM
             string css = status == "Extracted" ? "pass" : (status == "Failed" ? "fail" : "warn");
             long bytes = NORMHelper.Long(row, "SourceFileBytes");
             string size = bytes >= 1048576 ? (bytes / 1048576m).ToString("N1") + " MB" : (bytes / 1024m).ToString("N0") + " KB";
+            string scope = NORMHelper.Str(row, "DetectedStart");
             return "<div class=\"norm-year-document-status " + css + "\"><div><span class=\"norm-status " + css + "\"></span><strong>" +
                 Enc(NORMHelper.Str(row, "SourceFileName")) + "</strong></div><small>" + Enc(status.Replace("Required", " required")) + " · " +
                 NORMHelper.Int(row, "ExtractedFigureCount").ToString("N0") + " figures · " + Enc(size) + "</small><p>" +
-                Enc(NORMHelper.Str(row, "ExtractionDetail")) + "</p><em>SHA-256 " + Enc((NORMHelper.Str(row, "SourceFileHash") ?? "").Substring(0, 12)) + "…</em></div>";
+                Enc(NORMHelper.Str(row, "ExtractionDetail")) + "</p>" + (String.IsNullOrWhiteSpace(scope) ? "" : "<p class=\"norm-year-document-scope\"><strong>Extraction scope:</strong> " + Enc(scope) + "</p>") +
+                "<em>SHA-256 " + Enc((NORMHelper.Str(row, "SourceFileHash") ?? "").Substring(0, 12)) + "…</em></div>";
         }
 
         private string BuildFigurePreview(DataTable figures)

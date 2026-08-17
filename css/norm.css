@@ -92,6 +92,7 @@ body.norm-upload-busy{overflow:hidden}
 .norm-upload-progress-stages span.active{color:#175c48}.norm-upload-progress-stages span.complete{color:#2c9674}
 .norm-upload-progress-stages i{height:2px;background:#e0e7e4}.norm-upload-progress-card>small{display:block;padding-top:17px;border-top:1px solid #e5ebe8;color:#75827d;font-size:11px;line-height:1.45}
 .norm-upload-progress-card>.norm-button{margin-top:20px}.norm-upload-progress.failed .norm-upload-progress-mark i{background:#b9362d;animation:none}.norm-upload-progress.failed .norm-upload-progress-track i{background:#b9362d}
+.norm-pdf-page-field{display:flex;flex-direction:column;gap:7px;margin:15px 0}.norm-pdf-page-field>span{color:#324740;font-size:11px;font-weight:800}.norm-pdf-page-field .norm-input{width:100%;box-sizing:border-box}.norm-pdf-page-field small{color:#74817d;font-size:10px;line-height:1.4}.norm-year-document-scope{padding:8px 10px;border-radius:7px;background:#edf5f1;color:#315a4e!important;font-size:10px!important}.norm-year-document-scope strong{font-size:10px!important}
 @keyframes norm-upload-pulse{0%,100%{transform:scale(.82);opacity:.72}50%{transform:scale(1.08);opacity:1}}
 @media(max-width:620px){.norm-upload-progress{padding:14px}.norm-upload-progress-card{padding:25px 21px;border-radius:17px}.norm-upload-progress-heading{align-items:flex-start}.norm-upload-progress-heading h2{font-size:23px}.norm-upload-progress-heading>strong{font-size:30px}.norm-upload-progress-stages{grid-template-columns:1fr;gap:5px}.norm-upload-progress-stages i{display:none}}
 

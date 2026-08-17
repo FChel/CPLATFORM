@@ -39,12 +39,14 @@
                 <article class="norm-year-upload-card">
                     <div class="norm-year-upload-icon">PY</div><span class="norm-kicker">Comparative figures</span><h3>Prior Year Financial Statements</h3><p>Loads the audited current-year column from the prior-year statements into this year's comparative column.</p>
                     <div class="norm-file-box"><asp:FileUpload ID="PriorYearFile" runat="server" CssClass="norm-file-input" accept=".pdf,.doc,.docx,.xls,.xlsx" /><small>PDF, Word or Excel · maximum 100 MB</small></div>
+                    <label class="norm-pdf-page-field"><span>PDF page where the financial statements commence</span><asp:TextBox ID="PriorYearStartPage" runat="server" CssClass="norm-input" TextMode="Number" min="1" max="9999" step="1" inputmode="numeric" placeholder="e.g. 176" /><small>Required for PDF. Use the page number shown by your PDF viewer.</small></label>
                     <asp:Button ID="UploadPriorButton" runat="server" Text="Upload prior-year statements" CssClass="norm-button norm-button-dark" OnClick="UploadPriorButton_Click" CausesValidation="false" />
                     <%= PriorDocumentHtml %>
                 </article>
                 <article class="norm-year-upload-card">
                     <div class="norm-year-upload-icon">OB</div><span class="norm-kicker">Original Budget</span><h3>Portfolio Budget Statements</h3><p>Loads the approved budget column into the Original Budget column used throughout the financial statements.</p>
                     <div class="norm-file-box"><asp:FileUpload ID="BudgetFile" runat="server" CssClass="norm-file-input" accept=".pdf,.doc,.docx,.xls,.xlsx" /><small>PDF, Word or Excel · maximum 100 MB</small></div>
+                    <label class="norm-pdf-page-field"><span>PDF page where the financial tables commence</span><asp:TextBox ID="BudgetStartPage" runat="server" CssClass="norm-input" TextMode="Number" min="1" max="9999" step="1" inputmode="numeric" placeholder="e.g. 84" /><small>Required for PDF. Use the page number shown by your PDF viewer.</small></label>
                     <asp:Button ID="UploadBudgetButton" runat="server" Text="Upload Portfolio Budget Statements" CssClass="norm-button norm-button-dark" OnClick="UploadBudgetButton_Click" CausesValidation="false" />
                     <%= BudgetDocumentHtml %>
                 </article>
@@ -74,7 +76,7 @@
         if(yearInput&&preview){yearInput.addEventListener('input',function(){preview.textContent=/^[0-9]{4}$/.test(yearInput.value)?String(Number(yearInput.value)-1):'—';});}
 
         var form=document.getElementById('form1'),priorButton=document.getElementById('<%= UploadPriorButton.ClientID %>'),budgetButton=document.getElementById('<%= UploadBudgetButton.ClientID %>'),
-            priorFile=document.getElementById('<%= PriorYearFile.ClientID %>'),budgetFile=document.getElementById('<%= BudgetFile.ClientID %>'),dialog=document.getElementById('normUploadProgress'),
+            priorFile=document.getElementById('<%= PriorYearFile.ClientID %>'),budgetFile=document.getElementById('<%= BudgetFile.ClientID %>'),priorPage=document.getElementById('<%= PriorYearStartPage.ClientID %>'),budgetPage=document.getElementById('<%= BudgetStartPage.ClientID %>'),dialog=document.getElementById('normUploadProgress'),
             title=document.getElementById('normUploadProgressTitle'),phase=document.getElementById('normUploadProgressPhase'),percent=document.getElementById('normUploadProgressPercent'),
             detail=document.getElementById('normUploadProgressDetail'),track=document.getElementById('normUploadProgressTrack'),bar=document.getElementById('normUploadProgressBar'),
             stages=dialog?dialog.querySelectorAll('.norm-upload-progress-stages span'):[],closeButton=document.getElementById('normUploadProgressClose'),activeButton=null,processingTimer=null,currentProgress=0;
@@ -100,6 +102,8 @@
             event.preventDefault();
             var fileInput=submitter===priorButton?priorFile:budgetFile,label=submitter===priorButton?'Prior Year Financial Statements':'Portfolio Budget Statements';
             if(!fileInput.files||!fileInput.files.length){fileInput.setCustomValidity('Choose the '+label+' document.');fileInput.reportValidity();window.setTimeout(function(){fileInput.setCustomValidity('');},100);return;}
+            var pageInput=submitter===priorButton?priorPage:budgetPage,isPdf=/\.pdf$/i.test(fileInput.files[0].name),pageValue=pageInput?pageInput.value.trim():'';
+            if(isPdf&&!/^[1-9][0-9]{0,3}$/.test(pageValue)){pageInput.setCustomValidity('Enter the PDF page where the financial-statement tables commence.');pageInput.reportValidity();window.setTimeout(function(){pageInput.setCustomValidity('');},100);return;}
 
             var data=new FormData(form);if(submitter.name){data.append(submitter.name,submitter.value||'Upload');}
             dialog.hidden=false;dialog.classList.remove('failed');closeButton.hidden=true;document.body.classList.add('norm-upload-busy');priorButton.disabled=true;budgetButton.disabled=true;

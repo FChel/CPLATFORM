@@ -10,6 +10,10 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using OfficeOpenXml;
+using UglyToad.PdfPig;
+using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.WordExtractor;
 
 /// <summary>Controlled start-of-year settings and comparative/budget source-document ingestion.</summary>
 public static class NORMStartOfYearSetup
@@ -128,7 +132,7 @@ public static class NORMStartOfYearSetup
         return value == null ? 0 : Convert.ToInt32(value);
     }
 
-    public static UploadOutcome Upload(int setupId, string documentType, byte[] content, string fileName, string user)
+    public static UploadOutcome Upload(int setupId, string documentType, byte[] content, string fileName, int? requestedStartPage, string user)
     {
         if (!IsInstalled()) { throw new InvalidOperationException("Install the start-of-year database objects first."); }
         if (setupId <= 0) { throw new InvalidOperationException("Save the current financial year before uploading source documents."); }
@@ -139,6 +143,8 @@ public static class NORMStartOfYearSetup
         string extension = Path.GetExtension(fileName ?? "").ToLowerInvariant();
         string[] allowed = { ".pdf", ".doc", ".docx", ".xls", ".xlsx" };
         if (!allowed.Contains(extension)) { throw new InvalidDataException("Upload a PDF, Word document or Excel workbook."); }
+        if (extension == ".pdf" && (!requestedStartPage.HasValue || requestedStartPage.Value < 1 || requestedStartPage.Value > 9999))
+            throw new InvalidDataException("Enter the PDF page where the financial-statement tables commence.");
 
         DataTable setup = NORMHelper.Query(
             "SELECT YearSetupId,EntityCode,CurrentFinancialYear FROM dbo.tblNORM_YearSetup WHERE YearSetupId=@id AND IsCurrent=1 AND IsDeactivated=0",
@@ -147,17 +153,31 @@ public static class NORMStartOfYearSetup
         string entity = NORMHelper.Str(setup.Rows[0], "EntityCode");
         int financialYear = NORMHelper.Int(setup.Rows[0], "CurrentFinancialYear");
         int releaseId = ResolveRelease(entity, financialYear);
-        List<SourceRow> rows = ExtractRows(content, extension);
+        List<SourceRow> rows = ExtractRows(content, extension, requestedStartPage);
         string detectedStart;
         AssignStatementScopes(rows, out detectedStart);
+        if (extension == ".pdf" && requestedStartPage.HasValue)
+        {
+            string requested = "Requested PDF page " + requestedStartPage.Value.ToString(CultureInfo.InvariantCulture);
+            detectedStart = String.IsNullOrWhiteSpace(detectedStart) ? requested : requested + " · first statement at " + detectedStart;
+        }
         List<TemplateLine> templates = LoadTemplates(releaseId);
         List<FigureMatch> figures = MatchFigures(rows, templates);
         string status = figures.Count > 0 ? "Extracted" : "ReviewRequired";
         string detail;
         if (figures.Count > 0)
-            detail = figures.Count.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) + " high-confidence statement figure(s) extracted and applied. Review source locators before sign-off.";
+            detail = figures.Count.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) + " high-confidence statement figure(s) extracted and applied" +
+                (requestedStartPage.HasValue ? " from PDF page " + requestedStartPage.Value.ToString(CultureInfo.InvariantCulture) + " onward" : "") +
+                ". Review source locators before sign-off.";
         else if (extension == ".doc" || extension == ".xls")
             detail = "The legacy binary format was retained, but automatic extraction requires a .docx or .xlsx copy. No figures were applied.";
+        else if (extension == ".pdf" && rows.Count == 0)
+            detail = "No searchable text was found from PDF page " + requestedStartPage.Value.ToString(CultureInfo.InvariantCulture) +
+                " onward. The file was retained; check the nominated page or provide a searchable PDF. No figures were applied.";
+        else if (extension == ".pdf")
+            detail = "NORM read " + rows.Count.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) + " text row(s) from PDF page " +
+                requestedStartPage.Value.ToString(CultureInfo.InvariantCulture) +
+                " onward, but could not confidently map them to the configured statement lines. No figures were applied.";
         else
             detail = "The document was retained, but NORM could not confidently identify mapped statement rows. No figures were applied; provide a searchable or spreadsheet version for extraction.";
 
@@ -400,11 +420,11 @@ public static class NORMStartOfYearSetup
         return null;
     }
 
-    private static List<SourceRow> ExtractRows(byte[] content, string extension)
+    private static List<SourceRow> ExtractRows(byte[] content, string extension, int? requestedStartPage)
     {
         if (extension == ".xlsx") return ExtractExcel(content);
         if (extension == ".docx") return ExtractWord(content);
-        if (extension == ".pdf") return ExtractPdf(content);
+        if (extension == ".pdf") return ExtractPdf(content, requestedStartPage ?? 1);
         return new List<SourceRow>();
     }
 
@@ -530,42 +550,94 @@ public static class NORMStartOfYearSetup
         return (uint)(value[offset] | (value[offset + 1] << 8) | (value[offset + 2] << 16) | (value[offset + 3] << 24));
     }
 
-    private static List<SourceRow> ExtractPdf(byte[] content)
+    private static List<SourceRow> ExtractPdf(byte[] content, int startPage)
     {
         List<SourceRow> rows = new List<SourceRow>();
-        if (content.Length > 26214400) { return rows; }
-        Encoding latin = Encoding.GetEncoding(28591);
-        string raw = latin.GetString(content);
-        List<string> bodies = new List<string> { raw };
-        MatchCollection streams = Regex.Matches(raw, @"stream\r?\n(?<data>[\s\S]*?)\r?\nendstream", RegexOptions.IgnoreCase);
-        for (int i = 0; i < streams.Count; i++)
+        try
         {
-            int prefixStart = Math.Max(0, streams[i].Index - 250);
-            string prefix = raw.Substring(prefixStart, streams[i].Index - prefixStart);
-            if (!prefix.Contains("FlateDecode")) { continue; }
-            try
+            using (PdfDocument document = PdfDocument.Open(content))
             {
-                byte[] compressed = latin.GetBytes(streams[i].Groups["data"].Value);
-                using (MemoryStream input = new MemoryStream(compressed))
-                using (DeflateStream inflater = new DeflateStream(input, CompressionMode.Decompress))
-                using (MemoryStream output = new MemoryStream())
-                { CopyWithLimit(inflater, output, 33554432); bodies.Add(latin.GetString(output.ToArray())); }
+                if (startPage > document.NumberOfPages)
+                    throw new InvalidDataException("The nominated start page exceeds the PDF's " + document.NumberOfPages.ToString(CultureInfo.InvariantCulture) + " pages.");
+                int extractedCharacters = 0;
+                for (int pageNumber = startPage; pageNumber <= document.NumberOfPages && rows.Count < 75000 && extractedCharacters < 12000000; pageNumber++)
+                {
+                    Page page = document.GetPage(pageNumber);
+                    List<Word> words = page.GetWords(NearestNeighbourWordExtractor.Instance)
+                        .Where(x => !String.IsNullOrWhiteSpace(x.Text))
+                        .OrderByDescending(x => x.BoundingBox.Centroid.Y)
+                        .ThenBy(x => x.BoundingBox.Left)
+                        .ToList();
+                    int pageRow = 0;
+                    if (words.Count > 0)
+                    {
+                        List<Word> line = new List<Word>();
+                        double anchorY = 0;
+                        for (int i = 0; i < words.Count; i++)
+                        {
+                            double y = words[i].BoundingBox.Centroid.Y;
+                            double tolerance = Math.Max(2.5, Math.Min(7.0, words[i].BoundingBox.Height * 0.65));
+                            if (line.Count > 0 && Math.Abs(y - anchorY) > tolerance)
+                            {
+                                AddPdfRow(rows, line, pageNumber, ref pageRow, ref extractedCharacters);
+                                line.Clear();
+                            }
+                            line.Add(words[i]);
+                            anchorY = line.Count == 1 ? y : ((anchorY * (line.Count - 1)) + y) / line.Count;
+                        }
+                        if (line.Count > 0) AddPdfRow(rows, line, pageNumber, ref pageRow, ref extractedCharacters);
+                    }
+                    else
+                    {
+                        string text = ContentOrderTextExtractor.GetText(page);
+                        string[] lines = Regex.Split(text ?? "", @"\r?\n");
+                        for (int i = 0; i < lines.Length; i++)
+                        {
+                            string clean = Regex.Replace(lines[i] ?? "", @"\s+", " ").Trim();
+                            if (clean.Length == 0) continue;
+                            pageRow++;
+                            extractedCharacters += clean.Length;
+                            rows.Add(new SourceRow { Locator = "PDF page " + pageNumber.ToString(CultureInfo.InvariantCulture) + ", row " + pageRow.ToString(CultureInfo.InvariantCulture), Cells = new List<string> { clean } });
+                        }
+                    }
+                }
             }
-            catch { }
         }
-        int line = 0;
-        for (int b = 0; b < bodies.Count; b++)
+        catch (InvalidDataException) { throw; }
+        catch (Exception error)
         {
-            MatchCollection textOps = Regex.Matches(bodies[b], @"\((?<text>(?:\\.|[^\\)])*)\)\s*(?:Tj|'|"")", RegexOptions.Singleline);
-            for (int i = 0; i < textOps.Count; i++)
-            {
-                string text = DecodePdfString(textOps[i].Groups["text"].Value).Trim();
-                if (text.Length == 0) { continue; }
-                line++;
-                rows.Add(new SourceRow { Locator = "PDF text " + line.ToString(CultureInfo.InvariantCulture), Cells = new List<string> { text } });
-            }
+            throw new InvalidDataException("NORM could not read the PDF from page " + startPage.ToString(CultureInfo.InvariantCulture) + ": " + error.Message, error);
         }
         return rows;
+    }
+
+    private static void AddPdfRow(List<SourceRow> rows, List<Word> sourceWords, int pageNumber, ref int pageRow, ref int extractedCharacters)
+    {
+        List<Word> words = sourceWords.OrderBy(x => x.BoundingBox.Left).ToList();
+        List<string> cells = new List<string>();
+        StringBuilder cell = new StringBuilder();
+        double previousRight = 0;
+        double previousHeight = 0;
+        for (int i = 0; i < words.Count; i++)
+        {
+            double gap = i == 0 ? 0 : words[i].BoundingBox.Left - previousRight;
+            double threshold = Math.Max(12.0, Math.Max(previousHeight, words[i].BoundingBox.Height) * 1.35);
+            if (i > 0 && gap > threshold && cell.Length > 0)
+            {
+                cells.Add(cell.ToString().Trim());
+                cell.Clear();
+            }
+            if (cell.Length > 0) cell.Append(' ');
+            cell.Append(words[i].Text.Trim());
+            previousRight = words[i].BoundingBox.Right;
+            previousHeight = words[i].BoundingBox.Height;
+        }
+        if (cell.Length > 0) cells.Add(cell.ToString().Trim());
+        cells = cells.Where(x => !String.IsNullOrWhiteSpace(x)).ToList();
+        if (cells.Count == 0) return;
+        pageRow++;
+        extractedCharacters += cells.Sum(x => x.Length);
+        rows.Add(new SourceRow { Locator = "PDF page " + pageNumber.ToString(CultureInfo.InvariantCulture) + ", row " + pageRow.ToString(CultureInfo.InvariantCulture), Cells = cells });
     }
 
     private static void CopyWithLimit(Stream input, Stream output, int maximumBytes)
