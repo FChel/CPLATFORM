@@ -152,6 +152,32 @@ public class NORM_WordExport : IHttpHandler
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
                 .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
         }
+        if (code == "SOCI")
+        {
+            Dictionary<string, decimal> auditedOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "AuditedActual");
+            Dictionary<string, decimal> priorOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "PriorActual");
+            decimal? currentOci = SourceValue(auditedOci, "SOCE_TOTAL_OCI");
+            decimal? effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "SOCE_TOTAL_OCI",
+                SourceValue(priorOci, "SOCE_TOTAL_OCI"));
+            effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "OCI_REVALUATION", effectiveOciPrior);
+            decimal? currentResult = null, priorResult = null;
+            for (int i = 0; i < table.Rows.Count; i++)
+            {
+                DataRow source = table.Rows[i];
+                if (!String.Equals(NORMHelper.Str(source, "LineCode"), "Operating result", StringComparison.OrdinalIgnoreCase)) { continue; }
+                currentResult = source.IsNull("ComputedAmount") ? (decimal?)null : NORMHelper.Dec(source, "ComputedAmount");
+                decimal? baseline = source.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(source, "AmountPrior");
+                priorResult = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "Operating result", baseline);
+                break;
+            }
+            decimal? totalCurrent = currentResult.HasValue && currentOci.HasValue ? (decimal?)(currentResult.Value + currentOci.Value) : null;
+            decimal? totalPrior = priorResult.HasValue && effectiveOciPrior.HasValue ? (decimal?)(priorResult.Value + effectiveOciPrior.Value) : null;
+            html.Append("<tr class=\"section\"><th colspan=\"4\">OTHER COMPREHENSIVE INCOME / (LOSS)</th></tr>");
+            html.Append("<tr class=\"section\"><th colspan=\"4\">Items not subject to subsequent reclassification to net cost of services</th></tr>");
+            AppendStatementAmountRow(html, "Changes in asset revaluation reserves", "1.3", currentOci, effectiveOciPrior, false);
+            AppendStatementAmountRow(html, "Total other comprehensive income / (loss)", "", currentOci, effectiveOciPrior, true);
+            AppendStatementAmountRow(html, "Total comprehensive (loss) / income", "", totalCurrent, totalPrior, true);
+        }
         html.Append("</tbody></table><p class=\"footer\">This statement should be read with the accompanying notes.</p></section>");
     }
 
@@ -262,6 +288,19 @@ public class NORM_WordExport : IHttpHandler
     {
         html.Append("<tr class=\"").Append(total ? "total" : "").Append("\"><th>").Append(Enc(label)).Append("</th><td class=\"amount\">")
             .Append(FormatAmount(current)).Append("</td><td class=\"amount\">").Append(prior.HasValue ? FormatAmount(prior.Value) : "-").Append("</td></tr>");
+    }
+
+    private void AppendStatementAmountRow(StringBuilder html, string label, string note, decimal? current, decimal? prior, bool total)
+    {
+        html.Append("<tr class=\"").Append(total ? "total" : "").Append("\"><th>").Append(Enc(label)).Append("</th><td>")
+            .Append(Enc(note)).Append("</td><td class=\"amount\">").Append(Amount(current)).Append("</td><td class=\"amount\">")
+            .Append(Amount(prior)).Append("</td></tr>");
+    }
+
+    private decimal? SourceValue(Dictionary<string, decimal> values, string code)
+    {
+        decimal value;
+        return values != null && values.TryGetValue(code, out value) ? (decimal?)value : null;
     }
 
     private decimal LineAmount(DataTable table, string lineCode, string column)

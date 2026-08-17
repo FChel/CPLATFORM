@@ -416,7 +416,26 @@ namespace CPlatform.NORM
             }
             if (code == "SOCI" && !ownSourceTotalAdded) AddSyntheticTotal(rows, ownSource, "TOTAL_OSR", "Total own-source revenue");
             if (code == "SOCI" && !gainsTotalAdded) AddSyntheticTotal(rows, gains, "TOTAL_GAINS", "Total gains");
-            if (code == "SOCI") ApplyFaceAggregate(rows, "Total own-source income", new string[] { "TOTAL_OSR", "TOTAL_GAINS" });
+            if (code == "SOCI")
+            {
+                ApplyFaceAggregate(rows, "Total own-source income", new string[] { "TOTAL_OSR", "TOTAL_GAINS" });
+                Dictionary<string, decimal> auditedOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "AuditedActual");
+                Dictionary<string, decimal> priorOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "PriorActual");
+                Dictionary<string, decimal> budgetOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "OriginalBudget");
+                decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCE", "SOCE_TOTAL_OCI",
+                    SourceValue(priorOci, "SOCE_TOTAL_OCI"));
+                effectivePrior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCI", "OCI_REVALUATION", effectivePrior);
+                decimal? effectiveBudget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOCE", "SOCE_TOTAL_OCI",
+                    SourceValue(budgetOci, "SOCE_TOTAL_OCI"));
+                rows.Add(Heading("major", "OTHER COMPREHENSIVE INCOME / (LOSS)"));
+                rows.Add(Heading("subsection", "Items not subject to subsequent reclassification to net cost of services"));
+                rows.Add(new FaceRow { Type = "line", Code = "OCI_REVALUATION", Label = "Changes in asset revaluation reserves",
+                    Note = "1.3", Current = SourceValue(auditedOci, "SOCE_TOTAL_OCI"), Prior = effectivePrior, Budget = effectiveBudget });
+                rows.Add(new FaceRow { Type = "total", Code = "OCI_SUBTOTAL", Label = "Total other comprehensive income / (loss)" });
+                rows.Add(new FaceRow { Type = "total", Code = "OCI_TOTAL", Label = "Total comprehensive (loss) / income" });
+                ApplyFaceAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
+                ApplyFaceAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION" });
+            }
             return rows;
         }
 
@@ -448,6 +467,12 @@ namespace CPlatform.NORM
             target.Budget = components.Any(x => x.Budget.HasValue)
                 ? (decimal?)components.Where(x => x.Budget.HasValue).Sum(x => x.Budget.Value) : null;
             target.FormulaSpec = String.Join("|", componentCodes.Select(x => "+" + x).ToArray());
+        }
+
+        private static decimal? SourceValue(Dictionary<string, decimal> values, string code)
+        {
+            decimal value;
+            return values != null && values.TryGetValue(code, out value) ? (decimal?)value : null;
         }
 
         private static FaceRow DataRowToFace(DataRow source)

@@ -719,9 +719,24 @@ namespace CPlatform.NORM
                 rows.Add(SimpleRow("total", "TOTAL_GAINS", "Total gains", null, gains, null, false, 0L, new List<Dictionary<string, object>>()));
             if (statementCode == "SOCI")
             {
+                Dictionary<string, decimal> auditedOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "AuditedActual");
+                Dictionary<string, decimal> priorOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "PriorActual");
+                Dictionary<string, decimal> budgetOci = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOCE", "OriginalBudget");
+                decimal? ociCurrent = SourceFigureNullable(auditedOci, "SOCE_TOTAL_OCI");
+                decimal? ociPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "SOCE_TOTAL_OCI",
+                    SourceFigureNullable(priorOci, "SOCE_TOTAL_OCI"));
+                ociPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "OCI_REVALUATION", ociPrior);
+                decimal? ociBudget = SourceFigureNullable(budgetOci, "SOCE_TOTAL_OCI");
+                object configuredOciBudget = BudgetFor(budgets, "SOCE", "SOCE_TOTAL_OCI");
+                if (configuredOciBudget != null) { ociBudget = Convert.ToDecimal(configuredOciBudget); }
                 rows.Add(SimpleRow("major", null, "OTHER COMPREHENSIVE INCOME / (LOSS)", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 rows.Add(SimpleRow("subsection", null, "Items not subject to subsequent reclassification to net cost of services", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-                rows.Add(SimpleRow("line", "OCI_REVALUATION", "Changes in asset revaluation reserve", "1.3", 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                Dictionary<string, object> revaluation = SimpleRow("line", "OCI_REVALUATION",
+                    "Changes in asset revaluation reserves", "1.3", ociCurrent ?? 0m, ociPrior,
+                    false, 0L, new List<Dictionary<string, object>>());
+                revaluation["computed"] = ociCurrent.HasValue ? (object)ociCurrent.Value : null;
+                revaluation["budget"] = ociBudget.HasValue ? (object)ociBudget.Value : null;
+                rows.Add(revaluation);
                 rows.Add(SimpleRow("total", "OCI_SUBTOTAL", "Total other comprehensive income / (loss)", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 rows.Add(SimpleRow("total", "OCI_TOTAL", "Total comprehensive (loss) / income", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 ApplyAggregate(rows, "TOTAL_OSR", new string[] { "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue" });

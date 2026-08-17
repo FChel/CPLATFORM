@@ -323,6 +323,9 @@ public static class NORMStartOfYearSetup
         const string totalIncomeLabel = "Total income";
         result.Add(new TemplateLine { StatementCode = "SOCI", LineCode = "Total own-source income",
             Label = totalIncomeLabel, Normalised = NormaliseLabel(totalIncomeLabel) });
+        const string revaluationLabel = "Changes in asset revaluation reserves";
+        result.Add(new TemplateLine { StatementCode = "SOCI", LineCode = "OCI_REVALUATION",
+            Label = revaluationLabel, Normalised = NormaliseLabel(revaluationLabel) });
         return result;
     }
 
