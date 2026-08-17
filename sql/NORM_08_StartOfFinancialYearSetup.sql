@@ -2,6 +2,8 @@
    Idempotent. Source documents are retained in SQL and never served directly by IIS. */
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 
 IF OBJECT_ID('dbo.tblNORM_YearSetup','U') IS NULL
 BEGIN
