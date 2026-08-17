@@ -363,6 +363,10 @@
       if (statement.layout === "assetMovement") { return printAsset(statement); }
       return printStandard(statement);
     }).join("");
+    Array.prototype.forEach.call(byId("printBook").querySelectorAll(".norm-print-number, td.norm-amount, .norm-financial-table thead th:nth-child(n+3), .norm-note-table thead th:not(:first-child), .norm-asset-table thead th:nth-child(n+3)"), function (cell) {
+      cell.style.setProperty("text-align", "right", "important");
+      cell.setAttribute("align", "right");
+    });
   }
 
   function renderValidations() {
