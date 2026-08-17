@@ -355,6 +355,7 @@ namespace CPlatform.NORM
                     rows.Add(Heading("major", "EQUITY"));
                     continue;
                 }
+                if (code == "SOFP" && lineCode == "Cash and cash equivalents") rows.Add(Heading("subsection", "Financial assets"));
                 if (code == "SOCI" && lineCode == "Revenue from contracts with customers") rows.Add(Heading("subsection", "Own-source revenue"));
                 if (code == "SOCI" && lineCode == "Gain on sale of asset")
                 {
@@ -384,6 +385,8 @@ namespace CPlatform.NORM
                 if (code == "SOFP" && lineCode == "Employee provisions") rows.Add(Heading("subsection", "Provisions"));
                 if (code == "SOFP" && lineCode == "Property plant and equipment")
                 {
+                    rows.Add(new FaceRow { Type = "total", Code = "TOTAL_FINANCIAL_ASSETS", Label = "Total financial assets" });
+                    rows.Add(Heading("subsection", "Non-financial assets"));
                     AddAssetSplits(rows, model, source);
                     continue;
                 }
@@ -439,6 +442,8 @@ namespace CPlatform.NORM
                 ApplyFaceAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
                 ApplyFaceAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION" });
             }
+            if (code == "SOFP") ApplyFaceAggregate(rows, "TOTAL_FINANCIAL_ASSETS",
+                new string[] { "Cash and cash equivalents", "Trade and other receivables" });
             return rows;
         }
 

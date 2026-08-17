@@ -653,6 +653,10 @@ namespace CPlatform.NORM
                 }
                 if (statementCode == "SOFP" && rows.Count == 0)
                     rows.Add(SimpleRow("major", null, "ASSETS", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                if (statementCode == "SOFP" && lineCode == "Cash and cash equivalents")
+                    rows.Add(SimpleRow("subsection", "HEADING_FINANCIAL_ASSETS", "Financial assets", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                if (statementCode == "SOFP" && lineCode == "Property plant and equipment")
+                    rows.Add(SimpleRow("subsection", "HEADING_NON_FINANCIAL_ASSETS", "Non-financial assets", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 if (statementCode == "SOFP" && lineType == "section" && String.Equals(NORMHelper.Str(source, "LineLabel"), "Liabilities", StringComparison.OrdinalIgnoreCase))
                 {
                     rows.Add(SimpleRow("major", null, "LIABILITIES", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
@@ -765,7 +769,7 @@ namespace CPlatform.NORM
 
         private void AddSofpSubtotals(List<object> rows)
         {
-            InsertAggregateBefore(rows, "PPE_*", "TOTAL_FINANCIAL_ASSETS", "Total financial assets",
+            InsertAggregateBefore(rows, "HEADING_NON_FINANCIAL_ASSETS", "TOTAL_FINANCIAL_ASSETS", "Total financial assets",
                 new string[] { "Cash and cash equivalents", "Trade and other receivables" });
             InsertAggregateBefore(rows, "Assets held for sale", "TOTAL_NON_FINANCIAL_ASSETS", "Total non-financial assets",
                 new string[] { "PPE_*", "Inventories", "Prepayments" });

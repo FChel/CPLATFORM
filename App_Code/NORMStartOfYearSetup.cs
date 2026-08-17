@@ -51,6 +51,7 @@ public static class NORMStartOfYearSetup
         public decimal Amount;
         public string Locator;
         public decimal Confidence;
+        public decimal SelectionScore;
     }
 
     public static bool IsInstalled()
@@ -352,10 +353,12 @@ public static class NORMStartOfYearSetup
                 if (!String.IsNullOrEmpty(row.StatementCode) && row.StatementCode != template.StatementCode) { continue; }
                 decimal confidence = MatchConfidence(candidate, template.Normalised);
                 if (confidence < 90m) { continue; }
+                decimal selectionScore = confidence + (CountAmounts(row) >= 2 ? 5m : 0m);
                 string key = template.StatementCode + "|" + template.LineCode;
                 FigureMatch existing;
-                if (!best.TryGetValue(key, out existing) || confidence > existing.Confidence)
-                    best[key] = new FigureMatch { Template = template, Amount = amount, Locator = row.Locator, Confidence = confidence };
+                if (!best.TryGetValue(key, out existing) || selectionScore > existing.SelectionScore)
+                    best[key] = new FigureMatch { Template = template, Amount = amount, Locator = row.Locator,
+                        Confidence = confidence, SelectionScore = selectionScore };
             }
         }
         return best.Values.OrderBy(x => StatementOrder(x.Template.StatementCode)).ThenBy(x => x.Template.Label).ToList();
@@ -385,6 +388,22 @@ public static class NORMStartOfYearSetup
             amount = value; return true;
         }
         return false;
+    }
+
+    private static int CountAmounts(SourceRow row)
+    {
+        int count = 0;
+        MatchCollection matches = Regex.Matches(row.Text, @"(?<![A-Za-z0-9])\(?\$?\s*-?\d{1,3}(?:,\d{3})*(?:\.\d+)?\)?(?![A-Za-z])");
+        for (int i = 0; i < matches.Count; i++)
+        {
+            decimal value;
+            if (!TryParseAmount(matches[i].Value, out value)) { continue; }
+            string digits = Regex.Replace(matches[i].Value, "[^0-9]", "");
+            int year;
+            if (digits.Length == 4 && Int32.TryParse(digits, out year) && year >= 1900 && year <= 2999) { continue; }
+            count++;
+        }
+        return count;
     }
 
     private static bool TryParseAmount(string value, out decimal amount)

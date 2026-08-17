@@ -98,6 +98,7 @@ public class NORM_WordExport : IHttpHandler
         decimal totalIncomeCurrent = 0m, totalIncomePrior = 0m;
         bool hasTotalIncomeCurrent = false, hasTotalIncomePrior = false;
         decimal? operatingResultCurrent = null, operatingResultPrior = null;
+        decimal? financialAssetsCurrent = null, financialAssetsPrior = null;
         HashSet<string> incomeComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue",
@@ -127,6 +128,15 @@ public class NORM_WordExport : IHttpHandler
             if (revenueCurrent.HasValue && netCostCurrent.HasValue) operatingResultCurrent = revenueCurrent.Value - netCostCurrent.Value;
             if (revenuePrior.HasValue && netCostPrior.HasValue) operatingResultPrior = revenuePrior.Value - netCostPrior.Value;
         }
+        if (code == "SOFP")
+        {
+            decimal? cashCurrent = StatementAmount(table, "Cash and cash equivalents", "PublishedCurrent") ?? StatementAmount(table, "Cash and cash equivalents", "ComputedAmount");
+            decimal? receivablesCurrent = StatementAmount(table, "Trade and other receivables", "PublishedCurrent") ?? StatementAmount(table, "Trade and other receivables", "ComputedAmount");
+            decimal? cashPrior = EffectivePriorAmount(table, code, "Cash and cash equivalents");
+            decimal? receivablesPrior = EffectivePriorAmount(table, code, "Trade and other receivables");
+            if (cashCurrent.HasValue && receivablesCurrent.HasValue) financialAssetsCurrent = cashCurrent.Value + receivablesCurrent.Value;
+            if (cashPrior.HasValue && receivablesPrior.HasValue) financialAssetsPrior = cashPrior.Value + receivablesPrior.Value;
+        }
         html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>").Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
         html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
         for (int i = 0; i < table.Rows.Count; i++)
@@ -147,6 +157,8 @@ public class NORM_WordExport : IHttpHandler
             }
             decimal? baselinePrior = row.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(row, "AmountPrior");
             string lineCode = NORMHelper.Str(row, "LineCode");
+            if (code == "SOFP" && String.Equals(lineCode, "Cash and cash equivalents", StringComparison.OrdinalIgnoreCase))
+                html.Append("<tr class=\"section\"><th colspan=\"4\">Financial assets</th></tr>");
             decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, code, lineCode, baselinePrior);
             decimal? effectiveCurrent = row.IsNull("ComputedAmount") ? (decimal?)null : NORMHelper.Dec(row, "ComputedAmount");
             if (code == "SOFP" && !row.IsNull("PublishedCurrent")) effectiveCurrent = NORMHelper.Dec(row, "PublishedCurrent");
@@ -165,6 +177,8 @@ public class NORM_WordExport : IHttpHandler
             }
             if (code == "SOFP" && String.Equals(lineCode, "Property plant and equipment", StringComparison.OrdinalIgnoreCase))
             {
+                AppendStatementAmountRow(html, "Total financial assets", "", financialAssetsCurrent, financialAssetsPrior, true);
+                html.Append("<tr class=\"section\"><th colspan=\"4\">Non-financial assets</th></tr>");
                 AppendWordAssetSplits(html, releaseId);
                 continue;
             }
