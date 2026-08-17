@@ -135,13 +135,15 @@
 
   function renderStatement() {
     var statement = currentStatement();
+    byId("statementDocument").classList.toggle("norm-administered-document", !!statement.administered);
     if (statement.layout === "notes") { renderNotes(statement); return; }
+    if (statement.layout === "adminNotes") { renderAdministeredNotes(statement); return; }
     if (statement.layout === "assetMovement") { renderAssetMovement(statement); return; }
     var currentYear = data.meta.yearCurrent;
     var priorYear = data.meta.yearPrior;
     var rows = (statement.rows || []).map(function (row, index) {
       if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead") {
-        return '<tr class="norm-section-row ' + esc(row.type) + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
+        return '<tr class="norm-section-row ' + esc(row.type) + (statement.administered ? ' administered' : '') + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
       }
       var status = statusClass(row.status);
       var clickable = viewMode === "preparation" && row.clickable && row.resultId;
@@ -151,7 +153,7 @@
       var note = row.note ? '<button type="button" class="norm-note-jump" data-note="' + esc(row.note) + '" aria-label="Open note ' + esc(row.note) + '">' + esc(row.note) + '</button>' : '';
       var cashWorking = statement.code === "CASH" && (row.original !== undefined || row.adjustment !== undefined)
         ? '<small class="norm-cash-working">Original ' + number(row.original || 0) + ' · adjustments ' + number(row.adjustment || 0) + '</small>' : '';
-      return '<tr class="norm-financial-row ' + esc(row.type) + '"><th scope="row">' + esc(row.label) + cashWorking +
+      return '<tr class="norm-financial-row ' + esc(row.type) + (statement.administered ? ' administered' : '') + '"><th scope="row">' + esc(row.label) + cashWorking +
         '</th><td class="norm-note">' + note + '</td><td class="norm-amount">' + amount +
         '</td><td class="norm-amount norm-prior">' + number(row.prior) + '</td><td class="norm-amount norm-budget">' + number(row.budget) + '</td></tr>';
     }).join("");
@@ -161,8 +163,9 @@
       : '<tr><th></th><th>Notes</th><th><b>' + currentYear + '</b><small>Current</small>$\'000</th><th><b>' + priorYear + '</b><small>Comparative</small>$\'000</th><th><b>Original Budget</b><small>' + currentYear + '</small>$\'000</th></tr>';
 
     byId("statementDocument").innerHTML = '<header class="norm-document-head"><span class="norm-kicker">' + esc(data.meta.entity) + '</span>' +
-      '<h1>' + esc(statement.title) + '</h1><p>' + (statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + currentYear + '</p>' +
+      '<h1>' + esc(statement.title) + '</h1><p>' + (statement.atDate || statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + currentYear + '</p>' +
       '<div class="norm-document-meta"><span>Source set: ' + esc(data.meta.file) + '</span><span>Configuration: ' + esc(data.meta.release) + '</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
+      (statement.administered && data.meta.administeredCurrentFallback && viewMode === "preparation" ? '<div class="norm-admin-source-warning"><strong>Current-year source control</strong><span>Published administered figures are shown until administered trial-balance mappings are activated.</span></div>' : '') +
       renderSourceEvidence() + '</header>' +
       '<div class="norm-table-scroll"><table class="norm-financial-table"><thead>' + tableHead + '</thead><tbody>' + rows + '</tbody></table></div>' +
       '<footer class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.' +
@@ -175,6 +178,20 @@
       });
     });
     bindNoteJumps();
+  }
+
+  function renderAdministeredNotes(statement) {
+    byId("statementDocument").classList.add("norm-administered-document");
+    var sections = (statement.sections || []).map(function (section) {
+      var rows = (section.rows || []).map(function (row) {
+        if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead") {
+          return '<tr class="norm-section-row ' + esc(row.type) + ' administered"><th colspan="3">' + esc(row.label) + '</th></tr>';
+        }
+        return '<tr class="norm-financial-row ' + esc(row.type) + ' administered"><th>' + esc(row.label) + '</th><td class="norm-amount">' + number(row.computed) + '</td><td class="norm-amount norm-prior">' + number(row.prior) + '</td></tr>';
+      }).join("");
+      return '<article class="norm-admin-note-card"><h2>' + esc(section.title) + '</h2><table class="norm-note-table"><thead><tr><th></th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table></article>';
+    }).join("");
+    byId("statementDocument").innerHTML = '<header class="norm-document-head norm-notes-head"><span class="norm-kicker">' + esc(data.meta.entity) + '</span><h1>' + esc(statement.title) + '</h1><p>For the year ended 30 June ' + esc(data.meta.yearCurrent) + '</p></header>' + sections + '<footer class="norm-document-foot">Administered note tables are presented separately from departmental balances and shaded in line with the published Defence statements.</footer>';
   }
 
   function bindNoteJumps() {
@@ -323,16 +340,26 @@
   function printHeader(statement) {
     var draft = publicationIssues().length ? '<div class="norm-print-draft">CONTROLLED DRAFT · OUTSTANDING ASSURANCE ITEMS</div>' : '';
     return draft + '<header class="norm-print-head"><span>' + esc(data.meta.entity) + '</span><h1>' + esc(statement.title) + '</h1><p>' +
-      (statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + esc(data.meta.yearCurrent) + '</p></header>';
+      (statement.atDate || statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + esc(data.meta.yearCurrent) + '</p></header>';
   }
 
   function printStandard(statement) {
     var rows = (statement.rows || []).map(function (row) {
       if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead")
-        return '<tr class="norm-section-row ' + esc(row.type) + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
-      return '<tr class="norm-financial-row ' + esc(row.type) + '"><th>' + esc(row.label) + '</th><td class="norm-note">' + esc(row.note || '') + '</td><td class="norm-print-number">' + number(row.computed) + '</td><td class="norm-print-number">' + number(row.prior) + '</td><td class="norm-print-number">' + number(row.budget) + '</td></tr>';
+        return '<tr class="norm-section-row ' + esc(row.type) + (statement.administered ? ' administered' : '') + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
+      return '<tr class="norm-financial-row ' + esc(row.type) + (statement.administered ? ' administered' : '') + '"><th>' + esc(row.label) + '</th><td class="norm-note">' + esc(row.note || '') + '</td><td class="norm-print-number">' + number(row.computed) + '</td><td class="norm-print-number">' + number(row.prior) + '</td><td class="norm-print-number">' + number(row.budget) + '</td></tr>';
     }).join("");
-    return '<section class="norm-print-page norm-print-' + esc(String(statement.code || '').toLowerCase()) + '">' + printHeader(statement) + '<table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + esc(data.meta.yearCurrent) + '</b><small>$\'000</small></th><th><b>' + esc(data.meta.yearPrior) + '</b><small>$\'000</small></th><th><b>Original<br>Budget</b><small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table><p class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.</p></section>';
+    return '<section class="norm-print-page norm-print-' + esc(String(statement.code || '').toLowerCase()) + (statement.administered ? ' norm-administered-print' : '') + '">' + printHeader(statement) + '<table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + esc(data.meta.yearCurrent) + '</b><small>$\'000</small></th><th><b>' + esc(data.meta.yearPrior) + '</b><small>$\'000</small></th><th><b>Original<br>Budget</b><small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table><p class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.</p></section>';
+  }
+
+  function printAdministeredNotes(statement) {
+    return (statement.sections || []).map(function (section) {
+      var rows = (section.rows || []).map(function (row) {
+        if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead") return '<tr class="norm-section-row ' + esc(row.type) + ' administered"><th colspan="3">' + esc(row.label) + '</th></tr>';
+        return '<tr class="norm-financial-row ' + esc(row.type) + ' administered"><th>' + esc(row.label) + '</th><td class="norm-print-number">' + number(row.computed) + '</td><td class="norm-print-number">' + number(row.prior) + '</td></tr>';
+      }).join("");
+      return '<section class="norm-print-page norm-print-note norm-administered-print">' + printHeader(statement) + '<h2>' + esc(section.title) + '</h2><table class="norm-note-table"><thead><tr><th></th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table></section>';
+    }).join("");
   }
 
   function printAsset(statement) {
@@ -358,6 +385,7 @@
   function buildPrintBook() {
     byId("printBook").innerHTML = statements.map(function (statement) {
       if (statement.layout === "notes") { return printNotes(statement); }
+      if (statement.layout === "adminNotes") { return printAdministeredNotes(statement); }
       if (statement.layout === "assetMovement") { return printAsset(statement); }
       return printStandard(statement);
     }).join("");

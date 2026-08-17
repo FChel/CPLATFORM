@@ -105,6 +105,7 @@ namespace CPlatform.NORM
             payload["meta"] = meta;
             payload["sourceFiles"] = LoadSourceFiles(importId, runId);
 
+            NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
             List<object> statements = new List<object>();
             statements.Add(BuildStatement(releaseId, runId, "SOCI", "Statement of Comprehensive Income", lineage, budgets, priorFigures));
             statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets, priorFigures));
@@ -112,7 +113,13 @@ namespace CPlatform.NORM
             statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets, priorFigures));
             payload["assetMovement"] = BuildAssetMovementStatement(runId, releaseId, lineage);
 
-            NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
+            if (NORMAdministeredStatements.Required(profile))
+            {
+                NORMAdministeredStatements.Model administered = NORMAdministeredStatements.Load(runId, releaseId, entityCode);
+                for (int i = 0; i < administered.Statements.Count; i++) statements.Add(AdministeredStatementPayload(administered.Statements[i]));
+                statements.Add(AdministeredNotesPayload(administered.Notes));
+                meta["administeredCurrentFallback"] = administered.UsesPublishedCurrentFallback;
+            }
             List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()
                 ? NORMReportingFramework.LoadDisclosures(runId, releaseId, profile)
                 : new List<NORMReportingFramework.Disclosure>();
@@ -124,9 +131,77 @@ namespace CPlatform.NORM
             List<object> validations = LoadValidations(runId);
             AppendDisclosureValidations(validations, disclosures);
             AppendEnhancementValidations(validations, runId);
+            if (meta.ContainsKey("administeredCurrentFallback") && Convert.ToBoolean(meta["administeredCurrentFallback"]))
+            {
+                Dictionary<string, object> warning = new Dictionary<string, object>();
+                warning["code"] = "ADMIN_CURRENT_PROVENANCE";
+                warning["label"] = "Administered current-year source";
+                warning["detail"] = "Published administered figures are being used as a controlled fallback until administered trial-balance mappings are activated.";
+                warning["result"] = "Warning";
+                warning["severity"] = "Review";
+                validations.Add(warning);
+            }
             payload["validations"] = validations;
             payload["unmapped"] = BuildUnmapped(runId, lineage);
             return payload;
+        }
+
+        private Dictionary<string, object> AdministeredStatementPayload(NORMAdministeredStatements.Statement source)
+        {
+            Dictionary<string, object> statement = new Dictionary<string, object>();
+            statement["code"] = source.Code;
+            statement["title"] = source.Title;
+            statement["layout"] = "standard";
+            statement["administered"] = true;
+            statement["atDate"] = source.AtDate;
+            List<object> rows = new List<object>();
+            for (int i = 0; i < source.Rows.Count; i++) rows.Add(AdministeredRowPayload(source.Rows[i]));
+            statement["rows"] = rows;
+            return statement;
+        }
+
+        private Dictionary<string, object> AdministeredNotesPayload(List<NORMAdministeredStatements.NoteSection> notes)
+        {
+            Dictionary<string, object> statement = new Dictionary<string, object>();
+            statement["code"] = "ADMIN_NOTES";
+            statement["title"] = "Administered Notes to the Financial Statements";
+            statement["layout"] = "adminNotes";
+            statement["administered"] = true;
+            List<object> sections = new List<object>();
+            for (int i = 0; i < notes.Count; i++)
+            {
+                Dictionary<string, object> section = new Dictionary<string, object>();
+                section["code"] = notes[i].Code;
+                section["title"] = notes[i].Title;
+                List<object> rows = new List<object>();
+                for (int r = 0; r < notes[i].Rows.Count; r++) rows.Add(AdministeredRowPayload(notes[i].Rows[r]));
+                section["rows"] = rows;
+                sections.Add(section);
+            }
+            statement["sections"] = sections;
+            return statement;
+        }
+
+        private Dictionary<string, object> AdministeredRowPayload(NORMAdministeredStatements.Row source)
+        {
+            Dictionary<string, object> row = new Dictionary<string, object>();
+            row["type"] = source.Type;
+            row["code"] = source.Code;
+            row["label"] = source.Label;
+            row["note"] = source.Note;
+            row["computed"] = source.Current.HasValue ? (object)source.Current.Value : null;
+            row["prior"] = source.Prior.HasValue ? (object)source.Prior.Value : null;
+            row["budget"] = source.Budget.HasValue ? (object)source.Budget.Value : null;
+            row["published"] = source.Published.HasValue ? (object)source.Published.Value : null;
+            row["variance"] = source.Current.HasValue && source.Published.HasValue
+                ? (object)(source.Current.Value - source.Published.Value) : null;
+            row["status"] = source.Status;
+            row["clickable"] = source.ResultId > 0;
+            row["resultId"] = source.ResultId;
+            row["sources"] = new List<Dictionary<string, object>>();
+            row["administered"] = true;
+            row["source"] = source.Source;
+            return row;
         }
 
         private Dictionary<string, object> BuildProfilePayload(NORMReportingFramework.ReportingProfile profile)
@@ -198,12 +273,16 @@ namespace CPlatform.NORM
 
         private Dictionary<string, object> BuildNotesStatement(List<NORMReportingFramework.Disclosure> disclosures)
         {
+            List<NORMReportingFramework.Disclosure> departmental = disclosures.FindAll(delegate(NORMReportingFramework.Disclosure item)
+            {
+                return item.Code != "N2" && item.Code != "N4" && item.Code != "N7_3";
+            });
             Dictionary<string, object> value = new Dictionary<string, object>();
             value["code"] = "NOTES";
             value["title"] = "Notes to and forming part of the financial statements";
             value["layout"] = "notes";
             value["rows"] = new List<object>();
-            value["disclosures"] = BuildDisclosurePayload(disclosures);
+            value["disclosures"] = BuildDisclosurePayload(departmental);
             return value;
         }
 

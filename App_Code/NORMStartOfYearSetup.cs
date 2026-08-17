@@ -164,22 +164,30 @@ public static class NORMStartOfYearSetup
         }
         List<TemplateLine> templates = LoadTemplates(releaseId);
         string selectedBudgetColumn = documentType == BudgetDocumentType ? FinancialYearColumn(financialYear) : null;
+        string selectedPriorColumn = documentType == PriorDocumentType
+            ? (financialYear - 1).ToString(CultureInfo.InvariantCulture)
+            : null;
+        string selectedColumn = documentType == BudgetDocumentType ? selectedBudgetColumn : selectedPriorColumn;
         int amountOrdinal = documentType == BudgetDocumentType
             ? DetectBudgetAmountOrdinal(rows, financialYear)
-            : 1;
+            : DetectCalendarYearAmountOrdinal(rows, financialYear - 1);
         List<FigureMatch> figures = amountOrdinal > 0
-            ? MatchFigures(rows, templates, amountOrdinal, selectedBudgetColumn)
+            ? MatchFigures(rows, templates, amountOrdinal, selectedColumn)
             : new List<FigureMatch>();
         string status = figures.Count > 0 ? "Extracted" : "ReviewRequired";
         string detail;
         if (figures.Count > 0)
             detail = figures.Count.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) + " high-confidence statement figure(s) extracted and applied" +
                 (documentType == BudgetDocumentType ? " from the " + selectedBudgetColumn + " Budget Estimate column" : "") +
+                (documentType == PriorDocumentType ? " from the " + selectedPriorColumn + " comparative column" : "") +
                 (requestedStartPage.HasValue ? " from PDF page " + requestedStartPage.Value.ToString(CultureInfo.InvariantCulture) + " onward" : "") +
                 ". Review source locators before sign-off.";
         else if (documentType == BudgetDocumentType && amountOrdinal <= 0)
             detail = "NORM could not identify the " + selectedBudgetColumn +
                 " Budget Estimate column. The document was retained, but no figures were applied; check the nominated page or provide a searchable PDF, Word document or Excel workbook.";
+        else if (documentType == PriorDocumentType && amountOrdinal <= 0)
+            detail = "NORM could not identify the " + selectedPriorColumn +
+                " comparative column. The document was retained, but no figures were applied; check the nominated page or provide a searchable PDF, Word document or Excel workbook.";
         else if (extension == ".doc" || extension == ".xls")
             detail = "The legacy binary format was retained, but automatic extraction requires a .docx or .xlsx copy. No figures were applied.";
         else if (extension == ".pdf" && rows.Count == 0)
@@ -353,6 +361,14 @@ public static class NORMStartOfYearSetup
         for (int i = 0; i < equityClasses.GetLength(0); i++)
             result.Add(new TemplateLine { StatementCode = "SOFP", LineCode = equityClasses[i, 0],
                 Label = equityClasses[i, 1], Normalised = NormaliseLabel(equityClasses[i, 1]) });
+        List<NORMAdministeredStatements.Definition> administered = NORMAdministeredStatements.ExtractionDefinitions();
+        for (int i = 0; i < administered.Count; i++)
+        {
+            string normalised = NormaliseLabel(administered[i].Label);
+            if (normalised.Length < 3) { continue; }
+            result.Add(new TemplateLine { StatementCode = administered[i].StatementCode,
+                LineCode = administered[i].LineCode, Label = administered[i].Label, Normalised = normalised });
+        }
         return result;
     }
 
@@ -469,6 +485,26 @@ public static class NORMStartOfYearSetup
         return votes.Count == 0 ? 0 : votes.OrderByDescending(x => x.Value).ThenBy(x => x.Key).First().Key;
     }
 
+    private static int DetectCalendarYearAmountOrdinal(List<SourceRow> rows, int targetYear)
+    {
+        Dictionary<int, int> votes = new Dictionary<int, int>();
+        Regex calendarYear = new Regex(@"(?<![\d-])(?<year>\d{4})(?![\d-])", RegexOptions.CultureInvariant);
+        for (int r = 0; r < rows.Count; r++)
+        {
+            MatchCollection years = calendarYear.Matches(rows[r].Text ?? "");
+            if (years.Count < 2 || years.Count > 8) { continue; }
+            for (int i = 0; i < years.Count; i++)
+            {
+                int detected;
+                if (!Int32.TryParse(years[i].Groups["year"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out detected) ||
+                    detected != targetYear) { continue; }
+                int ordinal = i + 1;
+                votes[ordinal] = votes.ContainsKey(ordinal) ? votes[ordinal] + 1 : 1;
+            }
+        }
+        return votes.Count == 0 ? 0 : votes.OrderByDescending(x => x.Value).ThenBy(x => x.Key).First().Key;
+    }
+
     private static int CountAmounts(SourceRow row)
     {
         int count = 0;
@@ -517,6 +553,18 @@ public static class NORMStartOfYearSetup
     private static string DetectStatement(string value)
     {
         string text = NormaliseLabel(value);
+        if (text.Contains("administered schedule of comprehensive income") ||
+            text.Contains("budgeted income and expenses administered on behalf of government")) return "ADMIN_SOCI";
+        if (text.Contains("administered schedule of assets and liabilities") ||
+            text.Contains("budgeted assets and liabilities administered on behalf of government")) return "ADMIN_SOFP";
+        if (text.Contains("administered reconciliation schedule")) return "ADMIN_RECON";
+        if (text.Contains("administered cashflow statement") || text.Contains("administered cash flow statement") ||
+            text.Contains("budgeted administered cash flows")) return "ADMIN_CASH";
+        if (text.Contains("2 income and expenses administered on behalf of government")) return "ADMIN_NOTE_2";
+        if (text.Contains("4 assets and liabilities administered on behalf of government")) return "ADMIN_NOTE_4";
+        if (text.Contains("7 3 administered financial instruments")) return "ADMIN_NOTE_7_3";
+        if (text.Contains("7 5 administered fair value measurements")) return "ADMIN_NOTE_7_5";
+        if (text.Contains("8 2b administered current non current distinction")) return "ADMIN_NOTE_8_2B";
         if (text.Contains("statement of comprehensive income") || text.Contains("statement of profit or loss")) return "SOCI";
         if (text.Contains("statement of financial position") || text.Contains("balance sheet")) return "SOFP";
         if (text.Contains("statement of changes in equity") || text.Contains("changes in equity")) return "SOCE";

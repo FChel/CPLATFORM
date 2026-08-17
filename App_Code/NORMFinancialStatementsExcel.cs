@@ -39,6 +39,7 @@ namespace CPlatform.NORM
             public Dictionary<string, decimal> Budgets;
             public Dictionary<string, decimal> PriorFigures;
             public DataTable ManualInputs;
+            public NORMAdministeredStatements.Model Administered;
         }
 
         private sealed class FaceRow
@@ -116,10 +117,10 @@ namespace CPlatform.NORM
 
             if (Required(model.Profile, "ADMINISTERED_ACTIVITIES"))
             {
-                AddAdministeredTemplate(package, model, "Admin SoCI", "Administered Schedule of Comprehensive Income", false, index);
-                AddAdministeredTemplate(package, model, "Admin SoFP", "Administered Schedule of Assets and Liabilities", true, index);
-                AddAdministeredTemplate(package, model, "Admin SoCE", "Administered Reconciliation Schedule", false, index);
-                AddAdministeredTemplate(package, model, "Admin Cash Flow", "Administered Cash Flow Statement", false, index);
+                string[] names = { "Admin SoCI", "Admin SoFP", "Admin Reconciliation", "Admin Cash Flow" };
+                for (int i = 0; model.Administered != null && i < model.Administered.Statements.Count; i++)
+                    AddAdministeredStatement(package, model, model.Administered.Statements[i], names[i], index);
+                if (model.Administered != null) AddAdministeredNotes(package, model, model.Administered.Notes, index);
             }
 
             AddNotes(package, model, index);
@@ -157,6 +158,8 @@ namespace CPlatform.NORM
             model.Budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(model.EntityCode);
             model.PriorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(model.EntityCode);
             model.ManualInputs = NORMStatementEnhancements.LoadManualInputs(runId);
+            if (Required(model.Profile, "ADMINISTERED_ACTIVITIES"))
+                model.Administered = NORMAdministeredStatements.Load(runId, model.ReleaseId, model.EntityCode);
             return model;
         }
 
@@ -858,28 +861,91 @@ namespace CPlatform.NORM
             return value.IndexOf("payment") >= 0 || value.IndexOf("purchase") >= 0 || value.IndexOf("paid") >= 0 || value.IndexOf("return") >= 0;
         }
 
-        private static void AddAdministeredTemplate(ExcelPackage package, ExportContext model, string sheetName,
-            string title, bool atDate, List<Tuple<string, string, string>> index)
+        private static void AddAdministeredStatement(ExcelPackage package, ExportContext model,
+            NORMAdministeredStatements.Statement statement, string sheetName, List<Tuple<string, string, string>> index)
         {
             ExcelWorksheet sheet = package.Workbook.Worksheets.Add(sheetName);
             AddBackLink(sheet);
-            AddStatementTitle(sheet, model, title, atDate);
+            AddStatementTitle(sheet, model, statement.Title, statement.AtDate);
             sheet.Cells[7, 1].Value = "Administered item";
             sheet.Cells[7, 2].Value = "Notes";
             sheet.Cells[7, 3].Value = model.Year;
             sheet.Cells[7, 4].Value = model.Year - 1;
             sheet.Cells[7, 5].Value = "Original Budget";
             StyleHeader(sheet.Cells[7, 1, 7, 5], true);
-            SetFill(sheet.Cells[8, 1, 12, 5], PaleGrey);
-            sheet.Cells[8, 1, 10, 5].Merge = true;
-            sheet.Cells[8, 1].Value = "Controlled administered template — populate from the administered mapping and workpaper set. No departmental balance has been copied into this schedule.";
-            sheet.Cells[8, 1].Style.WrapText = true;
-            sheet.Cells[8, 1].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
-            sheet.Cells[8, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            int rowNumber = 8;
+            for (int i = 0; i < statement.Rows.Count; i++, rowNumber++)
+            {
+                NORMAdministeredStatements.Row row = statement.Rows[i];
+                if (row.Type == "major" || row.Type == "subsection" || row.Type == "lead" || row.Type == "section")
+                {
+                    sheet.Cells[rowNumber, 1, rowNumber, 5].Merge = true;
+                    sheet.Cells[rowNumber, 1].Value = row.Label;
+                    sheet.Cells[rowNumber, 1].Style.Font.Bold = true;
+                    if (row.Type == "major") sheet.Cells[rowNumber, 1].Style.Font.Size = 11;
+                }
+                else
+                {
+                    sheet.Cells[rowNumber, 1].Value = row.Label;
+                    sheet.Cells[rowNumber, 2].Value = row.Note;
+                    if (row.Current.HasValue) sheet.Cells[rowNumber, 3].Value = Round(row.Current.Value);
+                    if (row.Prior.HasValue) sheet.Cells[rowNumber, 4].Value = Round(row.Prior.Value);
+                    if (row.Budget.HasValue) sheet.Cells[rowNumber, 5].Value = Round(row.Budget.Value);
+                    sheet.Cells[rowNumber, 3, rowNumber, 5].Style.Numberformat.Format = AmountFormat;
+                    sheet.Cells[rowNumber, 3, rowNumber, 5].Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
+                    if (row.Type == "total") StyleTotal(sheet.Cells[rowNumber, 1, rowNumber, 5]);
+                }
+                SetFill(sheet.Cells[rowNumber, 1, rowNumber, 5], PaleGrey);
+            }
             sheet.Column(1).Width = 58;
             sheet.Column(2).Width = 11;
             for (int col = 3; col <= 5; col++) sheet.Column(col).Width = 18;
-            index.Add(Tuple.Create("", sheet.Name, "Administered|" + title + " · controlled template"));
+            sheet.View.FreezePanes(8, 3);
+            index.Add(Tuple.Create("", sheet.Name, "Administered|" + statement.Title));
+        }
+
+        private static void AddAdministeredNotes(ExcelPackage package, ExportContext model,
+            List<NORMAdministeredStatements.NoteSection> notes, List<Tuple<string, string, string>> index)
+        {
+            HashSet<string> used = new HashSet<string>(package.Workbook.Worksheets.Select(x => x.Name), StringComparer.OrdinalIgnoreCase);
+            for (int n = 0; n < notes.Count; n++)
+            {
+                NORMAdministeredStatements.NoteSection note = notes[n];
+                string sheetName = UniqueSheetName("Admin " + note.Code, used);
+                ExcelWorksheet sheet = package.Workbook.Worksheets.Add(sheetName);
+                AddBackLink(sheet);
+                AddStatementTitle(sheet, model, note.Title, false);
+                sheet.Cells[7, 1].Value = "Administered disclosure line";
+                sheet.Cells[7, 2].Value = model.Year;
+                sheet.Cells[7, 3].Value = model.Year - 1;
+                StyleHeader(sheet.Cells[7, 1, 7, 3], true);
+                int rowNumber = 8;
+                for (int i = 0; i < note.Rows.Count; i++, rowNumber++)
+                {
+                    NORMAdministeredStatements.Row row = note.Rows[i];
+                    if (row.Type == "major" || row.Type == "subsection" || row.Type == "lead" || row.Type == "section")
+                    {
+                        sheet.Cells[rowNumber, 1, rowNumber, 3].Merge = true;
+                        sheet.Cells[rowNumber, 1].Value = row.Label;
+                        sheet.Cells[rowNumber, 1].Style.Font.Bold = true;
+                    }
+                    else
+                    {
+                        sheet.Cells[rowNumber, 1].Value = row.Label;
+                        if (row.Current.HasValue) sheet.Cells[rowNumber, 2].Value = Round(row.Current.Value);
+                        if (row.Prior.HasValue) sheet.Cells[rowNumber, 3].Value = Round(row.Prior.Value);
+                        sheet.Cells[rowNumber, 2, rowNumber, 3].Style.Numberformat.Format = AmountFormat;
+                        sheet.Cells[rowNumber, 2, rowNumber, 3].Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
+                        if (row.Type == "total") StyleTotal(sheet.Cells[rowNumber, 1, rowNumber, 3]);
+                    }
+                    SetFill(sheet.Cells[rowNumber, 1, rowNumber, 3], PaleGrey);
+                }
+                sheet.Column(1).Width = 70;
+                sheet.Column(2).Width = 18;
+                sheet.Column(3).Width = 18;
+                sheet.View.FreezePanes(8, 2);
+                index.Add(Tuple.Create(note.Code, sheet.Name, "Administered notes|" + note.Title));
+            }
         }
 
         private static void AddNotes(ExcelPackage package, ExportContext model, List<Tuple<string, string, string>> index)
@@ -889,6 +955,7 @@ namespace CPlatform.NORM
             for (int i = 0; i < model.Disclosures.Count; i++)
             {
                 NORMReportingFramework.Disclosure disclosure = model.Disclosures[i];
+                if (disclosure.Code == "N2" || disclosure.Code == "N4" || disclosure.Code == "N7_3") { continue; }
                 if (!disclosure.Required || String.IsNullOrWhiteSpace(disclosure.NoteRef)) { continue; }
                 string sheetName = UniqueSheetName(disclosure.NoteRef + " " + disclosure.Title, usedNames);
                 ExcelWorksheet sheet = package.Workbook.Worksheets.Add(sheetName);

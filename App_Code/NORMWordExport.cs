@@ -49,7 +49,9 @@ public class NORM_WordExport : IHttpHandler
             : new List<NORMReportingFramework.Disclosure>();
         NORMStatementEnhancements.ApplyManualInputs(runId, disclosures);
 
-        string document = BuildDocument(runId, releaseId, year, entity, NORMHelper.Str(header, "VersionCode"), profile, disclosures);
+        NORMAdministeredStatements.Model administered = NORMAdministeredStatements.Required(profile)
+            ? NORMAdministeredStatements.Load(runId, releaseId, NORMHelper.Str(header, "EntityCode")) : null;
+        string document = BuildDocument(runId, releaseId, year, entity, NORMHelper.Str(header, "VersionCode"), profile, disclosures, administered);
         string fileName = "NORM_FY" + year.ToString(CultureInfo.InvariantCulture) + "_Run_" + runId.ToString(CultureInfo.InvariantCulture) + "_Financial_Statements.doc";
         context.Response.Clear();
         context.Response.ContentType = "application/msword";
@@ -61,13 +63,14 @@ public class NORM_WordExport : IHttpHandler
     }
 
     private string BuildDocument(int runId, int releaseId, int year, string entity, string version,
-        NORMReportingFramework.ReportingProfile profile, List<NORMReportingFramework.Disclosure> disclosures)
+        NORMReportingFramework.ReportingProfile profile, List<NORMReportingFramework.Disclosure> disclosures,
+        NORMAdministeredStatements.Model administered)
     {
         StringBuilder html = new StringBuilder();
         html.Append("<!doctype html><html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" lang=\"en-AU\"><head><meta charset=\"utf-8\">");
         html.Append("<title>").Append(Enc(entity)).Append(" financial statements</title>");
         html.Append("<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->");
-        html.Append("<style>@page{size:A4;margin:20mm 18mm 18mm}body{font-family:Arial,sans-serif;color:#171717;font-size:9.5pt;line-height:1.35}h1{font-size:22pt;margin:0 0 8pt}h2{font-size:15pt;border-bottom:2pt solid #e87722;padding-bottom:5pt;margin:0 0 14pt}h3{font-size:11.5pt;margin:14pt 0 7pt}p{margin:0 0 8pt}.cover{padding-top:65mm}.eyebrow{color:#b64d00;font-weight:bold;text-transform:uppercase;letter-spacing:.7pt}.meta{margin-top:30pt;border-top:1pt solid #bbb;padding-top:10pt}.page{page-break-before:always}.note{page-break-before:always}.section{font-weight:bold;background:#f1f2f4}table{width:100%;border-collapse:collapse;margin:7pt 0 12pt}tr{page-break-inside:avoid}th,td{padding:4pt 5pt;border-bottom:.5pt solid #c8c8c8;vertical-align:top}th{text-align:left}.note tbody th{font-weight:normal}.note .total th{font-weight:bold}.amount{text-align:right;width:21%}.total th,.total td{font-weight:bold;border-top:1pt solid #222;border-bottom:2pt double #222}.policy{background:#f7f7f7;border-left:3pt solid #e87722;padding:8pt 10pt;margin:8pt 0 12pt}.small{font-size:8pt;color:#555}.register td:first-child{width:10%}.status{font-weight:bold}.footer{margin-top:18pt;border-top:.5pt solid #aaa;padding-top:6pt;font-size:8pt;color:#555}</style></head><body>");
+        html.Append("<style>@page{size:A4;margin:20mm 18mm 18mm}body{font-family:Arial,sans-serif;color:#171717;font-size:9.5pt;line-height:1.35}h1{font-size:22pt;margin:0 0 8pt}h2{font-size:15pt;border-bottom:2pt solid #e87722;padding-bottom:5pt;margin:0 0 14pt}h3{font-size:11.5pt;margin:14pt 0 7pt}p{margin:0 0 8pt}.cover{padding-top:65mm}.eyebrow{color:#b64d00;font-weight:bold;text-transform:uppercase;letter-spacing:.7pt}.meta{margin-top:30pt;border-top:1pt solid #bbb;padding-top:10pt}.page{page-break-before:always}.note{page-break-before:always}.section{font-weight:bold;background:#f1f2f4}table{width:100%;border-collapse:collapse;margin:7pt 0 12pt}tr{page-break-inside:avoid}th,td{padding:4pt 5pt;border-bottom:.5pt solid #c8c8c8;vertical-align:top}th{text-align:left}.note tbody th{font-weight:normal}.note .total th{font-weight:bold}.amount{text-align:right;width:21%}.total th,.total td{font-weight:bold;border-top:1pt solid #222;border-bottom:2pt double #222}.administered table,.administered table th,.administered table td,.administered .section{background:#d3d3d3}.administered h3{background:#222;color:#fff;padding:6pt}.policy{background:#f7f7f7;border-left:3pt solid #e87722;padding:8pt 10pt;margin:8pt 0 12pt}.small{font-size:8pt;color:#555}.register td:first-child{width:10%}.status{font-weight:bold}.footer{margin-top:18pt;border-top:.5pt solid #aaa;padding-top:6pt;font-size:8pt;color:#555}</style></head><body>");
         html.Append("<section class=\"cover\"><p class=\"eyebrow\">Financial statements preparation copy</p><h1>").Append(Enc(entity)).Append("</h1><h2>Financial statements for the year ended 30 June ").Append(year).Append("</h2>");
         html.Append("<p>Editable preparation copy generated from NORM calculation run #").Append(runId).Append(".</p><div class=\"meta\"><p><b>Configuration:</b> ").Append(Enc(version)).Append("</p>");
         html.Append("<p><b>Reporting profile:</b> ").Append(Enc(ProfileLabel(profile))).Append("</p><p><b>Generated:</b> ").Append(DateTime.UtcNow.ToString("d MMMM yyyy 'at' HH:mm 'UTC'", CultureInfo.GetCultureInfo("en-AU"))).Append("</p></div></section>");
@@ -76,10 +79,57 @@ public class NORM_WordExport : IHttpHandler
         AppendStatement(html, runId, releaseId, year, "SOFP", "Statement of Financial Position", true);
         AppendEquity(html, runId, releaseId, year);
         AppendCashFlow(html, runId, releaseId, year);
+        if (administered != null)
+        {
+            for (int i = 0; i < administered.Statements.Count; i++) AppendAdministeredStatement(html, year, administered.Statements[i]);
+            AppendAdministeredNotes(html, year, administered.Notes);
+        }
         AppendNotes(html, year, disclosures);
         AppendRegister(html, disclosures);
         html.Append("</body></html>");
         return html.ToString();
+    }
+
+    private void AppendAdministeredStatement(StringBuilder html, int year, NORMAdministeredStatements.Statement statement)
+    {
+        html.Append("<section class=\"page administered\"><h2>").Append(Enc(statement.Title)).Append("</h2><p>")
+            .Append(statement.AtDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year)
+            .Append("</p><table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year)
+            .Append("<br>$'000</th><th class=\"amount\">").Append(year - 1)
+            .Append("<br>$'000</th><th class=\"amount\">Original Budget<br>$'000</th></tr></thead><tbody>");
+        for (int i = 0; i < statement.Rows.Count; i++)
+        {
+            NORMAdministeredStatements.Row row = statement.Rows[i];
+            if (row.Type == "major" || row.Type == "subsection" || row.Type == "lead" || row.Type == "section")
+                html.Append("<tr class=\"section\"><th colspan=\"5\">").Append(Enc(row.Label)).Append("</th></tr>");
+            else
+                html.Append("<tr class=\"").Append(row.Type == "total" ? "total" : "").Append("\"><th>").Append(Enc(row.Label))
+                    .Append("</th><td>").Append(Enc(row.Note)).Append("</td><td class=\"amount\">").Append(Amount(row.Current))
+                    .Append("</td><td class=\"amount\">").Append(Amount(row.Prior)).Append("</td><td class=\"amount\">")
+                    .Append(Amount(row.Budget)).Append("</td></tr>");
+        }
+        html.Append("</tbody></table><p class=\"footer\">This administered schedule should be read with the accompanying administered notes.</p></section>");
+    }
+
+    private void AppendAdministeredNotes(StringBuilder html, int year, List<NORMAdministeredStatements.NoteSection> notes)
+    {
+        for (int n = 0; n < notes.Count; n++)
+        {
+            NORMAdministeredStatements.NoteSection note = notes[n];
+            html.Append("<section class=\"note administered\"><h2>").Append(Enc(note.Title)).Append("</h2><table><thead><tr><th></th><th class=\"amount\">")
+                .Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
+            for (int i = 0; i < note.Rows.Count; i++)
+            {
+                NORMAdministeredStatements.Row row = note.Rows[i];
+                if (row.Type == "major" || row.Type == "subsection" || row.Type == "lead" || row.Type == "section")
+                    html.Append("<tr class=\"section\"><th colspan=\"3\">").Append(Enc(row.Label)).Append("</th></tr>");
+                else
+                    html.Append("<tr class=\"").Append(row.Type == "total" ? "total" : "").Append("\"><th>").Append(Enc(row.Label))
+                        .Append("</th><td class=\"amount\">").Append(Amount(row.Current)).Append("</td><td class=\"amount\">")
+                        .Append(Amount(row.Prior)).Append("</td></tr>");
+            }
+            html.Append("</tbody></table></section>");
+        }
     }
 
     private void AppendStatement(StringBuilder html, int runId, int releaseId, int year, string code, string title, bool atDate)
@@ -384,6 +434,7 @@ public class NORM_WordExport : IHttpHandler
         for (int i = 0; i < disclosures.Count; i++)
         {
             NORMReportingFramework.Disclosure item = disclosures[i];
+            if (item.Code == "N2" || item.Code == "N4" || item.Code == "N7_3") { continue; }
             if (!item.Required || String.IsNullOrWhiteSpace(item.NoteRef)) { continue; }
             html.Append("<section class=\"note\"><p class=\"eyebrow\">Note ").Append(Enc(item.NoteRef)).Append("</p><h2>").Append(Enc(item.Title)).Append("</h2>");
             if (item.Lines.Count > 0)
