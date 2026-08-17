@@ -395,7 +395,11 @@ namespace CPlatform.NORM
                 }
                 if (code == "SOCI" && lineCode == "Revenue from Government") rows.Add(Heading("major", "REVENUE FROM GOVERNMENT"));
                 if (code == "SOFP" && lineCode == "Leases") rows.Add(Heading("subsection", "Interest-bearing liabilities"));
-                if (code == "SOFP" && lineCode == "Employee provisions") rows.Add(Heading("subsection", "Provisions"));
+                if (code == "SOFP" && lineCode == "Employee provisions")
+                {
+                    rows.Add(new FaceRow { Type = "total", Code = "TOTAL_INTEREST_LIABILITIES", Label = "Total interest-bearing liabilities" });
+                    rows.Add(Heading("subsection", "Provisions"));
+                }
                 if (code == "SOFP" && lineCode == "Property plant and equipment")
                 {
                     rows.Add(new FaceRow { Type = "total", Code = "TOTAL_FINANCIAL_ASSETS", Label = "Total financial assets" });
@@ -466,6 +470,7 @@ namespace CPlatform.NORM
                     "PPE_PLANT_AND_EQUIPMENT", "PPE_HERITAGE_AND_CULTURAL_ASSETS", "PPE_INTANGIBLES",
                     "Inventories", "Prepayments" });
                 ApplyFaceAggregate(rows, "Total assets", new string[] { "TOTAL_FINANCIAL_ASSETS", "TOTAL_NON_FINANCIAL_ASSETS", "Assets held for sale" });
+                ApplyFaceAggregate(rows, "TOTAL_INTEREST_LIABILITIES", new string[] { "Leases" });
             }
             return rows;
         }

@@ -107,6 +107,7 @@ public class NORM_WordExport : IHttpHandler
         decimal? financialAssetsCurrent = null, financialAssetsPrior = null;
         decimal? nonFinancialAssetsCurrent = null, nonFinancialAssetsPrior = null;
         decimal? totalAssetsCurrent = null, totalAssetsPrior = null;
+        decimal? totalInterestLiabilitiesCurrent = null, totalInterestLiabilitiesPrior = null;
         HashSet<string> incomeComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue",
@@ -174,6 +175,8 @@ public class NORM_WordExport : IHttpHandler
                 totalAssetsCurrent = financialAssetsCurrent.Value + nonFinancialAssetsCurrent.Value + heldCurrent.Value;
             if (financialAssetsPrior.HasValue && nonFinancialAssetsPrior.HasValue && heldPrior.HasValue)
                 totalAssetsPrior = financialAssetsPrior.Value + nonFinancialAssetsPrior.Value + heldPrior.Value;
+            totalInterestLiabilitiesCurrent = StatementAmount(table, "Leases", "PublishedCurrent") ?? StatementAmount(table, "Leases", "ComputedAmount");
+            totalInterestLiabilitiesPrior = EffectivePriorAmount(table, code, "Leases");
         }
         html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>").Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
         html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
@@ -229,6 +232,11 @@ public class NORM_WordExport : IHttpHandler
             }
             if (code == "SOFP" && String.Equals(lineCode, "Assets held for sale", StringComparison.OrdinalIgnoreCase))
                 AppendStatementAmountRow(html, "Total non-financial assets", "", nonFinancialAssetsCurrent, nonFinancialAssetsPrior, true);
+            if (code == "SOFP" && String.Equals(lineCode, "Employee provisions", StringComparison.OrdinalIgnoreCase))
+            {
+                AppendStatementAmountRow(html, "Total interest-bearing liabilities", "", totalInterestLiabilitiesCurrent, totalInterestLiabilitiesPrior, true);
+                html.Append("<tr class=\"section\"><th colspan=\"4\">Provisions</th></tr>");
+            }
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
                 .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
         }
