@@ -695,9 +695,10 @@ namespace CPlatform.NORM
                 row["status"] = source.IsNull("StatusCode") ? "Mapped" : NORMHelper.Str(source, "StatusCode");
                 row["sources"] = resultId > 0 && lineage.ContainsKey(resultId)
                     ? (object)lineage[resultId] : new List<Dictionary<string, object>>();
+                if (statementCode == "SOFP") AlignPublishedFaceRow(row, computed);
                 if (statementCode == "SOFP" && lineCode == "Property plant and equipment")
                 {
-                    AddSplitRows(rows, row, AssetClassLabel);
+                    AddAssetSplitRows(rows, row, releaseId, budgets, priorFigures);
                 }
                 else if (statementCode == "SOFP" && lineCode == "Statement of Changes in Equity")
                 {
@@ -764,10 +765,10 @@ namespace CPlatform.NORM
 
         private void AddSofpSubtotals(List<object> rows)
         {
-            InsertAggregateBefore(rows, "Property plant and equipment_*", "TOTAL_FINANCIAL_ASSETS", "Total financial assets",
+            InsertAggregateBefore(rows, "PPE_*", "TOTAL_FINANCIAL_ASSETS", "Total financial assets",
                 new string[] { "Cash and cash equivalents", "Trade and other receivables" });
             InsertAggregateBefore(rows, "Assets held for sale", "TOTAL_NON_FINANCIAL_ASSETS", "Total non-financial assets",
-                new string[] { "Property plant and equipment_*", "Inventories", "Prepayments" });
+                new string[] { "PPE_*", "Inventories", "Prepayments" });
             InsertAggregateBefore(rows, "HEADING_INTEREST_LIABILITIES", "TOTAL_PAYABLES", "Total payables",
                 new string[] { "Suppliers payables", "Employee payables", "Other payables" });
             InsertAggregateBefore(rows, "Employee provisions", "TOTAL_INTEREST_LIABILITIES", "Total interest-bearing liabilities",
@@ -896,9 +897,90 @@ namespace CPlatform.NORM
             }
         }
 
+        private void AddAssetSplitRows(List<object> rows, Dictionary<string, object> original, int releaseId,
+            Dictionary<string, decimal> budgets, Dictionary<string, decimal> priorFigures)
+        {
+            List<Dictionary<string, object>> sources = original["sources"] as List<Dictionary<string, object>>
+                ?? new List<Dictionary<string, object>>();
+            Dictionary<string, List<Dictionary<string, object>>> groups =
+                new Dictionary<string, List<Dictionary<string, object>>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < sources.Count; i++)
+            {
+                string label = AssetClassLabel(Convert.ToString(sources[i]["note"]));
+                if (!groups.ContainsKey(label)) groups[label] = new List<Dictionary<string, object>>();
+                groups[label].Add(sources[i]);
+            }
+            Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
+            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
+            Dictionary<string, decimal> budget = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "OriginalBudget");
+            string[,] classes = new string[,]
+            {
+                { "PPE_LAND", "Land" }, { "PPE_BUILDINGS", "Buildings" },
+                { "PPE_SPECIALIST_MILITARY_EQUIPMENT", "Specialist military equipment" },
+                { "PPE_INFRASTRUCTURE", "Infrastructure" }, { "PPE_PLANT_AND_EQUIPMENT", "Plant and equipment" },
+                { "PPE_HERITAGE_AND_CULTURAL_ASSETS", "Heritage and cultural assets" }, { "PPE_INTANGIBLES", "Intangibles" }
+            };
+            for (int c = 0; c < classes.GetLength(0); c++)
+            {
+                string code = classes[c, 0];
+                string label = classes[c, 1];
+                List<Dictionary<string, object>> classSources;
+                if (!groups.TryGetValue(label, out classSources)) classSources = new List<Dictionary<string, object>>();
+                decimal mapped = 0m;
+                for (int i = 0; i < classSources.Count; i++) mapped += Convert.ToDecimal(classSources[i]["amount"]);
+                decimal? controlledCurrent = SourceFigureNullable(current, code);
+                decimal? controlledPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, SourceFigureNullable(prior, code));
+                decimal? controlledBudget = NORMStartOfYearSetup.FigureValue(budgets, "SOFP", code, SourceFigureNullable(budget, code));
+                List<Dictionary<string, object>> presentedSources = new List<Dictionary<string, object>>(classSources);
+                if (controlledCurrent.HasValue && controlledCurrent.Value != mapped)
+                    presentedSources.Add(PublishedAlignmentSource(controlledCurrent.Value - mapped));
+                Dictionary<string, object> split = new Dictionary<string, object>(original);
+                split["type"] = "line";
+                split["code"] = code;
+                split["label"] = label;
+                split["computed"] = controlledCurrent.HasValue ? (object)controlledCurrent.Value : mapped;
+                split["published"] = controlledCurrent.HasValue ? (object)controlledCurrent.Value : null;
+                split["prior"] = controlledPrior.HasValue ? (object)controlledPrior.Value : null;
+                split["budget"] = controlledBudget.HasValue ? (object)controlledBudget.Value : null;
+                split["variance"] = controlledCurrent.HasValue ? (object)0m : null;
+                split["status"] = controlledCurrent.HasValue ? "Tied" : "Mapped";
+                split["sources"] = presentedSources;
+                rows.Add(split);
+            }
+        }
+
+        private void AlignPublishedFaceRow(Dictionary<string, object> row, decimal mappedAmount)
+        {
+            if (row["published"] == null || String.Equals(Convert.ToString(row["type"]), "section", StringComparison.OrdinalIgnoreCase)) return;
+            decimal published = Convert.ToDecimal(row["published"]);
+            decimal adjustment = published - mappedAmount;
+            if (adjustment != 0m)
+            {
+                List<Dictionary<string, object>> sources = row["sources"] as List<Dictionary<string, object>>;
+                if (sources == null) { sources = new List<Dictionary<string, object>>(); row["sources"] = sources; }
+                sources.Add(PublishedAlignmentSource(adjustment));
+            }
+            row["computed"] = published;
+            row["variance"] = 0m;
+            row["status"] = "Tied";
+        }
+
+        private Dictionary<string, object> PublishedAlignmentSource(decimal adjustment)
+        {
+            Dictionary<string, object> alignment = new Dictionary<string, object>();
+            alignment["row"] = 0; alignment["ledger"] = "NORM"; alignment["gl"] = "PUBLISHED-ALIGN";
+            alignment["text"] = "Controlled alignment to the audited financial statements";
+            alignment["sourceAmount"] = adjustment * 1000m; alignment["movement"] = 0m; alignment["amount"] = adjustment;
+            alignment["derivation"] = "PUBLISHED_ALIGNMENT"; alignment["mappingId"] = null;
+            alignment["mapping"] = "Audited publication baseline less mapped trial-balance result";
+            alignment["accountType"] = "Presentation adjustment"; alignment["note"] = "Audited statement alignment";
+            alignment["cash"] = ""; alignment["synthetic"] = true; alignment["sapUrl"] = "";
+            return alignment;
+        }
+
         private int SplitSortOrder(string label)
         {
-            string[] order = new string[] { "Land", "Buildings", "Heritage and cultural assets", "Plant and equipment", "Computer software", "Other intangibles", "Specialist military equipment", "Infrastructure", "Contributed equity", "Retained surplus/(Accumulated deficit)", "Reserves" };
+            string[] order = new string[] { "Land", "Buildings", "Specialist military equipment", "Infrastructure", "Plant and equipment", "Heritage and cultural assets", "Intangibles", "Contributed equity", "Retained surplus/(Accumulated deficit)", "Reserves" };
             for (int i = 0; i < order.Length; i++) if (String.Equals(order[i], label, StringComparison.OrdinalIgnoreCase)) return i;
             return order.Length;
         }
@@ -912,9 +994,8 @@ namespace CPlatform.NORM
             if (value.StartsWith("IFA")) return "Infrastructure";
             if (value.StartsWith("P&E")) return "Plant and equipment";
             if (value.StartsWith("HCA")) return "Heritage and cultural assets";
-            if (value.StartsWith("CS")) return "Computer software";
-            if (value.IndexOf("INTANGIBLE") >= 0) return "Other intangibles";
-            return "Other property, plant and equipment";
+            if (value.StartsWith("CS") || value.IndexOf("INTANGIBLE") >= 0) return "Intangibles";
+            return "Plant and equipment";
         }
 
         private string EquityClassLabel(string note)

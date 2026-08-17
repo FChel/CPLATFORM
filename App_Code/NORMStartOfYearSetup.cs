@@ -326,6 +326,13 @@ public static class NORMStartOfYearSetup
         const string revaluationLabel = "Changes in asset revaluation reserves";
         result.Add(new TemplateLine { StatementCode = "SOCI", LineCode = "OCI_REVALUATION",
             Label = revaluationLabel, Normalised = NormaliseLabel(revaluationLabel) });
+        string[,] assetClasses = new string[,] { { "PPE_LAND", "Land" }, { "PPE_BUILDINGS", "Buildings" },
+            { "PPE_SPECIALIST_MILITARY_EQUIPMENT", "Specialist military equipment" },
+            { "PPE_INFRASTRUCTURE", "Infrastructure" }, { "PPE_PLANT_AND_EQUIPMENT", "Plant and equipment" },
+            { "PPE_HERITAGE_AND_CULTURAL_ASSETS", "Heritage and cultural assets" }, { "PPE_INTANGIBLES", "Intangibles" } };
+        for (int i = 0; i < assetClasses.GetLength(0); i++)
+            result.Add(new TemplateLine { StatementCode = "SOFP", LineCode = assetClasses[i, 0],
+                Label = assetClasses[i, 1], Normalised = NormaliseLabel(assetClasses[i, 1]) });
         return result;
     }
 

@@ -314,7 +314,7 @@ namespace CPlatform.NORM
         {
             DataTable table = NORMHelper.Query(
                 "SELECT t.SeqNo,t.LineType,t.LineCode,t.LineLabel,t.NoteRef,t.CalculationKind,t.FormulaSpec," +
-                "r.LineResultId,r.ComputedAmount,p.AmountPrior,b.OriginalBudget " +
+                "r.LineResultId,r.ComputedAmount,p.AmountCurrent AS PublishedCurrent,p.AmountPrior,b.OriginalBudget " +
                 "FROM dbo.tblNORM_StatementLine t " +
                 "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
                 "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId=t.ConfigurationReleaseId AND p.StatementCode=t.StatementCode AND p.LineCode=t.LineCode AND p.IsDeactivated=0 " +
@@ -384,13 +384,14 @@ namespace CPlatform.NORM
                 if (code == "SOFP" && lineCode == "Employee provisions") rows.Add(Heading("subsection", "Provisions"));
                 if (code == "SOFP" && lineCode == "Property plant and equipment")
                 {
-                    AddAssetSplits(rows, model.RunId, source);
+                    AddAssetSplits(rows, model, source);
                     continue;
                 }
                 if (code == "SOFP" && lineCode == "Statement of Changes in Equity")
                 {
                     AddEquitySplits(rows, model.RunId);
                     FaceRow totalEquity = DataRowToFace(source);
+                    if (!source.IsNull("PublishedCurrent")) totalEquity.Current = NORMHelper.Dec(source, "PublishedCurrent");
                     totalEquity.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, lineCode, totalEquity.Prior);
                     totalEquity.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, lineCode, totalEquity.Budget);
                     totalEquity.Label = "Total equity";
@@ -399,6 +400,7 @@ namespace CPlatform.NORM
                     continue;
                 }
                 FaceRow row = DataRowToFace(source);
+                if (code == "SOFP" && !source.IsNull("PublishedCurrent")) row.Current = NORMHelper.Dec(source, "PublishedCurrent");
                 row.Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, code, lineCode, row.Prior);
                 row.Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, code, lineCode, row.Budget);
                 if (code == "SOCI" && lineCode == "Total own-source income") row.Label = "Total income";
@@ -502,7 +504,7 @@ namespace CPlatform.NORM
             return row;
         }
 
-        private static void AddAssetSplits(List<FaceRow> rows, int runId, DataRow aggregate)
+        private static void AddAssetSplits(List<FaceRow> rows, ExportContext model, DataRow aggregate)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT CASE " +
@@ -522,24 +524,44 @@ namespace CPlatform.NORM
                 "WHEN UPPER(NoteSubLineSnapshot) LIKE 'HCA%' THEN 'Heritage and cultural' WHEN UPPER(NoteSubLineSnapshot) LIKE 'SME%' THEN 'Specialist military equipment' " +
                 "WHEN UPPER(NoteSubLineSnapshot) LIKE 'IFA%' THEN 'Infrastructure' WHEN UPPER(NoteSubLineSnapshot) LIKE 'P&E%' THEN 'Plant and equipment' " +
                 "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS%' THEN 'Computer software' WHEN UPPER(NoteSubLineSnapshot) LIKE '%INTANGIBLE%' THEN 'Other intangibles' " +
-                "ELSE 'Other property, plant and equipment' END ORDER BY AssetClass", NORMHelper.P("@run", runId));
-            List<string> codes = new List<string>();
+                "ELSE 'Other property, plant and equipment' END ORDER BY AssetClass", NORMHelper.P("@run", model.RunId));
+            Dictionary<string, decimal> mapped = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < table.Rows.Count; i++)
             {
-                FaceRow row = new FaceRow();
-                row.Type = "line";
-                row.Code = "PPE_" + i.ToString(CultureInfo.InvariantCulture);
-                row.Label = NORMHelper.Str(table.Rows[i], "AssetClass");
-                row.Note = "3.2A";
-                row.Current = NORMHelper.Dec(table.Rows[i], "Amount");
-                rows.Add(row);
-                codes.Add(row.Code);
+                string label = NormaliseAssetClass(NORMHelper.Str(table.Rows[i], "AssetClass"));
+                decimal amount = NORMHelper.Dec(table.Rows[i], "Amount");
+                mapped[label] = mapped.ContainsKey(label) ? mapped[label] + amount : amount;
             }
-            FaceRow total = DataRowToFace(aggregate);
-            total.Type = "total";
-            total.Label = "Total property, plant and equipment and intangibles";
-            total.FormulaSpec = String.Join("|", codes.Select(x => "+" + x).ToArray());
-            rows.Add(total);
+            Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "AuditedActual");
+            Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "PriorActual");
+            Dictionary<string, decimal> budget = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOFP", "OriginalBudget");
+            string[,] classes = AssetFaceClasses();
+            for (int i = 0; i < classes.GetLength(0); i++)
+            {
+                string classCode = classes[i, 0], label = classes[i, 1];
+                decimal mappedAmount; mapped.TryGetValue(label, out mappedAmount);
+                rows.Add(new FaceRow { Type = "line", Code = classCode, Label = label, Note = "3.2A",
+                    Current = SourceValue(current, classCode) ?? (decimal?)mappedAmount,
+                    Prior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOFP", classCode, SourceValue(prior, classCode)),
+                    Budget = NORMStartOfYearSetup.FigureValue(model.Budgets, "SOFP", classCode, SourceValue(budget, classCode)) });
+            }
+        }
+
+        private static string[,] AssetFaceClasses()
+        {
+            return new string[,] { { "PPE_LAND", "Land" }, { "PPE_BUILDINGS", "Buildings" },
+                { "PPE_SPECIALIST_MILITARY_EQUIPMENT", "Specialist military equipment" },
+                { "PPE_INFRASTRUCTURE", "Infrastructure" }, { "PPE_PLANT_AND_EQUIPMENT", "Plant and equipment" },
+                { "PPE_HERITAGE_AND_CULTURAL_ASSETS", "Heritage and cultural assets" }, { "PPE_INTANGIBLES", "Intangibles" } };
+        }
+
+        private static string NormaliseAssetClass(string label)
+        {
+            if (String.Equals(label, "Computer software", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(label, "Other intangibles", StringComparison.OrdinalIgnoreCase)) return "Intangibles";
+            if (String.Equals(label, "Heritage and cultural", StringComparison.OrdinalIgnoreCase)) return "Heritage and cultural assets";
+            if (String.Equals(label, "Other property, plant and equipment", StringComparison.OrdinalIgnoreCase)) return "Plant and equipment";
+            return label;
         }
 
         private static void AddEquitySplits(List<FaceRow> rows, int runId)

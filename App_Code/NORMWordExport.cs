@@ -85,7 +85,7 @@ public class NORM_WordExport : IHttpHandler
     private void AppendStatement(StringBuilder html, int runId, int releaseId, int year, string code, string title, bool atDate)
     {
         DataTable table = NORMHelper.Query(
-            "SELECT t.LineType,t.LineCode,t.LineLabel,t.NoteRef,r.ComputedAmount,p.AmountPrior FROM dbo.tblNORM_StatementLine t " +
+            "SELECT t.LineType,t.LineCode,t.LineLabel,t.NoteRef,r.ComputedAmount,p.AmountCurrent AS PublishedCurrent,p.AmountPrior FROM dbo.tblNORM_StatementLine t " +
             "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
             "LEFT JOIN dbo.tblNORM_PublishedFigure p ON p.ConfigurationReleaseId=t.ConfigurationReleaseId AND p.StatementCode=t.StatementCode " +
             "AND p.LineCode=t.LineCode AND p.IsDeactivated=0 WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code " +
@@ -149,6 +149,7 @@ public class NORM_WordExport : IHttpHandler
             string lineCode = NORMHelper.Str(row, "LineCode");
             decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, code, lineCode, baselinePrior);
             decimal? effectiveCurrent = row.IsNull("ComputedAmount") ? (decimal?)null : NORMHelper.Dec(row, "ComputedAmount");
+            if (code == "SOFP" && !row.IsNull("PublishedCurrent")) effectiveCurrent = NORMHelper.Dec(row, "PublishedCurrent");
             string displayLabel = NORMHelper.Str(row, "LineLabel");
             if (code == "SOCI" && String.Equals(lineCode, "Total own-source income", StringComparison.OrdinalIgnoreCase))
             {
@@ -161,6 +162,11 @@ public class NORM_WordExport : IHttpHandler
                 displayLabel = "(Deficit) / Surplus";
                 if (operatingResultCurrent.HasValue) effectiveCurrent = operatingResultCurrent;
                 if (operatingResultPrior.HasValue) effectivePrior = operatingResultPrior;
+            }
+            if (code == "SOFP" && String.Equals(lineCode, "Property plant and equipment", StringComparison.OrdinalIgnoreCase))
+            {
+                AppendWordAssetSplits(html, releaseId);
+                continue;
             }
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
                 .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
@@ -195,6 +201,22 @@ public class NORM_WordExport : IHttpHandler
                 return row.IsNull(column) ? (decimal?)null : NORMHelper.Dec(row, column);
         }
         return null;
+    }
+
+    private void AppendWordAssetSplits(StringBuilder html, int releaseId)
+    {
+        Dictionary<string, decimal> current = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
+        Dictionary<string, decimal> prior = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
+        string[,] classes = new string[,] { { "PPE_LAND", "Land" }, { "PPE_BUILDINGS", "Buildings" },
+            { "PPE_SPECIALIST_MILITARY_EQUIPMENT", "Specialist military equipment" },
+            { "PPE_INFRASTRUCTURE", "Infrastructure" }, { "PPE_PLANT_AND_EQUIPMENT", "Plant and equipment" },
+            { "PPE_HERITAGE_AND_CULTURAL_ASSETS", "Heritage and cultural assets" }, { "PPE_INTANGIBLES", "Intangibles" } };
+        for (int i = 0; i < classes.GetLength(0); i++)
+        {
+            string code = classes[i, 0];
+            decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", code, SourceValue(prior, code));
+            AppendStatementAmountRow(html, classes[i, 1], "3.2A", SourceValue(current, code), effectivePrior, false);
+        }
     }
 
     private decimal? EffectivePriorAmount(DataTable table, string statementCode, string lineCode)
