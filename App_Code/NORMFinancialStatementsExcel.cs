@@ -419,6 +419,7 @@ namespace CPlatform.NORM
             if (code == "SOCI")
             {
                 ApplyFaceAggregate(rows, "Total own-source income", new string[] { "TOTAL_OSR", "TOTAL_GAINS" });
+                ApplyFaceDifference(rows, "Operating result", "Revenue from Government", "Net cost of services");
                 Dictionary<string, decimal> auditedOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "AuditedActual");
                 Dictionary<string, decimal> priorOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "PriorActual");
                 Dictionary<string, decimal> budgetOci = NORMStatementEnhancements.LoadSourceFigures(model.ReleaseId, "SOCE", "OriginalBudget");
@@ -467,6 +468,18 @@ namespace CPlatform.NORM
             target.Budget = components.Any(x => x.Budget.HasValue)
                 ? (decimal?)components.Where(x => x.Budget.HasValue).Sum(x => x.Budget.Value) : null;
             target.FormulaSpec = String.Join("|", componentCodes.Select(x => "+" + x).ToArray());
+        }
+
+        private static void ApplyFaceDifference(List<FaceRow> rows, string targetCode, string positiveCode, string negativeCode)
+        {
+            FaceRow target = rows.FirstOrDefault(x => String.Equals(x.Code, targetCode, StringComparison.OrdinalIgnoreCase));
+            FaceRow positive = rows.FirstOrDefault(x => String.Equals(x.Code, positiveCode, StringComparison.OrdinalIgnoreCase));
+            FaceRow negative = rows.FirstOrDefault(x => String.Equals(x.Code, negativeCode, StringComparison.OrdinalIgnoreCase));
+            if (target == null || positive == null || negative == null) { return; }
+            if (positive.Current.HasValue && negative.Current.HasValue) target.Current = positive.Current.Value - negative.Current.Value;
+            if (positive.Prior.HasValue && negative.Prior.HasValue) target.Prior = positive.Prior.Value - negative.Prior.Value;
+            if (positive.Budget.HasValue && negative.Budget.HasValue) target.Budget = positive.Budget.Value - negative.Budget.Value;
+            target.FormulaSpec = "+" + positiveCode + "|-" + negativeCode;
         }
 
         private static decimal? SourceValue(Dictionary<string, decimal> values, string code)

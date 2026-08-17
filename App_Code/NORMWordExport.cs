@@ -97,6 +97,7 @@ public class NORM_WordExport : IHttpHandler
                 hasForeignExchangeGains = true;
         decimal totalIncomeCurrent = 0m, totalIncomePrior = 0m;
         bool hasTotalIncomeCurrent = false, hasTotalIncomePrior = false;
+        decimal? operatingResultCurrent = null, operatingResultPrior = null;
         HashSet<string> incomeComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue",
@@ -119,6 +120,12 @@ public class NORM_WordExport : IHttpHandler
                 decimal? foreignExchangePrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "Foreign exchange gains", null);
                 if (foreignExchangePrior.HasValue) { totalIncomePrior += foreignExchangePrior.Value; hasTotalIncomePrior = true; }
             }
+            decimal? revenueCurrent = StatementAmount(table, "Revenue from Government", "ComputedAmount");
+            decimal? netCostCurrent = StatementAmount(table, "Net cost of services", "ComputedAmount");
+            decimal? revenuePrior = EffectivePriorAmount(table, code, "Revenue from Government");
+            decimal? netCostPrior = EffectivePriorAmount(table, code, "Net cost of services");
+            if (revenueCurrent.HasValue && netCostCurrent.HasValue) operatingResultCurrent = revenueCurrent.Value - netCostCurrent.Value;
+            if (revenuePrior.HasValue && netCostPrior.HasValue) operatingResultPrior = revenuePrior.Value - netCostPrior.Value;
         }
         html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>").Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
         html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
@@ -149,6 +156,12 @@ public class NORM_WordExport : IHttpHandler
                 effectiveCurrent = hasTotalIncomeCurrent ? (decimal?)totalIncomeCurrent : null;
                 effectivePrior = hasTotalIncomePrior ? (decimal?)totalIncomePrior : null;
             }
+            if (code == "SOCI" && String.Equals(lineCode, "Operating result", StringComparison.OrdinalIgnoreCase))
+            {
+                displayLabel = "(Deficit) / Surplus";
+                if (operatingResultCurrent.HasValue) effectiveCurrent = operatingResultCurrent;
+                if (operatingResultPrior.HasValue) effectivePrior = operatingResultPrior;
+            }
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
                 .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
         }
@@ -160,16 +173,8 @@ public class NORM_WordExport : IHttpHandler
             decimal? effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "SOCE_TOTAL_OCI",
                 SourceValue(priorOci, "SOCE_TOTAL_OCI"));
             effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "OCI_REVALUATION", effectiveOciPrior);
-            decimal? currentResult = null, priorResult = null;
-            for (int i = 0; i < table.Rows.Count; i++)
-            {
-                DataRow source = table.Rows[i];
-                if (!String.Equals(NORMHelper.Str(source, "LineCode"), "Operating result", StringComparison.OrdinalIgnoreCase)) { continue; }
-                currentResult = source.IsNull("ComputedAmount") ? (decimal?)null : NORMHelper.Dec(source, "ComputedAmount");
-                decimal? baseline = source.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(source, "AmountPrior");
-                priorResult = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "Operating result", baseline);
-                break;
-            }
+            decimal? currentResult = operatingResultCurrent;
+            decimal? priorResult = operatingResultPrior;
             decimal? totalCurrent = currentResult.HasValue && currentOci.HasValue ? (decimal?)(currentResult.Value + currentOci.Value) : null;
             decimal? totalPrior = priorResult.HasValue && effectiveOciPrior.HasValue ? (decimal?)(priorResult.Value + effectiveOciPrior.Value) : null;
             html.Append("<tr class=\"section\"><th colspan=\"4\">OTHER COMPREHENSIVE INCOME / (LOSS)</th></tr>");
@@ -179,6 +184,29 @@ public class NORM_WordExport : IHttpHandler
             AppendStatementAmountRow(html, "Total comprehensive (loss) / income", "", totalCurrent, totalPrior, true);
         }
         html.Append("</tbody></table><p class=\"footer\">This statement should be read with the accompanying notes.</p></section>");
+    }
+
+    private static decimal? StatementAmount(DataTable table, string lineCode, string column)
+    {
+        for (int i = 0; i < table.Rows.Count; i++)
+        {
+            DataRow row = table.Rows[i];
+            if (String.Equals(NORMHelper.Str(row, "LineCode"), lineCode, StringComparison.OrdinalIgnoreCase))
+                return row.IsNull(column) ? (decimal?)null : NORMHelper.Dec(row, column);
+        }
+        return null;
+    }
+
+    private decimal? EffectivePriorAmount(DataTable table, string statementCode, string lineCode)
+    {
+        for (int i = 0; i < table.Rows.Count; i++)
+        {
+            DataRow row = table.Rows[i];
+            if (!String.Equals(NORMHelper.Str(row, "LineCode"), lineCode, StringComparison.OrdinalIgnoreCase)) { continue; }
+            decimal? baseline = row.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(row, "AmountPrior");
+            return NORMStartOfYearSetup.FigureValue(priorFigures, statementCode, lineCode, baseline);
+        }
+        return null;
     }
 
     private void AppendEquity(StringBuilder html, int runId, int releaseId, int year)

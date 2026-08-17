@@ -742,6 +742,7 @@ namespace CPlatform.NORM
                 ApplyAggregate(rows, "TOTAL_OSR", new string[] { "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue" });
                 ApplyAggregate(rows, "TOTAL_GAINS", new string[] { "Gain on sale of asset", "Reversals of previous asset write-downs", "Foreign exchange gains", "Other gains" });
                 ApplyAggregate(rows, "Total own-source income", new string[] { "TOTAL_OSR", "TOTAL_GAINS" });
+                ApplyDifference(rows, "Operating result", "Revenue from Government", "Net cost of services");
                 ApplyAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
                 ApplyAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION" });
             }
@@ -822,6 +823,33 @@ namespace CPlatform.NORM
             target["computed"] = current;
             target["prior"] = hasPrior ? (object)prior : null;
             target["budget"] = hasBudget ? (object)budget : null;
+        }
+
+        private void ApplyDifference(List<object> rows, string targetCode, string positiveCode, string negativeCode)
+        {
+            Dictionary<string, object> target = null;
+            Dictionary<string, object> positive = null;
+            Dictionary<string, object> negative = null;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                Dictionary<string, object> row = rows[i] as Dictionary<string, object>;
+                if (row == null) { continue; }
+                string code = Convert.ToString(row["code"]);
+                if (String.Equals(code, targetCode, StringComparison.OrdinalIgnoreCase)) target = row;
+                else if (String.Equals(code, positiveCode, StringComparison.OrdinalIgnoreCase)) positive = row;
+                else if (String.Equals(code, negativeCode, StringComparison.OrdinalIgnoreCase)) negative = row;
+            }
+            if (target == null || positive == null || negative == null) { return; }
+            ApplyDifferenceColumn(target, positive, negative, "computed");
+            ApplyDifferenceColumn(target, positive, negative, "prior");
+            ApplyDifferenceColumn(target, positive, negative, "budget");
+        }
+
+        private void ApplyDifferenceColumn(Dictionary<string, object> target, Dictionary<string, object> positive,
+            Dictionary<string, object> negative, string column)
+        {
+            if (positive[column] == null || negative[column] == null) { return; }
+            target[column] = Convert.ToDecimal(positive[column]) - Convert.ToDecimal(negative[column]);
         }
 
         private void ApplyBudget(List<object> rows, string statementCode, Dictionary<string, decimal> budgets)
