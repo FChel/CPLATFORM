@@ -114,10 +114,10 @@ IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_PublishedFigure WHERE ConfigurationRele
       (@ReleaseId,2025,'DEPT','SOCI','Total own-source income',2677797,2324309,N'Defence Annual Report 2024-25, audited financial statements'),
       (@ReleaseId,2025,'DEPT','SOCI','Net cost of services',47708604,44012135,N'Defence Annual Report 2024-25, audited financial statements'),
       (@ReleaseId,2025,'DEPT','SOCI','Operating result',-8730925,-8171565,N'Defence Annual Report 2024-25, audited financial statements'),
-      (@ReleaseId,2025,'DEPT','SOFP','Total assets',158436070,146458730,N'Defence Annual Report 2024-25, audited financial statements'),
+      (@ReleaseId,2025,'DEPT','SOFP','Total assets',158436070,145895278,N'Defence Annual Report 2024-25, audited financial statements'),
       (@ReleaseId,2025,'DEPT','SOFP','Total liabilities',15800563,13848233,N'Defence Annual Report 2024-25, audited financial statements'),
-      (@ReleaseId,2025,'DEPT','SOFP','Net assets',142635507,132610497,N'Defence Annual Report 2024-25, audited financial statements'),
-      (@ReleaseId,2025,'DEPT','SOFP','Statement of Changes in Equity',142635507,132610497,N'Defence Annual Report 2024-25, audited financial statements');
+      (@ReleaseId,2025,'DEPT','SOFP','Net assets',142635507,132047045,N'Defence Annual Report 2024-25, audited financial statements'),
+      (@ReleaseId,2025,'DEPT','SOFP','Statement of Changes in Equity',142635507,132047045,N'Defence Annual Report 2024-25, audited financial statements');
 
 /* Fail clearly when the accounting seed was not run or is incomplete. */
 IF (SELECT COUNT(*) FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId = @ReleaseId AND IsDeactivated = 0) < 850
