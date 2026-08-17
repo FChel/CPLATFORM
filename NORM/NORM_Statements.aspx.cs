@@ -75,7 +75,8 @@ namespace CPlatform.NORM
 
             Dictionary<string, object> payload = new Dictionary<string, object>();
             Dictionary<string, object> meta = new Dictionary<string, object>();
-            int fy = NORMHelper.Int(context, "FinancialYear");
+            int fy = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
+                NORMHelper.Str(context, "EntityCode"), NORMHelper.Int(context, "FinancialYear"));
             int importId = NORMHelper.Int(context, "ImportId");
             Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId, fy);
             Dictionary<string, decimal> budgets = NORMStatementEnhancements.LoadBudgetFigures(runId);

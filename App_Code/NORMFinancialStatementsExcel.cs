@@ -144,7 +144,8 @@ namespace CPlatform.NORM
             ExportContext model = new ExportContext();
             model.RunId = runId;
             model.ReleaseId = NORMHelper.Int(row, "ConfigurationReleaseId");
-            model.Year = NORMHelper.Int(row, "FinancialYear");
+            model.Year = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
+                NORMHelper.Str(row, "EntityCode"), NORMHelper.Int(row, "FinancialYear"));
             model.Entity = NORMHelper.Str(row, "EntityName") ?? NORMHelper.Str(row, "EntityCode");
             model.Version = NORMHelper.Str(row, "VersionCode");
             model.Profile = NORMReportingFramework.LoadProfile(model.ReleaseId);

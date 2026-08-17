@@ -37,7 +37,8 @@ public class NORM_WordExport : IHttpHandler
 
         DataRow header = meta.Rows[0];
         int releaseId = NORMHelper.Int(header, "ConfigurationReleaseId");
-        int year = NORMHelper.Int(header, "FinancialYear");
+        int year = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
+            NORMHelper.Str(header, "EntityCode"), NORMHelper.Int(header, "FinancialYear"));
         string entity = NORMHelper.Str(header, "EntityName") ?? NORMHelper.Str(header, "EntityCode");
         NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
         List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()

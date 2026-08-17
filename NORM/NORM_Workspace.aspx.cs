@@ -133,7 +133,8 @@ namespace CPlatform.NORM
         private void BuildAuditTrail(int runId)
         {
             DataTable table = NORMHelper.Query("SELECT TOP 8 EventCode,DetailText,PerformedBy,PerformedUtc FROM dbo.tblNORM_AuditEvent " +
-                "WHERE (EntityType='CalculationRun' AND EntityId=@run) OR EventCode IN ('IMPORT_COMPLETED','REPORTING_PROFILE_UPDATED') ORDER BY AuditEventId DESC", NORMHelper.P("@run", runId.ToString(CultureInfo.InvariantCulture)));
+                "WHERE (EntityType='CalculationRun' AND EntityId=@run) OR EventCode IN ('IMPORT_COMPLETED','REPORTING_PROFILE_UPDATED'," +
+                "'YEAR_SETUP_UPDATED','YEAR_SETUP_DOCUMENT_UPLOADED') ORDER BY AuditEventId DESC", NORMHelper.P("@run", runId.ToString(CultureInfo.InvariantCulture)));
             StringBuilder html = new StringBuilder("<div class=\"norm-audit-list\">");
             for (int i = 0; i < table.Rows.Count; i++)
             {
