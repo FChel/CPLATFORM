@@ -600,9 +600,17 @@ namespace CPlatform.NORM
                 NORMHelper.P("@statement", statementCode));
             List<object> rows = new List<object>();
             bool hasForeignExchangeGains = false;
+            bool hasFinancialAssetsHeading = false;
             for (int i = 0; i < table.Rows.Count; i++)
+            {
                 if (String.Equals(NORMHelper.Str(table.Rows[i], "LineCode"), "Foreign exchange gains", StringComparison.OrdinalIgnoreCase))
                     hasForeignExchangeGains = true;
+                if (statementCode == "SOFP" && String.Equals(NORMHelper.Str(table.Rows[i], "LineType"), "section", StringComparison.OrdinalIgnoreCase))
+                {
+                    string sectionLabel = NORMHelper.Str(table.Rows[i], "LineLabel");
+                    if (String.Equals(sectionLabel, "Financial assets", StringComparison.OrdinalIgnoreCase)) hasFinancialAssetsHeading = true;
+                }
+            }
             decimal ownSourceRevenue = 0m;
             decimal gains = 0m;
             bool revenueTotalAdded = false;
@@ -653,7 +661,18 @@ namespace CPlatform.NORM
                 }
                 if (statementCode == "SOFP" && rows.Count == 0)
                     rows.Add(SimpleRow("major", null, "ASSETS", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
-                if (statementCode == "SOFP" && lineCode == "Cash and cash equivalents")
+                if (statementCode == "SOFP" && lineType == "section" &&
+                    String.Equals(NORMHelper.Str(source, "LineLabel"), "Financial assets", StringComparison.OrdinalIgnoreCase))
+                {
+                    rows.Add(SimpleRow("subsection", "HEADING_FINANCIAL_ASSETS", "Financial assets", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
+                    continue;
+                }
+                if (statementCode == "SOFP" && lineType == "section" &&
+                    String.Equals(NORMHelper.Str(source, "LineLabel"), "Non-financial assets", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                if (statementCode == "SOFP" && lineCode == "Cash and cash equivalents" && !hasFinancialAssetsHeading)
                     rows.Add(SimpleRow("subsection", "HEADING_FINANCIAL_ASSETS", "Financial assets", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));
                 if (statementCode == "SOFP" && lineCode == "Property plant and equipment")
                     rows.Add(SimpleRow("subsection", "HEADING_NON_FINANCIAL_ASSETS", "Non-financial assets", null, 0m, null, false, 0L, new List<Dictionary<string, object>>()));

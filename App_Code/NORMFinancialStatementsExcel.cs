@@ -327,9 +327,15 @@ namespace CPlatform.NORM
             bool ownSourceTotalAdded = false;
             bool gainsTotalAdded = false;
             bool hasForeignExchangeGains = false;
+            bool hasFinancialAssetsHeading = false;
             for (int i = 0; i < table.Rows.Count; i++)
+            {
                 if (String.Equals(NORMHelper.Str(table.Rows[i], "LineCode"), "Foreign exchange gains", StringComparison.OrdinalIgnoreCase))
                     hasForeignExchangeGains = true;
+                if (code == "SOFP" && String.Equals(NORMHelper.Str(table.Rows[i], "LineType"), "section", StringComparison.OrdinalIgnoreCase) &&
+                    String.Equals(NORMHelper.Str(table.Rows[i], "LineLabel"), "Financial assets", StringComparison.OrdinalIgnoreCase))
+                    hasFinancialAssetsHeading = true;
+            }
             if (code == "SOCI") rows.Add(Heading("major", "NET COST OF SERVICES"));
             if (code == "SOFP") rows.Add(Heading("major", "ASSETS"));
             for (int i = 0; i < table.Rows.Count; i++)
@@ -338,6 +344,13 @@ namespace CPlatform.NORM
                 string lineCode = NORMHelper.Str(source, "LineCode");
                 string type = NORMHelper.Str(source, "LineType");
                 string label = NORMHelper.Str(source, "LineLabel");
+                if (code == "SOFP" && type == "section" && String.Equals(label, "Financial assets", StringComparison.OrdinalIgnoreCase))
+                {
+                    rows.Add(Heading("subsection", "Financial assets"));
+                    continue;
+                }
+                if (code == "SOFP" && type == "section" && String.Equals(label, "Non-financial assets", StringComparison.OrdinalIgnoreCase))
+                    continue;
                 if (code == "SOCI" && type == "section" && String.Equals(label, "Own-source income", StringComparison.OrdinalIgnoreCase))
                 {
                     rows.Add(Heading("subsection", "LESS:"));
@@ -355,7 +368,7 @@ namespace CPlatform.NORM
                     rows.Add(Heading("major", "EQUITY"));
                     continue;
                 }
-                if (code == "SOFP" && lineCode == "Cash and cash equivalents") rows.Add(Heading("subsection", "Financial assets"));
+                if (code == "SOFP" && lineCode == "Cash and cash equivalents" && !hasFinancialAssetsHeading) rows.Add(Heading("subsection", "Financial assets"));
                 if (code == "SOCI" && lineCode == "Revenue from contracts with customers") rows.Add(Heading("subsection", "Own-source revenue"));
                 if (code == "SOCI" && lineCode == "Gain on sale of asset")
                 {

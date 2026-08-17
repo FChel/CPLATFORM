@@ -92,9 +92,15 @@ public class NORM_WordExport : IHttpHandler
             "AND t.IsDeactivated=0 ORDER BY t.SeqNo",
             NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code));
         bool hasForeignExchangeGains = false;
+        bool hasFinancialAssetsHeading = false;
         for (int i = 0; i < table.Rows.Count; i++)
+        {
             if (String.Equals(NORMHelper.Str(table.Rows[i], "LineCode"), "Foreign exchange gains", StringComparison.OrdinalIgnoreCase))
                 hasForeignExchangeGains = true;
+            if (code == "SOFP" && String.Equals(NORMHelper.Str(table.Rows[i], "LineType"), "section", StringComparison.OrdinalIgnoreCase) &&
+                String.Equals(NORMHelper.Str(table.Rows[i], "LineLabel"), "Financial assets", StringComparison.OrdinalIgnoreCase))
+                hasFinancialAssetsHeading = true;
+        }
         decimal totalIncomeCurrent = 0m, totalIncomePrior = 0m;
         bool hasTotalIncomeCurrent = false, hasTotalIncomePrior = false;
         decimal? operatingResultCurrent = null, operatingResultPrior = null;
@@ -152,12 +158,14 @@ public class NORM_WordExport : IHttpHandler
             }
             if (type == "section")
             {
+                if (code == "SOFP" && String.Equals(NORMHelper.Str(row, "LineLabel"), "Non-financial assets", StringComparison.OrdinalIgnoreCase))
+                    continue;
                 html.Append("<tr class=\"section\"><th colspan=\"4\">").Append(Enc(NORMHelper.Str(row, "LineLabel"))).Append("</th></tr>");
                 continue;
             }
             decimal? baselinePrior = row.IsNull("AmountPrior") ? (decimal?)null : NORMHelper.Dec(row, "AmountPrior");
             string lineCode = NORMHelper.Str(row, "LineCode");
-            if (code == "SOFP" && String.Equals(lineCode, "Cash and cash equivalents", StringComparison.OrdinalIgnoreCase))
+            if (code == "SOFP" && !hasFinancialAssetsHeading && String.Equals(lineCode, "Cash and cash equivalents", StringComparison.OrdinalIgnoreCase))
                 html.Append("<tr class=\"section\"><th colspan=\"4\">Financial assets</th></tr>");
             decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(priorFigures, code, lineCode, baselinePrior);
             decimal? effectiveCurrent = row.IsNull("ComputedAmount") ? (decimal?)null : NORMHelper.Dec(row, "ComputedAmount");
