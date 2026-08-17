@@ -143,7 +143,6 @@
       if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead") {
         return '<tr class="norm-section-row ' + esc(row.type) + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
       }
-      var sourceCount = (row.sources || []).length;
       var status = statusClass(row.status);
       var clickable = viewMode === "preparation" && row.clickable && row.resultId;
       var amount = clickable
@@ -153,7 +152,6 @@
       var cashWorking = statement.code === "CASH" && (row.original !== undefined || row.adjustment !== undefined)
         ? '<small class="norm-cash-working">Original ' + number(row.original || 0) + ' · adjustments ' + number(row.adjustment || 0) + '</small>' : '';
       return '<tr class="norm-financial-row ' + esc(row.type) + '"><th scope="row">' + esc(row.label) + cashWorking +
-        (viewMode === "preparation" && sourceCount ? '<small class="norm-source-count">' + sourceCount + ' source account' + (sourceCount === 1 ? '' : 's') + '</small>' : '') +
         '</th><td class="norm-note">' + note + '</td><td class="norm-amount">' + amount +
         '</td><td class="norm-amount norm-prior">' + number(row.prior) + '</td><td class="norm-amount norm-budget">' + number(row.budget) + '</td></tr>';
     }).join("");
