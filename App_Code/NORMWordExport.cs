@@ -105,6 +105,8 @@ public class NORM_WordExport : IHttpHandler
         bool hasTotalIncomeCurrent = false, hasTotalIncomePrior = false;
         decimal? operatingResultCurrent = null, operatingResultPrior = null;
         decimal? financialAssetsCurrent = null, financialAssetsPrior = null;
+        decimal? nonFinancialAssetsCurrent = null, nonFinancialAssetsPrior = null;
+        decimal? totalAssetsCurrent = null, totalAssetsPrior = null;
         HashSet<string> incomeComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Revenue from contracts with customers", "Revenue in relation to special accounts", "Rental income", "Other revenue",
@@ -142,6 +144,34 @@ public class NORM_WordExport : IHttpHandler
             decimal? receivablesPrior = EffectivePriorAmount(table, code, "Trade and other receivables");
             if (cashCurrent.HasValue && receivablesCurrent.HasValue) financialAssetsCurrent = cashCurrent.Value + receivablesCurrent.Value;
             if (cashPrior.HasValue && receivablesPrior.HasValue) financialAssetsPrior = cashPrior.Value + receivablesPrior.Value;
+
+            Dictionary<string, decimal> auditedAssets = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "AuditedActual");
+            Dictionary<string, decimal> priorAssets = NORMStatementEnhancements.LoadSourceFigures(releaseId, "SOFP", "PriorActual");
+            string[] assetClasses = new string[] { "PPE_LAND", "PPE_BUILDINGS", "PPE_SPECIALIST_MILITARY_EQUIPMENT",
+                "PPE_INFRASTRUCTURE", "PPE_PLANT_AND_EQUIPMENT", "PPE_HERITAGE_AND_CULTURAL_ASSETS", "PPE_INTANGIBLES" };
+            decimal currentNonFinancial = 0m, priorNonFinancial = 0m;
+            bool hasCurrentNonFinancial = false, hasPriorNonFinancial = false;
+            for (int i = 0; i < assetClasses.Length; i++)
+            {
+                decimal? currentValue = SourceValue(auditedAssets, assetClasses[i]);
+                decimal? priorValue = NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", assetClasses[i], SourceValue(priorAssets, assetClasses[i]));
+                if (currentValue.HasValue) { currentNonFinancial += currentValue.Value; hasCurrentNonFinancial = true; }
+                if (priorValue.HasValue) { priorNonFinancial += priorValue.Value; hasPriorNonFinancial = true; }
+            }
+            string[] otherNonFinancial = new string[] { "Inventories", "Prepayments", "Assets held for sale" };
+            for (int i = 0; i < otherNonFinancial.Length; i++)
+            {
+                decimal? currentValue = StatementAmount(table, otherNonFinancial[i], "PublishedCurrent") ?? StatementAmount(table, otherNonFinancial[i], "ComputedAmount");
+                decimal? priorValue = EffectivePriorAmount(table, code, otherNonFinancial[i]);
+                if (currentValue.HasValue) { currentNonFinancial += currentValue.Value; hasCurrentNonFinancial = true; }
+                if (priorValue.HasValue) { priorNonFinancial += priorValue.Value; hasPriorNonFinancial = true; }
+            }
+            if (hasCurrentNonFinancial) nonFinancialAssetsCurrent = currentNonFinancial;
+            if (hasPriorNonFinancial) nonFinancialAssetsPrior = priorNonFinancial;
+            if (financialAssetsCurrent.HasValue && nonFinancialAssetsCurrent.HasValue)
+                totalAssetsCurrent = financialAssetsCurrent.Value + nonFinancialAssetsCurrent.Value;
+            if (financialAssetsPrior.HasValue && nonFinancialAssetsPrior.HasValue)
+                totalAssetsPrior = financialAssetsPrior.Value + nonFinancialAssetsPrior.Value;
         }
         html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>").Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
         html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year).Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
@@ -190,8 +220,15 @@ public class NORM_WordExport : IHttpHandler
                 AppendWordAssetSplits(html, releaseId);
                 continue;
             }
+            if (code == "SOFP" && String.Equals(lineCode, "Total assets", StringComparison.OrdinalIgnoreCase))
+            {
+                effectiveCurrent = totalAssetsCurrent;
+                effectivePrior = totalAssetsPrior;
+            }
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
                 .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
+            if (code == "SOFP" && String.Equals(lineCode, "Assets held for sale", StringComparison.OrdinalIgnoreCase))
+                AppendStatementAmountRow(html, "Total non-financial assets", "", nonFinancialAssetsCurrent, nonFinancialAssetsPrior, true);
         }
         if (code == "SOCI")
         {

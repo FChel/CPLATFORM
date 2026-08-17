@@ -403,6 +403,8 @@ namespace CPlatform.NORM
                     AddAssetSplits(rows, model, source);
                     continue;
                 }
+                if (code == "SOFP" && lineCode == "Total assets")
+                    rows.Add(new FaceRow { Type = "total", Code = "TOTAL_NON_FINANCIAL_ASSETS", Label = "Total non-financial assets" });
                 if (code == "SOFP" && lineCode == "Statement of Changes in Equity")
                 {
                     AddEquitySplits(rows, model.RunId);
@@ -455,8 +457,16 @@ namespace CPlatform.NORM
                 ApplyFaceAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
                 ApplyFaceAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION" });
             }
-            if (code == "SOFP") ApplyFaceAggregate(rows, "TOTAL_FINANCIAL_ASSETS",
-                new string[] { "Cash and cash equivalents", "Trade and other receivables" });
+            if (code == "SOFP")
+            {
+                ApplyFaceAggregate(rows, "TOTAL_FINANCIAL_ASSETS",
+                    new string[] { "Cash and cash equivalents", "Trade and other receivables" });
+                ApplyFaceAggregate(rows, "TOTAL_NON_FINANCIAL_ASSETS", new string[] {
+                    "PPE_LAND", "PPE_BUILDINGS", "PPE_SPECIALIST_MILITARY_EQUIPMENT", "PPE_INFRASTRUCTURE",
+                    "PPE_PLANT_AND_EQUIPMENT", "PPE_HERITAGE_AND_CULTURAL_ASSETS", "PPE_INTANGIBLES",
+                    "Inventories", "Prepayments", "Assets held for sale" });
+                ApplyFaceAggregate(rows, "Total assets", new string[] { "TOTAL_FINANCIAL_ASSETS", "TOTAL_NON_FINANCIAL_ASSETS" });
+            }
             return rows;
         }
 

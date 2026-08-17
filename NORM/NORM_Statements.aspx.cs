@@ -790,8 +790,9 @@ namespace CPlatform.NORM
         {
             InsertAggregateBefore(rows, "HEADING_NON_FINANCIAL_ASSETS", "TOTAL_FINANCIAL_ASSETS", "Total financial assets",
                 new string[] { "Cash and cash equivalents", "Trade and other receivables" });
-            InsertAggregateBefore(rows, "Assets held for sale", "TOTAL_NON_FINANCIAL_ASSETS", "Total non-financial assets",
-                new string[] { "PPE_*", "Inventories", "Prepayments" });
+            InsertAggregateBefore(rows, "Total assets", "TOTAL_NON_FINANCIAL_ASSETS", "Total non-financial assets",
+                new string[] { "PPE_*", "Inventories", "Prepayments", "Assets held for sale" });
+            ApplyAggregate(rows, "Total assets", new string[] { "TOTAL_FINANCIAL_ASSETS", "TOTAL_NON_FINANCIAL_ASSETS" });
             InsertAggregateBefore(rows, "HEADING_INTEREST_LIABILITIES", "TOTAL_PAYABLES", "Total payables",
                 new string[] { "Suppliers payables", "Employee payables", "Other payables" });
             InsertAggregateBefore(rows, "Employee provisions", "TOTAL_INTEREST_LIABILITIES", "Total interest-bearing liabilities",
