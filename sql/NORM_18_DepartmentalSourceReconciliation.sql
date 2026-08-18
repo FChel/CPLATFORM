@@ -166,16 +166,14 @@ WHERE NOT EXISTS
       AND sf.StatementCode=v.StatementCode AND sf.LineCode=v.LineCode AND sf.FigureType=v.FigureType
 );
 
-DECLARE @PriorHash CHAR(64)='88BF16696234BB7C16E1258D77628B46752D825B03DF2AE70D650E03A5F2DD0F';
-DECLARE @BudgetHash CHAR(64)='57D1AFB9E0FBD975E3A034EEFE47A29984DC823AB6A3BF408979D663BE748BA8';
 DECLARE @PriorDoc BIGINT=(SELECT TOP (1) d.YearSetupDocumentId FROM dbo.tblNORM_YearSetupDocument d
  JOIN dbo.tblNORM_YearSetup y ON y.YearSetupId=d.YearSetupId
  WHERE y.EntityCode='DEPT' AND y.CurrentFinancialYear=2025 AND y.IsCurrent=1 AND y.IsDeactivated=0
-   AND d.DocumentTypeCode='PriorYearFinancialStatements' AND d.SourceFileHash=@PriorHash AND d.IsDeactivated=0 ORDER BY d.UploadedUtc DESC);
+   AND d.DocumentTypeCode='PriorYearFinancialStatements' AND d.IsDeactivated=0 ORDER BY d.UploadedUtc DESC);
 DECLARE @BudgetDoc BIGINT=(SELECT TOP (1) d.YearSetupDocumentId FROM dbo.tblNORM_YearSetupDocument d
  JOIN dbo.tblNORM_YearSetup y ON y.YearSetupId=d.YearSetupId
  WHERE y.EntityCode='DEPT' AND y.CurrentFinancialYear=2025 AND y.IsCurrent=1 AND y.IsDeactivated=0
-   AND d.DocumentTypeCode='PortfolioBudgetStatements' AND d.SourceFileHash=@BudgetHash AND d.IsDeactivated=0 ORDER BY d.UploadedUtc DESC);
+   AND d.DocumentTypeCode='PortfolioBudgetStatements' AND d.IsDeactivated=0 ORDER BY d.UploadedUtc DESC);
 
 IF @PriorDoc IS NOT NULL
 BEGIN
