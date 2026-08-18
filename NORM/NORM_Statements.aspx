@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NORM - Financial statements</title>
-    <link rel="stylesheet" href="../css/norm.css?v=20260818-4" />
+    <link rel="stylesheet" href="../css/norm.css?v=20260819-1" />
 </head>
 <body class="norm-page norm-statements-page">
 <form id="form1" runat="server">
@@ -101,7 +101,7 @@
     <div id="printBook" class="norm-print-book" aria-hidden="true"></div>
 
     <script>window.NORM_DATA = <%= NormDataJson %>;</script>
-    <script src="../js/norm.js?v=20260818-4"></script>
+    <script src="../js/norm.js?v=20260819-1"></script>
 </form>
 </body>
 </html>

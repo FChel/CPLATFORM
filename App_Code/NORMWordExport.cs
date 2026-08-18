@@ -72,7 +72,7 @@ public class NORM_WordExport : IHttpHandler
         html.Append("<!doctype html><html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" lang=\"en-AU\"><head><meta charset=\"utf-8\">");
         html.Append("<title>").Append(Enc(entity)).Append(" financial statements</title>");
         html.Append("<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->");
-        html.Append("<style>@page{size:A4;margin:20mm 18mm 18mm}@page assetLandscape{size:29.7cm 21cm;mso-page-orientation:landscape;margin:9mm 10mm 8mm}body{font-family:Arial,sans-serif;color:#171717;font-size:9.5pt;line-height:1.35}h1{font-size:22pt;margin:0 0 8pt}h2{font-size:15pt;border-bottom:2pt solid #e87722;padding-bottom:5pt;margin:0 0 14pt}h3{font-size:11.5pt;margin:14pt 0 7pt}p{margin:0 0 8pt}.cover{padding-top:65mm}.eyebrow{color:#b64d00;font-weight:bold;text-transform:uppercase;letter-spacing:.7pt}.meta{margin-top:30pt;border-top:1pt solid #bbb;padding-top:10pt}.page{page-break-before:always}.note{page-break-before:always}.section{font-weight:bold;background:#f1f2f4}table{width:100%;border-collapse:collapse;margin:7pt 0 12pt}tr{page-break-inside:avoid}th,td{padding:4pt 5pt;border-bottom:.5pt solid #c8c8c8;vertical-align:top}th{text-align:left}.note tbody th{font-weight:normal}.note .total th{font-weight:bold}.amount{text-align:right;width:21%}.total th,.total td{font-weight:bold;border-top:1pt solid #222;border-bottom:2pt double #222}.asset-reconciliation{page:assetLandscape}.asset-reconciliation h2{font-size:8pt;margin-bottom:5pt}.asset-reconciliation table{font-size:5pt;line-height:1.05;table-layout:fixed}.asset-reconciliation th,.asset-reconciliation td{padding:1.3pt 1.5pt}.asset-reconciliation thead th{text-align:right}.asset-reconciliation thead th:first-child{width:43mm;text-align:left}.asset-reconciliation td{text-align:right}.asset-reconciliation .section th{background:#fff;padding-top:3pt}.administered table,.administered table th,.administered table td,.administered .section{background:#d3d3d3}.administered h3{background:#222;color:#fff;padding:6pt}.policy{background:#f7f7f7;border-left:3pt solid #e87722;padding:8pt 10pt;margin:8pt 0 12pt}.small{font-size:8pt;color:#555}.register td:first-child{width:10%}.status{font-weight:bold}.footer{margin-top:18pt;border-top:.5pt solid #aaa;padding-top:6pt;font-size:8pt;color:#555}</style></head><body>");
+        html.Append("<style>@page{size:A4;margin:20mm 18mm 18mm}@page assetLandscape{size:29.7cm 21cm;mso-page-orientation:landscape;margin:9mm 10mm 8mm}body{font-family:Arial,sans-serif;color:#171717;font-size:9.5pt;line-height:1.35}h1{font-size:22pt;margin:0 0 8pt}h2{font-size:15pt;border-bottom:2pt solid #e87722;padding-bottom:5pt;margin:0 0 14pt}h3{font-size:11.5pt;margin:14pt 0 7pt}p{margin:0 0 8pt}.cover{padding-top:65mm}.eyebrow{color:#b64d00;font-weight:bold;text-transform:uppercase;letter-spacing:.7pt}.meta{margin-top:30pt;border-top:1pt solid #bbb;padding-top:10pt}.page{page-break-before:always}.note{page-break-before:always}.section{font-weight:bold;background:#f1f2f4}table{width:100%;border-collapse:collapse;margin:7pt 0 12pt}tr{page-break-inside:avoid}th,td{padding:4pt 5pt;border-bottom:.5pt solid #c8c8c8;vertical-align:top}th{text-align:left}.note tbody th{font-weight:normal}.note .note-group th{font-weight:bold;border-bottom:0;padding-top:8pt}.note .subtotal th{font-weight:bold}.note .subtotal td{font-weight:bold;border-top:1pt solid #222;border-bottom:1pt solid #222}.note .total th{font-weight:bold}.amount{text-align:right;width:21%}.total th,.total td{font-weight:bold;border-top:1pt solid #222;border-bottom:2pt double #222}.asset-reconciliation{page:assetLandscape}.asset-reconciliation h2{font-size:8pt;margin-bottom:5pt}.asset-reconciliation table{font-size:5pt;line-height:1.05;table-layout:fixed}.asset-reconciliation th,.asset-reconciliation td{padding:1.3pt 1.5pt}.asset-reconciliation thead th{text-align:right}.asset-reconciliation thead th:first-child{width:43mm;text-align:left}.asset-reconciliation td{text-align:right}.asset-reconciliation .section th{background:#fff;padding-top:3pt}.administered table,.administered table th,.administered table td,.administered .section{background:#d3d3d3}.administered h3{background:#222;color:#fff;padding:6pt}.policy{background:#f7f7f7;border-left:3pt solid #e87722;padding:8pt 10pt;margin:8pt 0 12pt}.small{font-size:8pt;color:#555}.register td:first-child{width:10%}.status{font-weight:bold}.footer{margin-top:18pt;border-top:.5pt solid #aaa;padding-top:6pt;font-size:8pt;color:#555}</style></head><body>");
         html.Append("<section class=\"cover\"><p class=\"eyebrow\">Financial statements preparation copy</p><h1>").Append(Enc(entity)).Append("</h1><h2>Financial statements for the year ended 30 June ").Append(year).Append("</h2>");
         html.Append("<p>Editable preparation copy generated from NORM calculation run #").Append(runId).Append(".</p><div class=\"meta\"><p><b>Configuration:</b> ").Append(Enc(version)).Append("</p>");
         html.Append("<p><b>Reporting profile:</b> ").Append(Enc(ProfileLabel(profile))).Append("</p><p><b>Generated:</b> ").Append(DateTime.UtcNow.ToString("d MMMM yyyy 'at' HH:mm 'UTC'", CultureInfo.GetCultureInfo("en-AU"))).Append("</p></div></section>");
@@ -451,12 +451,20 @@ public class NORM_WordExport : IHttpHandler
                 bool hasPrior = false;
                 for (int l = 0; l < item.Lines.Count; l++)
                 {
-                    html.Append("<tr><th>").Append(Enc(item.Lines[l].Label)).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Lines[l].Amount)).Append("</td><td class=\"amount\">")
-                        .Append(item.Lines[l].Prior.HasValue ? FormatAmount(item.Lines[l].Prior.Value) : "-").Append("</td></tr>");
-                    if (item.Lines[l].Prior.HasValue) { priorTotal += item.Lines[l].Prior.Value; hasPrior = true; }
+                    NORMReportingFramework.NoteLine line = item.Lines[l];
+                    if (String.Equals(line.LineType, "section", StringComparison.OrdinalIgnoreCase))
+                    {
+                        html.Append("<tr class=\"note-group\"><th colspan=\"3\">").Append(Enc(line.Label)).Append("</th></tr>");
+                        continue;
+                    }
+                    html.Append("<tr").Append(String.Equals(line.LineType, "subtotal", StringComparison.OrdinalIgnoreCase) ? " class=\"subtotal\"" : "")
+                        .Append("><th>").Append(Enc(line.Label)).Append("</th><td class=\"amount\">").Append(FormatAmount(line.Amount)).Append("</td><td class=\"amount\">")
+                        .Append(line.Prior.HasValue ? FormatAmount(line.Prior.Value) : "-").Append("</td></tr>");
+                    if (line.ContributesToTotal && line.Prior.HasValue) { priorTotal += line.Prior.Value; hasPrior = true; }
                 }
-                html.Append("<tr class=\"total\"><th>Total ").Append(Enc(item.Title.ToLowerInvariant())).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Amount)).Append("</td><td class=\"amount\">")
+                html.Append("<tr class=\"total\"><th>").Append(Enc(NoteTotalLabel(item))).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Amount)).Append("</td><td class=\"amount\">")
                     .Append(item.PriorAmount.HasValue ? FormatAmount(item.PriorAmount.Value) : (hasPrior ? FormatAmount(priorTotal) : "-")).Append("</td></tr></tbody></table>");
+                if (item.DemoSeeded) html.Append("<p class=\"small\"><b>Demo reconstruction source:</b> ").Append(Enc(item.CurrentSourceReference)).Append("</p>");
             }
             else { html.Append("<p><i>No mapped balance. Complete this required disclosure before sign-off.</i></p>"); }
             if (!String.IsNullOrWhiteSpace(item.Narrative))
@@ -705,6 +713,11 @@ public class NORM_WordExport : IHttpHandler
     private string ProfileLabel(NORMReportingFramework.ReportingProfile profile)
     {
         return profile.EntityType + "; " + profile.ReportingBasis + "; " + profile.DisclosureTier;
+    }
+
+    private string NoteTotalLabel(NORMReportingFramework.Disclosure item)
+    {
+        return item.Code == "N1_1B" ? "Total suppliers expenses" : "Total " + item.Title.ToLowerInvariant();
     }
 
     private string CanonicalNote(string statementCode, string label, string configured)

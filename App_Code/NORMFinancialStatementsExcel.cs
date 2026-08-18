@@ -977,11 +977,22 @@ namespace CPlatform.NORM
             sheet.Cells[7, 3].Value = model.Year - 1;
             sheet.Cells[7, 4].Value = "Workpaper reference";
             StyleHeader(sheet.Cells[7, 1, 7, 4], false);
-            List<NORMReportingFramework.NoteLine> lines = disclosure.Lines.OrderBy(x => OtherLast(x.Label)).ToList();
+            bool structured = disclosure.Lines.Any(x => x.SortOrder > 0 || !String.Equals(x.LineType, "detail", StringComparison.OrdinalIgnoreCase));
+            List<NORMReportingFramework.NoteLine> lines = structured
+                ? disclosure.Lines.OrderBy(x => x.SortOrder).ToList()
+                : disclosure.Lines.OrderBy(x => OtherLast(x.Label)).ToList();
             Dictionary<string, decimal?> prior = ManualPrior(model.ManualInputs, disclosure.Code);
             int row = 8;
+            bool sourceWritten = false;
             for (int i = 0; i < lines.Count; i++, row++)
             {
+                if (String.Equals(lines[i].LineType, "section", StringComparison.OrdinalIgnoreCase))
+                {
+                    sheet.Cells[row, 1, row, 4].Merge = true;
+                    sheet.Cells[row, 1].Value = lines[i].Label;
+                    sheet.Cells[row, 1].Style.Font.Bold = true;
+                    continue;
+                }
                 sheet.Cells[row, 1].Value = lines[i].Label;
                 sheet.Cells[row, 2].Value = Round(lines[i].Amount);
                 decimal? priorValue;
@@ -991,7 +1002,16 @@ namespace CPlatform.NORM
                     sheet.Cells[row, 3].Value = Round(priorValue.Value);
                 sheet.Cells[row, 2, row, 3].Style.Numberformat.Format = AmountFormat;
                 sheet.Cells[row, 2, row, 3].Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
-                sheet.Cells[row, 1].Style.Font.Bold = false;
+                if (String.Equals(lines[i].LineType, "subtotal", StringComparison.OrdinalIgnoreCase))
+                    StyleSubtotal(sheet.Cells[row, 1, row, 4]);
+                else
+                    sheet.Cells[row, 1].Style.Font.Bold = false;
+                if (disclosure.DemoSeeded && !sourceWritten)
+                {
+                    sheet.Cells[row, 4].Value = disclosure.CurrentSourceReference;
+                    sheet.Cells[row, 4].Style.WrapText = true;
+                    sourceWritten = true;
+                }
             }
             if (lines.Count == 0)
             {
@@ -1003,8 +1023,11 @@ namespace CPlatform.NORM
             }
             else
             {
-                sheet.Cells[row, 1].Value = "Total " + disclosure.Title.ToLowerInvariant();
-                sheet.Cells[row, 2].Formula = "SUM(B8:B" + (row - 1).ToString(CultureInfo.InvariantCulture) + ")";
+                sheet.Cells[row, 1].Value = NoteTotalLabel(disclosure);
+                if (structured)
+                    sheet.Cells[row, 2].Value = Round(disclosure.Amount);
+                else
+                    sheet.Cells[row, 2].Formula = "SUM(B8:B" + (row - 1).ToString(CultureInfo.InvariantCulture) + ")";
                 if (disclosure.PriorAmount.HasValue)
                     sheet.Cells[row, 3].Value = Round(disclosure.PriorAmount.Value);
                 else
@@ -1254,6 +1277,18 @@ namespace CPlatform.NORM
             range.Style.Font.Bold = true;
             range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
             range.Style.Border.Bottom.Style = ExcelBorderStyle.Double;
+        }
+
+        private static void StyleSubtotal(ExcelRange range)
+        {
+            range.Style.Font.Bold = true;
+            range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+        }
+
+        private static string NoteTotalLabel(NORMReportingFramework.Disclosure disclosure)
+        {
+            return disclosure.Code == "N1_1B" ? "Total suppliers expenses" : "Total " + disclosure.Title.ToLowerInvariant();
         }
 
         private static void FinishSheet(ExcelWorksheet sheet)

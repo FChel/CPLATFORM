@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.Web.Script.Serialization;
 
 namespace CPlatform.NORM
@@ -132,6 +133,7 @@ namespace CPlatform.NORM
             payload["disclosures"] = BuildDisclosurePayload(disclosures);
             List<object> validations = LoadValidations(runId);
             AppendDisclosureValidations(validations, disclosures);
+            AppendDemoNoteReconciliations(validations, runId, disclosures);
             AppendEnhancementValidations(validations, runId);
             if (meta.ContainsKey("administeredCurrentFallback") && Convert.ToBoolean(meta["administeredCurrentFallback"]))
             {
@@ -258,6 +260,8 @@ namespace CPlatform.NORM
                 item["priorAmount"] = source.PriorAmount.HasValue ? (object)source.PriorAmount.Value : null;
                 item["narrative"] = source.Narrative;
                 item["narrativeStatus"] = source.NarrativeStatus;
+                item["demoSeeded"] = source.DemoSeeded;
+                item["currentSourceReference"] = source.CurrentSourceReference;
                 List<object> lines = new List<object>();
                 for (int l = 0; l < source.Lines.Count; l++)
                 {
@@ -266,6 +270,9 @@ namespace CPlatform.NORM
                     line["amount"] = source.Lines[l].Amount;
                     line["prior"] = source.Lines[l].Prior.HasValue ? (object)source.Lines[l].Prior.Value : null;
                     line["sourceCount"] = source.Lines[l].SourceCount;
+                    line["type"] = source.Lines[l].LineType;
+                    line["order"] = source.Lines[l].SortOrder;
+                    line["contributesToTotal"] = source.Lines[l].ContributesToTotal;
                     lines.Add(line);
                 }
                 item["lines"] = lines;
@@ -313,6 +320,35 @@ namespace CPlatform.NORM
             item["tolerance"] = 0;
             item["detail"] = complete.ToString() + " of " + required.ToString() + " required statements and notes contain generated figures or draft wording; " + missing.ToString() + " need input.";
             validations.Add(item);
+        }
+
+        private void AppendDemoNoteReconciliations(List<object> validations, int runId,
+            List<NORMReportingFramework.Disclosure> disclosures)
+        {
+            string[,] checks = new string[,] {
+                { "N1_1B", "Supplier expenses", "Supplier note reconciles to the Statement of Comprehensive Income" },
+                { "N3_1A", "Cash and cash equivalents", "Cash note reconciles to the Statement of Financial Position" }
+            };
+            for (int c = 0; c < checks.GetLength(0); c++)
+            {
+                NORMReportingFramework.Disclosure disclosure = disclosures.Find(delegate(NORMReportingFramework.Disclosure item)
+                {
+                    return item.DemoSeeded && String.Equals(item.Code, checks[c, 0], StringComparison.OrdinalIgnoreCase);
+                });
+                if (disclosure == null) { continue; }
+                object faceValue = NORMHelper.Scalar(
+                    "SELECT TOP 1 ComputedAmount FROM dbo.tblNORM_LineResult WHERE CalculationRunId=@run " +
+                    "AND LineCode=@line AND IsDeactivated=0 ORDER BY LineResultId DESC",
+                    NORMHelper.P("@run", runId), NORMHelper.P("@line", checks[c, 1]));
+                if (faceValue == null || faceValue == DBNull.Value) { continue; }
+                decimal face = Convert.ToDecimal(faceValue, CultureInfo.InvariantCulture);
+                decimal difference = disclosure.Amount - face;
+                AddEnhancementValidation(validations, "DEMO_NOTE_" + checks[c, 0] + "_RECONCILIATION", checks[c, 2],
+                    "Blocking", Math.Abs(difference) <= 0.5m ? "Pass" : "Fail",
+                    "Published-note reconstruction " + disclosure.Amount.ToString("N3") + "; TB-driven face statement " +
+                    face.ToString("N3") + "; difference " + difference.ToString("N3") + " ($'000). " +
+                    (String.IsNullOrWhiteSpace(disclosure.CurrentSourceReference) ? "" : disclosure.CurrentSourceReference + "."));
+            }
         }
 
         private Dictionary<string, object> BuildEquityStatement(int runId, int releaseId,

@@ -41,6 +41,10 @@ public static class NORMReportingFramework
         public decimal? Prior;
         public int SourceCount;
         public string SourceLineCode;
+        public string PriorLookupLabel;
+        public string LineType = "detail";
+        public int SortOrder;
+        public bool ContributesToTotal = true;
     }
 
     public class Disclosure
@@ -65,6 +69,8 @@ public static class NORMReportingFramework
         public bool Suggested;
         public bool PotentiallyImmaterial;
         public string RequirementReason;
+        public bool DemoSeeded;
+        public string CurrentSourceReference;
         public List<NoteLine> Lines = new List<NoteLine>();
     }
 
@@ -75,6 +81,19 @@ public static class NORMReportingFramework
         public string SubLine;
         public decimal Amount;
         public int SourceCount;
+    }
+
+    private class DemoNoteBucket
+    {
+        public string DisclosureCode;
+        public string SourceLineCode;
+        public string Label;
+        public string PriorLookupLabel;
+        public string LineType;
+        public decimal? Amount;
+        public bool ContributesToTotal;
+        public int SortOrder;
+        public string SourceReference;
     }
 
     public static bool IsInstalled()
@@ -247,6 +266,7 @@ public static class NORMReportingFramework
         if (!IsInstalled()) { return values; }
         List<SourceBucket> sources = LoadSourceBuckets(runId);
         string entityCode = ResolveRunEntity(runId);
+        Dictionary<string, List<DemoNoteBucket>> demoNoteFigures = LoadDemoCurrentNoteFigures(runId, entityCode);
         Dictionary<string, decimal> priorNoteFigures = NORMStartOfYearSetup.LoadPriorNoteFigures(entityCode);
         Dictionary<string, string[]> narratives = LoadNarratives(runId, releaseId);
         DataTable table = NORMHelper.Query(
@@ -280,6 +300,7 @@ public static class NORMReportingFramework
                 item.NarrativeStatus = narrative[2];
             }
             AddMatchingSources(item, sources);
+            ApplyDemoCurrentNoteFigures(item, demoNoteFigures);
             ApplyPriorNoteFigures(item, priorNoteFigures);
             item.Suggested = item.SourceCount > 0;
             item.PotentiallyImmaterial = profile.OverallMateriality.HasValue && item.SourceCount > 0 &&
@@ -329,6 +350,72 @@ public static class NORMReportingFramework
         return values;
     }
 
+    private static Dictionary<string, List<DemoNoteBucket>> LoadDemoCurrentNoteFigures(int runId, string entityCode)
+    {
+        Dictionary<string, List<DemoNoteBucket>> values =
+            new Dictionary<string, List<DemoNoteBucket>>(StringComparer.OrdinalIgnoreCase);
+        if (String.IsNullOrWhiteSpace(entityCode)) { return values; }
+        object installed = NORMHelper.Scalar(
+            "SELECT CASE WHEN OBJECT_ID('dbo.tblNORM_DemoCurrentNoteFigure','U') IS NULL THEN 0 ELSE 1 END");
+        if (installed == null || Convert.ToInt32(installed) != 1) { return values; }
+        DataTable table = NORMHelper.Query(
+            "SELECT f.DisclosureCode,f.SourceLineCode,f.LineLabel,f.PriorLookupLabel,f.LineTypeCode," +
+            "f.Amount,f.ContributesToTotal,f.SortOrder,f.SourceReference " +
+            "FROM dbo.tblNORM_DemoCurrentNoteFigure f " +
+            "WHERE f.EntityCode=@entity AND f.IsDeactivated=0 AND f.FinancialYear=(" +
+            "SELECT TOP 1 i.FinancialYear FROM dbo.tblNORM_CalculationRun r " +
+            "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId WHERE r.CalculationRunId=@run) " +
+            "ORDER BY f.DisclosureCode,f.SortOrder,f.DemoCurrentNoteFigureId",
+            NORMHelper.P("@entity", entityCode), NORMHelper.P("@run", runId));
+        for (int i = 0; i < table.Rows.Count; i++)
+        {
+            DemoNoteBucket item = new DemoNoteBucket();
+            item.DisclosureCode = NORMHelper.Str(table.Rows[i], "DisclosureCode");
+            item.SourceLineCode = NORMHelper.Str(table.Rows[i], "SourceLineCode");
+            item.Label = NORMHelper.Str(table.Rows[i], "LineLabel");
+            item.PriorLookupLabel = NORMHelper.Str(table.Rows[i], "PriorLookupLabel");
+            item.LineType = NORMHelper.Str(table.Rows[i], "LineTypeCode");
+            item.Amount = table.Rows[i].IsNull("Amount") ? (decimal?)null : NORMHelper.Dec(table.Rows[i], "Amount");
+            item.ContributesToTotal = Convert.ToBoolean(table.Rows[i]["ContributesToTotal"]);
+            item.SortOrder = NORMHelper.Int(table.Rows[i], "SortOrder");
+            item.SourceReference = NORMHelper.Str(table.Rows[i], "SourceReference");
+            List<DemoNoteBucket> lines;
+            if (!values.TryGetValue(item.DisclosureCode, out lines))
+            {
+                lines = new List<DemoNoteBucket>();
+                values[item.DisclosureCode] = lines;
+            }
+            lines.Add(item);
+        }
+        return values;
+    }
+
+    private static void ApplyDemoCurrentNoteFigures(Disclosure disclosure,
+        Dictionary<string, List<DemoNoteBucket>> figures)
+    {
+        List<DemoNoteBucket> rows;
+        if (disclosure == null || figures == null || !figures.TryGetValue(disclosure.Code, out rows) || rows.Count == 0) { return; }
+        disclosure.Lines.Clear();
+        disclosure.Amount = 0m;
+        disclosure.SourceCount = 0;
+        disclosure.DemoSeeded = true;
+        disclosure.CurrentSourceReference = rows[0].SourceReference;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            DemoNoteBucket source = rows[i];
+            NoteLine line = new NoteLine();
+            line.Label = source.Label;
+            line.Amount = source.Amount ?? 0m;
+            line.SourceLineCode = source.SourceLineCode;
+            line.PriorLookupLabel = source.PriorLookupLabel;
+            line.LineType = String.IsNullOrWhiteSpace(source.LineType) ? "detail" : source.LineType;
+            line.SortOrder = source.SortOrder;
+            line.ContributesToTotal = source.ContributesToTotal;
+            disclosure.Lines.Add(line);
+            if (line.ContributesToTotal && source.Amount.HasValue) { disclosure.Amount += source.Amount.Value; }
+        }
+    }
+
     private static void AddMatchingSources(Disclosure disclosure, List<SourceBucket> sources)
     {
         Dictionary<string, NoteLine> lines = new Dictionary<string, NoteLine>(StringComparer.OrdinalIgnoreCase);
@@ -372,12 +459,16 @@ public static class NORMReportingFramework
         {
             NoteLine line = disclosure.Lines[i];
             decimal amount;
+            string lookupLabel = String.IsNullOrWhiteSpace(line.PriorLookupLabel) ? line.Label : line.PriorLookupLabel;
             if (!String.IsNullOrWhiteSpace(line.SourceLineCode) &&
-                figures.TryGetValue(line.SourceLineCode + "|" + line.Label, out amount))
+                figures.TryGetValue(line.SourceLineCode + "|" + lookupLabel, out amount))
             {
                 line.Prior = amount;
-                total += amount;
-                hasPrior = true;
+                if (line.ContributesToTotal)
+                {
+                    total += amount;
+                    hasPrior = true;
+                }
             }
         }
         if (hasPrior) { disclosure.PriorAmount = total; }
@@ -430,6 +521,7 @@ public static class NORMReportingFramework
     public static void MoveOtherLinesToEnd(List<NoteLine> lines)
     {
         if (lines == null || lines.Count < 2) { return; }
+        for (int i = 0; i < lines.Count; i++) { if (lines[i].SortOrder > 0) { return; } }
         List<NoteLine> other = new List<NoteLine>();
         for (int i = lines.Count - 1; i >= 0; i--)
         {

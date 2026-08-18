@@ -28,10 +28,22 @@
   function statusClass(value) { return String(value || "Mapped").toLowerCase(); }
   function noteId(value) { return "note-" + String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
   function noteLines(lines) {
-    return (lines || []).slice().sort(function (a, b) {
+    var values = (lines || []).slice();
+    if (values.some(function (line) { return Number(line.order || 0) > 0; })) {
+      return values.sort(function (a, b) { return Number(a.order || 0) - Number(b.order || 0); });
+    }
+    return values.sort(function (a, b) {
       function other(value) { return /^other\b/i.test(String(value || "").trim()) || /^unclassified$/i.test(String(value || "").trim()); }
       return Number(other(a.label)) - Number(other(b.label));
     });
+  }
+  function noteTotalLabel(item) { return item.code === "N1_1B" ? "Total suppliers expenses" : "Total " + String(item.title || "").toLowerCase(); }
+  function noteRow(line, printMode) {
+    var type = String(line.type || "detail").toLowerCase();
+    if (type === "section") { return '<tr class="norm-note-group"><th colspan="3">' + esc(line.label) + '</th></tr>'; }
+    var rowClass = type === "subtotal" ? ' class="norm-note-subtotal"' : "";
+    var numberClass = printMode ? ' class="norm-print-number"' : "";
+    return '<tr' + rowClass + '><th>' + esc(line.label) + '</th><td' + numberClass + '>' + number(line.amount) + '</td><td' + numberClass + '>' + number(line.prior) + '</td></tr>';
   }
 
   function initialise() {
@@ -336,17 +348,18 @@
         bySection[section].map(function (item) {
           var lines = noteLines(item.lines);
           var rows = lines.map(function (line) {
-            return '<tr><th>' + esc(line.label) + '</th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>';
+            return noteRow(line, false);
           }).join("");
-          var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
+          var priors = lines.filter(function (line) { return line.contributesToTotal !== false && line.prior !== null && line.prior !== undefined; });
           var priorTotal = item.priorAmount !== null && item.priorAmount !== undefined ? Number(item.priorAmount) :
             (priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null);
           var table = item.code === "N3_2A" ? assetMovementNoteTable(true) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.note || "") + ': ' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows +
-            '<tr class="total"><th>Total ' + esc(item.title.toLowerCase()) + '</th><td>' + number(item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' :
+            '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td>' + number(item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' :
             '<div class="norm-note-empty"><span>No mapped balance</span><p>The disclosure remains in the set because the entity profile requires it. Add entity narrative or mapping before sign-off.</p></div>');
+          var source = item.demoSeeded ? '<p class="norm-note-source"><strong>Demo reconstruction source</strong>' + esc(item.currentSourceReference || "Published current-year financial statements") + '</p>' : '';
           var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Accounting policy / entity commentary</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
           return '<article id="' + noteId(item.note || item.code) + '" class="norm-note-card" tabindex="-1"><div class="norm-note-card-head"><div><span>Note ' + esc(item.note || "") + '</span><h3>' + esc(item.title) + '</h3></div><em class="' + statusClass(item.status) + '">' + esc(item.status) + '</em></div>' +
-            table + narrative + '</article>';
+            table + source + narrative + '</article>';
         }).join("") + '</section>';
     }).join("");
     var notApplicable = disclosures.filter(function (item) { return !item.required; });
@@ -429,8 +442,8 @@
     var disclosures = (statement.disclosures || []).filter(function (item) { return item.required && item.note; });
     return disclosures.map(function (item) {
       var lines = noteLines(item.lines);
-      var rows = lines.map(function (line) { return '<tr><th>' + esc(line.label) + '</th><td class="norm-print-number">' + number(line.amount) + '</td><td class="norm-print-number">' + number(line.prior) + '</td></tr>'; }).join("");
-      var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
+      var rows = lines.map(function (line) { return noteRow(line, true); }).join("");
+      var priors = lines.filter(function (line) { return line.contributesToTotal !== false && line.prior !== null && line.prior !== undefined; });
       var priorTotal = item.priorAmount !== null && item.priorAmount !== undefined ? Number(item.priorAmount) :
         (priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null);
       if (item.code === "N3_2A") {
@@ -440,7 +453,7 @@
           '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' + assetMovementNoteTable(false) + '</section>' + policyPage;
       }
       return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' +
-        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td class="norm-print-number">' + number(item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
+        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td class="norm-print-number">' + number(item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
         (item.narrative ? '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
     }).join("");
   }
