@@ -15,6 +15,7 @@ namespace CPlatform.NORM
         protected string ControlStatusHtml = "";
         protected string NextStepsHtml = "";
         protected string LatestStatementsUrl = "";
+        protected string LatestMappingUrl = "";
         protected string LatestActivityHtml = "";
         protected string AuditTrailHtml = "";
 
@@ -55,6 +56,7 @@ namespace CPlatform.NORM
                 int failed = NORMHelper.Int(row, "Failed");
                 int warnings = NORMHelper.Int(row, "Checks") - NORMHelper.Int(row, "Passed") - failed;
                 LatestStatementsUrl = "NORM_Statements.aspx?run=" + runId.ToString(CultureInfo.InvariantCulture);
+                LatestMappingUrl = "NORM_MappingExport.ashx?run=" + runId.ToString(CultureInfo.InvariantCulture);
                 string state = failed > 0 ? "fail" : (warnings > 0 ? "warn" : "pass");
                 string heading = failed > 0 ? "Latest run needs attention" : "Latest run is ready for review";
                 string detail = failed > 0

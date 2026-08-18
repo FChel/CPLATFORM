@@ -50,6 +50,8 @@
     byId("wordExportLink").hidden = false;
     byId("excelExportLink").href = "NORM_ExcelExport.ashx?run=" + encodeURIComponent(data.meta.runId);
     byId("excelExportLink").hidden = false;
+    byId("mappingExportLink").href = "NORM_MappingExport.ashx?run=" + encodeURIComponent(data.meta.runId);
+    byId("mappingExportLink").hidden = false;
     applyRoute();
     byId("printStatements").addEventListener("click", requestPrint);
     byId("cancelPrint").addEventListener("click", closePrintReview);

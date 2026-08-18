@@ -26,6 +26,7 @@
             <% } %>
             <button type="button" id="printStatements" class="norm-button norm-button-small norm-button-quiet">Print</button>
             <a id="excelExportLink" class="norm-button norm-button-small norm-button-quiet" href="#" hidden>Excel statements</a>
+            <a id="mappingExportLink" class="norm-button norm-button-small norm-button-quiet" href="#" hidden>Excel mapping</a>
             <a id="wordExportLink" class="norm-button norm-button-small norm-button-quiet" href="#" hidden>Editable Word</a>
             <a id="reviewPackLink" class="norm-button norm-button-small norm-review-pack-button" href="#" hidden>Download review pack</a>
         </nav>
@@ -100,7 +101,7 @@
     <div id="printBook" class="norm-print-book" aria-hidden="true"></div>
 
     <script>window.NORM_DATA = <%= NormDataJson %>;</script>
-    <script src="../js/norm.js?v=20260818-3"></script>
+    <script src="../js/norm.js?v=20260818-4"></script>
 </form>
 </body>
 </html>
