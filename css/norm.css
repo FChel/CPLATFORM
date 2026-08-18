@@ -120,6 +120,23 @@ body.norm-upload-busy{overflow:hidden}
 .norm-publication-view .norm-note-jump{color:#171717;font:400 10px Arial,Helvetica,sans-serif}
 .norm-publication-view .norm-note-card-head em,.norm-publication-view .norm-input-callout,.norm-publication-view .norm-print-control{display:none!important}
 
+/* PRIMA / Defence note presentation. */
+.norm-notes-document .norm-note-section>header h2{font:700 20px/1.15 Arial,Helvetica,sans-serif}
+.norm-notes-document .norm-note-card{padding:16px 0 22px}
+.norm-notes-document .norm-note-card-head span{color:#171717;font:700 10px/1.15 Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none}
+.norm-notes-document .norm-note-card-head h3{color:#171717;font:700 16px/1.2 Arial,Helvetica,sans-serif;margin-top:2px;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
+.norm-note-table{font-family:Arial,Helvetica,sans-serif}
+.norm-note-table th,.norm-note-table td{border-bottom:0;padding:3px 8px;font:400 11px/1.2 Arial,Helvetica,sans-serif}
+.norm-note-table thead th{border-bottom:0;color:#171717;padding-top:6px;padding-bottom:7px;font:700 11px/1.08 Arial,Helvetica,sans-serif}
+.norm-note-table thead th:first-child{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
+.norm-note-table thead th small{display:block;margin-top:1px;color:inherit;font:inherit;font-size:inherit;font-weight:inherit;line-height:inherit}
+.norm-note-table tbody td:nth-child(2){font-weight:700}
+.norm-note-table .total th{border-top:0;border-bottom:0;font-weight:700}
+.norm-note-table .total td{border-top:1px solid #171717;border-bottom:3px double #171717;font-weight:700}
+.norm-admin-note-card .norm-note-table thead th:first-child{text-decoration:none}
+.norm-publication-view .norm-note-card{border-bottom:0;padding-bottom:16px}
+.norm-publication-view .norm-note-table th,.norm-publication-view .norm-note-table td{font-size:11px}
+
 @media print{
   @page{size:A4 portrait;margin:17mm 18mm 16mm}
   .norm-print-page{font-family:Arial,Helvetica,sans-serif;color:#171717;font-size:8.5pt}
@@ -161,6 +178,15 @@ body.norm-upload-busy{overflow:hidden}
   .norm-print-page .norm-document-foot{border:0;margin:5mm 0 0;padding:0;color:#171717;font:400 8pt/1.3 Arial,Helvetica,sans-serif}
   .norm-print-page .norm-budget{background:#fff!important;color:#171717}
   .norm-print-page .norm-note-table thead th,.norm-print-page .norm-asset-table thead th{font-weight:700}
+  .norm-print-page .norm-note-table{font-family:Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-note-table th,.norm-print-page .norm-note-table td{border-bottom:0;padding:.7mm 1.5mm;font:400 8pt/1.12 Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-note-table thead th{border-bottom:0;padding:1.2mm 1.5mm;font:700 8pt/1.05 Arial,Helvetica,sans-serif}
+  .norm-print-page .norm-note-table thead th:first-child{text-decoration:underline;text-decoration-thickness:.5pt;text-underline-offset:1mm}
+  .norm-print-page .norm-note-table thead th small{display:block;margin-top:.3mm;color:inherit!important;font:inherit!important;font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important}
+  .norm-print-page .norm-note-table tbody td:nth-child(2){font-weight:700}
+  .norm-print-page .norm-note-table .total th{border-top:0;border-bottom:0;font-weight:700}
+  .norm-print-page .norm-note-table .total td{border-top:.6pt solid #171717;border-bottom:1.8pt double #171717;font-weight:700}
+  .norm-administered-print .norm-note-table thead th:first-child{text-decoration:none}
   .norm-print-page .norm-financial-row.administered{background:#ddd!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .norm-administered-print .norm-financial-table,.norm-administered-print .norm-note-table,.norm-administered-print .norm-financial-table thead th,.norm-administered-print .norm-note-table thead th,.norm-administered-print .norm-financial-row.administered th,.norm-administered-print .norm-financial-row.administered td,.norm-administered-print .norm-section-row.administered th{background:#d3d3d3!important;color:#171717!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.norm-administered-print .norm-financial-table,.norm-administered-print .norm-note-table{padding:2mm}.norm-administered-print .norm-print-head{margin-bottom:3mm}
 }
