@@ -128,14 +128,19 @@ namespace CPlatform.NORM
             int parentId = NORMHelper.Int(release, "ParentConfigurationReleaseId");
             int importId = LatestImportId(parentId, NORMHelper.Int(release, "FinancialYear"), NORMHelper.Str(release, "EntityCode"));
             DataTable mappings = NORMHelper.Query(
-                "SELECT m.GlCode,m.GlDescription,m.AccountType,m.StatementLine,ISNULL(s.LineLabel,'') LineLabel,m.NoteSubLine,m.CashFlowClass,m.MappingRationale," +
+                "SELECT m.GlCode,m.GlDescription,m.AccountType,m.StatementLine,m.NoteSubLine,m.CashFlowClass,m.MappingRationale," +
                 "ISNULL(tb.Balance,0) Balance FROM dbo.tblNORM_AccountMap m " +
-                "LEFT JOIN dbo.tblNORM_StatementLine s ON s.ConfigurationReleaseId=m.ConfigurationReleaseId AND s.LineCode=m.StatementLine AND s.IsDeactivated=0 " +
                 "LEFT JOIN (SELECT GlAccount,SUM(AccumBalance) Balance FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0 GROUP BY GlAccount) tb ON tb.GlAccount=m.GlCode " +
                 "WHERE m.ConfigurationReleaseId=@release AND m.IsDeactivated=0 ORDER BY m.GlCode",
                 NORMHelper.P("@import", importId), NORMHelper.P("@release", releaseId));
             DataTable lines = NORMHelper.Query(
                 "SELECT LineCode,StatementCode,LineLabel FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release AND LineCode IS NOT NULL AND CalculationKind='Mapped' AND IsDeactivated=0 ORDER BY StatementCode,SeqNo",
+                NORMHelper.P("@release", releaseId));
+            DataTable typeLines = NORMHelper.Query(
+                "SELECT DISTINCT m.AccountType,s.LineCode,s.StatementCode,s.LineLabel,s.SeqNo FROM dbo.tblNORM_AccountMap m " +
+                "INNER JOIN dbo.tblNORM_StatementLine s ON s.ConfigurationReleaseId=m.ConfigurationReleaseId AND s.LineCode=m.StatementLine AND s.CalculationKind='Mapped' AND s.IsDeactivated=0 " +
+                "WHERE m.ConfigurationReleaseId=@release AND m.IsDeactivated=0 AND m.AccountType IN ('Asset','Liability','Equity','Income','Expense') " +
+                "ORDER BY m.AccountType,s.StatementCode,s.SeqNo,s.LineCode",
                 NORMHelper.P("@release", releaseId));
             DataTable cash = NORMHelper.Query(
                 "SELECT DISTINCT CashFlowClass FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND CashFlowClass IS NOT NULL AND LTRIM(RTRIM(CashFlowClass))<>'' AND IsDeactivated=0 ORDER BY CashFlowClass",
@@ -147,33 +152,32 @@ namespace CPlatform.NORM
                 package.Workbook.Properties.Author = NORMHelper.CurrentUserId() ?? "unknown";
                 ExcelWorksheet sheet = package.Workbook.Worksheets.Add("Mappings");
                 sheet.Cells[1, 1].Value = "NORM controlled account mapping";
-                sheet.Cells[1, 1, 1, 9].Merge = true;
+                sheet.Cells[1, 1, 1, 8].Merge = true;
                 sheet.Cells[1, 1].Style.Font.Bold = true; sheet.Cells[1, 1].Style.Font.Size = 18; sheet.Cells[1, 1].Style.Font.Color.SetColor(Color.White);
                 sheet.Cells[1, 1].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[1, 1].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(20, 47, 65));
                 sheet.Cells[2, 1].Value = "Release ID"; sheet.Cells[2, 2].Value = releaseId;
                 sheet.Cells[3, 1].Value = "Version"; sheet.Cells[3, 2].Value = NORMHelper.Str(release, "VersionCode");
                 sheet.Cells[4, 1].Value = "Instructions"; sheet.Cells[4, 2].Value = "Edit the blue columns only. Use stable face-statement line codes from the Reference lists sheet. A reason is required for every changed row.";
-                sheet.Cells[4, 2, 4, 9].Merge = true; sheet.Cells[4, 2].Style.WrapText = true;
-                string[] headers = { "G/L account", "Description", "Current TB balance ($)", "Account type", "Face statement line code", "Face statement label", "Note sub-line", "Cash-flow class", "Change reason" };
+                sheet.Cells[4, 2, 4, 8].Merge = true; sheet.Cells[4, 2].Style.WrapText = true;
+                string[] headers = { "G/L account", "Description", "Current TB balance ($)", "Account type", "Face statement line code", "Note sub-line", "Cash-flow class", "Change reason" };
                 for (int i = 0; i < headers.Length; i++) sheet.Cells[HeaderRow, i + 1].Value = headers[i];
-                sheet.Cells[HeaderRow, 1, HeaderRow, 9].Style.Font.Bold = true; sheet.Cells[HeaderRow, 1, HeaderRow, 9].Style.Font.Color.SetColor(Color.White);
-                sheet.Cells[HeaderRow, 1, HeaderRow, 9].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[HeaderRow, 1, HeaderRow, 9].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(43, 109, 91));
+                sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Font.Bold = true; sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Font.Color.SetColor(Color.White);
+                sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(43, 109, 91));
                 int row = HeaderRow + 1;
                 foreach (DataRow source in mappings.Rows)
                 {
                     sheet.Cells[row, 1].Value = Text(source, "GlCode"); sheet.Cells[row, 2].Value = Text(source, "GlDescription");
                     sheet.Cells[row, 3].Value = NORMHelper.Dec(source, "Balance"); sheet.Cells[row, 3].Style.Numberformat.Format = "#,##0.00;[Red](#,##0.00);-";
                     sheet.Cells[row, 4].Value = Text(source, "AccountType"); sheet.Cells[row, 5].Value = Text(source, "StatementLine");
-                    sheet.Cells[row, 6].Value = Text(source, "LineLabel"); sheet.Cells[row, 7].Value = Text(source, "NoteSubLine");
-                    sheet.Cells[row, 8].Value = Text(source, "CashFlowClass"); sheet.Cells[row, 9].Value = "";
+                    sheet.Cells[row, 6].Value = Text(source, "NoteSubLine"); sheet.Cells[row, 7].Value = Text(source, "CashFlowClass"); sheet.Cells[row, 8].Value = "";
                     sheet.Cells[row, 4, row, 5].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[row, 4, row, 5].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(221, 235, 247));
-                    sheet.Cells[row, 7, row, 9].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[row, 7, row, 9].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(221, 235, 247));
+                    sheet.Cells[row, 6, row, 8].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[row, 6, row, 8].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(221, 235, 247));
                     row++;
                 }
                 int last = Math.Max(HeaderRow + 1, row - 1);
-                sheet.View.FreezePanes(HeaderRow + 1, 1); sheet.Cells[HeaderRow, 1, last, 9].AutoFilter = true;
+                sheet.View.FreezePanes(HeaderRow + 1, 1); sheet.Cells[HeaderRow, 1, last, 8].AutoFilter = true;
                 sheet.Column(1).Width = 18; sheet.Column(2).Width = 34; sheet.Column(3).Width = 19; sheet.Column(4).Width = 16; sheet.Column(5).Width = 34;
-                sheet.Column(6).Width = 34; sheet.Column(7).Width = 34; sheet.Column(8).Width = 28; sheet.Column(9).Width = 42;
+                sheet.Column(6).Width = 34; sheet.Column(7).Width = 28; sheet.Column(8).Width = 42;
 
                 ExcelWorksheet reference = package.Workbook.Worksheets.Add("Reference lists");
                 reference.Cells[1, 1].Value = "Account types"; reference.Cells[1, 3].Value = "Face statement line code"; reference.Cells[1, 4].Value = "Statement"; reference.Cells[1, 5].Value = "Label"; reference.Cells[1, 7].Value = "Cash-flow classes";
@@ -181,12 +185,25 @@ namespace CPlatform.NORM
                 for (int i = 0; i < types.Length; i++) reference.Cells[i + 2, 1].Value = types[i];
                 for (int i = 0; i < lines.Rows.Count; i++) { reference.Cells[i + 2, 3].Value = Text(lines.Rows[i], "LineCode"); reference.Cells[i + 2, 4].Value = Text(lines.Rows[i], "StatementCode"); reference.Cells[i + 2, 5].Value = Text(lines.Rows[i], "LineLabel"); }
                 for (int i = 0; i < cash.Rows.Count; i++) reference.Cells[i + 2, 7].Value = Text(cash.Rows[i], "CashFlowClass");
-                reference.Cells[1, 1, 1, 7].Style.Font.Bold = true; reference.Cells.AutoFitColumns();
+                for (int typeIndex = 0; typeIndex < types.Length; typeIndex++)
+                {
+                    int column = 11 + typeIndex;
+                    reference.Cells[1, column].Value = types[typeIndex] + " face lines";
+                    int targetRow = 2;
+                    for (int lineIndex = 0; lineIndex < typeLines.Rows.Count; lineIndex++)
+                    {
+                        if (!String.Equals(Text(typeLines.Rows[lineIndex], "AccountType"), types[typeIndex], StringComparison.OrdinalIgnoreCase)) continue;
+                        reference.Cells[targetRow++, column].Value = Text(typeLines.Rows[lineIndex], "LineCode");
+                    }
+                    if (targetRow == 2) reference.Cells[targetRow++, column].Value = "";
+                    package.Workbook.Names.Add("FaceLines_" + types[typeIndex], reference.Cells[2, column, targetRow - 1, column]);
+                }
+                reference.Cells[1, 1, 1, 15].Style.Font.Bold = true; reference.Cells.AutoFitColumns();
                 if (mappings.Rows.Count > 0)
                 {
                     var typeValidation = sheet.DataValidations.AddListValidation("D" + (HeaderRow + 1) + ":D" + last); typeValidation.Formula.ExcelFormula = "'Reference lists'!$A$2:$A$6";
-                    var lineValidation = sheet.DataValidations.AddListValidation("E" + (HeaderRow + 1) + ":E" + last); lineValidation.Formula.ExcelFormula = "'Reference lists'!$C$2:$C$" + (lines.Rows.Count + 1).ToString(CultureInfo.InvariantCulture);
-                    if (cash.Rows.Count > 0) { var cashValidation = sheet.DataValidations.AddListValidation("H" + (HeaderRow + 1) + ":H" + last); cashValidation.Formula.ExcelFormula = "'Reference lists'!$G$2:$G$" + (cash.Rows.Count + 1).ToString(CultureInfo.InvariantCulture); cashValidation.AllowBlank = true; }
+                    var lineValidation = sheet.DataValidations.AddListValidation("E" + (HeaderRow + 1) + ":E" + last); lineValidation.Formula.ExcelFormula = "INDIRECT(\"FaceLines_\"&$D" + (HeaderRow + 1).ToString(CultureInfo.InvariantCulture) + ")";
+                    if (cash.Rows.Count > 0) { var cashValidation = sheet.DataValidations.AddListValidation("G" + (HeaderRow + 1) + ":G" + last); cashValidation.Formula.ExcelFormula = "'Reference lists'!$G$2:$G$" + (cash.Rows.Count + 1).ToString(CultureInfo.InvariantCulture); cashValidation.AllowBlank = true; }
                 }
                 return package.GetAsByteArray();
             }
@@ -203,6 +220,10 @@ namespace CPlatform.NORM
             HashSet<string> validLines = new HashSet<string>(NORMHelper.Query(
                 "SELECT LineCode FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release AND LineCode IS NOT NULL AND CalculationKind='Mapped' AND IsDeactivated=0",
                 NORMHelper.P("@release", releaseId)).AsEnumerable().Select(x => Text(x, "LineCode")), StringComparer.OrdinalIgnoreCase);
+            HashSet<string> validTypeLines = new HashSet<string>(NORMHelper.Query(
+                "SELECT DISTINCT AccountType,StatementLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
+                "AND AccountType IN ('Asset','Liability','Equity','Income','Expense') AND StatementLine IS NOT NULL",
+                NORMHelper.P("@release", releaseId)).AsEnumerable().Select(x => Text(x, "AccountType") + "|" + Text(x, "StatementLine")), StringComparer.OrdinalIgnoreCase);
             List<MappingRow> rows = new List<MappingRow>();
             List<string> errors = new List<string>();
             HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -218,9 +239,10 @@ namespace CPlatform.NORM
                     string gl = Cell(sheet, rowNumber, 1); if (gl.Length == 0) continue;
                     if (!seen.Add(gl)) { errors.Add("Row " + rowNumber + ": G/L " + gl + " appears more than once."); continue; }
                     DataRow before; if (!existing.TryGetValue(gl, out before)) { errors.Add("Row " + rowNumber + ": G/L " + gl + " is not part of this draft release."); continue; }
-                    MappingRow item = new MappingRow { RowNumber = rowNumber, GlCode = gl, AccountType = Cell(sheet, rowNumber, 4), StatementLine = Cell(sheet, rowNumber, 5), NoteSubLine = Cell(sheet, rowNumber, 7), CashFlowClass = Cell(sheet, rowNumber, 8), Reason = Cell(sheet, rowNumber, 9), Before = before };
+                    MappingRow item = new MappingRow { RowNumber = rowNumber, GlCode = gl, AccountType = Cell(sheet, rowNumber, 4), StatementLine = Cell(sheet, rowNumber, 5), NoteSubLine = Cell(sheet, rowNumber, 6), CashFlowClass = Cell(sheet, rowNumber, 7), Reason = Cell(sheet, rowNumber, 8), Before = before };
                     if (item.AccountType.Length > 0 && !AccountTypes.Contains(item.AccountType)) errors.Add("Row " + rowNumber + ": account type is not valid.");
                     if (item.StatementLine.Length > 0 && !validLines.Contains(item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line code '" + item.StatementLine + "' is not valid for this release.");
+                    if (item.AccountType.Length > 0 && item.StatementLine.Length > 0 && !validTypeLines.Contains(item.AccountType + "|" + item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line '" + item.StatementLine + "' is not available for account type " + item.AccountType + ".");
                     if (item.NoteSubLine.Length > 240) errors.Add("Row " + rowNumber + ": note sub-line exceeds 240 characters.");
                     if (item.CashFlowClass.Length > 120) errors.Add("Row " + rowNumber + ": cash-flow class exceeds 120 characters.");
                     item.Changed = Different(before, item);
