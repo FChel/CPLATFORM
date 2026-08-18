@@ -93,7 +93,7 @@ namespace CPlatform.NORM
             ExcelPackage package = new ExcelPackage();
             package.Workbook.Properties.Title = "NORM trial balance account mapping - run " + NORMHelper.Int(run, "CalculationRunId").ToString();
             package.Workbook.Properties.Subject = "Frozen trial balance account balances and financial-statement mappings";
-            package.Workbook.Properties.Author = NORMHelper.CurrentUserId();
+            package.Workbook.Properties.Author = NORMHelper.CurrentUserId() ?? "unknown";
             package.Workbook.Properties.Company = "Defence Finance Group";
 
             ExcelWorksheet sheet = package.Workbook.Worksheets.Add("Account mapping");
@@ -118,7 +118,7 @@ namespace CPlatform.NORM
             sheet.Cells[3, 1].Value = "FY" + NORMHelper.Int(run, "FinancialYear").ToString(CultureInfo.InvariantCulture) +
                 " · Run " + NORMHelper.Int(run, "CalculationRunId").ToString(CultureInfo.InvariantCulture) +
                 " · Import " + NORMHelper.Int(run, "ImportId").ToString(CultureInfo.InvariantCulture) +
-                " · Configuration " + NORMHelper.Str(run, "VersionCode") +
+                " · Configuration " + Text(run, "VersionCode") +
                 " · " + mappings.Rows.Count.ToString("N0", CultureInfo.InvariantCulture) + " accounts" +
                 " · " + unmappedCount.ToString("N0", CultureInfo.InvariantCulture) + " unmapped";
             sheet.Cells[3, 1, 3, 4].Merge = true;
@@ -138,14 +138,14 @@ namespace CPlatform.NORM
             {
                 DataRow source = mappings.Rows[i];
                 int row = headerRow + 1 + i;
-                string gl = NORMHelper.Str(source, "GlAccount");
-                string description = NORMHelper.Str(source, "AccountDescription");
-                string statementLine = NORMHelper.Str(source, "StatementLine");
-                string statementCode = NORMHelper.Str(source, "StatementCode");
-                string lineLabel = NORMHelper.Str(source, "LineLabel");
-                string noteRef = NORMHelper.Str(source, "NoteRef");
-                string noteTitle = NORMHelper.Str(source, "DisclosureTitle");
-                string noteSubLine = NORMHelper.Str(source, "NoteSubLine");
+                string gl = Text(source, "GlAccount");
+                string description = Text(source, "AccountDescription");
+                string statementLine = Text(source, "StatementLine");
+                string statementCode = Text(source, "StatementCode");
+                string lineLabel = Text(source, "LineLabel");
+                string noteRef = Text(source, "NoteRef");
+                string noteTitle = Text(source, "DisclosureTitle");
+                string noteSubLine = Text(source, "NoteSubLine");
 
                 sheet.Cells[row, 1].Value = gl + (description.Length == 0 ? "" : " — " + description);
                 sheet.Cells[row, 2].Value = NORMHelper.Dec(source, "Balance");
@@ -198,6 +198,11 @@ namespace CPlatform.NORM
             if (!String.IsNullOrWhiteSpace(noteTitle)) value += (value.Length == 0 ? "" : " — ") + noteTitle;
             if (!String.IsNullOrWhiteSpace(noteSubLine)) value += (value.Length == 0 ? "" : " › ") + noteSubLine;
             return value;
+        }
+
+        private static string Text(DataRow row, string column)
+        {
+            return NORMHelper.Str(row, column) ?? "";
         }
 
         private static string StatementName(string code)
