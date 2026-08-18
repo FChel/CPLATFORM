@@ -142,6 +142,10 @@ namespace CPlatform.NORM
                 "WHERE m.ConfigurationReleaseId=@release AND m.IsDeactivated=0 AND m.AccountType IN ('Asset','Liability','Equity','Income','Expense') " +
                 "ORDER BY m.AccountType,s.StatementCode,s.SeqNo,s.LineCode",
                 NORMHelper.P("@release", releaseId));
+            DataTable noteLines = NORMHelper.Query(
+                "SELECT DISTINCT StatementLine,NoteSubLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
+                "AND StatementLine IS NOT NULL AND NoteSubLine IS NOT NULL AND LTRIM(RTRIM(NoteSubLine))<>'' ORDER BY StatementLine,NoteSubLine",
+                NORMHelper.P("@release", releaseId));
             DataTable cash = NORMHelper.Query(
                 "SELECT DISTINCT CashFlowClass FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND CashFlowClass IS NOT NULL AND LTRIM(RTRIM(CashFlowClass))<>'' AND IsDeactivated=0 ORDER BY CashFlowClass",
                 NORMHelper.P("@release", releaseId));
@@ -159,7 +163,7 @@ namespace CPlatform.NORM
                 sheet.Cells[3, 1].Value = "Version"; sheet.Cells[3, 2].Value = NORMHelper.Str(release, "VersionCode");
                 sheet.Cells[4, 1].Value = "Instructions"; sheet.Cells[4, 2].Value = "Edit the blue columns only. Use stable face-statement line codes from the Reference lists sheet. A reason is required for every changed row.";
                 sheet.Cells[4, 2, 4, 8].Merge = true; sheet.Cells[4, 2].Style.WrapText = true;
-                sheet.Cells[5, 1].Value = "Workbook format"; sheet.Cells[5, 2].Value = 2;
+                sheet.Cells[5, 1].Value = "Workbook format"; sheet.Cells[5, 2].Value = 3;
                 string[] headers = { "G/L account", "Description", "Current TB balance ($)", "Account type", "Face statement line code", "Note sub-line", "Cash-flow class", "Change reason" };
                 for (int i = 0; i < headers.Length; i++) sheet.Cells[HeaderRow, i + 1].Value = headers[i];
                 sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Font.Bold = true; sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Font.Color.SetColor(Color.White);
@@ -199,11 +203,33 @@ namespace CPlatform.NORM
                     if (targetRow == 2) reference.Cells[targetRow++, column].Value = "";
                     package.Workbook.Names.Add("FaceLines_" + types[typeIndex], reference.Cells[2, column, targetRow - 1, column]);
                 }
-                reference.Cells[1, 1, 1, 15].Style.Font.Bold = true; reference.Cells.AutoFitColumns();
+                reference.Cells[1, 17].Value = "Face statement line code";
+                reference.Cells[1, 18].Value = "Dependent note list";
+                for (int lineIndex = 0; lineIndex < lines.Rows.Count; lineIndex++)
+                {
+                    string lineCode = Text(lines.Rows[lineIndex], "LineCode");
+                    string rangeName = "NoteSubLines_" + (lineIndex + 1).ToString("0000", CultureInfo.InvariantCulture);
+                    reference.Cells[lineIndex + 2, 17].Value = lineCode;
+                    reference.Cells[lineIndex + 2, 18].Value = rangeName;
+                    int listColumn = 20 + lineIndex;
+                    reference.Cells[1, listColumn].Value = lineCode + " note sub-lines";
+                    int targetRow = 2;
+                    for (int noteIndex = 0; noteIndex < noteLines.Rows.Count; noteIndex++)
+                    {
+                        if (!String.Equals(Text(noteLines.Rows[noteIndex], "StatementLine"), lineCode, StringComparison.OrdinalIgnoreCase)) continue;
+                        reference.Cells[targetRow++, listColumn].Value = Text(noteLines.Rows[noteIndex], "NoteSubLine");
+                    }
+                    if (targetRow == 2) reference.Cells[targetRow++, listColumn].Value = "";
+                    package.Workbook.Names.Add(rangeName, reference.Cells[2, listColumn, targetRow - 1, listColumn]);
+                }
+                if (lines.Rows.Count > 0) package.Workbook.Names.Add("NoteLineLookup", reference.Cells[2, 17, lines.Rows.Count + 1, 18]);
+                reference.Cells[1, 1, 1, Math.Max(18, 19 + lines.Rows.Count)].Style.Font.Bold = true; reference.Cells.AutoFitColumns();
+                for (int hiddenColumn = 11; hiddenColumn <= 19 + lines.Rows.Count; hiddenColumn++) reference.Column(hiddenColumn).Hidden = true;
                 if (mappings.Rows.Count > 0)
                 {
                     var typeValidation = sheet.DataValidations.AddListValidation("D" + (HeaderRow + 1) + ":D" + last); typeValidation.Formula.ExcelFormula = "'Reference lists'!$A$2:$A$6";
                     var lineValidation = sheet.DataValidations.AddListValidation("E" + (HeaderRow + 1) + ":E" + last); lineValidation.Formula.ExcelFormula = "INDIRECT(\"FaceLines_\"&$D" + (HeaderRow + 1).ToString(CultureInfo.InvariantCulture) + ")";
+                    if (lines.Rows.Count > 0) { var noteValidation = sheet.DataValidations.AddListValidation("F" + (HeaderRow + 1) + ":F" + last); noteValidation.Formula.ExcelFormula = "INDIRECT(VLOOKUP($E" + (HeaderRow + 1).ToString(CultureInfo.InvariantCulture) + ",NoteLineLookup,2,FALSE))"; noteValidation.AllowBlank = true; }
                     if (cash.Rows.Count > 0) { var cashValidation = sheet.DataValidations.AddListValidation("G" + (HeaderRow + 1) + ":G" + last); cashValidation.Formula.ExcelFormula = "'Reference lists'!$G$2:$G$" + (cash.Rows.Count + 1).ToString(CultureInfo.InvariantCulture); cashValidation.AllowBlank = true; }
                 }
                 return package.GetAsByteArray();
@@ -225,6 +251,10 @@ namespace CPlatform.NORM
                 "SELECT DISTINCT AccountType,StatementLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
                 "AND AccountType IN ('Asset','Liability','Equity','Income','Expense') AND StatementLine IS NOT NULL",
                 NORMHelper.P("@release", releaseId)).AsEnumerable().Select(x => Text(x, "AccountType") + "|" + Text(x, "StatementLine")), StringComparer.OrdinalIgnoreCase);
+            HashSet<string> validNoteLines = new HashSet<string>(NORMHelper.Query(
+                "SELECT DISTINCT StatementLine,NoteSubLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
+                "AND StatementLine IS NOT NULL AND NoteSubLine IS NOT NULL AND LTRIM(RTRIM(NoteSubLine))<>''",
+                NORMHelper.P("@release", releaseId)).AsEnumerable().Select(x => Text(x, "StatementLine") + "|" + Text(x, "NoteSubLine")), StringComparer.OrdinalIgnoreCase);
             List<MappingRow> rows = new List<MappingRow>();
             List<string> errors = new List<string>();
             HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -234,7 +264,7 @@ namespace CPlatform.NORM
                 if (sheet == null) throw new InvalidOperationException("The workbook does not contain the required Mappings sheet.");
                 int workbookRelease; if (!Int32.TryParse(Convert.ToString(sheet.Cells[2, 2].Value), out workbookRelease) || workbookRelease != releaseId)
                     throw new InvalidOperationException("This workbook belongs to a different configuration release. Download a fresh workbook for this draft.");
-                if (!String.Equals(Cell(sheet, 5, 2), "2", StringComparison.Ordinal))
+                if (!String.Equals(Cell(sheet, 5, 2), "3", StringComparison.Ordinal))
                     throw new InvalidOperationException("This is an older mapping workbook layout. Download a fresh workbook for this draft before making changes.");
                 int last = sheet.Dimension == null ? HeaderRow : sheet.Dimension.End.Row;
                 for (int rowNumber = HeaderRow + 1; rowNumber <= last; rowNumber++)
@@ -246,6 +276,8 @@ namespace CPlatform.NORM
                     if (item.AccountType.Length > 0 && !AccountTypes.Contains(item.AccountType)) errors.Add("Row " + rowNumber + ": account type is not valid.");
                     if (item.StatementLine.Length > 0 && !validLines.Contains(item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line code '" + item.StatementLine + "' is not valid for this release.");
                     if (item.AccountType.Length > 0 && item.StatementLine.Length > 0 && !validTypeLines.Contains(item.AccountType + "|" + item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line '" + item.StatementLine + "' is not available for account type " + item.AccountType + ".");
+                    if (item.NoteSubLine.Length > 0 && item.StatementLine.Length == 0) errors.Add("Row " + rowNumber + ": select a face statement line before selecting a note sub-line.");
+                    if (item.NoteSubLine.Length > 0 && item.StatementLine.Length > 0 && !validNoteLines.Contains(item.StatementLine + "|" + item.NoteSubLine)) errors.Add("Row " + rowNumber + ": note sub-line '" + item.NoteSubLine + "' is not available for face statement line '" + item.StatementLine + "'.");
                     if (item.NoteSubLine.Length > 240) errors.Add("Row " + rowNumber + ": note sub-line exceeds 240 characters.");
                     if (item.CashFlowClass.Length > 120) errors.Add("Row " + rowNumber + ": cash-flow class exceeds 120 characters.");
                     item.Changed = Different(before, item);
