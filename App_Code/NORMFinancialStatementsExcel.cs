@@ -1003,7 +1003,10 @@ namespace CPlatform.NORM
             {
                 sheet.Cells[row, 1].Value = "Total " + disclosure.Title.ToLowerInvariant();
                 sheet.Cells[row, 2].Formula = "SUM(B8:B" + (row - 1).ToString(CultureInfo.InvariantCulture) + ")";
-                sheet.Cells[row, 3].Formula = "IF(COUNT(C8:C" + (row - 1).ToString(CultureInfo.InvariantCulture) + ")=0,\"\",SUM(C8:C" + (row - 1).ToString(CultureInfo.InvariantCulture) + "))";
+                if (disclosure.PriorAmount.HasValue)
+                    sheet.Cells[row, 3].Value = Round(disclosure.PriorAmount.Value);
+                else
+                    sheet.Cells[row, 3].Formula = "IF(COUNT(C8:C" + (row - 1).ToString(CultureInfo.InvariantCulture) + ")=0,\"\",SUM(C8:C" + (row - 1).ToString(CultureInfo.InvariantCulture) + "))";
                 sheet.Cells[row, 2, row, 3].Style.Numberformat.Format = AmountFormat;
                 StyleTotal(sheet.Cells[row, 1, row, 4]);
                 row++;

@@ -253,6 +253,7 @@ namespace CPlatform.NORM
                 item["status"] = source.CompletionStatus;
                 item["sourceCount"] = source.SourceCount;
                 item["amount"] = source.Amount;
+                item["priorAmount"] = source.PriorAmount.HasValue ? (object)source.PriorAmount.Value : null;
                 item["narrative"] = source.Narrative;
                 item["narrativeStatus"] = source.NarrativeStatus;
                 List<object> lines = new List<object>();

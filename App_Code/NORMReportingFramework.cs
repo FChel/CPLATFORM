@@ -40,6 +40,7 @@ public static class NORMReportingFramework
         public decimal Amount;
         public decimal? Prior;
         public int SourceCount;
+        public string SourceLineCode;
     }
 
     public class Disclosure
@@ -56,6 +57,7 @@ public static class NORMReportingFramework
         public int SortOrder;
         public int SourceCount;
         public decimal Amount;
+        public decimal? PriorAmount;
         public string NarrativeType;
         public string Narrative;
         public string NarrativeStatus;
@@ -244,6 +246,8 @@ public static class NORMReportingFramework
         List<Disclosure> values = new List<Disclosure>();
         if (!IsInstalled()) { return values; }
         List<SourceBucket> sources = LoadSourceBuckets(runId);
+        string entityCode = ResolveRunEntity(runId);
+        Dictionary<string, decimal> priorNoteFigures = NORMStartOfYearSetup.LoadPriorNoteFigures(entityCode);
         Dictionary<string, string[]> narratives = LoadNarratives(runId, releaseId);
         DataTable table = NORMHelper.Query(
             "SELECT DisclosureCode,SectionCode,SectionTitle,NoteRef,DisclosureTitle,TriggerCode," +
@@ -276,6 +280,7 @@ public static class NORMReportingFramework
                 item.NarrativeStatus = narrative[2];
             }
             AddMatchingSources(item, sources);
+            ApplyPriorNoteFigures(item, priorNoteFigures);
             item.Suggested = item.SourceCount > 0;
             item.PotentiallyImmaterial = profile.OverallMateriality.HasValue && item.SourceCount > 0 &&
                 Math.Abs(item.Amount) < profile.OverallMateriality.Value;
@@ -328,21 +333,26 @@ public static class NORMReportingFramework
     {
         Dictionary<string, NoteLine> lines = new Dictionary<string, NoteLine>(StringComparer.OrdinalIgnoreCase);
         string disclosureTitle = Normalise(disclosure.Title);
+        HashSet<string> expectedLines = ExpectedSourceLines(disclosure.Code);
         for (int i = 0; i < sources.Count; i++)
         {
             SourceBucket source = sources[i];
             string line = Normalise(source.LineCode);
-            bool noteMatches = !String.IsNullOrWhiteSpace(disclosure.NoteRef) &&
-                String.Equals(disclosure.NoteRef, source.NoteRef, StringComparison.OrdinalIgnoreCase);
+            bool explicitlyMapped = expectedLines != null && expectedLines.Contains(source.LineCode);
+            bool noteMatches = expectedLines == null && !String.IsNullOrWhiteSpace(disclosure.NoteRef) &&
+                (String.Equals(disclosure.NoteRef, source.NoteRef, StringComparison.OrdinalIgnoreCase) ||
+                 (disclosure.NoteRef.IndexOf('.') >= 0 && source.NoteRef.StartsWith(disclosure.NoteRef, StringComparison.OrdinalIgnoreCase)));
             bool titleMatches = line.Length > 4 && (disclosureTitle.IndexOf(line, StringComparison.Ordinal) >= 0 ||
                 line.IndexOf(disclosureTitle, StringComparison.Ordinal) >= 0);
-            if (!noteMatches && !titleMatches) { continue; }
+            if (!explicitlyMapped && !noteMatches && (expectedLines != null || !titleMatches)) { continue; }
             NoteLine noteLine;
-            if (!lines.TryGetValue(source.SubLine, out noteLine))
+            string lineKey = source.LineCode + "|" + source.SubLine;
+            if (!lines.TryGetValue(lineKey, out noteLine))
             {
                 noteLine = new NoteLine();
                 noteLine.Label = source.SubLine;
-                lines[source.SubLine] = noteLine;
+                noteLine.SourceLineCode = source.LineCode;
+                lines[lineKey] = noteLine;
                 disclosure.Lines.Add(noteLine);
             }
             noteLine.Amount += source.Amount;
@@ -351,6 +361,70 @@ public static class NORMReportingFramework
             disclosure.SourceCount += source.SourceCount;
         }
         MoveOtherLinesToEnd(disclosure.Lines);
+    }
+
+    private static void ApplyPriorNoteFigures(Disclosure disclosure, Dictionary<string, decimal> figures)
+    {
+        if (disclosure == null || figures == null || figures.Count == 0) { return; }
+        decimal total = 0m;
+        bool hasPrior = false;
+        for (int i = 0; i < disclosure.Lines.Count; i++)
+        {
+            NoteLine line = disclosure.Lines[i];
+            decimal amount;
+            if (!String.IsNullOrWhiteSpace(line.SourceLineCode) &&
+                figures.TryGetValue(line.SourceLineCode + "|" + line.Label, out amount))
+            {
+                line.Prior = amount;
+                total += amount;
+                hasPrior = true;
+            }
+        }
+        if (hasPrior) { disclosure.PriorAmount = total; }
+    }
+
+    private static string ResolveRunEntity(int runId)
+    {
+        object value = NORMHelper.Scalar(
+            "SELECT TOP 1 i.EntityCode FROM dbo.tblNORM_CalculationRun r " +
+            "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId WHERE r.CalculationRunId=@run",
+            NORMHelper.P("@run", runId));
+        return value == null ? null : Convert.ToString(value, CultureInfo.InvariantCulture);
+    }
+
+    private static HashSet<string> ExpectedSourceLines(string disclosureCode)
+    {
+        string[] lines = null;
+        switch (disclosureCode)
+        {
+            case "N1_1A": lines = new string[] { "Employee benefits" }; break;
+            case "N1_1B": lines = new string[] { "Supplier expenses" }; break;
+            case "N1_1C": lines = new string[] { "Grants" }; break;
+            case "N1_1D": lines = new string[] { "Finance costs" }; break;
+            case "N1_1E": lines = new string[] { "Impairment loss on financial instruments" }; break;
+            case "N1_1F": lines = new string[] { "Write-down of non-financial assets" }; break;
+            case "N1_1G": lines = new string[] { "Foreign exchange losses" }; break;
+            case "N1_1H": lines = new string[] { "Other expenses" }; break;
+            case "N1_2A": lines = new string[] { "Revenue from contracts with customers" }; break;
+            case "N1_2B": lines = new string[0]; break;
+            case "N1_2C": lines = new string[0]; break;
+            case "N1_2D": lines = new string[0]; break;
+            case "N1_2E": lines = new string[] { "Rental income" }; break;
+            case "N1_2F": lines = new string[] { "Other revenue" }; break;
+            case "N1_2G": lines = new string[] { "Foreign exchange gains" }; break;
+            case "N1_2H": lines = new string[] { "Reversals of previous asset write-downs" }; break;
+            case "N1_2I": lines = new string[] { "Other gains" }; break;
+            case "N1_2J": lines = new string[] { "Revenue from Government" }; break;
+            case "N3_1A": lines = new string[] { "Cash and cash equivalents" }; break;
+            case "N3_1B": lines = new string[] { "Trade and other receivables" }; break;
+            case "N3_2A": lines = new string[] { "Property plant and equipment", "Depreciation and amortisation" }; break;
+            case "N3_2B": lines = new string[] { "Inventories" }; break;
+            case "N3_2C": lines = new string[] { "Prepayments", "Assets held for sale" }; break;
+            case "N3_3": lines = new string[] { "Suppliers payables", "Employee payables", "Other payables" }; break;
+            case "N3_4": lines = new string[] { "Leases" }; break;
+            case "N3_5": lines = new string[] { "Employee provisions", "Asset restoration provisions", "Other provisions" }; break;
+        }
+        return lines == null ? null : new HashSet<string>(lines, StringComparer.OrdinalIgnoreCase);
     }
 
     public static void MoveOtherLinesToEnd(List<NoteLine> lines)

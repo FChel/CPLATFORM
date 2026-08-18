@@ -449,7 +449,7 @@ public class NORM_WordExport : IHttpHandler
                     if (item.Lines[l].Prior.HasValue) { priorTotal += item.Lines[l].Prior.Value; hasPrior = true; }
                 }
                 html.Append("<tr class=\"total\"><th>Total ").Append(Enc(item.Title.ToLowerInvariant())).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Amount)).Append("</td><td class=\"amount\">")
-                    .Append(hasPrior ? FormatAmount(priorTotal) : "-").Append("</td></tr></tbody></table>");
+                    .Append(item.PriorAmount.HasValue ? FormatAmount(item.PriorAmount.Value) : (hasPrior ? FormatAmount(priorTotal) : "-")).Append("</td></tr></tbody></table>");
             }
             else { html.Append("<p><i>No mapped balance. Complete this required disclosure before sign-off.</i></p>"); }
             if (!String.IsNullOrWhiteSpace(item.Narrative))

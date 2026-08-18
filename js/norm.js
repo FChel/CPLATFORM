@@ -284,7 +284,8 @@
             return '<tr><th>' + esc(line.label) + sourceRows + '</th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>';
           }).join("");
           var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
-          var priorTotal = priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null;
+          var priorTotal = item.priorAmount !== null && item.priorAmount !== undefined ? Number(item.priorAmount) :
+            (priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null);
           var table = item.code === "N3_2A" ? assetMovementNoteTable(true) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.note || "") + ': ' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows +
             '<tr class="total"><th>Total ' + esc(item.title.toLowerCase()) + '</th><td>' + number(item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' :
             '<div class="norm-note-empty"><span>No mapped balance</span><p>The disclosure remains in the set because the entity profile requires it. Add entity narrative or mapping before sign-off.</p></div>');
@@ -376,7 +377,8 @@
       var lines = noteLines(item.lines);
       var rows = lines.map(function (line) { return '<tr><th>' + esc(line.label) + '</th><td class="norm-print-number">' + number(line.amount) + '</td><td class="norm-print-number">' + number(line.prior) + '</td></tr>'; }).join("");
       var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
-      var priorTotal = priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null;
+      var priorTotal = item.priorAmount !== null && item.priorAmount !== undefined ? Number(item.priorAmount) :
+        (priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null);
       return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' +
         (item.code === "N3_2A" ? assetMovementNoteTable(false) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td class="norm-print-number">' + number(item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>')) +
         (item.narrative ? '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
