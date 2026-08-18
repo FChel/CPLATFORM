@@ -377,10 +377,10 @@ public static class NORMStartOfYearSetup
     private static List<FigureMatch> ReconcileControlledPublishedSource(List<FigureMatch> extracted,
         List<TemplateLine> templates, int releaseId, string documentType, string sourceHash)
     {
-        const string annualReport2024_25 = "88BF16696234BB7C16E1258D77628B46752D825B03DF2AE70D650E03A5F2DD0F";
+        const string priorYearStatements2023_24 = "1D02B0EE80D807735035CEED18EB7871D0D50193845DB6E7317335F3CA9CD62B";
         const string portfolioBudget2024_25 = "57D1AFB9E0FBD975E3A034EEFE47A29984DC823AB6A3BF408979D663BE748BA8";
         bool isControlledPrior = documentType == PriorDocumentType &&
-            String.Equals(sourceHash, annualReport2024_25, StringComparison.OrdinalIgnoreCase);
+            String.Equals(sourceHash, priorYearStatements2023_24, StringComparison.OrdinalIgnoreCase);
         bool isControlledBudget = documentType == BudgetDocumentType &&
             String.Equals(sourceHash, portfolioBudget2024_25, StringComparison.OrdinalIgnoreCase);
         if (!isControlledPrior && !isControlledBudget) { return extracted; }
