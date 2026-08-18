@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NORM - Financial statements</title>
-    <link rel="stylesheet" href="../css/norm.css?v=20260818-3" />
+    <link rel="stylesheet" href="../css/norm.css?v=20260818-4" />
 </head>
 <body class="norm-page norm-statements-page">
 <form id="form1" runat="server">
