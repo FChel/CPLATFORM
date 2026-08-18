@@ -357,7 +357,7 @@
             '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td>' + number(item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' :
             '<div class="norm-note-empty"><span>No mapped balance</span><p>The disclosure remains in the set because the entity profile requires it. Add entity narrative or mapping before sign-off.</p></div>');
           var source = item.demoSeeded ? '<p class="norm-note-source"><strong>Demo reconstruction source</strong>' + esc(item.currentSourceReference || "Published current-year financial statements") + '</p>' : '';
-          var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Accounting policy / entity commentary</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
+          var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Written disclosures and accounting policy</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
           return '<article id="' + noteId(item.note || item.code) + '" class="norm-note-card" tabindex="-1"><div class="norm-note-card-head"><div><span>Note ' + esc(item.note || "") + '</span><h3>' + esc(item.title) + '</h3></div><em class="' + statusClass(item.status) + '">' + esc(item.status) + '</em></div>' +
             table + source + narrative + '</article>';
         }).join("") + '</section>';
@@ -448,13 +448,13 @@
         (priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null);
       if (item.code === "N3_2A") {
         var policyPage = item.narrative ? '<section class="norm-print-page norm-print-note"><h2>Note ' + esc(item.note) + ': Accounting policy</h2>' +
-          '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div></section>' : '';
+          '<div class="norm-accounting-policy"><strong>Written disclosures and accounting policy</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div></section>' : '';
         return '<section class="norm-print-page norm-print-note norm-print-asset-reconciliation">' + printHeader(statement) +
           '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' + assetMovementNoteTable(false) + '</section>' + policyPage;
       }
       return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' +
         (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td class="norm-print-number">' + number(item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
-        (item.narrative ? '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
+        (item.narrative ? '<div class="norm-accounting-policy"><strong>Written disclosures and accounting policy</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
     }).join("");
   }
 

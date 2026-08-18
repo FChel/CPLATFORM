@@ -469,7 +469,7 @@ public class NORM_WordExport : IHttpHandler
             else { html.Append("<p><i>No mapped balance. Complete this required disclosure before sign-off.</i></p>"); }
             if (!String.IsNullOrWhiteSpace(item.Narrative))
             {
-                html.Append("<div class=\"policy\"><b>Accounting policy / entity commentary</b><p>").Append(Enc(item.Narrative).Replace("\r\n", "<br>").Replace("\n", "<br>")).Append("</p></div>");
+                html.Append("<div class=\"policy\"><b>Written disclosures and accounting policy</b><p>").Append(Enc(item.Narrative).Replace("\r\n", "<br>").Replace("\n", "<br>")).Append("</p></div>");
             }
             html.Append("</section>");
         }
@@ -545,7 +545,7 @@ public class NORM_WordExport : IHttpHandler
         AppendAssetMovementRow(html, "Carrying amount of right-of-use assets", new decimal?[count], false);
         html.Append("</tbody></table></section>");
         if (!String.IsNullOrWhiteSpace(item.Narrative))
-            html.Append("<section class=\"note\"><h2>Note ").Append(Enc(item.NoteRef)).Append(": Accounting policy</h2><div class=\"policy\"><b>Accounting policy / entity commentary</b><p>")
+            html.Append("<section class=\"note\"><h2>Note ").Append(Enc(item.NoteRef)).Append(": Written disclosures and accounting policy</h2><div class=\"policy\"><b>Written disclosures and accounting policy</b><p>")
                 .Append(Enc(item.Narrative).Replace("\r\n", "<br>").Replace("\n", "<br>")).Append("</p></div></section>");
     }
 
