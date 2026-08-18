@@ -280,8 +280,7 @@
         bySection[section].map(function (item) {
           var lines = noteLines(item.lines);
           var rows = lines.map(function (line) {
-            var sourceRows = viewMode === "preparation" ? '<small class="norm-source-count">' + Number(line.sourceCount || 0).toLocaleString("en-AU") + ' source rows</small>' : '';
-            return '<tr><th>' + esc(line.label) + sourceRows + '</th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>';
+            return '<tr><th>' + esc(line.label) + '</th><td>' + number(line.amount) + '</td><td>' + number(line.prior) + '</td></tr>';
           }).join("");
           var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
           var priorTotal = item.priorAmount !== null && item.priorAmount !== undefined ? Number(item.priorAmount) :
