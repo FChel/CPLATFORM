@@ -77,6 +77,20 @@
             </article>
 
             <article class="norm-help-card">
+                <span class="norm-kicker">Mapping control</span>
+                <h2>Change an account mapping safely</h2>
+                <ol>
+                    <li>Open <strong>Account mapping</strong> from the Control Centre and create a draft from the current approved release.</li>
+                    <li>Download the editable workbook and use its controlled account-type and face-line lists.</li>
+                    <li>Enter a reason for every changed account, then upload the complete workbook.</li>
+                    <li>Review blocking validation, unmapped-account warnings and the financial impact against the retained TB.</li>
+                    <li>A NORM administrator approves and locks the release.</li>
+                    <li>Recalculate the retained TB to create a new run; the earlier run and its mapping snapshot do not change.</li>
+                </ol>
+                <div class="norm-help-callout"><strong>The mapping export from a completed run remains read-only evidence.</strong><p>Use the mapping-management workbook for changes. Completed-run exports always show exactly what that historical calculation used.</p></div>
+            </article>
+
+            <article class="norm-help-card">
                 <span class="norm-kicker">Assurance</span>
                 <h2>What the control panel means</h2>
                 <ul>
