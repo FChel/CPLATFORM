@@ -13,6 +13,7 @@ using System.Web;
 public class NORM_WordExport : IHttpHandler
 {
     private Dictionary<string, decimal> priorFigures;
+    private Dictionary<string, decimal> priorAssetMovements;
 
     public bool IsReusable { get { return false; } }
 
@@ -43,6 +44,7 @@ public class NORM_WordExport : IHttpHandler
             NORMHelper.Str(header, "EntityCode"), NORMHelper.Int(header, "FinancialYear"));
         string entity = NORMHelper.Str(header, "EntityName") ?? NORMHelper.Str(header, "EntityCode");
         priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(NORMHelper.Str(header, "EntityCode"));
+        priorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(NORMHelper.Str(header, "EntityCode"));
         NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
         List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()
             ? NORMReportingFramework.LoadDisclosures(runId, releaseId, profile)
@@ -70,7 +72,7 @@ public class NORM_WordExport : IHttpHandler
         html.Append("<!doctype html><html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" lang=\"en-AU\"><head><meta charset=\"utf-8\">");
         html.Append("<title>").Append(Enc(entity)).Append(" financial statements</title>");
         html.Append("<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->");
-        html.Append("<style>@page{size:A4;margin:20mm 18mm 18mm}body{font-family:Arial,sans-serif;color:#171717;font-size:9.5pt;line-height:1.35}h1{font-size:22pt;margin:0 0 8pt}h2{font-size:15pt;border-bottom:2pt solid #e87722;padding-bottom:5pt;margin:0 0 14pt}h3{font-size:11.5pt;margin:14pt 0 7pt}p{margin:0 0 8pt}.cover{padding-top:65mm}.eyebrow{color:#b64d00;font-weight:bold;text-transform:uppercase;letter-spacing:.7pt}.meta{margin-top:30pt;border-top:1pt solid #bbb;padding-top:10pt}.page{page-break-before:always}.note{page-break-before:always}.section{font-weight:bold;background:#f1f2f4}table{width:100%;border-collapse:collapse;margin:7pt 0 12pt}tr{page-break-inside:avoid}th,td{padding:4pt 5pt;border-bottom:.5pt solid #c8c8c8;vertical-align:top}th{text-align:left}.note tbody th{font-weight:normal}.note .total th{font-weight:bold}.amount{text-align:right;width:21%}.total th,.total td{font-weight:bold;border-top:1pt solid #222;border-bottom:2pt double #222}.administered table,.administered table th,.administered table td,.administered .section{background:#d3d3d3}.administered h3{background:#222;color:#fff;padding:6pt}.policy{background:#f7f7f7;border-left:3pt solid #e87722;padding:8pt 10pt;margin:8pt 0 12pt}.small{font-size:8pt;color:#555}.register td:first-child{width:10%}.status{font-weight:bold}.footer{margin-top:18pt;border-top:.5pt solid #aaa;padding-top:6pt;font-size:8pt;color:#555}</style></head><body>");
+        html.Append("<style>@page{size:A4;margin:20mm 18mm 18mm}@page assetLandscape{size:29.7cm 21cm;mso-page-orientation:landscape;margin:9mm 10mm 8mm}body{font-family:Arial,sans-serif;color:#171717;font-size:9.5pt;line-height:1.35}h1{font-size:22pt;margin:0 0 8pt}h2{font-size:15pt;border-bottom:2pt solid #e87722;padding-bottom:5pt;margin:0 0 14pt}h3{font-size:11.5pt;margin:14pt 0 7pt}p{margin:0 0 8pt}.cover{padding-top:65mm}.eyebrow{color:#b64d00;font-weight:bold;text-transform:uppercase;letter-spacing:.7pt}.meta{margin-top:30pt;border-top:1pt solid #bbb;padding-top:10pt}.page{page-break-before:always}.note{page-break-before:always}.section{font-weight:bold;background:#f1f2f4}table{width:100%;border-collapse:collapse;margin:7pt 0 12pt}tr{page-break-inside:avoid}th,td{padding:4pt 5pt;border-bottom:.5pt solid #c8c8c8;vertical-align:top}th{text-align:left}.note tbody th{font-weight:normal}.note .total th{font-weight:bold}.amount{text-align:right;width:21%}.total th,.total td{font-weight:bold;border-top:1pt solid #222;border-bottom:2pt double #222}.asset-reconciliation{page:assetLandscape}.asset-reconciliation h2{font-size:8pt;margin-bottom:5pt}.asset-reconciliation table{font-size:5pt;line-height:1.05;table-layout:fixed}.asset-reconciliation th,.asset-reconciliation td{padding:1.3pt 1.5pt}.asset-reconciliation thead th{text-align:right}.asset-reconciliation thead th:first-child{width:43mm;text-align:left}.asset-reconciliation td{text-align:right}.asset-reconciliation .section th{background:#fff;padding-top:3pt}.administered table,.administered table th,.administered table td,.administered .section{background:#d3d3d3}.administered h3{background:#222;color:#fff;padding:6pt}.policy{background:#f7f7f7;border-left:3pt solid #e87722;padding:8pt 10pt;margin:8pt 0 12pt}.small{font-size:8pt;color:#555}.register td:first-child{width:10%}.status{font-weight:bold}.footer{margin-top:18pt;border-top:.5pt solid #aaa;padding-top:6pt;font-size:8pt;color:#555}</style></head><body>");
         html.Append("<section class=\"cover\"><p class=\"eyebrow\">Financial statements preparation copy</p><h1>").Append(Enc(entity)).Append("</h1><h2>Financial statements for the year ended 30 June ").Append(year).Append("</h2>");
         html.Append("<p>Editable preparation copy generated from NORM calculation run #").Append(runId).Append(".</p><div class=\"meta\"><p><b>Configuration:</b> ").Append(Enc(version)).Append("</p>");
         html.Append("<p><b>Reporting profile:</b> ").Append(Enc(ProfileLabel(profile))).Append("</p><p><b>Generated:</b> ").Append(DateTime.UtcNow.ToString("d MMMM yyyy 'at' HH:mm 'UTC'", CultureInfo.GetCultureInfo("en-AU"))).Append("</p></div></section>");
@@ -84,7 +86,7 @@ public class NORM_WordExport : IHttpHandler
             for (int i = 0; i < administered.Statements.Count; i++) AppendAdministeredStatement(html, year, administered.Statements[i]);
             AppendAdministeredNotes(html, year, administered.Notes);
         }
-        AppendNotes(html, year, disclosures);
+        AppendNotes(html, runId, year, disclosures);
         AppendRegister(html, disclosures);
         html.Append("</body></html>");
         return html.ToString();
@@ -429,13 +431,18 @@ public class NORM_WordExport : IHttpHandler
         html.Append("</tbody></table><p class=\"footer\">Cash-flow classes are generated from the FY mapping configuration and remain subject to the cash reconciliation control.</p></section>");
     }
 
-    private void AppendNotes(StringBuilder html, int year, List<NORMReportingFramework.Disclosure> disclosures)
+    private void AppendNotes(StringBuilder html, int runId, int year, List<NORMReportingFramework.Disclosure> disclosures)
     {
         for (int i = 0; i < disclosures.Count; i++)
         {
             NORMReportingFramework.Disclosure item = disclosures[i];
             if (item.Code == "N2" || item.Code == "N4" || item.Code == "N7_3") { continue; }
             if (!item.Required || String.IsNullOrWhiteSpace(item.NoteRef)) { continue; }
+            if (item.Code == "N3_2A")
+            {
+                AppendAssetMovementNote(html, runId, year, item);
+                continue;
+            }
             html.Append("<section class=\"note\"><p class=\"eyebrow\">Note ").Append(Enc(item.NoteRef)).Append("</p><h2>").Append(Enc(item.Title)).Append("</h2>");
             if (item.Lines.Count > 0)
             {
@@ -458,6 +465,134 @@ public class NORM_WordExport : IHttpHandler
             }
             html.Append("</section>");
         }
+    }
+
+    private void AppendAssetMovementNote(StringBuilder html, int runId, int year,
+        NORMReportingFramework.Disclosure item)
+    {
+        string[,] classes = new string[,]
+        {
+            { "LAND", "Land" }, { "BUILDINGS", "Buildings" },
+            { "SPECIALIST_MILITARY_EQUIPMENT", "Specialist military equipment" },
+            { "INFRASTRUCTURE", "Infrastructure" }, { "PLANT_EQUIPMENT", "Plant and equipment" },
+            { "HERITAGE_CULTURAL", "Heritage and cultural assets" },
+            { "COMPUTER_SOFTWARE_PURCHASED", "Computer software - purchased" },
+            { "COMPUTER_SOFTWARE_INTERNALLY_GENERATED", "Computer software - internally generated" },
+            { "OTHER_INTANGIBLES_PURCHASED", "Other intangibles - purchased" },
+            { "OTHER_INTANGIBLES_INTERNALLY_GENERATED", "Other intangibles - internally generated" }
+        };
+        Dictionary<string, decimal> closing = LoadAssetMovementAmounts(runId, "Property plant and equipment", null);
+        Dictionary<string, decimal> closingGross = LoadAssetMovementAmounts(runId, "Property plant and equipment", false);
+        Dictionary<string, decimal> closingAccumulated = LoadAssetMovementAmounts(runId, "Property plant and equipment", true);
+        Dictionary<string, decimal> depreciation = LoadAssetMovementAmounts(runId, "Depreciation and amortisation", null);
+        int count = classes.GetLength(0);
+        decimal?[] openingGross = new decimal?[count], openingAccumulated = new decimal?[count], opening = new decimal?[count];
+        decimal?[] depreciationMovement = new decimal?[count], residual = new decimal?[count], totalMovement = new decimal?[count];
+        decimal?[] close = new decimal?[count], closeGross = new decimal?[count], closeAccumulated = new decimal?[count];
+        for (int c = 0; c < count; c++)
+        {
+            string classCode = classes[c, 0], label = classes[c, 1];
+            openingGross[c] = AssetMovementValue("CLOSING_GROSS", classCode);
+            openingAccumulated[c] = AssetMovementValue("CLOSING_ACCUMULATED", classCode);
+            opening[c] = AssetMovementValue("CLOSING_CARRYING", classCode);
+            close[c] = DictionaryValue(closing, label);
+            closeGross[c] = DictionaryValue(closingGross, label);
+            closeAccumulated[c] = DictionaryValue(closingAccumulated, label);
+            depreciationMovement[c] = DictionaryValue(depreciation, label);
+            if (depreciationMovement[c].HasValue) depreciationMovement[c] = -Math.Abs(depreciationMovement[c].Value);
+            totalMovement[c] = close[c].HasValue && opening[c].HasValue ? (decimal?)(close[c].Value - opening[c].Value) : null;
+            residual[c] = totalMovement[c].HasValue ? (decimal?)(totalMovement[c].Value - (depreciationMovement[c] ?? 0m)) : null;
+        }
+
+        html.Append("<section class=\"note asset-reconciliation\"><p class=\"eyebrow\">Note ").Append(Enc(item.NoteRef))
+            .Append("</p><h2>").Append(Enc(item.Title)).Append("</h2><table><thead><tr><th>Movement</th>");
+        for (int c = 0; c < count; c++) html.Append("<th>").Append(Enc(classes[c, 1])).Append("<br>$'000</th>");
+        html.Append("<th>Total<br>$'000</th></tr></thead><tbody>");
+        AppendAssetSection(html, "As at 1 July " + (year - 1).ToString(CultureInfo.InvariantCulture), count + 2);
+        AppendAssetMovementRow(html, "Gross book value", openingGross, false);
+        AppendAssetMovementRow(html, "Accumulated depreciation, amortisation and impairment", openingAccumulated, false);
+        AppendAssetMovementRow(html, "Total as at 1 July " + (year - 1).ToString(CultureInfo.InvariantCulture), opening, true);
+        AppendAssetSection(html, "Additions", count + 2);
+        AppendAssetMovementRow(html, "By purchase or internally developed", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Right-of-use assets", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Revaluations and impairments recognised in other comprehensive income", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Reclassification", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Depreciation and amortisation", depreciationMovement, false);
+        AppendAssetMovementRow(html, "Depreciation of right-of-use assets", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Revaluations / write-downs recognised in net cost of services", new decimal?[count], false);
+        AppendAssetSection(html, "Other movements", count + 2);
+        AppendAssetMovementRow(html, "Reversal of previous asset write-downs and impairment", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Transfers in / (out)", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Transfers (to) / from assets held for sale", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Remeasurement of right-of-use assets", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Other movements pending asset-register classification", residual, false);
+        AppendAssetSection(html, "Disposals", count + 2);
+        AppendAssetMovementRow(html, "Other disposals", new decimal?[count], false);
+        AppendAssetMovementRow(html, "Total movements", totalMovement, true);
+        AppendAssetMovementRow(html, "Total as at 30 June " + year.ToString(CultureInfo.InvariantCulture), close, true);
+        AppendAssetSection(html, "Total as at 30 June " + year.ToString(CultureInfo.InvariantCulture) + " represented by", count + 2);
+        AppendAssetMovementRow(html, "Gross book value", closeGross, false);
+        AppendAssetMovementRow(html, "Accumulated depreciation, amortisation and impairment", closeAccumulated, false);
+        AppendAssetMovementRow(html, "Total as at 30 June " + year.ToString(CultureInfo.InvariantCulture), close, true);
+        AppendAssetMovementRow(html, "Carrying amount of right-of-use assets", new decimal?[count], false);
+        html.Append("</tbody></table></section>");
+        if (!String.IsNullOrWhiteSpace(item.Narrative))
+            html.Append("<section class=\"note\"><h2>Note ").Append(Enc(item.NoteRef)).Append(": Accounting policy</h2><div class=\"policy\"><b>Accounting policy / entity commentary</b><p>")
+                .Append(Enc(item.Narrative).Replace("\r\n", "<br>").Replace("\n", "<br>")).Append("</p></div></section>");
+    }
+
+    private void AppendAssetSection(StringBuilder html, string label, int columns)
+    {
+        html.Append("<tr class=\"section\"><th colspan=\"").Append(columns).Append("\">").Append(Enc(label)).Append("</th></tr>");
+    }
+
+    private void AppendAssetMovementRow(StringBuilder html, string label, decimal?[] values, bool total)
+    {
+        html.Append("<tr class=\"").Append(total ? "total" : "").Append("\"><th>").Append(Enc(label)).Append("</th>");
+        decimal sum = 0m;
+        bool hasValue = false;
+        for (int i = 0; i < values.Length; i++)
+        {
+            html.Append("<td>").Append(Amount(values[i])).Append("</td>");
+            if (values[i].HasValue) { sum += values[i].Value; hasValue = true; }
+        }
+        html.Append("<td>").Append(hasValue ? FormatAmount(sum) : "-").Append("</td></tr>");
+    }
+
+    private decimal? AssetMovementValue(string rowCode, string classCode)
+    {
+        decimal value;
+        return priorAssetMovements != null && priorAssetMovements.TryGetValue(rowCode + "|" + classCode, out value)
+            ? (decimal?)value : null;
+    }
+
+    private decimal? DictionaryValue(Dictionary<string, decimal> values, string key)
+    {
+        decimal value;
+        return values != null && values.TryGetValue(key, out value) ? (decimal?)value : null;
+    }
+
+    private Dictionary<string, decimal> LoadAssetMovementAmounts(int runId, string lineCode, bool? accumulated)
+    {
+        string classification = "CASE WHEN UPPER(NoteSubLineSnapshot) LIKE 'LAND%' THEN 'Land' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'BUILD%' THEN 'Buildings' WHEN UPPER(NoteSubLineSnapshot) LIKE 'SME%' THEN 'Specialist military equipment' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'IFA%' THEN 'Infrastructure' WHEN UPPER(NoteSubLineSnapshot) LIKE 'P&E%' THEN 'Plant and equipment' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'HCA%' THEN 'Heritage and cultural assets' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS PURCHASED%' THEN 'Computer software - purchased' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS INTERNALLY%' THEN 'Computer software - internally generated' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'OTHER INTANGIBLES PURCHASED%' THEN 'Other intangibles - purchased' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'OTHER INTANGIBLES INTERNALLY%' THEN 'Other intangibles - internally generated' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS%' THEN 'Computer software - purchased' " +
+            "WHEN UPPER(NoteSubLineSnapshot) LIKE '%INTANGIBLE%' THEN 'Other intangibles - purchased' ELSE 'Plant and equipment' END";
+        string filter = !accumulated.HasValue ? "" : accumulated.Value
+            ? " AND LOWER(COALESCE(NoteSubLineSnapshot,'')+' '+COALESCE(tb.GlText,'')) LIKE '%accum%' "
+            : " AND LOWER(COALESCE(NoteSubLineSnapshot,'')+' '+COALESCE(tb.GlText,'')) NOT LIKE '%accum%' ";
+        DataTable table = NORMHelper.Query("SELECT " + classification + " AS AssetClass,SUM(PresentedContribution) Amount " +
+            "FROM dbo.tblNORM_Lineage l INNER JOIN dbo.tblNORM_LineResult r ON r.LineResultId=l.LineResultId " +
+            "INNER JOIN dbo.tblNORM_TrialBalanceRow tb ON tb.TbRowId=l.TbRowId " +
+            "WHERE l.CalculationRunId=@run AND r.LineCode=@line " + filter + "GROUP BY " + classification,
+            NORMHelper.P("@run", runId), NORMHelper.P("@line", lineCode));
+        return FigureDictionary(table, "AssetClass");
     }
 
     private void AppendRegister(StringBuilder html, List<NORMReportingFramework.Disclosure> disclosures)

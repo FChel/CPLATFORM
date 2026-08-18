@@ -82,6 +82,7 @@ namespace CPlatform.NORM
             Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId, fy);
             Dictionary<string, decimal> budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode);
             Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
+            Dictionary<string, decimal> priorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(entityCode);
             meta["runId"] = runId;
             meta["runGuid"] = Convert.ToString(context["RunGuid"]);
             meta["fingerprint"] = NORMHelper.Str(context, "InputFingerprint");
@@ -111,7 +112,8 @@ namespace CPlatform.NORM
             statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets, priorFigures));
             statements.Add(BuildEquityStatement(runId, releaseId, lineage, budgets, priorFigures));
             statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets, priorFigures));
-            payload["assetMovement"] = BuildAssetMovementStatement(runId, releaseId, lineage);
+            payload["assetMovement"] = BuildAssetMovementStatement(runId, releaseId, lineage,
+                priorAssetMovements, priorFigures);
 
             if (NORMAdministeredStatements.Required(profile))
             {
@@ -1139,7 +1141,8 @@ namespace CPlatform.NORM
         }
 
         private Dictionary<string, object> BuildAssetMovementStatement(int runId, int releaseId,
-            Dictionary<long, List<Dictionary<string, object>>> lineage)
+            Dictionary<long, List<Dictionary<string, object>>> lineage,
+            Dictionary<string, decimal> priorAssetMovements, Dictionary<string, decimal> priorFigures)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT r.LineCode,r.LineResultId,r.ComputedAmount FROM dbo.tblNORM_LineResult r " +
@@ -1150,40 +1153,97 @@ namespace CPlatform.NORM
             DataRow depreciationRow = FindLine(table, "Depreciation and amortisation");
             List<Dictionary<string, object>> closing = SourcesFor(closingRow, lineage);
             List<Dictionary<string, object>> depreciation = SourcesFor(depreciationRow, lineage);
-            string[] classes = new string[] { "Land", "Buildings", "Specialist military equipment", "Infrastructure", "Plant and equipment", "Heritage and cultural assets", "Computer software", "Other intangibles", "Other property, plant and equipment" };
-            List<object> rows = new List<object>();
-            decimal totalClosing = 0m;
-            decimal totalDepreciation = 0m;
-            for (int c = 0; c < classes.Length; c++)
+            string[,] classes = new string[,]
             {
-                List<Dictionary<string, object>> closeSources = FilterByClass(closing, classes[c]);
-                List<Dictionary<string, object>> depSources = FilterByClass(depreciation, classes[c]);
-                if (closeSources.Count == 0 && depSources.Count == 0) { continue; }
-                decimal closeAmount = SumSources(closeSources);
-                decimal depAmount = SumSources(depSources);
-                totalClosing += closeAmount;
-                totalDepreciation += depAmount;
+                { "LAND", "Land", "PPE_LAND" },
+                { "BUILDINGS", "Buildings", "PPE_BUILDINGS" },
+                { "SPECIALIST_MILITARY_EQUIPMENT", "Specialist military equipment", "PPE_SPECIALIST_MILITARY_EQUIPMENT" },
+                { "INFRASTRUCTURE", "Infrastructure", "PPE_INFRASTRUCTURE" },
+                { "PLANT_EQUIPMENT", "Plant and equipment", "PPE_PLANT_AND_EQUIPMENT" },
+                { "HERITAGE_CULTURAL", "Heritage and cultural assets", "PPE_HERITAGE_AND_CULTURAL_ASSETS" },
+                { "COMPUTER_SOFTWARE_PURCHASED", "Computer software - purchased", "" },
+                { "COMPUTER_SOFTWARE_INTERNALLY_GENERATED", "Computer software - internally generated", "" },
+                { "OTHER_INTANGIBLES_PURCHASED", "Other intangibles - purchased", "" },
+                { "OTHER_INTANGIBLES_INTERNALLY_GENERATED", "Other intangibles - internally generated", "" }
+            };
+            List<object> rows = new List<object>();
+            for (int c = 0; c < classes.GetLength(0); c++)
+            {
+                string classCode = classes[c, 0];
+                string classLabel = classes[c, 1];
+                string faceCode = classes[c, 2];
+                List<Dictionary<string, object>> closeSources = FilterAssetMovementByClass(closing, classLabel);
+                List<Dictionary<string, object>> depSources = FilterAssetMovementByClass(depreciation, classLabel);
+                List<Dictionary<string, object>> grossSources = closeSources.FindAll(delegate(Dictionary<string, object> source)
+                {
+                    return !IsAccumulatedAssetSource(source);
+                });
+                List<Dictionary<string, object>> accumulatedSources = closeSources.FindAll(delegate(Dictionary<string, object> source)
+                {
+                    return IsAccumulatedAssetSource(source);
+                });
+                decimal? closeAmount = closeSources.Count > 0 ? (decimal?)SumSources(closeSources) : null;
+                decimal? closeGross = grossSources.Count > 0 ? (decimal?)SumSources(grossSources) : null;
+                decimal? closeAccumulated = accumulatedSources.Count > 0 ? (decimal?)SumSources(accumulatedSources) : null;
+                decimal? depAmount = depSources.Count > 0 ? (decimal?)-Math.Abs(SumSources(depSources)) : null;
+                decimal? openingGross = AssetMovementValue(priorAssetMovements, "CLOSING_GROSS", classCode, null);
+                decimal? openingAccumulated = AssetMovementValue(priorAssetMovements, "CLOSING_ACCUMULATED", classCode, null);
+                decimal? opening = AssetMovementValue(priorAssetMovements, "CLOSING_CARRYING", classCode,
+                    String.IsNullOrWhiteSpace(faceCode) ? null : NORMStartOfYearSetup.FigureValue(priorFigures, "SOFP", faceCode, null));
+                decimal? totalMovements = closeAmount.HasValue && opening.HasValue
+                    ? (decimal?)(closeAmount.Value - opening.Value) : null;
+                decimal? otherMovements = totalMovements.HasValue
+                    ? (decimal?)(totalMovements.Value - (depAmount ?? 0m)) : null;
                 Dictionary<string, object> row = new Dictionary<string, object>();
-                row["label"] = classes[c];
+                row["code"] = classCode;
+                row["label"] = classLabel;
                 row["note"] = "3.2A";
-                row["opening"] = null;
+                row["openingGross"] = openingGross.HasValue ? (object)openingGross.Value : null;
+                row["openingAccumulated"] = openingAccumulated.HasValue ? (object)openingAccumulated.Value : null;
+                row["opening"] = opening.HasValue ? (object)opening.Value : null;
                 row["additions"] = null;
-                row["depreciation"] = depAmount;
+                row["rightOfUseAdditions"] = null;
                 row["revaluations"] = null;
-                row["closing"] = closeAmount;
+                row["reclassification"] = null;
+                row["depreciation"] = depAmount.HasValue ? (object)depAmount.Value : null;
+                row["rightOfUseDepreciation"] = null;
+                row["writeDowns"] = null;
+                row["reversals"] = null;
+                row["transfers"] = null;
+                row["heldForSale"] = null;
+                row["remeasurement"] = null;
+                row["otherMovements"] = otherMovements.HasValue ? (object)otherMovements.Value : null;
+                row["disposals"] = null;
+                row["totalMovements"] = totalMovements.HasValue ? (object)totalMovements.Value : null;
+                row["closing"] = closeAmount.HasValue ? (object)closeAmount.Value : null;
+                row["closingGross"] = closeGross.HasValue ? (object)closeGross.Value : null;
+                row["closingAccumulated"] = closeAccumulated.HasValue ? (object)closeAccumulated.Value : null;
+                decimal? priorRou = AssetMovementValue(priorAssetMovements, "RIGHT_OF_USE_CARRYING", classCode, null);
+                row["priorRightOfUseCarrying"] = priorRou.HasValue ? (object)priorRou.Value : null;
+                row["rightOfUseCarrying"] = null;
                 row["closingSources"] = closeSources;
+                row["closingGrossSources"] = grossSources;
+                row["closingAccumulatedSources"] = accumulatedSources;
                 row["depreciationSources"] = depSources;
                 rows.Add(row);
             }
             Dictionary<string, object> total = new Dictionary<string, object>();
             total["label"] = "Total property, plant and equipment and intangibles";
             total["note"] = "3.2A";
-            total["opening"] = null;
-            total["additions"] = null;
-            total["depreciation"] = totalDepreciation;
-            total["revaluations"] = null;
-            total["closing"] = totalClosing;
+            string[] amountKeys = new string[] { "openingGross", "openingAccumulated", "opening", "additions",
+                "rightOfUseAdditions", "revaluations", "reclassification", "depreciation", "rightOfUseDepreciation",
+                "writeDowns", "reversals", "transfers", "heldForSale", "remeasurement", "otherMovements", "disposals",
+                "totalMovements", "closing", "closingGross", "closingAccumulated", "priorRightOfUseCarrying", "rightOfUseCarrying" };
+            for (int k = 0; k < amountKeys.Length; k++) total[amountKeys[k]] = SumAssetMovementRows(rows, amountKeys[k]);
             total["closingSources"] = closing;
+            total["closingGrossSources"] = closing.FindAll(delegate(Dictionary<string, object> source)
+            {
+                return !IsAccumulatedAssetSource(source);
+            });
+            total["closingAccumulatedSources"] = closing.FindAll(delegate(Dictionary<string, object> source)
+            {
+                return IsAccumulatedAssetSource(source);
+            });
             total["depreciationSources"] = depreciation;
             total["total"] = true;
             rows.Add(total);
@@ -1193,6 +1253,63 @@ namespace CPlatform.NORM
             statement["layout"] = "assetMovement";
             statement["rows"] = rows;
             return statement;
+        }
+
+        private object SumAssetMovementRows(List<object> rows, string key)
+        {
+            decimal total = 0m;
+            bool hasValue = false;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                Dictionary<string, object> row = rows[i] as Dictionary<string, object>;
+                if (row == null || !row.ContainsKey(key) || row[key] == null) { continue; }
+                total += Convert.ToDecimal(row[key]);
+                hasValue = true;
+            }
+            return hasValue ? (object)total : null;
+        }
+
+        private decimal? AssetMovementValue(Dictionary<string, decimal> values, string rowCode,
+            string assetClassCode, decimal? fallback)
+        {
+            decimal value;
+            if (values != null && values.TryGetValue(rowCode + "|" + assetClassCode, out value)) return value;
+            return fallback;
+        }
+
+        private List<Dictionary<string, object>> FilterAssetMovementByClass(
+            List<Dictionary<string, object>> sources, string label)
+        {
+            List<Dictionary<string, object>> values = new List<Dictionary<string, object>>();
+            for (int i = 0; i < sources.Count; i++)
+                if (String.Equals(AssetMovementClassLabel(Convert.ToString(sources[i]["note"])), label,
+                    StringComparison.OrdinalIgnoreCase)) values.Add(sources[i]);
+            return values;
+        }
+
+        private string AssetMovementClassLabel(string note)
+        {
+            string value = (note ?? "").ToUpperInvariant();
+            if (value.StartsWith("LAND")) return "Land";
+            if (value.StartsWith("BUILD")) return "Buildings";
+            if (value.StartsWith("SME")) return "Specialist military equipment";
+            if (value.StartsWith("IFA")) return "Infrastructure";
+            if (value.StartsWith("P&E")) return "Plant and equipment";
+            if (value.StartsWith("HCA")) return "Heritage and cultural assets";
+            if (value.StartsWith("CS PURCHASED")) return "Computer software - purchased";
+            if (value.StartsWith("CS INTERNALLY")) return "Computer software - internally generated";
+            if (value.StartsWith("OTHER INTANGIBLES PURCHASED")) return "Other intangibles - purchased";
+            if (value.StartsWith("OTHER INTANGIBLES INTERNALLY")) return "Other intangibles - internally generated";
+            if (value.StartsWith("CS")) return "Computer software - purchased";
+            if (value.IndexOf("INTANGIBLE") >= 0) return "Other intangibles - purchased";
+            return "Plant and equipment";
+        }
+
+        private bool IsAccumulatedAssetSource(Dictionary<string, object> source)
+        {
+            string value = (Convert.ToString(source["note"]) + " " + Convert.ToString(source["text"])).ToLowerInvariant();
+            return value.IndexOf("accum") >= 0 || value.IndexOf("amortisation") >= 0 ||
+                value.IndexOf("amortization") >= 0;
         }
 
         private List<Dictionary<string, object>> FilterByClass(List<Dictionary<string, object>> sources, string label)

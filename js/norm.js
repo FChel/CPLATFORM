@@ -247,23 +247,57 @@
     var total = ((data.assetMovement || {}).rows || []).filter(function (row) { return row.total; })[0] || {};
     if (!rows.length) { return '<div class="norm-note-empty"><span>Asset movement schedule awaiting mapping</span><p>Complete the asset-class mapping and controlled movement inputs before sign-off.</p></div>'; }
     var movements = [
-      { label: "Opening carrying amount", key: "opening" },
-      { label: "Additions / disposals", key: "additions" },
+      { label: "As at 1 July " + data.meta.yearPrior, section: true },
+      { label: "Gross book value", key: "openingGross" },
+      { label: "Accumulated depreciation, amortisation and impairment", key: "openingAccumulated" },
+      { label: "Total as at 1 July " + data.meta.yearPrior, key: "opening", total: true },
+      { label: "Additions", section: true },
+      { label: "By purchase or internally developed", key: "additions" },
+      { label: "Right-of-use assets", key: "rightOfUseAdditions" },
+      { label: "Revaluations and impairments recognised in other comprehensive income", key: "revaluations" },
+      { label: "Reclassification", key: "reclassification" },
       { label: "Depreciation / amortisation", key: "depreciation" },
-      { label: "Revaluations / other", key: "revaluations" },
-      { label: "Closing carrying amount", key: "closing", total: true }
+      { label: "Depreciation of right-of-use assets", key: "rightOfUseDepreciation" },
+      { label: "Revaluations / write-downs recognised in net cost of services", key: "writeDowns" },
+      { label: "Other movements", section: true },
+      { label: "Reversal of previous asset write-downs and impairment", key: "reversals" },
+      { label: "Transfers in / (out)", key: "transfers" },
+      { label: "Transfers (to) / from assets held for sale", key: "heldForSale" },
+      { label: "Remeasurement of right-of-use assets", key: "remeasurement" },
+      { label: "Other movements pending asset-register classification", key: "otherMovements", pending: true },
+      { label: "Disposals", section: true },
+      { label: "Other disposals", key: "disposals" },
+      { label: "Total movements", key: "totalMovements", total: true },
+      { label: "Total as at 30 June " + data.meta.yearCurrent, key: "closing", total: true },
+      { label: "Total as at 30 June " + data.meta.yearCurrent + " represented by", section: true },
+      { label: "Gross book value", key: "closingGross" },
+      { label: "Accumulated depreciation, amortisation and impairment", key: "closingAccumulated" },
+      { label: "Total as at 30 June " + data.meta.yearCurrent, key: "closing", total: true },
+      { label: "Carrying amount of right-of-use assets", key: "rightOfUseCarrying" }
     ];
-    var head = '<tr><th>Movement</th>' + rows.map(function (row) { return '<th>' + esc(row.label) + '</th>'; }).join("") + '<th>Total</th></tr>';
+    var head = '<tr><th>Movement</th>' + rows.map(function (row) { return '<th>' + esc(row.label) + '<small>$\'000</small></th>'; }).join("") + '<th>Total<small>$\'000</small></th></tr>';
     var body = movements.map(function (movement) {
+      if (movement.section) return '<tr class="norm-asset-section"><th colspan="' + (rows.length + 2) + '">' + esc(movement.label) + '</th></tr>';
       var values = rows.map(function (row, index) {
         var value = row[movement.key];
-        var drillable = interactive && (movement.key === "closing" ? (row.closingSources || []).length : movement.key === "depreciation" && (row.depreciationSources || []).length);
+        var sources = movement.key === "closingGross" ? (row.closingGrossSources || []) :
+          (movement.key === "closingAccumulated" ? (row.closingAccumulatedSources || []) :
+            (movement.key === "closing" ? (row.closingSources || []) :
+              (movement.key === "depreciation" ? (row.depreciationSources || []) : [])));
+        var drillable = interactive && sources.length;
         return '<td class="norm-amount">' + (drillable ? '<button type="button" class="norm-figure" data-note-asset-row="' + index + '" data-kind="' + movement.key + '"><span class="norm-status mapped"></span><span>' + number(value) + '</span></button>' : number(value)) + '</td>';
       }).join("");
-      return '<tr class="' + (movement.total ? 'total' : '') + '"><th>' + esc(movement.label) + '</th>' + values + '<td class="norm-amount">' + number(total[movement.key]) + '</td></tr>';
+      return '<tr class="' + (movement.total ? 'total ' : '') + (movement.pending ? 'norm-asset-pending' : '') + '"><th>' + esc(movement.label) + '</th>' + values + '<td class="norm-amount">' + number(total[movement.key]) + '</td></tr>';
     }).join("");
     return '<div class="norm-table-scroll"><table class="norm-asset-table norm-asset-note-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
-      '<p class="norm-print-control">Derived closing and depreciation figures are shown. Opening balances and other movements remain controlled asset-register inputs until validated.</p>';
+      '<p class="norm-print-control">Opening balances are sourced from the closing balances in the retained prior-year financial statements. Current closing balances and depreciation are derived from frozen trial-balance lineage; the residual other-movements line remains visible until the detailed asset-register movements are loaded.</p>';
+  }
+
+  function assetMovementTrace(row, kind) {
+    if (kind === "closingGross") return { suffix: " gross book value", value: row.closingGross, sources: row.closingGrossSources || [] };
+    if (kind === "closingAccumulated") return { suffix: " accumulated depreciation and amortisation", value: row.closingAccumulated, sources: row.closingAccumulatedSources || [] };
+    if (kind === "depreciation") return { suffix: " depreciation and amortisation", value: row.depreciation, sources: row.depreciationSources || [] };
+    return { suffix: " closing carrying amount", value: row.closing, sources: row.closingSources || [] };
   }
 
   function renderNotes(statement) {
@@ -303,10 +337,9 @@
     Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-note-asset-row]"), function (button) {
       button.addEventListener("click", function () {
         var row = ((data.assetMovement || {}).rows || [])[Number(button.getAttribute("data-note-asset-row"))];
-        var closing = button.getAttribute("data-kind") === "closing";
-        openTrace({ label: row.label + (closing ? " closing balance" : " depreciation and amortisation"), note: "3.2A",
-          computed: closing ? row.closing : row.depreciation, published: null, variance: null, status: "Mapped",
-          sources: closing ? row.closingSources : row.depreciationSources }, button);
+        var trace = assetMovementTrace(row, button.getAttribute("data-kind"));
+        openTrace({ label: row.label + trace.suffix, note: "3.2A", computed: trace.value,
+          published: null, variance: null, status: "Mapped", sources: trace.sources }, button);
       });
     });
     scrollToRoutedNote();
@@ -378,8 +411,14 @@
       var priors = lines.filter(function (line) { return line.prior !== null && line.prior !== undefined; });
       var priorTotal = item.priorAmount !== null && item.priorAmount !== undefined ? Number(item.priorAmount) :
         (priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null);
+      if (item.code === "N3_2A") {
+        var policyPage = item.narrative ? '<section class="norm-print-page norm-print-note"><h2>Note ' + esc(item.note) + ': Accounting policy</h2>' +
+          '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div></section>' : '';
+        return '<section class="norm-print-page norm-print-note norm-print-asset-reconciliation">' + printHeader(statement) +
+          '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' + assetMovementNoteTable(false) + '</section>' + policyPage;
+      }
       return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' +
-        (item.code === "N3_2A" ? assetMovementNoteTable(false) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td class="norm-print-number">' + number(item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>')) +
+        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>Total</th><td class="norm-print-number">' + number(item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
         (item.narrative ? '<div class="norm-accounting-policy"><strong>Accounting policy / entity commentary</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
     }).join("");
   }

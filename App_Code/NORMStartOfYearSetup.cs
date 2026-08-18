@@ -296,6 +296,28 @@ public static class NORMStartOfYearSetup
         return values;
     }
 
+    public static Dictionary<string, decimal> LoadPriorAssetMovementFigures(string entityCode)
+    {
+        Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        if (!IsInstalled() || String.IsNullOrWhiteSpace(entityCode)) { return values; }
+        object installed = NORMHelper.Scalar(
+            "SELECT CASE WHEN OBJECT_ID('dbo.tblNORM_SourceAssetMovementFigure','U') IS NULL THEN 0 ELSE 1 END");
+        if (installed == null || Convert.ToInt32(installed) != 1) { return values; }
+        DataTable table = NORMHelper.Query(
+            "SELECT f.RowCode,f.AssetClassCode,f.Amount FROM dbo.tblNORM_YearSetup y " +
+            "INNER JOIN dbo.tblNORM_YearSetupDocument d ON d.YearSetupId=y.YearSetupId AND d.IsDeactivated=0 " +
+            "INNER JOIN dbo.tblNORM_SourceAssetMovementFigure f ON f.SourceFileHash=d.SourceFileHash AND f.IsDeactivated=0 " +
+            "WHERE y.EntityCode=@entity AND y.IsCurrent=1 AND y.IsDeactivated=0 " +
+            "AND d.DocumentTypeCode=@type ORDER BY d.UploadedUtc,f.SourceAssetMovementFigureId",
+            NORMHelper.P("@entity", entityCode), NORMHelper.P("@type", PriorDocumentType));
+        for (int i = 0; i < table.Rows.Count; i++)
+        {
+            values[NORMHelper.Str(table.Rows[i], "RowCode") + "|" +
+                NORMHelper.Str(table.Rows[i], "AssetClassCode")] = NORMHelper.Dec(table.Rows[i], "Amount");
+        }
+        return values;
+    }
+
     public static decimal? FigureValue(Dictionary<string, decimal> values, string statementCode, string lineCode, decimal? fallback)
     {
         if (values != null && !String.IsNullOrWhiteSpace(statementCode) && !String.IsNullOrWhiteSpace(lineCode))

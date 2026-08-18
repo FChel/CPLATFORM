@@ -38,6 +38,7 @@ namespace CPlatform.NORM
             public List<NORMReportingFramework.Disclosure> Disclosures;
             public Dictionary<string, decimal> Budgets;
             public Dictionary<string, decimal> PriorFigures;
+            public Dictionary<string, decimal> PriorAssetMovements;
             public DataTable ManualInputs;
             public NORMAdministeredStatements.Model Administered;
         }
@@ -157,6 +158,7 @@ namespace CPlatform.NORM
             NORMStatementEnhancements.ApplyManualInputs(runId, model.Disclosures);
             model.Budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(model.EntityCode);
             model.PriorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(model.EntityCode);
+            model.PriorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(model.EntityCode);
             model.ManualInputs = NORMStatementEnhancements.LoadManualInputs(runId);
             if (Required(model.Profile, "ADMINISTERED_ACTIVITIES"))
                 model.Administered = NORMAdministeredStatements.Load(runId, model.ReleaseId, model.EntityCode);
@@ -961,7 +963,7 @@ namespace CPlatform.NORM
                 ExcelWorksheet sheet = package.Workbook.Worksheets.Add(sheetName);
                 AddBackLink(sheet);
                 AddStatementTitle(sheet, model, "Note " + disclosure.NoteRef + ": " + disclosure.Title, false,
-                    disclosure.Code == "N3_2A" ? 8 : 5);
+                    disclosure.Code == "N3_2A" ? 12 : 5);
                 if (disclosure.Code == "N3_2A") AddAssetMovementNote(sheet, model, disclosure);
                 else AddStandardNote(sheet, model, disclosure);
                 index.Add(Tuple.Create(disclosure.NoteRef, sheet.Name, "Notes|" + disclosure.Title));
@@ -1021,48 +1023,138 @@ namespace CPlatform.NORM
 
         private static void AddAssetMovementNote(ExcelWorksheet sheet, ExportContext model, NORMReportingFramework.Disclosure disclosure)
         {
-            string[] classes = { "Land", "Buildings", "Heritage and cultural", "Plant and equipment", "Computer software", "Other intangibles", "Total" };
-            sheet.Cells[7, 1].Value = "Movement";
-            for (int i = 0; i < classes.Length; i++) sheet.Cells[7, i + 2].Value = classes[i];
-            StyleHeader(sheet.Cells[7, 1, 7, classes.Length + 1], false);
-            string[] movements = { "Opening carrying amount", "Additions", "Revaluations and impairments", "Depreciation and amortisation", "Disposals and transfers", "Other movements", "Closing carrying amount" };
-            for (int i = 0; i < movements.Length; i++) sheet.Cells[8 + i, 1].Value = movements[i];
-            Dictionary<string, decimal> closing = AssetClassAmounts(model.RunId, "Property plant and equipment");
-            Dictionary<string, decimal> depreciation = AssetClassAmounts(model.RunId, "Depreciation and amortisation");
-            for (int c = 0; c < classes.Length - 1; c++)
+            string[,] classes = new string[,]
             {
-                decimal value;
-                if (closing.TryGetValue(classes[c], out value)) sheet.Cells[14, c + 2].Value = Round(value);
-                if (depreciation.TryGetValue(classes[c], out value)) sheet.Cells[11, c + 2].Value = Round(value);
+                { "LAND", "Land" }, { "BUILDINGS", "Buildings" },
+                { "SPECIALIST_MILITARY_EQUIPMENT", "Specialist military equipment" },
+                { "INFRASTRUCTURE", "Infrastructure" }, { "PLANT_EQUIPMENT", "Plant and equipment" },
+                { "HERITAGE_CULTURAL", "Heritage and cultural assets" },
+                { "COMPUTER_SOFTWARE_PURCHASED", "Computer software - purchased" },
+                { "COMPUTER_SOFTWARE_INTERNALLY_GENERATED", "Computer software - internally generated" },
+                { "OTHER_INTANGIBLES_PURCHASED", "Other intangibles - purchased" },
+                { "OTHER_INTANGIBLES_INTERNALLY_GENERATED", "Other intangibles - internally generated" }
+            };
+            int totalColumn = classes.GetLength(0) + 2;
+            sheet.Cells[7, 1].Value = "Movement";
+            for (int i = 0; i < classes.GetLength(0); i++) sheet.Cells[7, i + 2].Value = classes[i, 1] + "\n$'000";
+            sheet.Cells[7, totalColumn].Value = "Total\n$'000";
+            StyleHeader(sheet.Cells[7, 1, 7, totalColumn], false);
+
+            Dictionary<int, string> labels = new Dictionary<int, string>
+            {
+                { 8, "As at 1 July " + (model.Year - 1).ToString(CultureInfo.InvariantCulture) },
+                { 9, "Gross book value" }, { 10, "Accumulated depreciation, amortisation and impairment" },
+                { 11, "Total as at 1 July " + (model.Year - 1).ToString(CultureInfo.InvariantCulture) },
+                { 12, "Additions" }, { 13, "By purchase or internally developed" }, { 14, "Right-of-use assets" },
+                { 15, "Revaluations and impairments recognised in other comprehensive income" },
+                { 16, "Reclassification" }, { 17, "Depreciation and amortisation" },
+                { 18, "Depreciation of right-of-use assets" },
+                { 19, "Revaluations / write-downs recognised in net cost of services" },
+                { 20, "Other movements" }, { 21, "Reversal of previous asset write-downs and impairment" },
+                { 22, "Transfers in / (out)" }, { 23, "Transfers (to) / from assets held for sale" },
+                { 24, "Remeasurement of right-of-use assets" },
+                { 25, "Other movements pending asset-register classification" },
+                { 26, "Disposals" }, { 27, "Other disposals" }, { 28, "Total movements" },
+                { 29, "Total as at 30 June " + model.Year.ToString(CultureInfo.InvariantCulture) },
+                { 30, "Total as at 30 June " + model.Year.ToString(CultureInfo.InvariantCulture) + " represented by" },
+                { 31, "Gross book value" }, { 32, "Accumulated depreciation, amortisation and impairment" },
+                { 33, "Total as at 30 June " + model.Year.ToString(CultureInfo.InvariantCulture) },
+                { 34, "Carrying amount of right-of-use assets" }
+            };
+            int[] sectionRows = { 8, 12, 20, 26, 30 };
+            foreach (KeyValuePair<int, string> label in labels) sheet.Cells[label.Key, 1].Value = label.Value;
+            for (int i = 0; i < sectionRows.Length; i++)
+            {
+                sheet.Cells[sectionRows[i], 1, sectionRows[i], totalColumn].Merge = true;
+                StyleSection(sheet.Cells[sectionRows[i], 1, sectionRows[i], totalColumn], false);
             }
-            for (int r = 8; r <= 14; r++) sheet.Cells[r, classes.Length + 1].Formula = "SUM(B" + r.ToString() + ":G" + r.ToString() + ")";
-            sheet.Cells[8, 2, 14, classes.Length + 1].Style.Numberformat.Format = AmountFormat;
-            sheet.Cells[8, 2, 14, classes.Length + 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
-            StyleTotal(sheet.Cells[14, 1, 14, classes.Length + 1]);
-            sheet.Cells[16, 1, 18, classes.Length + 1].Merge = true;
-            sheet.Cells[16, 1].Value = "Opening balances, additions, revaluations, disposals and other movements are controlled asset-register inputs. Closing balances and depreciation are generated from frozen NORM lineage.";
-            SetFill(sheet.Cells[16, 1], Amber);
-            sheet.Cells[16, 1].Style.WrapText = true;
-            AddWorkpaperArea(sheet, 20);
-            sheet.Column(1).Width = 42;
-            for (int col = 2; col <= classes.Length + 1; col++) sheet.Column(col).Width = 18;
+
+            Dictionary<string, decimal> closing = AssetClassAmounts(model.RunId, "Property plant and equipment", null);
+            Dictionary<string, decimal> closingGross = AssetClassAmounts(model.RunId, "Property plant and equipment", false);
+            Dictionary<string, decimal> closingAccumulated = AssetClassAmounts(model.RunId, "Property plant and equipment", true);
+            Dictionary<string, decimal> depreciation = AssetClassAmounts(model.RunId, "Depreciation and amortisation", null);
+            for (int c = 0; c < classes.GetLength(0); c++)
+            {
+                string classCode = classes[c, 0], label = classes[c, 1];
+                decimal? openingGross = AssetMovementValue(model.PriorAssetMovements, "CLOSING_GROSS", classCode);
+                decimal? openingAccumulated = AssetMovementValue(model.PriorAssetMovements, "CLOSING_ACCUMULATED", classCode);
+                decimal? opening = AssetMovementValue(model.PriorAssetMovements, "CLOSING_CARRYING", classCode);
+                decimal? close = DictionaryValue(closing, label);
+                decimal? closeGross = DictionaryValue(closingGross, label);
+                decimal? closeAccumulated = DictionaryValue(closingAccumulated, label);
+                decimal? depreciationMovement = DictionaryValue(depreciation, label);
+                if (depreciationMovement.HasValue) depreciationMovement = -Math.Abs(depreciationMovement.Value);
+                decimal? totalMovement = close.HasValue && opening.HasValue ? (decimal?)(close.Value - opening.Value) : null;
+                decimal? residual = totalMovement.HasValue ? (decimal?)(totalMovement.Value - (depreciationMovement ?? 0m)) : null;
+                int column = c + 2;
+                SetRounded(sheet.Cells[9, column], openingGross);
+                SetRounded(sheet.Cells[10, column], openingAccumulated);
+                SetRounded(sheet.Cells[11, column], opening);
+                SetRounded(sheet.Cells[17, column], depreciationMovement);
+                SetRounded(sheet.Cells[25, column], residual);
+                SetRounded(sheet.Cells[28, column], totalMovement);
+                SetRounded(sheet.Cells[29, column], close);
+                SetRounded(sheet.Cells[31, column], closeGross);
+                SetRounded(sheet.Cells[32, column], closeAccumulated);
+                SetRounded(sheet.Cells[33, column], close);
+            }
+            for (int r = 9; r <= 34; r++)
+            {
+                if (Array.IndexOf(sectionRows, r) >= 0) continue;
+                sheet.Cells[r, totalColumn].Formula = "SUM(B" + r.ToString(CultureInfo.InvariantCulture) + ":K" + r.ToString(CultureInfo.InvariantCulture) + ")";
+            }
+            sheet.Cells[9, 2, 34, totalColumn].Style.Numberformat.Format = AmountFormat;
+            sheet.Cells[9, 2, 34, totalColumn].Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
+            int[] totalRows = { 11, 28, 29, 33 };
+            for (int i = 0; i < totalRows.Length; i++) StyleTotal(sheet.Cells[totalRows[i], 1, totalRows[i], totalColumn]);
+            SetFill(sheet.Cells[25, 1, 25, totalColumn], Amber);
+            AddWorkpaperArea(sheet, 37);
+            sheet.Column(1).Width = 54;
+            for (int col = 2; col <= totalColumn; col++) sheet.Column(col).Width = 16;
             sheet.View.FreezePanes(8, 2);
+            sheet.PrinterSettings.PrintArea = sheet.Cells[1, 1, 34, totalColumn];
         }
 
-        private static Dictionary<string, decimal> AssetClassAmounts(int runId, string lineCode)
+        private static Dictionary<string, decimal> AssetClassAmounts(int runId, string lineCode, bool? accumulated)
         {
+            string classification = "CASE WHEN UPPER(NoteSubLineSnapshot) LIKE 'LAND%' THEN 'Land' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'BUILD%' THEN 'Buildings' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'SME%' THEN 'Specialist military equipment' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'IFA%' THEN 'Infrastructure' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'P&E%' THEN 'Plant and equipment' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'HCA%' THEN 'Heritage and cultural assets' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS PURCHASED%' THEN 'Computer software - purchased' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS INTERNALLY%' THEN 'Computer software - internally generated' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'OTHER INTANGIBLES PURCHASED%' THEN 'Other intangibles - purchased' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'OTHER INTANGIBLES INTERNALLY%' THEN 'Other intangibles - internally generated' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS%' THEN 'Computer software - purchased' " +
+                "WHEN UPPER(NoteSubLineSnapshot) LIKE '%INTANGIBLE%' THEN 'Other intangibles - purchased' " +
+                "ELSE 'Plant and equipment' END";
+            string balanceFilter = !accumulated.HasValue ? "" : accumulated.Value
+                ? " AND LOWER(COALESCE(NoteSubLineSnapshot,'')+' '+COALESCE(tb.GlText,'')) LIKE '%accum%' "
+                : " AND LOWER(COALESCE(NoteSubLineSnapshot,'')+' '+COALESCE(tb.GlText,'')) NOT LIKE '%accum%' ";
             DataTable table = NORMHelper.Query(
-                "SELECT CASE WHEN UPPER(NoteSubLineSnapshot) LIKE 'LAND%' THEN 'Land' WHEN UPPER(NoteSubLineSnapshot) LIKE 'BUILD%' THEN 'Buildings' " +
-                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'HCA%' THEN 'Heritage and cultural' WHEN UPPER(NoteSubLineSnapshot) LIKE 'P&E%' OR UPPER(NoteSubLineSnapshot) LIKE 'IFA%' OR UPPER(NoteSubLineSnapshot) LIKE 'SME%' THEN 'Plant and equipment' " +
-                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS%' THEN 'Computer software' WHEN UPPER(NoteSubLineSnapshot) LIKE '%INTANGIBLE%' THEN 'Other intangibles' ELSE 'Plant and equipment' END AS AssetClass," +
-                "SUM(PresentedContribution) AS Amount FROM dbo.tblNORM_Lineage l INNER JOIN dbo.tblNORM_LineResult r ON r.LineResultId=l.LineResultId " +
-                "WHERE l.CalculationRunId=@run AND r.LineCode=@line GROUP BY CASE WHEN UPPER(NoteSubLineSnapshot) LIKE 'LAND%' THEN 'Land' WHEN UPPER(NoteSubLineSnapshot) LIKE 'BUILD%' THEN 'Buildings' " +
-                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'HCA%' THEN 'Heritage and cultural' WHEN UPPER(NoteSubLineSnapshot) LIKE 'P&E%' OR UPPER(NoteSubLineSnapshot) LIKE 'IFA%' OR UPPER(NoteSubLineSnapshot) LIKE 'SME%' THEN 'Plant and equipment' " +
-                "WHEN UPPER(NoteSubLineSnapshot) LIKE 'CS%' THEN 'Computer software' WHEN UPPER(NoteSubLineSnapshot) LIKE '%INTANGIBLE%' THEN 'Other intangibles' ELSE 'Plant and equipment' END",
+                "SELECT " + classification + " AS AssetClass,SUM(PresentedContribution) AS Amount " +
+                "FROM dbo.tblNORM_Lineage l INNER JOIN dbo.tblNORM_LineResult r ON r.LineResultId=l.LineResultId " +
+                "INNER JOIN dbo.tblNORM_TrialBalanceRow tb ON tb.TbRowId=l.TbRowId " +
+                "WHERE l.CalculationRunId=@run AND r.LineCode=@line " + balanceFilter +
+                "GROUP BY " + classification,
                 NORMHelper.P("@run", runId), NORMHelper.P("@line", lineCode));
             Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < table.Rows.Count; i++) values[NORMHelper.Str(table.Rows[i], "AssetClass")] = NORMHelper.Dec(table.Rows[i], "Amount");
             return values;
+        }
+
+        private static decimal? AssetMovementValue(Dictionary<string, decimal> values, string rowCode, string classCode)
+        {
+            decimal value;
+            return values != null && values.TryGetValue(rowCode + "|" + classCode, out value) ? (decimal?)value : null;
+        }
+
+        private static decimal? DictionaryValue(Dictionary<string, decimal> values, string key)
+        {
+            decimal value;
+            return values != null && values.TryGetValue(key, out value) ? (decimal?)value : null;
         }
 
         private static Dictionary<string, decimal?> ManualPrior(DataTable inputs, string disclosureCode)
@@ -1170,10 +1262,11 @@ namespace CPlatform.NORM
             sheet.Cells.Style.Font.Size = 10;
             sheet.Cells.Style.VerticalAlignment = ExcelVerticalAlignment.Top;
             sheet.PrinterSettings.ShowGridLines = false;
-            sheet.PrinterSettings.Orientation = eOrientation.Portrait;
+            bool assetMovement = sheet.Name.StartsWith("3.2A", StringComparison.OrdinalIgnoreCase);
+            sheet.PrinterSettings.Orientation = assetMovement ? eOrientation.Landscape : eOrientation.Portrait;
             sheet.PrinterSettings.FitToPage = true;
             sheet.PrinterSettings.FitToWidth = 1;
-            sheet.PrinterSettings.FitToHeight = 0;
+            sheet.PrinterSettings.FitToHeight = assetMovement ? 1 : 0;
             sheet.PrinterSettings.LeftMargin = 0.35m;
             sheet.PrinterSettings.RightMargin = 0.35m;
             sheet.PrinterSettings.TopMargin = 0.5m;

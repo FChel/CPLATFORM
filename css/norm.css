@@ -164,3 +164,36 @@ body.norm-upload-busy{overflow:hidden}
   .norm-print-page .norm-financial-row.administered{background:#ddd!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .norm-administered-print .norm-financial-table,.norm-administered-print .norm-note-table,.norm-administered-print .norm-financial-table thead th,.norm-administered-print .norm-note-table thead th,.norm-administered-print .norm-financial-row.administered th,.norm-administered-print .norm-financial-row.administered td,.norm-administered-print .norm-section-row.administered th{background:#d3d3d3!important;color:#171717!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.norm-administered-print .norm-financial-table,.norm-administered-print .norm-note-table{padding:2mm}.norm-administered-print .norm-print-head{margin-bottom:3mm}
 }
+
+/* Defence-style Note 3.2A asset reconciliation. */
+.norm-asset-note-table{min-width:1850px}
+.norm-asset-note-table thead th{white-space:normal;vertical-align:bottom}
+.norm-asset-note-table thead th small{display:block;margin-top:3px;font-weight:400}
+.norm-asset-note-table .norm-asset-section th{padding-top:12px;border-bottom:0;background:#f1f3f2;color:#263a33;font-family:var(--norm-sans);font-weight:800;text-transform:none}
+.norm-asset-note-table .norm-asset-pending th,.norm-asset-note-table .norm-asset-pending td{background:#fff8e8}
+@media print{
+  @page norm-portrait{size:A4 portrait;margin:17mm 18mm 16mm}
+  @page norm-asset-landscape{size:A4 landscape;margin:9mm 10mm 8mm}
+  .norm-print-page{page:norm-portrait}
+  .norm-print-asset-reconciliation{page:norm-asset-landscape;font-family:Arial,Helvetica,sans-serif}
+  .norm-print-asset-reconciliation .norm-print-head{margin-bottom:2mm}
+  .norm-print-asset-reconciliation .norm-print-head span,
+  .norm-print-asset-reconciliation .norm-print-head h1,
+  .norm-print-asset-reconciliation .norm-print-head p{font-size:7pt}
+  .norm-print-asset-reconciliation h2{margin:1mm 0 2mm;font:700 6.6pt/1.15 Arial,Helvetica,sans-serif;text-decoration:none}
+  .norm-print-asset-reconciliation .norm-table-scroll{overflow:visible}
+  .norm-print-asset-reconciliation .norm-asset-note-table{width:100%;min-width:0;margin:0;table-layout:fixed;border-collapse:collapse;font-size:4.6pt}
+  .norm-print-asset-reconciliation .norm-asset-note-table thead th{padding:.7mm .45mm;font:700 4.5pt/1.05 Arial,Helvetica,sans-serif;text-align:right!important;vertical-align:bottom}
+  .norm-print-asset-reconciliation .norm-asset-note-table thead th:first-child{width:47mm;text-align:left!important}
+  .norm-print-asset-reconciliation .norm-asset-note-table thead th small{font-size:4.2pt;margin-top:.35mm}
+  .norm-print-asset-reconciliation .norm-asset-note-table tbody th,
+  .norm-print-asset-reconciliation .norm-asset-note-table tbody td{min-width:0;padding:.45mm .45mm;border-bottom:.35pt solid #b8b8b8;font:400 4.6pt/1.08 Arial,Helvetica,sans-serif}
+  .norm-print-asset-reconciliation .norm-asset-note-table tbody th{text-align:left!important}
+  .norm-print-asset-reconciliation .norm-asset-note-table tbody td{text-align:right!important}
+  .norm-print-asset-reconciliation .norm-asset-note-table .norm-asset-section th{padding:.7mm .45mm .25mm;border:0;background:#fff!important;color:#171717;font-weight:700}
+  .norm-print-asset-reconciliation .norm-asset-note-table tr.total th,
+  .norm-print-asset-reconciliation .norm-asset-note-table tr.total td{border-top:.45pt solid #171717;border-bottom:.8pt solid #171717;font-weight:700}
+  .norm-print-asset-reconciliation .norm-asset-note-table .norm-asset-pending th,
+  .norm-print-asset-reconciliation .norm-asset-note-table .norm-asset-pending td{background:#fff!important}
+  .norm-print-asset-reconciliation .norm-print-control{display:none!important}
+}
