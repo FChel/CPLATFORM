@@ -159,6 +159,7 @@ namespace CPlatform.NORM
                 sheet.Cells[3, 1].Value = "Version"; sheet.Cells[3, 2].Value = NORMHelper.Str(release, "VersionCode");
                 sheet.Cells[4, 1].Value = "Instructions"; sheet.Cells[4, 2].Value = "Edit the blue columns only. Use stable face-statement line codes from the Reference lists sheet. A reason is required for every changed row.";
                 sheet.Cells[4, 2, 4, 8].Merge = true; sheet.Cells[4, 2].Style.WrapText = true;
+                sheet.Cells[5, 1].Value = "Workbook format"; sheet.Cells[5, 2].Value = 2;
                 string[] headers = { "G/L account", "Description", "Current TB balance ($)", "Account type", "Face statement line code", "Note sub-line", "Cash-flow class", "Change reason" };
                 for (int i = 0; i < headers.Length; i++) sheet.Cells[HeaderRow, i + 1].Value = headers[i];
                 sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Font.Bold = true; sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Font.Color.SetColor(Color.White);
@@ -233,6 +234,8 @@ namespace CPlatform.NORM
                 if (sheet == null) throw new InvalidOperationException("The workbook does not contain the required Mappings sheet.");
                 int workbookRelease; if (!Int32.TryParse(Convert.ToString(sheet.Cells[2, 2].Value), out workbookRelease) || workbookRelease != releaseId)
                     throw new InvalidOperationException("This workbook belongs to a different configuration release. Download a fresh workbook for this draft.");
+                if (!String.Equals(Cell(sheet, 5, 2), "2", StringComparison.Ordinal))
+                    throw new InvalidOperationException("This is an older mapping workbook layout. Download a fresh workbook for this draft before making changes.");
                 int last = sheet.Dimension == null ? HeaderRow : sheet.Dimension.End.Row;
                 for (int rowNumber = HeaderRow + 1; rowNumber <= last; rowNumber++)
                 {
