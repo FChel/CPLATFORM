@@ -167,10 +167,19 @@ body.norm-upload-busy{overflow:hidden}
 
 /* Defence-style Note 3.2A asset reconciliation. */
 .norm-asset-note-table{min-width:1850px}
+.norm-notes-document{max-width:1180px}
+.norm-asset-web-grid{display:grid;gap:18px;margin-top:18px}
+.norm-asset-web-panel{overflow:hidden;border:1px solid #d9dfe2;border-radius:10px;background:#fff;box-shadow:0 5px 18px rgba(16,35,45,.05)}
+.norm-asset-web-panel h4{margin:0;padding:12px 16px;border-bottom:1px solid #d9dfe2;background:#f4f6f5;color:#253a32;font:800 12px var(--norm-sans);letter-spacing:.02em}
+.norm-asset-web-panel .norm-table-scroll{overflow-x:auto;margin:0}
+.norm-asset-web-panel .norm-asset-note-table{width:100%;min-width:780px;margin:0;table-layout:fixed}
+.norm-asset-web-panel .norm-asset-note-table thead th:first-child{width:230px}
+.norm-asset-web-panel .norm-asset-note-table th,.norm-asset-web-panel .norm-asset-note-table td{padding:8px 6px}
 .norm-asset-note-table thead th{white-space:normal;vertical-align:bottom}
 .norm-asset-note-table thead th small{display:block;margin-top:3px;font-weight:400}
 .norm-asset-note-table .norm-asset-section th{padding-top:12px;border-bottom:0;background:#f1f3f2;color:#263a33;font-family:var(--norm-sans);font-weight:800;text-transform:none}
 .norm-asset-note-table .norm-asset-pending th,.norm-asset-note-table .norm-asset-pending td{background:#fff8e8}
+@media(max-width:820px){.norm-notes-document{max-width:none}.norm-asset-web-panel .norm-asset-note-table{min-width:760px}}
 @media print{
   @page norm-portrait{size:A4 portrait;margin:17mm 18mm 16mm}
   @page norm-asset-landscape{size:A4 landscape;margin:9mm 10mm 8mm}

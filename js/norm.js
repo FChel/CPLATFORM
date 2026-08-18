@@ -137,6 +137,7 @@
   function renderStatement() {
     var statement = currentStatement();
     byId("statementDocument").classList.toggle("norm-administered-document", !!statement.administered);
+    byId("statementDocument").classList.toggle("norm-notes-document", statement.layout === "notes");
     if (statement.layout === "notes") { renderNotes(statement); return; }
     if (statement.layout === "adminNotes") { renderAdministeredNotes(statement); return; }
     if (statement.layout === "assetMovement") { renderAssetMovement(statement); return; }
@@ -242,6 +243,33 @@
     bindNoteJumps();
   }
 
+  function assetMovementSubtotal(rows, key) {
+    var values = rows.filter(function (row) { return row[key] !== null && row[key] !== undefined && row[key] !== ""; });
+    return values.length ? values.reduce(function (sum, row) { return sum + Number(row[key] || 0); }, 0) : null;
+  }
+
+  function assetMovementTable(rows, total, movements, interactive, title, indexOffset, totalLabel) {
+    var head = '<tr><th>Movement</th>' + rows.map(function (row) { return '<th>' + esc(row.label) + '<small>$\'000</small></th>'; }).join("") + '<th>' + esc(totalLabel) + '<small>$\'000</small></th></tr>';
+    var body = movements.map(function (movement) {
+      if (movement.section) return '<tr class="norm-asset-section"><th colspan="' + (rows.length + 2) + '">' + esc(movement.label) + '</th></tr>';
+      var values = rows.map(function (row, index) {
+        var value = row[movement.key];
+        var sources = movement.key === "closingGross" ? (row.closingGrossSources || []) :
+          (movement.key === "closingAccumulated" ? (row.closingAccumulatedSources || []) :
+            (movement.key === "closing" ? (row.closingSources || []) :
+              (movement.key === "depreciation" ? (row.depreciationSources || []) : [])));
+        var drillable = interactive && sources.length;
+        return '<td class="norm-amount">' + (drillable ? '<button type="button" class="norm-figure" data-note-asset-row="' + (indexOffset + index) + '" data-kind="' + movement.key + '"><span class="norm-status mapped"></span><span>' + number(value) + '</span></button>' : number(value)) + '</td>';
+      }).join("");
+      var totalValue = total ? total[movement.key] : assetMovementSubtotal(rows, movement.key);
+      return '<tr class="' + (movement.total ? 'total ' : '') + (movement.pending ? 'norm-asset-pending' : '') + '"><th>' + esc(movement.label) + '</th>' + values + '<td class="norm-amount">' + number(totalValue) + '</td></tr>';
+    }).join("");
+    var table = '<table class="norm-asset-table norm-asset-note-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+    return interactive
+      ? '<section class="norm-asset-web-panel"><h4>' + esc(title) + '</h4><div class="norm-table-scroll">' + table + '</div></section>'
+      : '<div class="norm-table-scroll">' + table + '</div>';
+  }
+
   function assetMovementNoteTable(interactive) {
     var rows = ((data.assetMovement || {}).rows || []).filter(function (row) { return !row.total; });
     var total = ((data.assetMovement || {}).rows || []).filter(function (row) { return row.total; })[0] || {};
@@ -275,21 +303,13 @@
       { label: "Total as at 30 June " + data.meta.yearCurrent, key: "closing", total: true },
       { label: "Carrying amount of right-of-use assets", key: "rightOfUseCarrying" }
     ];
-    var head = '<tr><th>Movement</th>' + rows.map(function (row) { return '<th>' + esc(row.label) + '<small>$\'000</small></th>'; }).join("") + '<th>Total<small>$\'000</small></th></tr>';
-    var body = movements.map(function (movement) {
-      if (movement.section) return '<tr class="norm-asset-section"><th colspan="' + (rows.length + 2) + '">' + esc(movement.label) + '</th></tr>';
-      var values = rows.map(function (row, index) {
-        var value = row[movement.key];
-        var sources = movement.key === "closingGross" ? (row.closingGrossSources || []) :
-          (movement.key === "closingAccumulated" ? (row.closingAccumulatedSources || []) :
-            (movement.key === "closing" ? (row.closingSources || []) :
-              (movement.key === "depreciation" ? (row.depreciationSources || []) : [])));
-        var drillable = interactive && sources.length;
-        return '<td class="norm-amount">' + (drillable ? '<button type="button" class="norm-figure" data-note-asset-row="' + index + '" data-kind="' + movement.key + '"><span class="norm-status mapped"></span><span>' + number(value) + '</span></button>' : number(value)) + '</td>';
-      }).join("");
-      return '<tr class="' + (movement.total ? 'total ' : '') + (movement.pending ? 'norm-asset-pending' : '') + '"><th>' + esc(movement.label) + '</th>' + values + '<td class="norm-amount">' + number(total[movement.key]) + '</td></tr>';
-    }).join("");
-    return '<div class="norm-table-scroll"><table class="norm-asset-table norm-asset-note-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+    var table = interactive
+      ? '<div class="norm-asset-web-grid">' +
+        assetMovementTable(rows.slice(0, 5), null, movements, true, "Property, plant and equipment", 0, "Subtotal") +
+        assetMovementTable(rows.slice(5), null, movements, true, "Other non-financial assets and intangibles", 5, "Subtotal") +
+        '</div>'
+      : assetMovementTable(rows, total, movements, false, "", 0, "Total");
+    return table +
       '<p class="norm-print-control">Opening balances are sourced from the closing balances in the retained prior-year financial statements. Current closing balances and depreciation are derived from frozen trial-balance lineage; the residual other-movements line remains visible until the detailed asset-register movements are loaded.</p>';
   }
 
