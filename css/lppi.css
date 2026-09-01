@@ -1844,8 +1844,11 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     flex-shrink: 0;
 }
 .review-shell .instructions-body .instr-flow-baseline {
-    display: inline-flex;
-    align-items: center;
+    /* Normal inline text flow, not flex - as a flex container the text runs
+       and <strong> tags become flex items and the spaces between words are
+       dropped. flex:1 makes every branch box the same width. */
+    display: block;
+    flex: 1 1 auto;
     padding: 10px 14px;
     background: var(--white);
     border: 1px dashed var(--orange);
@@ -1853,7 +1856,8 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     box-shadow: var(--shadow-sm);
     font-size: 12px;
     color: var(--ink);
-    line-height: 1.35;
+    line-height: 1.5;
+    text-align: left;
 }
 .review-shell .instructions-body p.instr-flow-caption {
     margin: 10px 0 0;
