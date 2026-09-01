@@ -498,8 +498,8 @@
 
                         <dt>The baseline date in the LPPI Report is incorrect &mdash; what should I do?</dt>
                         <dd>
-                            You need to select the Reason Code <strong>Interest Not Payable &mdash; Incorrect data, document eligible for reload</strong> (RC-RL) against the document in LPPI Review, and supply Comments and Evidence (Objective Reference) as for any Not&nbsp;payable outcome.
-                            <p style="margin:10px 0 0;">The update will be loaded into LPPI Review, and a supplementary review email will be sent to you for completion once the corrected line is available.</p>
+                            Select Reason Code <strong>&ldquo;Interest Not Payable &ndash; incorrect data, document eligible for reload&rdquo;</strong> (RC-RL) against the document, enter the correct baseline date, and supply Comments and Evidence (Objective Reference) as for any Not&nbsp;payable outcome.
+                            <p style="margin:10px 0 0;">The update will be loaded into the LPPI Review, and a supplementary review email will be sent to you for completion if interest is still payable based on the baseline date amendment interest recalculation.</p>
                         </dd>
 
                         <dt>I rejected the invoice off-system (e.g. email to supplier) &mdash; why has the invoice incurred LPPI?</dt>
@@ -510,6 +510,13 @@
 
                         <dt>I approved an invoice late &mdash; why isn't it in LPPI Review?</dt>
                         <dd>Automated logic identifies late payments using a priority-based rule set. Not every late approval triggers an LPPI charge &mdash; see <a href="#instr-faq-logic">LPPI Logic</a> for the conditions that apply.</dd>
+
+                        <dt>My Purchase Order is raised under a SON dated prior to 1 July 2022, but is supported by a deed containing provisions for the payment of interest (before or after 1 July 2022), is LPPI payable?</dt>
+                        <dd>
+                            If there is a deed (contract) under the SON &ndash; dated either prior to or after the effective date, but the deed specifically states that interest is payable, then it is payable.
+                            <p style="margin:10px 0 0;">Where transactions are not adequately supported by the existing RMG&nbsp;417 review logic, the appropriate treatment should be considered in consultation with the relevant POC and Policy teams.</p>
+                            <p style="margin:10px 0 0;">The LPPI review logic is intended to apply established business rules using available data attributes and should not be relied upon as a mechanism for enforcing or interpreting policy requirements.</p>
+                        </dd>
 
                         <dt>I confirmed interest has already been paid for an invoice paid late &mdash; what should I do?</dt>
                         <dd>Review the document in LPPI Review and select the appropriate Reason Code. Comments and Evidence (Objective Reference) are required where the outcome is Not&nbsp;payable.</dd>
@@ -577,12 +584,8 @@
                             <tr>
                                 <td><strong>Baseline Date</strong></td>
                                 <td>
-                                    ERP calculates baseline date as the latter of the Invoice Received Date or the Goods Receipt Entry Date.
-                                    DFG propose an interim process to recognise material and non-material purchases with separate baseline date logic:
-                                    <ul class="instr-list" style="margin:6px 0 0;">
-                                        <li><strong>Material PO</strong> &mdash; later of IR or GR dates</li>
-                                        <li><strong>Non-material PO</strong> &mdash; later of IR or Invoice Date</li>
-                                    </ul>
+                                    ERP calculates Baseline Date as the latter of the Invoice Received Date or the Goods Receipt Entry Date.
+                                    The LPPI Review Dashboard recognises material and non-material Purchase Orders with separate baseline date logic for each.
                                 </td>
                             </tr>
                             <tr>
@@ -594,53 +597,57 @@
 
                     <%-- ============================================================
                          FAQ reference: Due Date Calculation Logic
-                         Diagram showing how baseline date + payment terms combine
-                         under the interim (1A Material, 1B Non-Material) and
-                         future ERP (2) rules.
+                         Baseline date decision flow per CIR Item 35 (Sep 2026):
+                         Material PO? then Submission Method (VIM / Direct-Ariba),
+                         each branch resolving to a Baseline Date, + Payment Terms.
                          ============================================================ --%>
                     <h3 id="instr-faq-duedate" class="instr-faq-h3">Due Date Calculation Logic</h3>
-                    <p>The due date is calculated from the relevant baseline date plus payment terms. The baseline date differs by purchase type and ERP rule version:</p>
-                    <div class="instr-duedate">
-                        <div class="instr-duedate-row">
-                            <div class="instr-duedate-rule">
-                                <span class="instr-duedate-rule-num">1A</span>
-                                <span class="instr-duedate-rule-label">Interim<br />Material</span>
+                    <p>The due date is calculated from the relevant baseline date plus payment terms. The baseline date depends on whether the purchase order is a material PO, and on how the invoice was submitted:</p>
+                    <div class="instr-flow">
+                        <div class="instr-flow-start">
+                            <span class="instr-flow-node instr-flow-node-start">Invoice Received</span>
+                            <span class="instr-flow-arrow" aria-hidden="true">&rarr;</span>
+                            <span class="instr-flow-decision">Material PO?</span>
+                        </div>
+                        <div class="instr-flow-group">
+                            <div class="instr-flow-group-head">
+                                <span class="instr-flow-answer">No</span>
+                                <span class="instr-flow-group-label">Non-material PO &mdash; Submission Method?</span>
                             </div>
-                            <div class="instr-duedate-eqn">
-                                <span class="instr-duedate-cell instr-duedate-result">Due Date</span>
-                                <span class="instr-duedate-op">=</span>
-                                <span class="instr-duedate-cell instr-duedate-baseline"><em>Latter of</em><br />IR Date or<br />GE date</span>
-                                <span class="instr-duedate-op">+</span>
-                                <span class="instr-duedate-cell">Payment<br />Terms</span>
+                            <div class="instr-flow-branch">
+                                <span class="instr-flow-method">VIM</span>
+                                <span class="instr-flow-arrow" aria-hidden="true">&rarr;</span>
+                                <span class="instr-flow-baseline">Baseline Date = Later of <strong>Invoice Document Date</strong> and <strong>Invoice Receipt Date</strong></span>
+                            </div>
+                            <div class="instr-flow-branch">
+                                <span class="instr-flow-method">Direct / Ariba</span>
+                                <span class="instr-flow-arrow" aria-hidden="true">&rarr;</span>
+                                <span class="instr-flow-baseline">Baseline Date = Later of <strong>Invoice Creation Date</strong> and <strong>Invoice Document Date</strong></span>
                             </div>
                         </div>
-                        <div class="instr-duedate-row">
-                            <div class="instr-duedate-rule">
-                                <span class="instr-duedate-rule-num">1B</span>
-                                <span class="instr-duedate-rule-label">Interim<br />Non-Material</span>
+                        <div class="instr-flow-group">
+                            <div class="instr-flow-group-head">
+                                <span class="instr-flow-answer">Yes</span>
+                                <span class="instr-flow-group-label">Material PO &mdash; Submission Method?</span>
                             </div>
-                            <div class="instr-duedate-eqn">
-                                <span class="instr-duedate-cell instr-duedate-result">Due Date</span>
-                                <span class="instr-duedate-op">=</span>
-                                <span class="instr-duedate-cell instr-duedate-baseline">IR Date</span>
-                                <span class="instr-duedate-op">+</span>
-                                <span class="instr-duedate-cell">Payment<br />Terms</span>
+                            <div class="instr-flow-branch">
+                                <span class="instr-flow-method">VIM</span>
+                                <span class="instr-flow-arrow" aria-hidden="true">&rarr;</span>
+                                <span class="instr-flow-baseline">Baseline Date = Later of <strong>GR Date</strong> and <strong>Invoice Receipt Date</strong></span>
                             </div>
-                        </div>
-                        <div class="instr-duedate-row">
-                            <div class="instr-duedate-rule">
-                                <span class="instr-duedate-rule-num">2</span>
-                                <span class="instr-duedate-rule-label">Future ERP<br />(Aug&nbsp;26)</span>
-                            </div>
-                            <div class="instr-duedate-eqn">
-                                <span class="instr-duedate-cell instr-duedate-result">Due Date</span>
-                                <span class="instr-duedate-op">=</span>
-                                <span class="instr-duedate-cell instr-duedate-baseline"><em>Latter of</em><br />IR Date or<br />GR date</span>
-                                <span class="instr-duedate-op">+</span>
-                                <span class="instr-duedate-cell">Payment<br />Terms</span>
+                            <div class="instr-flow-branch">
+                                <span class="instr-flow-method">Direct / Ariba</span>
+                                <span class="instr-flow-arrow" aria-hidden="true">&rarr;</span>
+                                <span class="instr-flow-baseline">Baseline Date = Later of <strong>GR Date</strong> and <strong>Invoice Document Date</strong></span>
                             </div>
                         </div>
-                        <p class="instr-duedate-caption">The dashed column above is the <strong>Baseline Date</strong> &mdash; the date from which payment terms are counted.</p>
+                        <div class="instr-flow-end">
+                            <span class="instr-flow-op">+</span>
+                            <span class="instr-flow-node">Payment Terms</span>
+                            <span class="instr-flow-op">=</span>
+                            <span class="instr-flow-node instr-flow-node-due">Due Date</span>
+                        </div>
+                        <p class="instr-flow-caption">Every branch ends the same way &mdash; the dashed box is the <strong>Baseline Date</strong>, and payment terms are counted from it.</p>
                     </div>
 
                     <%-- ============================================================

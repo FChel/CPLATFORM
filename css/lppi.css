@@ -1733,63 +1733,34 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     border-top: 1px solid var(--line);
 }
 
-/* ---------- Due Date Calculation Logic — three-rule diagram ---------- */
-.review-shell .instructions-body .instr-duedate {
+/* ---------- Due Date Calculation Logic — baseline date decision flow ---------- */
+.review-shell .instructions-body .instr-flow {
     margin: 0 0 16px;
     padding: 16px;
     background: var(--orange-soft);
     border: 1px solid var(--orange-tint);
     border-radius: var(--r-lg);
 }
-.review-shell .instructions-body .instr-duedate-row {
+.review-shell .instructions-body .instr-flow-start,
+.review-shell .instructions-body .instr-flow-end {
     display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 10px 0;
-    border-bottom: 1px dashed var(--orange-tint);
-}
-.review-shell .instructions-body .instr-duedate-row:last-of-type {
-    border-bottom: none;
-}
-.review-shell .instructions-body .instr-duedate-rule {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 130px;
-    flex-shrink: 0;
-}
-.review-shell .instructions-body .instr-duedate-rule-num {
-    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--orange);
-    color: var(--white);
-    font-weight: 700;
-    font-size: 13px;
-    flex-shrink: 0;
-}
-.review-shell .instructions-body .instr-duedate-rule-label {
-    font-style: italic;
-    color: var(--ink-2);
-    font-size: 12px;
-    line-height: 1.3;
-}
-.review-shell .instructions-body .instr-duedate-eqn {
-    display: flex;
-    align-items: center;
-    gap: 10px;
     flex-wrap: wrap;
+    gap: 10px;
+    padding: 6px 0 12px;
 }
-.review-shell .instructions-body .instr-duedate-cell {
+.review-shell .instructions-body .instr-flow-end {
+    padding: 14px 0 4px;
+    margin-top: 4px;
+    border-top: 1px dashed var(--orange-tint);
+}
+.review-shell .instructions-body .instr-flow-node {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    min-width: 110px;
-    padding: 10px 14px;
+    padding: 10px 16px;
     background: var(--white);
     border: 1px solid var(--line);
     border-radius: var(--r);
@@ -1798,22 +1769,93 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
     color: var(--ink);
     line-height: 1.35;
 }
-.review-shell .instructions-body .instr-duedate-result {
-    background: var(--bg);
-    font-weight: 700;
-}
-.review-shell .instructions-body .instr-duedate-baseline {
-    border-style: dashed;
+.review-shell .instructions-body .instr-flow-node-start,
+.review-shell .instructions-body .instr-flow-node-due {
+    background: var(--orange);
     border-color: var(--orange);
-    background: var(--white);
+    color: var(--white);
+    font-weight: 700;
+    border-radius: 999px;
 }
-.review-shell .instructions-body .instr-duedate-op {
-    font-size: 18px;
+.review-shell .instructions-body .instr-flow-decision {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 18px;
+    background: var(--white);
+    border: 2px solid var(--orange);
+    border-radius: var(--r);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+}
+.review-shell .instructions-body .instr-flow-arrow,
+.review-shell .instructions-body .instr-flow-op {
+    font-size: 16px;
     font-weight: 700;
     color: var(--orange-deep);
     flex-shrink: 0;
 }
-.review-shell .instructions-body p.instr-duedate-caption {
+.review-shell .instructions-body .instr-flow-group {
+    padding: 12px 0;
+    border-top: 1px dashed var(--orange-tint);
+}
+.review-shell .instructions-body .instr-flow-group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.review-shell .instructions-body .instr-flow-answer {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--orange);
+    color: var(--white);
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.review-shell .instructions-body .instr-flow-group-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-2);
+}
+.review-shell .instructions-body .instr-flow-branch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 0 5px 22px;
+}
+.review-shell .instructions-body .instr-flow-method {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 96px;
+    padding: 7px 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    font-size: 11px;
+    font-style: italic;
+    color: var(--ink-2);
+    flex-shrink: 0;
+}
+.review-shell .instructions-body .instr-flow-baseline {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--white);
+    border: 1px dashed var(--orange);
+    border-radius: var(--r);
+    box-shadow: var(--shadow-sm);
+    font-size: 12px;
+    color: var(--ink);
+    line-height: 1.35;
+}
+.review-shell .instructions-body p.instr-flow-caption {
     margin: 10px 0 0;
     font-size: 12px;
     color: var(--ink-3);
@@ -1822,18 +1864,19 @@ hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
 }
 
 @media (max-width: 760px) {
-    .review-shell .instructions-body .instr-duedate-row {
+    .review-shell .instructions-body .instr-flow-branch {
         flex-direction: column;
         align-items: flex-start;
-        gap: 8px;
-    }
-    .review-shell .instructions-body .instr-duedate-eqn {
         gap: 6px;
+        padding-left: 12px;
     }
-    .review-shell .instructions-body .instr-duedate-cell {
-        min-width: 90px;
-        padding: 8px 10px;
+    .review-shell .instructions-body .instr-flow-branch .instr-flow-arrow {
+        display: none;
+    }
+    .review-shell .instructions-body .instr-flow-method,
+    .review-shell .instructions-body .instr-flow-baseline {
         font-size: 11px;
+        padding: 8px 10px;
     }
 }
 .review-shell .instructions-body section {
