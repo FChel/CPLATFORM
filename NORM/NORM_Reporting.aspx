@@ -64,15 +64,23 @@
             <div class="norm-capability-grid"><%= CapabilityHtml %></div>
         </section>
 
-        <section class="norm-reporting-panel" id="disclosure-register">
-            <header><div><span class="norm-step">02</span><h2>PRIMA disclosure register</h2></div><p>Required, conditional and not-applicable items are visible in one controlled register.</p></header>
-            <div class="norm-disclosure-summary">
-                <article><strong><%= RequiredCount %></strong><span>Required</span></article>
-                <article><strong><%= GeneratedCount %></strong><span>Generated or drafted</span></article>
-                <article><strong><%= NeedsInputCount %></strong><span>Needs input</span></article>
-                <article><strong><%= NotApplicableCount %></strong><span>Not applicable</span></article>
-            </div>
-            <div class="norm-disclosure-register"><%= DisclosureHtml %></div>
+        <section class="norm-reporting-panel norm-disclosure-panel" id="disclosure-register">
+            <details class="norm-disclosure-collapsible">
+                <summary>
+                    <div><span class="norm-step">02</span><h2>PRIMA disclosure register</h2></div>
+                    <span class="norm-disclosure-summary-copy">Required, conditional and not-applicable items are visible in one controlled register.</span>
+                    <span class="norm-disclosure-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="norm-disclosure-content">
+                    <div class="norm-disclosure-summary">
+                        <article><strong><%= RequiredCount %></strong><span>Required</span></article>
+                        <article><strong><%= GeneratedCount %></strong><span>Generated or drafted</span></article>
+                        <article><strong><%= NeedsInputCount %></strong><span>Needs input</span></article>
+                        <article><strong><%= NotApplicableCount %></strong><span>Not applicable</span></article>
+                    </div>
+                    <div class="norm-disclosure-register"><%= DisclosureHtml %></div>
+                </div>
+            </details>
         </section>
 
         <section class="norm-reporting-panel" id="policies">
