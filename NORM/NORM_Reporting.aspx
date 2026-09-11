@@ -27,6 +27,7 @@
                 <span class="norm-kicker">Commonwealth reporting framework</span>
                 <h1>Configure once. Generate every required statement, note and review module.</h1>
                 <p>The entity profile drives the PRIMA disclosure register. Figures remain linked to the frozen trial-balance lineage; policy wording and workflow evidence remain editable for the reporting team.</p>
+                <div class="norm-reporting-hero-actions"><a class="norm-button" href="NORM_Mapping.aspx?intent=import">Import mapping</a><span>Load or update the account mapping used by the reporting set.</span></div>
             </div>
             <aside>
                 <span>Required disclosures</span><strong><%= RequiredCount %></strong>

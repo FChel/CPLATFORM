@@ -240,3 +240,7 @@ body.norm-upload-busy{overflow:hidden}
   .norm-print-asset-reconciliation .norm-asset-note-table .norm-asset-pending td{background:#fff!important}
   .norm-print-asset-reconciliation .norm-print-control{display:none!important}
 }
+
+.norm-reporting-hero-actions{display:flex;align-items:center;gap:14px;margin-top:20px}
+.norm-reporting-hero-actions span{color:#c9d6d1;font-size:10px;line-height:1.4}
+@media(max-width:620px){.norm-reporting-hero-actions{align-items:flex-start;flex-direction:column}}

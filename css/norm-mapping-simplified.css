@@ -1,0 +1,8 @@
+/* Simplified mapping-workbook workflow. Loaded after the base mapping styles. */
+.norm-mapping-hero aside small{display:block;margin-top:8px;color:#788893;line-height:1.4}
+.norm-mapping-hero .norm-unmapped-callout strong{font:700 46px/1 Georgia,serif;color:#173e35;margin-bottom:4px}
+.norm-mapping-hero .norm-unmapped-callout span{font-weight:800;color:#2c4b5a}
+.norm-mapping-workbook header p{margin:4px 0 0;color:#617380;line-height:1.5}
+.norm-release-summary-compact{grid-template-columns:auto auto 1fr;align-items:center;gap:7px 18px;margin:0 0 8px;padding:12px 16px}
+.norm-release-summary-compact small{text-align:right}
+@media(max-width:900px){.norm-release-summary-compact{grid-template-columns:1fr}.norm-release-summary-compact small{text-align:left}}
