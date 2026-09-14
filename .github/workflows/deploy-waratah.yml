@@ -40,7 +40,6 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           role-session-name: waratah-${{ github.run_id }}
           aws-region: ${{ vars.AWS_REGION }}
-          allowed-account-ids: '663358704059'
       - name: Upload, deploy and verify through Systems Manager
         shell: powershell
         run: ./tools/deploy/Invoke-WaratahDeployment.ps1 -PackageInfo "$env:RUNNER_TEMP/waratah/package.json"
