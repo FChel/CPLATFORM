@@ -1,0 +1,24 @@
+name: Validate WARATAH
+on:
+  pull_request:
+    branches: [uat]
+  push:
+    branches: [uat, 'codex/waratah-deployment']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: WARATAH validation
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Compile and package tracked application files
+        shell: powershell
+        run: ./tools/deploy/New-WaratahPackage.ps1 -Commit $env:GITHUB_SHA -OutputDirectory "$env:RUNNER_TEMP/waratah-validation" -Compile
+      - name: Exercise deployment and rollback in isolation
+        shell: powershell
+        run: ./tools/deploy/Test-DeploymentSafety.ps1 -PackageInfo "$env:RUNNER_TEMP/waratah-validation/package.json"

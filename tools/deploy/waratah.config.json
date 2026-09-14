@@ -1,0 +1,14 @@
+{
+  "siteName": "CPLATFORM",
+  "applicationPath": "C:\\Sites\\CPLATFORM",
+  "applicationPool": "CPLATFORM",
+  "region": "us-east-1",
+  "bucket": "cplatform-waratah-deploy-663358704059-us-east-1",
+  "baseUrl": "http://localhost:8082/",
+  "hostHeader": "",
+  "checks": [
+    { "path": "CFO-Toolkit.aspx", "pattern": "CFO Toolkit" },
+    { "path": "css/cfo-toolkit.css", "pattern": "\\{" },
+    { "path": "NORM/NORM_Statements.aspx", "pattern": "Financial statements|financial statements" }
+  ]
+}
