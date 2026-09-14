@@ -22,3 +22,6 @@ jobs:
       - name: Exercise deployment and rollback in isolation
         shell: powershell
         run: ./tools/deploy/Test-DeploymentSafety.ps1 -PackageInfo "$env:RUNNER_TEMP/waratah-validation/package.json"
+      - name: Verify AWS request encoding and account checks
+        shell: powershell
+        run: ./tools/deploy/Test-DeploymentRequest.ps1
