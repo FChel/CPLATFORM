@@ -1,0 +1,46 @@
+name: Deploy WARATAH
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [uat]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: waratah-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/uat' && (github.event_name == 'workflow_dispatch' || vars.WARATAH_AUTO_DEPLOY == 'true')
+    runs-on: windows-2022
+    timeout-minutes: 55
+    environment: waratah
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_INSTANCE_ID: ${{ vars.AWS_INSTANCE_ID }}
+      DEPLOY_BUCKET: ${{ vars.DEPLOY_BUCKET }}
+      SSM_DOCUMENT_NAME: ${{ vars.SSM_DOCUMENT_NAME }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate and package the exact commit
+        shell: powershell
+        run: ./tools/deploy/New-WaratahPackage.ps1 -Commit $env:GITHUB_SHA -OutputDirectory "$env:RUNNER_TEMP/waratah" -Compile
+      - name: Assume WARATAH deployment role
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: waratah-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: '663358704059'
+      - name: Upload, deploy and verify through Systems Manager
+        shell: powershell
+        run: ./tools/deploy/Invoke-WaratahDeployment.ps1 -PackageInfo "$env:RUNNER_TEMP/waratah/package.json"
