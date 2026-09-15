@@ -1,5 +1,11 @@
 # CPLATFORM — CFO Toolkit and finance modules
 
+## Shared development and WARATAH publishing
+
+Start application work from **`uat`** and open pull requests back into **`uat`**. Once validation passes, merging publishes to WARATAH automatically through GitHub Actions. Both developers can use this from their browsers; personal AWS credentials are not required. A commit on a feature branch alone does not deploy.
+
+If an older feature branch has no deployment workflow, update it from `origin/uat`. The connection is configured centrally. See [WARATAH deployment and rollback](docs/WARATAH_DEPLOYMENT.md) and [agent instructions](AGENTS.md).
+
 CAPS PLATFORM hosts a set of finance modules including NORM, LPPI, eJET and utilities that bridge SAP S/4HANA and BODS-driven workflows.
 
 The repository contains two independent landing pages:
