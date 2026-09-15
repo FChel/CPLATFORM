@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NORM - Financial statements</title>
-    <link rel="stylesheet" href="../css/norm.css?v=20260907-1" />
+    <link rel="stylesheet" href="../css/norm.css?v=20260915-1" />
 </head>
 <body class="norm-page norm-statements-page">
 <form id="form1" runat="server">
@@ -22,12 +22,12 @@
             <% if (CanPrepare) { %>
                 <a href="NORM_Workspace.aspx">Preparer workspace</a>
                 <a href="NORM_Reporting.aspx?run=<%= selectedRunId %>">Reporting framework</a>
-                <a class="norm-button norm-button-small" href="NORM_Import.aspx">Import trial balance</a>
+                <a class="norm-button norm-button-small norm-button-statement-action" href="NORM_Import.aspx">Import trial balance</a>
             <% } %>
             <button type="button" id="printStatements" class="norm-button norm-button-small norm-button-quiet norm-button-statement-action">Print</button>
             <a id="excelExportLink" class="norm-button norm-button-small norm-button-quiet norm-button-statement-action" href="#" hidden>Excel statements</a>
-            <a id="mappingExportLink" class="norm-button norm-button-small norm-button-quiet" href="#" hidden>Excel mapping</a>
-            <a id="wordExportLink" class="norm-button norm-button-small norm-button-quiet" href="#" hidden>Editable Word</a>
+            <a id="mappingExportLink" class="norm-button norm-button-small norm-button-quiet norm-button-statement-action" href="#" hidden>Excel mapping</a>
+            <a id="wordExportLink" class="norm-button norm-button-small norm-button-quiet norm-button-statement-action" href="#" hidden>Editable Word</a>
             <a id="reviewPackLink" class="norm-button norm-button-small norm-review-pack-button" href="#" hidden>Download review pack</a>
         </nav>
     </header>
