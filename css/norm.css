@@ -248,3 +248,8 @@ body.norm-upload-busy{overflow:hidden}
 .norm-reporting-hero-actions{display:flex;align-items:center;gap:14px;margin-top:20px}
 .norm-reporting-hero-actions span{color:#c9d6d1;font-size:10px;line-height:1.4}
 @media(max-width:620px){.norm-reporting-hero-actions{align-items:flex-start;flex-direction:column}}
+
+/* Keep the statements ribbon within the viewport as actions wrap. */
+.norm-statements-page .norm-topbar{height:auto;min-height:72px;flex-wrap:wrap;gap:12px 20px;padding:12px 16px}
+.norm-statements-page .norm-top-actions{flex:1 1 780px;min-width:0;max-width:100%;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+@media(max-width:620px){.norm-statements-page .norm-top-actions{justify-content:flex-start}.norm-statements-page .norm-brand{min-width:0;max-width:100%}.norm-statements-page .norm-brand span:last-child{min-width:0}}
