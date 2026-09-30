@@ -106,6 +106,13 @@ namespace CPlatform.PORD
         protected int PocCount(int id) { return _pocs.Count(p => p.PackageID == id && _pos.Any(x => x.PackageID == id && x.PocEmail == p.PocEmail)); }
         protected int PoCount(int id)  { return _pos.Count(p => p.PackageID == id); }
 
+        protected string ChecksSub(int id)
+        {
+            var parts = PORDChecks.Active.Select(c => new { c.ShortName, N = _pos.Count(p => p.PackageID == id && p.CheckType == c.Key) })
+                                         .Where(x => x.N > 0).Select(x => x.ShortName + " " + x.N).ToArray();
+            return PORDHelper.Enc(parts.Length > 1 ? string.Join(" · ", parts) : "");
+        }
+
         protected string Progress(int id)
         {
             var mine = _pos.Where(p => p.PackageID == id).ToList();

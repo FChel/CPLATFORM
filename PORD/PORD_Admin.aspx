@@ -18,9 +18,9 @@
     <main class="lppi-main">
         <div class="page-head">
             <div>
-                <div class="crumb">PO Review · <%= PORDHelper.CheckName %></div>
+                <div class="crumb">PO Review · Purchase order compliance</div>
                 <h1>Dashboard</h1>
-                <p class="lead">Current cycle: <strong><%= PORDHelper.Enc(CycleLabel) %></strong>. Open purchase orders whose payment terms breach policy or differ from the supplier master record.</p>
+                <p class="lead">Current cycle: <strong><%= PORDHelper.Enc(CycleLabel) %></strong>. Open purchase orders flagged by each compliance check, reviewed in one package per program.</p>
             </div>
             <div class="btn-row">
                 <asp:Button ID="btnReset" runat="server" CssClass="btn btn-ghost" Text="Reset demo data"
@@ -33,12 +33,15 @@
         <%= RenderDemoNotice() %>
         <asp:PlaceHolder ID="phMsg" runat="server" />
 
-        <%-- ============ Cycle loop ============ --%>
+        <%-- ============ Check tabs: All checks | one tab per active check ============ --%>
+        <nav class="pord-dtabs" aria-label="Compliance checks"><%= CheckTabsHtml %></nav>
+
+        <%-- ============ Cycle loop (scoped to the selected check) ============ --%>
         <div class="pord-loop" aria-label="Monthly review cycle">
             <div class="step done">
                 <div class="k">1 · Loaded</div>
                 <div class="v"><%= PORDHelper.Num(FlaggedCount) %></div>
-                <div class="s">flagged from <%= PORDHelper.Num(RowsInFile) %> rows · <%= PORDHelper.Date(LoadedDate) %></div>
+                <div class="s"><%= PORDHelper.Enc(LoadedText) %></div>
             </div>
             <div class="step <%= SentPackages == PackageCount ? "done" : "" %>">
                 <div class="k">2 · Sent</div>
@@ -48,7 +51,7 @@
             <div class="step <%= ReviewedCount == FlaggedCount ? "done" : (SentPackages > 0 ? "now" : "") %>">
                 <div class="k">3 · Responses</div>
                 <div class="v"><%= PORDHelper.Pct(ReviewedCount, FlaggedCount) %>%</div>
-                <div class="s"><%= PORDHelper.Num(ReviewedCount) %> of <%= PORDHelper.Num(FlaggedCount) %> POs answered</div>
+                <div class="s"><%= PORDHelper.Num(ReviewedCount) %> of <%= PORDHelper.Num(FlaggedCount) %> exceptions answered</div>
             </div>
             <div class="step <%= FinalisedPackages == PackageCount ? "done" : "" %>">
                 <div class="k">4 · Finalised</div>
@@ -58,22 +61,30 @@
             <div class="step">
                 <div class="k">5 · Verified next load</div>
                 <div class="v"><%= PORDHelper.Num(ResolvedLastCycle) %></div>
-                <div class="s">amended POs confirmed fixed last cycle</div>
+                <div class="s">fixes confirmed by the latest load</div>
             </div>
         </div>
 
-        <%-- ============ Exceptions by category ============ --%>
+        <% if (IsAllView) { %>
+        <%-- ============ All checks: one card per registered check ============ --%>
         <section class="pord-section">
-            <div class="pord-section-label">Exceptions this cycle</div>
-            <div class="pord-hero-grid">
+            <div class="pord-section-label">Checks</div>
+            <div class="pord-checks"><%= CheckCardsHtml %></div>
+        </section>
+        <% } else { %>
+        <%-- ============ One check: exceptions by issue ============ --%>
+        <section class="pord-section">
+            <div class="pord-section-label"><%= PORDHelper.Enc(Check.Name) %> — exceptions this cycle</div>
+            <div class="pord-hero-grid" style="grid-template-columns:minmax(260px,1.35fr) repeat(<%= Math.Max(1, Check.Issues.Count) %>, 1fr);">
                 <div class="pord-hero">
                     <div class="lbl">Open POs flagged</div>
                     <div class="val"><%= PORDHelper.Num(FlaggedCount) %></div>
-                    <div class="sub"><strong>$<%= PORDHelper.MoneyShort(ValueStillToDeliver) %></strong> still to deliver across <strong><%= DistinctBps %></strong> suppliers and <strong><%= PackageCount %></strong> programs</div>
+                    <div class="sub"><strong>$<%= PORDHelper.MoneyShort(ValueStillToDeliver) %></strong> still to deliver across <strong><%= DistinctBps %></strong> suppliers</div>
                 </div>
-                <%= RenderCategoryCards() %>
+                <%= IssueCardsHtml %>
             </div>
         </section>
+        <% } %>
 
         <div class="stat-grid pord-stats6">
             <div class="stat"><div class="lbl">Open packages</div><div class="val"><%= OpenPackages %></div><div class="sub">not yet finalised</div></div>
@@ -81,11 +92,11 @@
             <div class="stat err"><div class="lbl">Overdue</div><div class="val"><%= Overdue %></div><div class="sub">past respond-by date</div></div>
             <div class="stat err"><div class="lbl">Repeat offenders</div><div class="val"><%= RepeatCount %></div><div class="sub">Review Nbr &ge; <%= PORDHelper.EscalateAtReview %></div></div>
             <div class="stat"><div class="lbl">Active exclusions</div><div class="val"><%= ActiveExclusions %></div><div class="sub">skipped at load</div></div>
-            <div class="stat warn"><div class="lbl">5-day, not PEPPOL</div><div class="val"><%= NonPeppolFiveDay %></div><div class="sub">paying faster than required</div></div>
+            <%= SixthTileHtml %>
         </div>
 
         <div class="pord-mix pord-section">
-            <div class="card-head"><h2 style="font-size:16px;">Responses</h2><span class="muted" style="font-size:12px;">current cycle · <%= PORDHelper.Num(ReviewedCount) %> of <%= PORDHelper.Num(FlaggedCount) %> answered</span></div>
+            <div class="card-head"><h2 style="font-size:16px;">Responses</h2><span class="muted" style="font-size:12px;"><%= PORDHelper.Enc(ScopeLabel) %> · <%= PORDHelper.Num(ReviewedCount) %> of <%= PORDHelper.Num(FlaggedCount) %> answered</span></div>
             <%= RenderResponseMix() %>
         </div>
 
@@ -95,12 +106,12 @@
                 <h2>Review packages</h2>
                 <a class="btn btn-ghost btn-sm" href="PORD_SendOuts.aspx">Manage on Send-outs &rarr;</a>
             </div>
-            <p class="card-lead">One package per Delivery Manager program. AS Fin sees the whole package and finalises it; each PO contact sees only their own POs.</p>
+            <p class="card-lead">One package per Delivery Manager program, covering every check. AS Fin gets one email and one review page with a tab per check; each PO contact sees only their own POs.</p>
             <div class="tbl-wrap">
                 <table class="tbl">
                     <thead><tr>
-                        <th>Program</th><th>AS Fin</th><th class="num">POs</th><th class="num">Repeat</th>
-                        <th>Responses</th><th>Due</th><th>Status</th>
+                        <th>Program</th><th>AS Fin</th><%= CheckColumnHeads %><th class="num">Repeat</th>
+                        <th>Responses<%= IsAllView ? "" : " (" + PORDHelper.Enc(Check.ShortName) + ")" %></th><th>Due</th><th>Status</th>
                     </tr></thead>
                     <tbody>
                     <asp:Repeater ID="rptPackages" runat="server">
@@ -108,7 +119,7 @@
                             <tr>
                                 <td><strong><%# PORDHelper.Enc(P(Container.DataItem).DmProgram) %></strong><span class="sub">#<%# P(Container.DataItem).PackageID %></span></td>
                                 <td><%# AsFinCell(P(Container.DataItem).DmProgram) %></td>
-                                <td class="num"><%# PoCount(P(Container.DataItem).PackageID) %></td>
+                                <%# CheckColumnCells(P(Container.DataItem).PackageID) %>
                                 <td class="num"><%# RepeatFor(P(Container.DataItem).PackageID) %></td>
                                 <td><%# ProgressCell(P(Container.DataItem).PackageID) %></td>
                                 <td class="nowrap"><%# PORDHelper.Date(P(Container.DataItem).DueDate) %></td>
@@ -124,17 +135,17 @@
         <div class="pord-cols" style="margin-top:16px;">
             <div class="card">
                 <div class="card-head"><h2>Repeat exceptions</h2><span class="muted" style="font-size:12px;">flagged in 2+ rounds</span></div>
-                <p class="card-lead">POs that were flagged before and are still non-compliant. These escalate to AS Fin.</p>
+                <p class="card-lead">Exceptions that were flagged before and are still not fixed. These escalate to AS Fin.</p>
                 <div class="tbl-wrap" style="max-height:420px;">
                     <table class="tbl tbl-compact">
-                        <thead><tr><th>PO</th><th>Supplier</th><th>Terms</th><th class="num">Nbr</th><th>Program</th></tr></thead>
+                        <thead><tr><th>PO</th><th>Supplier</th><th>Issue</th><th class="num">Nbr</th><th>Program</th></tr></thead>
                         <tbody>
                         <asp:Repeater ID="rptRepeat" runat="server">
                             <ItemTemplate>
                                 <tr>
-                                    <td class="nowrap"><%# PORDHelper.PoLinkHtml(Po(Container.DataItem).PoNumber) %></td>
+                                    <td class="nowrap"><%# PORDHelper.PoLinkHtml(Po(Container.DataItem).PoNumber) %><span class="sub"><%# PORDHelper.Enc(PORDChecks.Get(Po(Container.DataItem).CheckType).ShortName) %></span></td>
                                     <td><%# PORDHelper.Enc(Po(Container.DataItem).BpName) %></td>
-                                    <td class="nowrap"><%# TermsHtml(Po(Container.DataItem)) %></td>
+                                    <td class="nowrap"><%# PORDChecks.Get(Po(Container.DataItem).CheckType).IssueCell(Po(Container.DataItem)) %></td>
                                     <td class="num"><%# PORDHelper.ReviewNbrChip(Po(Container.DataItem).ReviewNbr) %></td>
                                     <td><%# PORDHelper.Enc(Po(Container.DataItem).DmProgram) %></td>
                                 </tr>
@@ -142,11 +153,12 @@
                         </asp:Repeater>
                         </tbody>
                     </table>
+                    <asp:PlaceHolder ID="phNoRepeat" runat="server" Visible="false"><div class="pord-empty">No repeat exceptions for this check yet.</div></asp:PlaceHolder>
                 </div>
             </div>
             <div class="card">
                 <div class="card-head"><h2>Recent loads</h2><a class="btn btn-ghost btn-sm" href="PORD_Load.aspx">Load file &rarr;</a></div>
-                <p class="card-lead">Each monthly load re-checks every open PO. POs that were due to be amended and have dropped out are counted as resolved.</p>
+                <p class="card-lead">Each check has its own monthly extract. Every load re-checks all open POs; exceptions that were due to be fixed and have dropped out count as resolved.</p>
                 <div class="tbl-wrap">
                     <table class="tbl tbl-compact">
                         <thead><tr><th>File</th><th>Loaded</th><th class="num">Flagged</th><th class="num">Excluded</th><th class="num">Repeat</th><th class="num">Resolved</th></tr></thead>
@@ -154,7 +166,7 @@
                         <asp:Repeater ID="rptBatches" runat="server">
                             <ItemTemplate>
                                 <tr>
-                                    <td><%# PORDHelper.Enc(B(Container.DataItem).FileName) %><span class="sub">by <%# PORDHelper.Enc(B(Container.DataItem).LoadedBy) %></span></td>
+                                    <td><%# PORDHelper.Enc(B(Container.DataItem).FileName) %><span class="sub"><%# PORDHelper.Enc(PORDChecks.Get(B(Container.DataItem).CheckType).ShortName) %> · by <%# PORDHelper.Enc(B(Container.DataItem).LoadedBy) %></span></td>
                                     <td class="nowrap"><%# PORDHelper.Date(B(Container.DataItem).LoadedDate) %></td>
                                     <td class="num"><%# B(Container.DataItem).Flagged %></td>
                                     <td class="num"><%# B(Container.DataItem).Excluded %></td>

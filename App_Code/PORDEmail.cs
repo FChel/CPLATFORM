@@ -24,7 +24,7 @@ namespace CPlatform.PORD
         public static string Subject(PordPackage pkg, bool poc, bool reminder)
         {
             return (reminder ? "Reminder: " : "Action required: ")
-                 + "PO payment terms review — " + pkg.DmProgram + " — due " + PORDHelper.Date(pkg.DueDate);
+                 + "PO compliance review — " + pkg.DmProgram + " — due " + PORDHelper.Date(pkg.DueDate);
         }
 
         public static string BuildAsFin(PordPackage pkg, IList<PordPo> pos, IList<PordPackagePoc> pocs, string baseUrl, bool reminder)
@@ -33,9 +33,9 @@ namespace CPlatform.PORD
             var sb = Open(Subject(pkg, false, reminder));
 
             P(sb, "Good morning,");
-            P(sb, "The monthly <b>Non-Standard Payment Terms</b> review for <b>" + E(pkg.DmProgram) + "</b> is ready. "
-                + Plural(pos.Count, "open purchase order") + " in your area have payment terms that differ from the "
-                + "Defence standard (20 days, or 5 days for PEPPOL e-invoicing suppliers; at least 14 days for foreign currency) held on the supplier’s master record.");
+            P(sb, "The monthly <b>PO compliance review</b> for <b>" + E(pkg.DmProgram) + "</b> is ready. "
+                + Plural(pos.Count, "open purchase order exception") + " in your area were flagged by the checks below. "
+                + "One review page covers every check, with a tab for each.");
             P(sb, "Each PO contact has been sent a link to their own POs. You have the full list, and you finalise the package once responses are in.");
 
             Kpis(sb, pos);
@@ -65,18 +65,19 @@ namespace CPlatform.PORD
             var sb = Open(Subject(pkg, true, reminder));
 
             P(sb, "Hi " + E(poc.PocName.Split(' ')[0]) + ",");
-            P(sb, "You are listed as the contact for " + Plural(mine.Count, "purchase order") + " with <b>non-standard payment terms</b>. "
-                + "For each PO, either commit to amending the payment terms or record the valid reason they should stay as they are.");
+            P(sb, "You are listed as the contact for " + Plural(mine.Count, "purchase order exception") + " flagged by this month’s PO compliance checks. "
+                + "For each one, either commit to fixing the PO or record the valid reason it should stay as it is.");
 
             Button(sb, link, "Review my POs");
 
             H(sb, "Your POs");
             sb.Append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;border-collapse:collapse;margin:0 0 18px;\">");
-            Row(sb, true, "PO", "Supplier", "PO terms → BP terms", "Issue");
+            Row(sb, true, "PO", "Supplier", "Check", "Issue");
             foreach (var p in mine.Take(12))
             {
                 Row(sb, false, E(p.PoNumber) + (p.ReviewNbr > 1 ? " <span style=\"" + F + "color:#a31b1b;font-weight:700;\">×" + p.ReviewNbr + "</span>" : ""),
-                    E(p.BpName), E(p.PoTermKey) + " → " + E(p.BpTermKey), E(PORDRules.CategoryLabel(p.Category)));
+                    E(p.BpName), E(PORDChecks.Get(p.CheckType).ShortName), E(PORDChecks.IssueOf(p).Label)
+                    + (p.CheckType == PORDChecks.Nspt ? " <span style=\"" + F + "color:#6b6b72;\">(" + E(p.PoTermKey) + " vs " + E(p.BpTermKey) + ")</span>" : ""));
             }
             sb.Append("</table>");
             if (mine.Count > 12) P(sb, "…and " + (mine.Count - 12) + " more on the review page.");
@@ -107,9 +108,9 @@ namespace CPlatform.PORD
         private static string Close(StringBuilder sb)
         {
             sb.Append("<p style=\"" + F + "font-size:12px;color:#6b6b72;margin:18px 0 0;border-top:1px solid #e6e6ea;padding-top:12px;\">")
-              .Append("Why am I getting this? Defence Finance Group monitors purchase orders against the ")
-              .Append("<a href=\"").Append(PORDHelper.PolicyUrl).Append("\" style=\"" + F + "color:" + Orange + ";\">Supplier Pay On-Time or Pay Interest Policy (RMG-417)</a>")
-              .Append(" as part of the Financial Operations Compliance Program. Non-standard terms risk late payment interest and supplier harm.</p>");
+              .Append("Why am I getting this? Defence Finance Group runs monthly compliance checks over open purchase orders as part of the ")
+              .Append("Financial Operations Compliance Program. The payment terms check applies the ")
+              .Append("<a href=\"").Append(PORDHelper.PolicyUrl).Append("\" style=\"" + F + "color:" + Orange + ";\">Supplier Pay On-Time or Pay Interest Policy (RMG-417)</a>.</p>");
             sb.Append("</td></tr></table></td></tr></table></body></html>");
             return sb.ToString();
         }
@@ -133,15 +134,20 @@ namespace CPlatform.PORD
               .Append(E(label)).Append(" &rarr;</a></td></tr></table>");
         }
 
+        /// <summary>One tile per check present in the package: count, then issue breakdown.</summary>
         private static void Kpis(StringBuilder sb, IList<PordPo> pos)
         {
-            var cats = new[] { PordCategory.NonStandard, PordCategory.Override, PordCategory.NonStandardAndOverride, PordCategory.ForeignCurrency };
             sb.Append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;border-collapse:separate;border-spacing:6px 0;margin:4px -6px 14px;\"><tr>");
-            foreach (var c in cats)
+            foreach (var c in PORDChecks.Active)
             {
-                sb.Append("<td style=\"background:#fff4ec;border:1px solid #ffe4d2;padding:10px 12px;" + F + "\">")
-                  .Append("<div style=\"" + F + "font-size:22px;font-weight:700;color:#8a3801;\">").Append(pos.Count(p => p.Category == c)).Append("</div>")
-                  .Append("<div style=\"" + F + "font-size:11px;color:#6b6b72;\">").Append(E(PORDRules.CategoryLabel(c))).Append("</div></td>");
+                var mine = pos.Where(p => p.CheckType == c.Key).ToList();
+                if (mine.Count == 0) continue;
+                var detail = string.Join(" · ", c.Issues.Where(i => mine.Any(p => p.IssueKey == i.Key))
+                                                  .Select(i => i.Label + " " + mine.Count(p => p.IssueKey == i.Key)).ToArray());
+                sb.Append("<td style=\"background:#fff4ec;border:1px solid #ffe4d2;padding:10px 12px;vertical-align:top;" + F + "\">")
+                  .Append("<div style=\"" + F + "font-size:12px;font-weight:700;color:#3a3a3e;\">").Append(E(c.Name)).Append("</div>")
+                  .Append("<div style=\"" + F + "font-size:22px;font-weight:700;color:#8a3801;\">").Append(mine.Count).Append("</div>")
+                  .Append("<div style=\"" + F + "font-size:11px;color:#6b6b72;\">").Append(E(detail)).Append("</div></td>");
             }
             sb.Append("</tr></table>");
         }
@@ -150,7 +156,7 @@ namespace CPlatform.PORD
         {
             H(sb, "How to respond");
             sb.Append("<ol style=\"" + F + "font-size:14px;line-height:1.55;color:#3a3a3e;margin:0 0 12px;padding-left:20px;\">");
-            sb.Append("<li style=\"" + F + "\"><b>Will amend PO terms</b> — you will change the PO to standard terms; give the date you expect it done.</li>");
+            sb.Append("<li style=\"" + F + "\"><b>Will fix</b> — you will correct the PO in ERP (for payment terms, amend them to standard); give the date you expect it done.</li>");
             sb.Append("<li style=\"" + F + "\"><b>Valid reason</b> — pick the reason (clear and direct benefit to Defence, legislative requirement, contract before 1 July 2022, or other) and add the Objective reference for your evidence. Accepted reasons exclude the PO from future reviews.</li>");
             sb.Append("<li style=\"" + F + "\"><b>Not mine</b> — tell us who owns the PO and we will redirect it.</li>");
             sb.Append("</ol>");

@@ -394,3 +394,55 @@ tr.po-exp > td { background: var(--bg); padding: 14px 18px 16px 46px; }
     .pord-toolbar, .pord-chips, .bulk-bar, .pord-tabs, .btn-chev, .col-sel { display: none !important; }
     tr.po-exp { display: none !important; }
 }
+
+/* =============================================================================
+   MULTI-CHECK DESIGN
+   Dashboard tabs (All checks | per check), check cards, review-page check bar.
+   ========================================================================== */
+:root {
+    --cat-ccy:  #0f6b73; --cat-ccy-bg:  #e3f4f5;
+    --cat-ctry: #7a4f00; --cat-ctry-bg: #fff1d6;
+}
+.pord-cat.cat-ccy  { background: var(--cat-ccy-bg);  color: var(--cat-ccy); }
+.pord-cat.cat-ctry { background: var(--cat-ctry-bg); color: var(--cat-ctry); }
+.pord-catcard.cat-ccy  { border-top-color: var(--cat-ccy); }  .pord-catcard.cat-ccy  .val { color: var(--cat-ccy); }  .pord-catcard.cat-ccy  .bar i { background: var(--cat-ccy); }
+.pord-catcard.cat-ctry { border-top-color: var(--cat-ctry); } .pord-catcard.cat-ctry .val { color: var(--cat-ctry); } .pord-catcard.cat-ctry .bar i { background: var(--cat-ctry); }
+
+.pord-dtabs { display: flex; align-items: center; gap: 4px; border-bottom: 2px solid var(--line); margin: 0 0 18px; overflow-x: auto; }
+.pord-dtabs a { padding: 11px 16px 9px; font-weight: 600; font-size: 14px; color: var(--ink-3); border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap; }
+.pord-dtabs a:hover { color: var(--ink); text-decoration: none; }
+.pord-dtabs a.active { color: var(--orange); border-bottom-color: var(--orange); }
+.pord-dtabs .cnt { display: inline-block; margin-left: 4px; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--line-2); color: var(--ink-3); }
+.pord-dtabs a.active .cnt { background: var(--orange-soft); color: var(--orange-deep); }
+.pord-dtabs .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--warn); background: var(--warn-bg); padding: 1px 6px; border-radius: 3px; }
+.pord-dtabs .planned { margin-left: auto; font-size: 12px; color: var(--ink-4); white-space: nowrap; padding-right: 4px; }
+
+.pord-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.pord-checkcard { display: flex; flex-direction: column; gap: 8px; background: var(--white); border: 1px solid var(--line); border-radius: var(--r-lg);
+    padding: 16px 18px; box-shadow: var(--shadow-sm); color: var(--ink); border-left: 4px solid var(--orange); transition: box-shadow .15s, transform .15s; }
+a.pord-checkcard:hover { text-decoration: none; box-shadow: var(--shadow); transform: translateY(-1px); }
+.pord-checkcard.planned { border-left-color: var(--line); background: var(--bg); box-shadow: none; }
+.pord-checkcard.planned .nm { color: var(--ink-3); }
+.pord-checkcard .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pord-checkcard .nm { font-weight: 700; font-size: 15px; }
+.pord-checkcard .desc { font-size: 12px; color: var(--ink-3); line-height: 1.45; }
+.pord-checkcard .nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; font-size: 12px; }
+.pord-checkcard .nums.muted { display: block; font-size: 12px; }
+.pord-checkcard .nums b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.pord-checkcard .nums span { color: var(--ink-3); }
+.pord-checkcard .issues { font-size: 12px; line-height: 2; }
+.pord-checkcard .go { font-size: 12px; font-weight: 700; color: var(--orange); margin-top: auto; }
+
+/* Review page: one tab per check in the package */
+.pord-checkbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.pord-checkbar button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--white); border-radius: var(--r);
+    padding: 8px 14px; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink-2); cursor: pointer; box-shadow: var(--shadow-sm); }
+.pord-checkbar button .n { font-size: 11px; font-weight: 700; background: var(--line-2); color: var(--ink-3); border-radius: 999px; padding: 1px 8px; }
+.pord-checkbar button .done { font-size: 11px; color: var(--ok); font-weight: 600; }
+.pord-checkbar button.on { border-color: var(--orange); background: var(--orange-soft); color: var(--orange-deep); }
+.pord-checkbar button.on .n { background: var(--orange); color: #fff; }
+.pord-checkbar .lbl { align-self: center; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); font-weight: 700; margin-right: 4px; }
+.pord-chip.chk-hidden, option.chk-hidden { display: none; }
+.pord-rv-meta .catbar .cat-ns { background: var(--cat-ns); } .pord-rv-meta .catbar .cat-ov { background: var(--cat-ov); }
+.pord-rv-meta .catbar .cat-both { background: var(--cat-both); } .pord-rv-meta .catbar .cat-fx { background: var(--cat-fx); }
+.pord-rv-meta .catbar .cat-ccy { background: var(--cat-ccy); } .pord-rv-meta .catbar .cat-ctry { background: var(--cat-ctry); }

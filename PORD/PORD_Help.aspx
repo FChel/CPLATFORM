@@ -28,23 +28,35 @@
             <nav class="pord-toc"><div class="t">Contents</div>
                 <ol>
                     <li><a href="#h-what">What PO Review does</a></li>
+                    <li><a href="#h-checks">Checks</a></li>
                     <li><a href="#h-cycle">The monthly cycle</a></li>
-                    <li><a href="#h-rules">Business rules</a></li>
+                    <li><a href="#h-rules">Payment terms rules</a></li>
                     <li><a href="#h-resp">Responses &amp; reasons</a></li>
                     <li><a href="#h-life">Package lifecycle</a></li>
                     <li><a href="#h-pages">Pages</a></li>
                     <li><a href="#h-settings">Settings</a></li>
                     <li><a href="#h-decisions">Assumptions to confirm</a></li>
-                    <li><a href="#h-next">Future checks</a></li>
+                    <li><a href="#h-next">Adding a check</a></li>
                 </ol>
             </nav>
             <div class="pord-doc">
                 <section id="h-what">
                     <h2>What PO Review does</h2>
-                    <p>PO Review is the first tranche of the <strong>Financial Operations Compliance Program</strong>. It uses the same approach as LPPI Review:
-                    BODS extracts the exceptions each month, the business responds on a single page, and each round is checked against the next month's data.
-                    Tranche 1 covers <strong>Non-Standard Payment Terms (NSPT)</strong> on open purchase orders.</p>
-                    <p>Other PO checks can be added as new check types without a new module, because each flagged PO records which check raised it.</p>
+                    <p>PO Review is the purchase-order dashboard for the <strong>Financial Operations Compliance Program</strong>. It works like LPPI Review:
+                    BODS extracts exceptions each month, the business responds on a single page, and each round is verified against the next month's data.</p>
+                    <p>Each compliance rule is a <strong>check</strong>. <strong>Non-standard payment terms</strong> is the first live check, and more will follow.
+                    All checks share one monthly cycle and <strong>one package per Delivery Manager program</strong>. AS Fin and PO contacts get one email and
+                    one review page, with a tab for each check that has exceptions for them.</p>
+                </section>
+
+                <section id="h-checks">
+                    <h2>Checks</h2>
+                    <table class="ref">
+                        <tr><th>Check</th><th>Status</th><th>What it flags</th><th>Extract</th></tr>
+                        <%= ChecksTableHtml %>
+                    </table>
+                    <p>The <em>Currency vs bank</em> check is an <strong>example</strong> with sample data. It shows how a second check appears on the dashboard tabs, in the packages and on the review page.
+                    Planned checks come from the Decision Brief's compliance-monitoring list and are not built yet.</p>
                 </section>
 
                 <section id="h-cycle">
@@ -60,7 +72,7 @@
                 </section>
 
                 <section id="h-rules">
-                    <h2>Business rules</h2>
+                    <h2>Payment terms rules</h2>
                     <p>Defence standard payment terms are <strong>20 days</strong>, or <strong>5 days for suppliers invoicing through PEPPOL</strong> e-invoicing.
                     Business Partner master records carry these standard terms, so an exception is normally a PO whose terms were changed from the BP master.</p>
                     <p>A PO is flagged when <strong>any</strong> of these is true:</p>
@@ -141,14 +153,15 @@
                 </section>
 
                 <section id="h-next">
-                    <h2>Future checks</h2>
-                    <p>From the Decision Brief's compliance-monitoring list. Each is a new check type on the same pipeline:</p>
-                    <ul>
-                        <li>Currency vs bank mismatch on vendor, outline agreement or PO</li>
-                        <li>Direct payment threshold</li>
-                        <li>Purpose of payment codes</li>
-                        <li>Non-procurement payment type</li>
-                    </ul>
+                    <h2>Adding a check</h2>
+                    <p>A check is a registry entry (<code>App_Code/PORDChecks.cs</code>), not a new module. To add one:</p>
+                    <ol>
+                        <li><strong>Define it.</strong> Give it a key, name, tab label, issue categories (label, colour, meaning), the issue cell shown on the review page, "why flagged" text, and fix wording (for example <em>Amend PO terms</em>).</li>
+                        <li><strong>Add its reason codes.</strong> Reason codes are tagged with their check, and reviewers only see the reasons for the check they are answering.</li>
+                        <li><strong>Agree the extract with BODS.</strong> Each check has its own monthly file. Load file gains the extract type, and a pure rule classifies each row, like <code>PORDRules</code> for payment terms.</li>
+                        <li><strong>Everything else is shared:</strong> packages, POC routing, emails, responses (fix / valid reason / reassign), finalise, exclusions (per PO + check), repeat tracking, outcomes and next-load verification.</li>
+                    </ol>
+                    <p>Each exception is stored as a PO × check pair, so a PO flagged by two checks appears once on each tab and is answered separately.</p>
                 </section>
             </div>
         </div>

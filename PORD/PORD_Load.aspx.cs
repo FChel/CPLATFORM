@@ -13,10 +13,19 @@ namespace CPlatform.PORD
     /// </summary>
     public partial class PORD_Load : PORDBasePage
     {
-        protected string ColumnChecklistHtml = "";
+        protected string ColumnChecklistHtml = "", CheckOptionsHtml = "";
+        protected PordCheckDef SelectedCheck;
 
         protected void Page_Load(object sender, EventArgs e)
         {
+            SelectedCheck = PORDChecks.Get(Request.Form["checkType"] ?? PORDChecks.Nspt);
+            if (!SelectedCheck.IsActive) SelectedCheck = PORDChecks.Get(PORDChecks.Nspt);
+            var opts = new StringBuilder();
+            foreach (var c in PORDChecks.All)
+                opts.Append("<option value=\"").Append(c.Key).Append("\"").Append(c.Key == SelectedCheck.Key ? " selected" : "")
+                    .Append(c.IsActive ? "" : " disabled").Append(">").Append(PORDHelper.Enc(c.Name))
+                    .Append(c.Status == "Live" ? "" : " (" + c.Status.ToLowerInvariant() + ")").Append("</option>");
+            CheckOptionsHtml = opts.ToString();
             BuildChecklist(null);
             rptBatches.DataSource = PORDHelper.Store.GetBatches();
             rptBatches.DataBind();
@@ -26,15 +35,19 @@ namespace CPlatform.PORD
 
         protected void btnPreview_Click(object sender, EventArgs e)
         {
+            if (SelectedCheck.Key != PORDChecks.Nspt) { Msg("info", ExampleLoaderMsg); return; }
             if (!fuFile.HasFile) { Msg("warn", "Choose a file first."); return; }
             if (fuFile.PostedFile.ContentLength > 50 * 1024 * 1024) { Msg("err", "Files over 50 MB are not accepted."); return; }
             var res = PORDCsvParser.Parse(fuFile.PostedFile.InputStream, Path.GetFileName(fuFile.FileName));
             Show(res);
         }
 
+        private const string ExampleLoaderMsg = "The Currency vs bank check is an example that shows how further checks plug in. Its loader will be built when BODS provides the extract.";
+
         protected void btnSample_Click(object sender, EventArgs e)
         {
-            string csv = PORDCsvParser.SampleCsv(PORDHelper.Store.GetCurrentCyclePos());
+            if (SelectedCheck.Key != PORDChecks.Nspt) { Msg("info", ExampleLoaderMsg); return; }
+            string csv = PORDCsvParser.SampleCsv(PORDHelper.Store.GetCurrentCyclePos().Where(p => p.CheckType == PORDChecks.Nspt).ToList());
             // Add a handful of compliant rows so the check shows them being dropped.
             csv += "1000,4500799001,Z020,1000210045,Southern Cross Logistics Pty Ltd,Z020,12000.00,0.00,12000.00,0.00,P21,01/12/2026,JSMITH,AUD,ARMY,D1101,jordan.smith@defence.gov.au\n"
                  + "1000,4500799002,Z005,1000210533,Kestrel Systems Integration,Z005,8800.00,4400.00,4400.00,4400.00,P33,15/11/2026,PPATEL,AUD,NAVY,D2204,priya.patel@defence.gov.au\n"
@@ -50,7 +63,7 @@ namespace CPlatform.PORD
         {
             if (PORDHelper.DemoMode)
             {
-                Msg("info", "Commit is disabled in the demonstration build. It will be enabled once the extract layout is agreed and the PORD tables are approved through the SQL change process.");
+                Msg("info", "Commit is disabled in the demonstration build. It will be enabled once the first BODS file has been reviewed and the PORD tables are approved through the SQL change process.");
                 return;
             }
             Msg("err", "Commit requires the PORD database schema, which is not installed yet.");
@@ -75,10 +88,10 @@ namespace CPlatform.PORD
 
             litHeaderPill.Text = res.MissingProposed.Count == 0
                 ? "<span class=\"pill finalised\">Header OK</span>"
-                : "<span class=\"pill duesoon\" title=\"Missing proposed columns\">Header OK · " + res.MissingProposed.Count + " proposed missing</span>";
+                : "<span class=\"pill duesoon\" title=\"Missing proposed columns\">Header OK · " + res.MissingProposed.Count + " columns missing</span>";
             if (res.MissingProposed.Count > 0)
-                Msg("warn", "The file follows the original spec. Without " + string.Join(", ", res.MissingProposed.Select(c => c.Label))
-                          + ", POs cannot be grouped by program or routed to a PO contact, and foreign-currency POs are treated as AUD.");
+                Msg("warn", "Tell BODS these columns are missing: " + string.Join(", ", res.MissingProposed.Select(c => c.Label))
+                          + ". Without them POs cannot be grouped by program or routed to a PO contact, and foreign-currency POs are treated as AUD.");
 
             var exclusions = PORDHelper.Store.GetExclusions().Where(x => !x.IsRevoked && x.ExpiryDate >= DateTime.Today).ToList();
             int excluded = res.Rows.Count(r => r.Category != PordCategory.None && exclusions.Any(x => x.PoNumber == r.Get("PoNumber") && x.PoTermKey == r.Get("PoTerm")));
@@ -91,7 +104,7 @@ namespace CPlatform.PORD
 
             var cats = new StringBuilder();
             foreach (var kv in res.ByCategory.OrderBy(k => (int)k.Key))
-                cats.Append(PORDHelper.CategoryPill(kv.Key)).Append(" <strong style=\"margin-right:14px;\">").Append(kv.Value).Append("</strong>");
+                cats.Append(PORDChecks.IssuePill(PORDChecks.Nspt, PORDRules.CategoryKey(kv.Key))).Append(" <strong style=\"margin-right:14px;\">").Append(kv.Value).Append("</strong>");
             litCats.Text = cats.ToString();
 
             var sb = new StringBuilder("<table class=\"tbl tbl-compact\"><thead><tr><th>Line</th><th>PO</th><th>Supplier</th><th>PO term</th><th>BP term</th><th>Ccy</th><th>Program</th><th>Issue</th></tr></thead><tbody>");
@@ -105,7 +118,7 @@ namespace CPlatform.PORD
                   .Append("</td><td><span class=\"pord-term\">").Append(PORDHelper.Enc(r.Get("BpTerm"))).Append("</span>")
                   .Append("</td><td>").Append(PORDHelper.Enc(r.Get("Currency") ?? "AUD*"))
                   .Append("</td><td>").Append(PORDHelper.Enc(r.Get("DmProgram") ?? "—"))
-                  .Append("</td><td>").Append(PORDHelper.CategoryPill(r.Category)).Append("</td></tr>");
+                  .Append("</td><td>").Append(PORDChecks.IssuePill(PORDChecks.Nspt, PORDRules.CategoryKey(r.Category))).Append("</td></tr>");
             }
             sb.Append("</tbody></table>");
             litPreview.Text = sb.ToString();
@@ -115,13 +128,19 @@ namespace CPlatform.PORD
         private void BuildChecklist(PORDCsvParser.Result res)
         {
             var sb = new StringBuilder();
+            if (SelectedCheck.Key != PORDChecks.Nspt)
+            {
+                foreach (var col in SelectedCheck.ExtractColumns) sb.Append("<li class=\"todo\">").Append(PORDHelper.Enc(col)).Append("</li>");
+                ColumnChecklistHtml = sb.ToString();
+                return;
+            }
             foreach (var c in PORDCsvParser.Columns)
             {
                 string cls = "todo";
                 if (res != null && res.Error == null)
                     cls = res.Found.Contains(c) ? "ok" : (c.Required ? "miss" : "warn");
                 sb.Append("<li class=\"").Append(cls).Append("\">").Append(PORDHelper.Enc(c.Label))
-                  .Append(c.Required ? "" : " <span class=\"tag\">proposed</span>").Append("</li>");
+                  .Append(c.Required ? "" : " <span class=\"tag\">needed</span>").Append("</li>");
             }
             ColumnChecklistHtml = sb.ToString();
         }

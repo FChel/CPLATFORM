@@ -197,7 +197,7 @@ namespace CPlatform.PORD
         {
             lock (_sync)
             {
-                var list = _pos.Where(p => !PORDRules.IsForeignCurrency(p.Currency)
+                var list = _pos.Where(p => p.CheckType == PORDChecks.Nspt && !PORDRules.IsForeignCurrency(p.Currency)
                                         && !PORDRules.IsStandardAud(p.BpTermDays))
                     .GroupBy(p => p.BpNumber)
                     .Select(g =>
@@ -269,7 +269,7 @@ namespace CPlatform.PORD
                     string evidence = response == PordResponse.Reason ? (r.EvidenceRef ?? "").Trim() : null;
                     DateTime? target = null;
 
-                    string err = Validate(response, reason, comments, evidence, r.TargetDate, out target);
+                    string err = Validate(po.CheckType, response, reason, comments, evidence, r.TargetDate, out target);
                     if (err != null) { res.ErrorCode = "validation"; res.Message = err; continue; }
 
                     bool same = (po.Response ?? "") == response
@@ -298,7 +298,7 @@ namespace CPlatform.PORD
         }
 
         /// <summary>Server-side validation — the authoritative copy of the rules pord.js shows inline.</summary>
-        private string Validate(string response, string reason, string comments, string evidence, string targetRaw, out DateTime? target)
+        private string Validate(string check, string response, string reason, string comments, string evidence, string targetRaw, out DateTime? target)
         {
             target = null;
             switch (response)
@@ -308,13 +308,13 @@ namespace CPlatform.PORD
                 case PordResponse.Amend:
                     DateTime d;
                     if (!DateTime.TryParseExact((targetRaw ?? "").Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out d))
-                        return "Enter the date you expect the PO terms to be amended by.";
-                    if (d.Date < DateTime.Today) return "The amendment date cannot be in the past.";
+                        return "Enter the date you expect this to be fixed by.";
+                    if (d.Date < DateTime.Today) return "The fix-by date cannot be in the past.";
                     target = d.Date;
                     return null;
                 case PordResponse.Reason:
                     if (string.IsNullOrEmpty(reason)) return "Choose the reason that applies.";
-                    var rc = _reasons.FirstOrDefault(x => x.Code == reason && x.IsActive);
+                    var rc = _reasons.FirstOrDefault(x => x.Code == reason && x.IsActive && x.CheckType == check);
                     if (rc == null) return "That reason is not available.";
                     if (rc.RequiresComments && comments.Length == 0) return "Comments are required for this reason.";
                     if (rc.RequiresEvidence && string.IsNullOrEmpty(evidence)) return "Add the Objective reference for your evidence.";
@@ -349,12 +349,13 @@ namespace CPlatform.PORD
                     }
                     else if (po.Response == PordResponse.Reason)
                     {
-                        var rc = _reasons.FirstOrDefault(r => r.Code == po.ReasonCode);
-                        if (rc != null && rc.CreatesExclusion && !_exclusions.Any(e => e.PoNumber == po.PoNumber && !e.IsRevoked))
+                        var rc = _reasons.FirstOrDefault(r => r.Code == po.ReasonCode && r.CheckType == po.CheckType);
+                        if (rc != null && rc.CreatesExclusion && !_exclusions.Any(e => e.PoNumber == po.PoNumber && e.CheckType == po.CheckType && !e.IsRevoked))
                         {
                             _exclusions.Add(new PordExclusion
                             {
-                                PoNumber = po.PoNumber, PoTermKey = po.PoTermKey, BpName = po.BpName, DmProgram = po.DmProgram,
+                                CheckType = po.CheckType, PoNumber = po.PoNumber,
+                                PoTermKey = po.CheckType == PORDChecks.Nspt ? po.PoTermKey : po.Currency, BpName = po.BpName, DmProgram = po.DmProgram,
                                 ReasonCode = po.ReasonCode, EvidenceRef = po.EvidenceRef, GrantedDate = DateTime.Today,
                                 ExpiryDate = DateTime.Today.AddMonths(PORDHelper.ExclusionMonths), GrantedBy = user
                             });
@@ -432,14 +433,18 @@ namespace CPlatform.PORD
 
             _reasons = new List<PordReasonCode>
             {
-                new PordReasonCode { Code = "VR01", Description = "Demonstrated clear and direct benefit to Defence",
+                new PordReasonCode { CheckType = PORDChecks.Nspt, Code = "VR01", Description = "Demonstrated clear and direct benefit to Defence",
                                      RequiresComments = true, RequiresEvidence = true, CreatesExclusion = true, IsActive = true, DisplayOrder = 1 },
-                new PordReasonCode { Code = "VR02", Description = "Legislative requirement",
+                new PordReasonCode { CheckType = PORDChecks.Nspt, Code = "VR02", Description = "Legislative requirement",
                                      RequiresComments = true, RequiresEvidence = true, CreatesExclusion = true, IsActive = true, DisplayOrder = 2 },
-                new PordReasonCode { Code = "VR03", Description = "Contract entered prior to 1 July 2022 (RMG-417)",
+                new PordReasonCode { CheckType = PORDChecks.Nspt, Code = "VR03", Description = "Contract entered prior to 1 July 2022 (RMG-417)",
                                      RequiresComments = false, RequiresEvidence = true, CreatesExclusion = true, IsActive = true, DisplayOrder = 3 },
-                new PordReasonCode { Code = "VR99", Description = "Other (explain in comments)",
-                                     RequiresComments = true, RequiresEvidence = true, CreatesExclusion = false, IsActive = true, DisplayOrder = 9 }
+                new PordReasonCode { CheckType = PORDChecks.Nspt, Code = "VR99", Description = "Other (explain in comments)",
+                                     RequiresComments = true, RequiresEvidence = true, CreatesExclusion = false, IsActive = true, DisplayOrder = 9 },
+                new PordReasonCode { CheckType = PORDChecks.CcyBank, Code = "BR01", Description = "Supplier confirmed multi-currency account (bank letter held)",
+                                     RequiresComments = false, RequiresEvidence = true, CreatesExclusion = true, IsActive = true, DisplayOrder = 21 },
+                new PordReasonCode { CheckType = PORDChecks.CcyBank, Code = "BR99", Description = "Other (explain in comments)",
+                                     RequiresComments = true, RequiresEvidence = true, CreatesExclusion = false, IsActive = true, DisplayOrder = 29 }
             };
 
             // Delivery Manager programs → AS Fin (demo mailboxes)
@@ -590,7 +595,7 @@ namespace CPlatform.PORD
                         ContractNumber = "CN" + (3000000 + rnd.Next(999999)).ToString(CultureInfo.InvariantCulture),
                         ContractDate = oldContract ? new DateTime(2019 + rnd.Next(3), 1 + rnd.Next(12), 1 + rnd.Next(27))
                                                    : today.AddDays(-rnd.Next(60, 1100)),
-                        ReviewNbr = reviewNbr, Category = cat
+                        ReviewNbr = reviewNbr, Category = cat, IssueKey = PORDRules.CategoryKey(cat)
                     };
                     _pos.Add(po);
                     made++;
@@ -638,15 +643,21 @@ namespace CPlatform.PORD
                 }
             }
 
+            int nsptCount = _pos.Count;
+            SeedBankExample(rnd, today, cycleLoad);
+
             _batches = new List<PordLoadBatch>
             {
-                new PordLoadBatch { BatchID = 1, FileName = "PO_NSPT_REVIEW_" + today.AddMonths(-2).ToString("yyyyMM") + "12.csv",
+                new PordLoadBatch { BatchID = 4, CheckType = PORDChecks.CcyBank, FileName = "PO_CCYBANK_REVIEW_" + cycleLoad.ToString("yyyyMMdd") + ".csv",
+                    LoadedDate = cycleLoad.AddHours(11), LoadedBy = "Kate", RowsInFile = _pos.Count - nsptCount,
+                    Flagged = _pos.Count - nsptCount, Excluded = 0, Repeat = 0, Resolved = 0 },
+                new PordLoadBatch { BatchID = 1, CheckType = PORDChecks.Nspt, FileName = "PO_NSPT_REVIEW_" + today.AddMonths(-2).ToString("yyyyMM") + "12.csv",
                     LoadedDate = today.AddMonths(-2).AddDays(-9).AddHours(10), LoadedBy = "Shauna Lodding", RowsInFile = 212, Flagged = 212, Excluded = 0, Repeat = 0, Resolved = 0 },
-                new PordLoadBatch { BatchID = 2, FileName = "PO_NSPT_REVIEW_" + today.AddMonths(-1).ToString("yyyyMM") + "11.csv",
+                new PordLoadBatch { BatchID = 2, CheckType = PORDChecks.Nspt, FileName = "PO_NSPT_REVIEW_" + today.AddMonths(-1).ToString("yyyyMM") + "11.csv",
                     LoadedDate = today.AddMonths(-1).AddDays(-9).AddHours(10), LoadedBy = "Shauna Lodding", RowsInFile = 197, Flagged = 176, Excluded = 21, Repeat = 49, Resolved = 58 },
-                new PordLoadBatch { BatchID = 3, FileName = "PO_NSPT_REVIEW_" + cycleLoad.ToString("yyyyMMdd") + ".csv",
-                    LoadedDate = cycleLoad.AddHours(10), LoadedBy = "Kate", RowsInFile = _pos.Count + 34,
-                    Flagged = _pos.Count, Excluded = 34, Repeat = _pos.Count(p => p.ReviewNbr > 1), Resolved = 41 }
+                new PordLoadBatch { BatchID = 3, CheckType = PORDChecks.Nspt, FileName = "PO_NSPT_REVIEW_" + cycleLoad.ToString("yyyyMMdd") + ".csv",
+                    LoadedDate = cycleLoad.AddHours(10), LoadedBy = "Kate", RowsInFile = nsptCount + 34,
+                    Flagged = nsptCount, Excluded = 34, Repeat = _pos.Count(p => p.CheckType == PORDChecks.Nspt && p.ReviewNbr > 1), Resolved = 41 }
             };
 
             _exclusions = new List<PordExclusion>();
@@ -656,6 +667,7 @@ namespace CPlatform.PORD
                 var b = exBps[i];
                 _exclusions.Add(new PordExclusion
                 {
+                    CheckType = PORDChecks.Nspt,
                     PoNumber = (4500655000 + i * 377).ToString(CultureInfo.InvariantCulture), PoTermKey = i % 3 == 0 ? "Z030" : "Z045",
                     BpName = b.Name, DmProgram = programs[i % programs.Length].P,
                     ReasonCode = i % 3 == 0 ? "VR03" : i % 3 == 1 ? "VR01" : "VR02",
@@ -679,6 +691,63 @@ namespace CPlatform.PORD
             }
 
             _bpStatus = new Dictionary<string, string>();
+        }
+            /// <summary>
+        /// Example second check (Currency vs bank mismatch) so the multi-check
+        /// design is visible: a handful of exceptions land in the SAME program
+        /// packages as the payment-terms exceptions, giving AS Fin and POCs one
+        /// review page with a tab per check.
+        /// </summary>
+        private void SeedBankExample(Random rnd, DateTime today, DateTime cycleLoad)
+        {
+            var plan = new Dictionary<string, int> { { "ARMY", 4 }, { "NAVY", 3 }, { "CASG", 2 }, { "JCG", 2 } };
+            var suppliers = new[]
+            {
+                new { No = "1000300118", Name = "Atlantic Avionics Inc (US)",   Ccy = "AUD", BankCcy = "USD", Ctry = "US", Issue = "ccy"  },
+                new { No = "1000300372", Name = "Thames Precision Optics Ltd (UK)", Ccy = "AUD", BankCcy = "GBP", Ctry = "GB", Issue = "ccy" },
+                new { No = "1000211588", Name = "Ember Electronics Australia",  Ccy = "USD", BankCcy = "AUD", Ctry = "AU", Issue = "ccy"  },
+                new { No = "1000300245", Name = "Nordic Sonar AB (SE)",          Ccy = "AUD", BankCcy = "AUD", Ctry = "SE", Issue = "ctry" },
+                new { No = "1000210112", Name = "Harbourline Marine Services",  Ccy = "EUR", BankCcy = "EUR", Ctry = "AU", Issue = "ctry" }
+            };
+            int poId = _pos.Max(p => p.PoID) + 1;
+            foreach (var kv in plan)
+            {
+                var pkg = _packages.First(p => p.DmProgram == kv.Key);
+                var pocs = _pocs.Where(p => p.PackageID == pkg.PackageID).ToList();
+                var tmpl = _pos.First(p => p.PackageID == pkg.PackageID);
+                for (int i = 0; i < kv.Value; i++)
+                {
+                    var s = suppliers[rnd.Next(suppliers.Length)];
+                    var poc = pocs[rnd.Next(pocs.Count)];
+                    decimal ordered = Math.Round((decimal)(rnd.NextDouble() * 400000 + 15000), 2);
+                    var po = new PordPo
+                    {
+                        PoID = poId++, BatchID = 4, PackageID = pkg.PackageID, CheckType = PORDChecks.CcyBank,
+                        CompanyCode = "1000", PoNumber = (4500760000L + rnd.Next(90000)).ToString(CultureInfo.InvariantCulture),
+                        PoCreatedDate = today.AddDays(-rnd.Next(20, 400)), BpNumber = s.No, BpName = s.Name, Currency = s.Ccy,
+                        Ordered = ordered, Delivered = 0, StillToDeliver = ordered, Invoiced = 0,
+                        PurchasingGroup = "P" + (10 + rnd.Next(40)).ToString(CultureInfo.InvariantCulture),
+                        DeliveryDate = today.AddDays(rnd.Next(10, 200)),
+                        PoCreator = poc.PocEmail.Split('@')[0].Replace(".", "").ToUpperInvariant(),
+                        PocEmail = poc.PocEmail, PocName = poc.PocName,
+                        DeliveryManager = tmpl.DeliveryManager, DeliveryManagerName = tmpl.DeliveryManagerName, DmProgram = pkg.DmProgram,
+                        ContractNumber = "CN" + (3000000 + rnd.Next(999999)).ToString(CultureInfo.InvariantCulture),
+                        ContractDate = today.AddDays(-rnd.Next(60, 900)), ReviewNbr = 1, IssueKey = s.Issue,
+                        Attr = new Dictionary<string, string>
+                        {
+                            { "BankCurrency", s.BankCcy }, { "BankCountry", s.Ctry },
+                            { "BankAccount", "••••" + (1000 + rnd.Next(8999)).ToString(CultureInfo.InvariantCulture) }
+                        }
+                    };
+                    if (pkg.Status == PordStatus.Finalised || (pkg.Status == PordStatus.InReview && i == 0))
+                    {
+                        po.Response = PordResponse.Amend; po.TargetDate = today.AddDays(10);
+                        po.Comments = "Asked DFIM to confirm the supplier's nominated account.";
+                        po.ReviewedBy = po.PocName; po.ReviewedDate = cycleLoad.AddDays(3).AddHours(10);
+                    }
+                    _pos.Add(po);
+                }
+            }
         }
     }
 }

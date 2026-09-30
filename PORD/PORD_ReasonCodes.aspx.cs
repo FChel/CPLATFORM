@@ -11,7 +11,7 @@ namespace CPlatform.PORD
         protected void Page_Load(object sender, EventArgs e)
         {
             _pos = PORDHelper.Store.GetCurrentCyclePos();
-            rpt.DataSource = PORDHelper.Store.GetReasonCodes(false);
+            rpt.DataSource = PORDHelper.Store.GetReasonCodes(false).OrderBy(r => PORDChecks.All.IndexOf(PORDChecks.Get(r.CheckType))).ThenBy(r => r.DisplayOrder).ToList();
             rpt.DataBind();
         }
 

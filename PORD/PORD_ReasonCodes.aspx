@@ -19,17 +19,18 @@
             <div>
                 <div class="crumb">PO Review</div>
                 <h1>Valid reason codes</h1>
-                <p class="lead">Reasons a PO may keep non-standard payment terms. Reviewers choose one when they respond <em>Valid reason</em>.</p>
+                <p class="lead">Each check has its own valid reasons. Reviewers see only the reasons for the check they are responding to, when they choose <em>Valid reason</em>.</p>
             </div>
         </div>
         <%= RenderDemoNotice() %>
         <div class="card">
             <div class="tbl-wrap" style="max-height:none;">
                 <table class="tbl">
-                    <thead><tr><th>Code</th><th>Description</th><th>Evidence ref</th><th>Comments</th><th>Excludes PO from future reviews</th><th class="num">Used this cycle</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Check</th><th>Code</th><th>Description</th><th>Evidence ref</th><th>Comments</th><th>Excludes PO from future reviews</th><th class="num">Used this cycle</th><th>Status</th></tr></thead>
                     <tbody>
                     <asp:Repeater ID="rpt" runat="server"><ItemTemplate>
                         <tr>
+                            <td><%# PORDHelper.Enc(PORDChecks.Get(R(Container.DataItem).CheckType).ShortName) %></td>
                             <td><code><%# PORDHelper.Enc(R(Container.DataItem).Code) %></code></td>
                             <td><strong><%# PORDHelper.Enc(R(Container.DataItem).Description) %></strong></td>
                             <td><%# Tick(R(Container.DataItem).RequiresEvidence, "Required") %></td>
@@ -43,7 +44,7 @@
                 </table>
             </div>
             <p class="muted" style="font-size:12px;margin:12px 0 0;">
-                The first three come from the business requirement. <code>VR99 Other</code> is proposed so genuine edge cases are captured rather than forced into the wrong code; it does not create an exclusion, so the PO is reconsidered next month.
+                Payment terms: the first three come from the business requirement. <code>VR99 Other</code> is proposed so genuine edge cases are captured rather than forced into the wrong code; it does not create an exclusion, so the PO is reconsidered next month.
                 Editing codes will be enabled with the PORD schema (demo is read only).
             </p>
         </div>

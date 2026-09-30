@@ -20,7 +20,7 @@
                 <div class="crumb">PO Review</div>
                 <h1>Exclusions</h1>
                 <p class="lead">POs with an accepted valid reason are skipped at load, so owners are not asked the same question every month.
-                An exclusion is tied to the PO <em>and</em> its payment-term key: if the terms change, the PO is checked again. Exclusions last <%= PORDHelper.ExclusionMonths %> months.</p>
+                An exclusion is tied to the PO, the check <em>and</em> the value that was accepted (for payment terms, the term key): if that changes, the PO is checked again. Exclusions last <%= PORDHelper.ExclusionMonths %> months.</p>
             </div>
         </div>
         <%= RenderDemoNotice() %>
@@ -36,11 +36,12 @@
         <div class="card">
             <div class="tbl-wrap">
                 <table class="tbl">
-                    <thead><tr><th>PO</th><th>Supplier</th><th>Terms</th><th>Program</th><th>Reason</th><th>Evidence</th><th>Granted</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+                    <thead><tr><th>PO</th><th>Check</th><th>Supplier</th><th>Key</th><th>Program</th><th>Reason</th><th>Evidence</th><th>Granted</th><th>Expires</th><th>Status</th><th></th></tr></thead>
                     <tbody>
                     <asp:Repeater ID="rpt" runat="server" OnItemCommand="rpt_ItemCommand"><ItemTemplate>
                         <tr>
                             <td class="nowrap"><%# PORDHelper.PoLinkHtml(X(Container.DataItem).PoNumber) %></td>
+                            <td><%# PORDHelper.Enc(PORDChecks.Get(X(Container.DataItem).CheckType).ShortName) %></td>
                             <td><%# PORDHelper.Enc(X(Container.DataItem).BpName) %></td>
                             <td><span class="pord-term"><%# PORDHelper.Enc(X(Container.DataItem).PoTermKey) %></span></td>
                             <td><%# PORDHelper.Enc(X(Container.DataItem).DmProgram) %></td>

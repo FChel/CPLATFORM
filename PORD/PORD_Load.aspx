@@ -19,7 +19,7 @@
             <div>
                 <div class="crumb">PO Review</div>
                 <h1>Load monthly extract</h1>
-                <p class="lead">Upload the BODS <code>PO_NSPT_REVIEW_*.csv</code> extract. It is checked and classified before anything is saved.</p>
+                <p class="lead">Each check has its own BODS extract. Choose the extract type, then upload the file. It is checked and classified before anything is saved.</p>
             </div>
             <div class="btn-row">
                 <a class="btn btn-secondary" href="PORD_SampleFile.ashx">Download sample file</a>
@@ -31,7 +31,12 @@
 
         <div class="pord-cols">
             <div class="card">
-                <h2>1. Choose the file</h2>
+                <h2>1. Choose the extract and file</h2>
+                <div class="form-row" style="margin-bottom:14px;">
+                    <label for="checkType">Extract type</label>
+                    <select id="checkType" name="checkType" onchange="this.form.submit()"><%= CheckOptionsHtml %></select>
+                    <div class="hint">Expected file name: <code><%= PORDHelper.Enc(SelectedCheck.FilePattern) %></code></div>
+                </div>
                 <div class="pord-drop">
                     <strong>CSV or tab-delimited, UTF-8, header row first</strong>
                     <div class="muted" style="font-size:12px;margin-top:4px;">Columns are matched by name, in any order.</div>
@@ -44,7 +49,7 @@
             </div>
             <div class="card">
                 <h2>Expected columns</h2>
-                <p class="card-lead">The business requirement's report output, plus the columns the spec review proposes adding. Without the proposed columns, grouping, POC emails and the foreign-currency rule cannot work.</p>
+                <p class="card-lead"><%= PORDHelper.Enc(SelectedCheck.Name) %>. <%= SelectedCheck.Key == PORDChecks.Nspt ? "The business requirement's report output, plus the columns needed to group by program and email PO contacts. We will review the first BODS file against this list." : "Example layout, showing that each check brings its own extract." %></p>
                 <ul class="pord-check"><%= ColumnChecklistHtml %></ul>
             </div>
         </div>

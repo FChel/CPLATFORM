@@ -86,7 +86,7 @@ namespace CPlatform.PORD
             sb.Append("<span class=\"mark\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z\"/><path d=\"M14 2v6h6\"/><path d=\"M8 13h5M8 17h3\"/><circle cx=\"16.5\" cy=\"16.5\" r=\"2.5\"/></svg></span>");
             sb.Append("<span class=\"lppi-brand-text\">");
             sb.Append("<span class=\"lppi-brand-title\">PO Review</span>");
-            sb.Append("<span class=\"lppi-brand-subtitle\">Payment terms compliance</span>");
+            sb.Append("<span class=\"lppi-brand-subtitle\">Purchase order compliance</span>");
             sb.Append("</span></a>");
 
             sb.Append("<nav class=\"lppi-nav\">");

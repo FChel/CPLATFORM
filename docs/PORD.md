@@ -1,8 +1,19 @@
 # PO Review (PORD) — engineering notes
 
-PO Review is tranche 1 of the Financial Operations Compliance Program: **Non-Standard Payment Terms (NSPT)** on open purchase orders. It follows the LPPI Review loop (load → package → review → finalise → close out) and reuses LPPI's design system, identity, admin list and SAP deep links.
+PO Review is the purchase-order dashboard for the Financial Operations Compliance Program. Its first live check is **Non-Standard Payment Terms (NSPT)**, and further PO checks will be added. It follows the LPPI Review loop (load → package → review → finalise → close out) and reuses LPPI's design system, identity, admin list and SAP deep links.
 
 The in-app **Help** page (`PORD/PORD_Help.aspx`) is the functional reference. It includes the business rules, the response model and the assumptions that still need confirmation.
+
+## Multi-check design
+
+- **Check registry** (`App_Code/PORDChecks.cs`). Each check defines its key, name, tab label, status (Live / Example / Planned), issue categories, the issue cell and "why flagged" text on the review page, fix wording, and its BODS extract. Reason codes carry a `CheckType`.
+- **The exception is the unit.** Each exception is a PO × check pair, with typed common PO fields; check-specific values go in `Attr`. A PO flagged by two checks appears once per check and is answered separately. Exclusions are keyed by PO + check + the accepted value.
+- **One package per Delivery Manager program per cycle, covering all checks.** That means one AS Fin email, one POC email per contact, and one review page with a tab per check. This avoids sending a separate email for every check.
+- **Dashboard tabs.** *All checks* shows a card per registered check (planned checks greyed out); `?check=KEY` scopes every figure to one check. The package table always shows a count per check.
+- **Shared across checks:** response model (fix / valid reason / reassign), lifecycle, finalise, repeat tracking (Review Nbr), outcomes CSV (with a Check column) and next-load verification.
+- **Demo:** *Currency vs bank mismatch* is seeded as an **example** second check, so the tabs can be seen working. Direct payment threshold, Purpose of payment codes and Non-procurement payment type are listed as planned (Decision Brief).
+
+Adding a check means a registry entry, its reason codes, its classification rule and an extract type on Load file. No new pages, handlers or tables are needed.
 
 ## Status: demonstration scaffold
 
@@ -15,7 +26,8 @@ The in-app **Help** page (`PORD/PORD_Help.aspx`) is the functional reference. It
 
 ```
 App_Code/
-  PORDModels.cs      Domain types (PO, package, reason, exclusion …). CheckType allows future tranches.
+  PORDModels.cs      Domain types (exception = PO × check, package, reason, exclusion …).
+  PORDChecks.cs      Check registry: NSPT (live), Currency vs bank (example), planned checks.
   PORDRules.cs       NSPT classification + term-key → net-days mapping. Pure, no I/O.
   PORDStore.cs       IPordStore contract + PordDemoStore (in-memory, seeded).
   PORDHelper.cs      Settings, formatting, JSON, pills; delegates identity/SAP links/admin to LPPIHelper.

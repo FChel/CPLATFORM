@@ -14,6 +14,9 @@
    * Filters (search, response, POC, Review Nbr, category chips) hide the row,
      its message row and its detail row together.
    * Bulk bar stages changes on the selected rows; Save commits them.
+   * Check tabs: a package can hold exceptions from several checks. The check
+     bar switches the table, issue chips, issue column header and bulk
+     reason list to one check at a time. Progress is package-wide.
    * Ctrl/Cmd+S saves. beforeunload warns while anything is unsaved.
    ============================================================================= */
 (function () {
@@ -35,6 +38,7 @@
     var dirty = {};
     var busy = false;
     var catFilter = '';
+    var checkFilter = '';       // active check tab (PO × check exceptions)
 
     var saveBtn = $('pordSaveBtn'), saveLbl = $('pordSaveLbl'), ind = $('pordSaveInd');
 
@@ -57,7 +61,8 @@
             var inputs = document.querySelectorAll('#pordTable .input');
             for (var k = 0; k < inputs.length; k++) inputs[k].disabled = true;
         }
-        bindFilters(); bindBulk(); bindSave(); bindFinalise();
+        bindChecks(); bindFilters(); bindBulk(); bindSave(); bindFinalise();
+        applyFilter();
         window.addEventListener('beforeunload', function (e) {
             if (Object.keys(dirty).length) { e.preventDefault(); e.returnValue = ''; return ''; }
         });
@@ -297,6 +302,51 @@
         if (lbl) lbl.textContent = done + ' of ' + total;
         if (bar) bar.style.width = (total ? Math.round(done * 100 / total) : 0) + '%';
         if (ready && !readOnly) ready.classList.toggle('show', total > 0 && done === total && !Object.keys(dirty).length);
+        var btns = document.querySelectorAll('#pordCheckBar button');
+        for (var b = 0; b < btns.length; b++) {
+            var key = btns[b].getAttribute('data-check'), n = 0, d = 0;
+            for (var r = 0; r < rows.length; r++) if (rows[r].tr.getAttribute('data-check') === key) { n++; if (rows[r].orig.response) d++; }
+            btns[b].querySelector('.done').textContent = d === n ? '\u2713 done' : (n - d) + ' left';
+        }
+    }
+
+    // ------------------------------------------------------------------ checks
+    function bindChecks() {
+        var bar = $('pordCheckBar');
+        var first = bar ? bar.querySelector('button.on') : null;
+        checkFilter = first ? first.getAttribute('data-check') : (rows.length ? rows[0].tr.getAttribute('data-check') : '');
+        if (!bar) return;
+        var btns = bar.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].addEventListener('click', function () {
+                for (var j = 0; j < btns.length; j++) btns[j].classList.remove('on');
+                this.classList.add('on');
+                setCheck(this.getAttribute('data-check'), this.getAttribute('data-head'));
+            });
+        }
+    }
+
+    function setCheck(key, head) {
+        checkFilter = key; catFilter = '';
+        var chips = document.querySelectorAll('#pordChips .pord-chip');
+        for (var i = 0; i < chips.length; i++) {
+            var mine = chips[i].getAttribute('data-check') === key;
+            chips[i].classList.toggle('chk-hidden', !mine);
+            chips[i].classList.toggle('on', mine && chips[i].getAttribute('data-cat') === '');
+        }
+        var th = $('pordIssueHead'); if (th && head) th.textContent = head;
+        var br = $('pordBulkReason');
+        if (br) {
+            br.value = '';
+            for (var k = 0; k < br.options.length; k++) {
+                var o = br.options[k], c = o.getAttribute('data-check');
+                if (!c) continue;
+                o.disabled = c !== key; o.classList.toggle('chk-hidden', c !== key);
+            }
+        }
+        for (var r = 0; r < rows.length; r++) q(rows[r], '.po-sel').checked = false;
+        if ($('pordSelAll')) $('pordSelAll').checked = false;
+        applyFilter();
     }
 
     // ------------------------------------------------------------------ filters
@@ -308,7 +358,7 @@
         var chips = document.querySelectorAll('#pordChips .pord-chip');
         for (var i = 0; i < chips.length; i++) {
             chips[i].addEventListener('click', function () {
-                for (var j = 0; j < chips.length; j++) chips[j].classList.remove('on');
+                for (var j = 0; j < chips.length; j++) if (chips[j].getAttribute('data-check') === checkFilter) chips[j].classList.remove('on');
                 this.classList.add('on');
                 catFilter = this.getAttribute('data-cat');
                 applyFilter();
@@ -329,7 +379,8 @@
         var shown = 0;
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i], tr = r.tr, v = read(r), ok = true;
-            if (s && tr.getAttribute('data-search').indexOf(s) < 0) ok = false;
+            if (checkFilter && tr.getAttribute('data-check') !== checkFilter) ok = false;
+            if (ok && s && tr.getAttribute('data-search').indexOf(s) < 0) ok = false;
             if (ok && catFilter && tr.getAttribute('data-cat') !== catFilter) ok = false;
             if (ok && poc && tr.getAttribute('data-poc') !== poc) ok = false;
             if (ok && rn === 'repeat' && +tr.getAttribute('data-rn') < 2) ok = false;

@@ -31,7 +31,7 @@
             <div>
                 <div class="crumb">PO Review</div>
                 <h1>Send for review</h1>
-                <p class="lead">Packages are created when a file is loaded, one per Delivery Manager program. Each send emails AS Fin the full package and each PO contact a link to their own POs.</p>
+                <p class="lead">Packages are created when a file is loaded, one per Delivery Manager program. Each package covers every check. One send emails AS Fin the full package and each PO contact a link to their own POs, with a tab per check.</p>
             </div>
         </div>
 
@@ -64,7 +64,7 @@
                             <td><strong><%# PORDHelper.Enc(P(Container.DataItem).DmProgram) %></strong><span class="sub">#<%# P(Container.DataItem).PackageID %></span></td>
                             <td><%# AsFinCell(P(Container.DataItem).DmProgram) %></td>
                             <td class="num"><%# PocCount(P(Container.DataItem).PackageID) %></td>
-                            <td class="num"><%# PoCount(P(Container.DataItem).PackageID) %></td>
+                            <td class="num"><%# PoCount(P(Container.DataItem).PackageID) %><span class="sub"><%# ChecksSub(P(Container.DataItem).PackageID) %></span></td>
                             <td><%# Progress(P(Container.DataItem).PackageID) %></td>
                             <td class="nowrap"><%# PORDHelper.Date(P(Container.DataItem).DueDate) %></td>
                             <td class="nowrap"><%# PORDHelper.StatusPill(P(Container.DataItem).Status, P(Container.DataItem).DueDate) %></td>

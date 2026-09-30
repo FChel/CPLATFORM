@@ -44,7 +44,7 @@
             <div class="pord-rv-brand">
                 <div class="brand-mark"><svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6"/><path d="M8 13h5M8 17h3"/></svg></div>
                 <div>
-                    <div class="crumb">PO Review · Non-standard payment terms</div>
+                    <div class="crumb">PO Review · Purchase order compliance</div>
                     <h1><%= PORDHelper.Enc(Package.DmProgram) %></h1>
                 </div>
             </div>
@@ -72,9 +72,8 @@
                 <div class="catbar"><%= CategoryBarHtml %></div>
             </div>
             <div class="policy">
-                <div class="k">Policy</div>
-                <a href="<%= PORDHelper.PolicyUrl %>" target="_blank" rel="noopener">RMG-417 — Supplier Pay On-Time or Pay Interest Policy</a>
-                <div class="s">Standard terms: 20 days, or 5 days for PEPPOL e-invoicing suppliers. Foreign currency: at least 14 days.</div>
+                <div class="k">Checks in this package</div>
+                <%= ChecksMetaHtml %>
             </div>
         </div>
     </div>
@@ -101,39 +100,34 @@
             <div class="pord-doc">
                 <section id="i-about">
                     <h2>Why you are here</h2>
-                    <p>Each month Defence Finance Group checks every open purchase order against the
-                    <a href="<%= PORDHelper.PolicyUrl %>" target="_blank" rel="noopener">Supplier Pay On-Time or Pay Interest Policy (RMG-417)</a>.
-                    The POs listed have payment terms that are not the Commonwealth standard, or that differ from the supplier's
-                    Business Partner (BP) master record. Non-standard terms put Defence at risk of late payment interest and slow payments to suppliers.</p>
+                    <p>Each month Defence Finance Group runs a set of compliance checks over open purchase orders as part of the Financial Operations Compliance Program.
+                    The POs listed here were flagged by at least one check. Each check has its own tab on the <em>Review POs</em> page, and a PO flagged by two checks appears on both tabs.</p>
+                    <p>The <strong>payment terms</strong> check applies the
+                    <a href="<%= PORDHelper.PolicyUrl %>" target="_blank" rel="noopener">Supplier Pay On-Time or Pay Interest Policy (RMG-417)</a>. Defence standard terms are 20 days, or 5 days for suppliers invoicing through PEPPOL.
+                    Non-standard terms risk late payment interest and slow payments to suppliers.</p>
                     <p><%= IsPoc ? "You are listed as the contact for these POs. Your AS Fin team can see the whole package and will finalise it." : "You can see every PO in the package. PO contacts see only their own. When responses are in, finalise the package." %></p>
                 </section>
                 <section id="i-how">
                     <h2>How to respond</h2>
                     <p>For each PO, choose one <strong>Response</strong>, then click <strong>Save changes</strong>. Nothing is saved until you do.</p>
                     <div class="opts">
-                        <div class="opt amend"><strong>Will amend PO terms</strong>Change the PO to standard terms in ERP. Give the date you expect it done. Next month's check confirms the change automatically.</div>
-                        <div class="opt reason"><strong>Valid reason</strong>The terms should stay. Choose the reason and add the Objective reference for your evidence. Accepted reasons stop the PO being flagged for <%= PORDHelper.ExclusionMonths %> months.</div>
+                        <div class="opt amend"><strong>Will fix</strong>Correct the PO in ERP (for payment terms: <em>Amend PO terms</em>). Give the date you expect it done. Next month's check confirms the fix automatically.</div>
+                        <div class="opt reason"><strong>Valid reason</strong>The PO should stay as it is. Choose the reason and add the Objective reference for your evidence. Accepted reasons stop the PO being flagged for <%= PORDHelper.ExclusionMonths %> months.</div>
                         <div class="opt reassign"><strong>Not mine – reassign</strong>Tell us who owns the PO in Comments. The PO is redirected to them next cycle.</div>
                     </div>
                     <p>To apply the same response to several POs, tick them and use the bar at the bottom of the screen.</p>
                 </section>
                 <section id="i-cats">
                     <h2>What the issues mean</h2>
-                    <table class="ref">
-                        <tr><th>Issue</th><th>Meaning</th><th>Typical fix</th></tr>
-                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.NonStandard) %></td><td>PO terms are not 5 or 20 days, and the supplier master has the same terms. This is rare because supplier masters carry standard terms.</td><td>Amend the PO. The admin team will ask DFIM to correct the supplier master.</td></tr>
-                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.Override) %></td><td>PO terms were changed from the supplier master, for example 5 days on a supplier that does not invoice through PEPPOL.</td><td>Reset the PO terms to the master value.</td></tr>
-                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.NonStandardAndOverride) %></td><td>PO terms are not 5 or 20 days, so they differ from the supplier master.</td><td>Reset the PO terms to the master value.</td></tr>
-                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.ForeignCurrency) %></td><td>Foreign-currency PO with terms under 14 days. DFG cannot reliably make a foreign-currency payment within 5 days.</td><td>Use 14-day terms (PEPPOL arrangements included).</td></tr>
-                    </table>
+                    <%= IssuesRefHtml %>
                     <p>The <strong>Nbr</strong> column shows how many monthly reviews the PO has appeared in. A red number means it was flagged before and is still not fixed.</p>
                 </section>
                 <section id="i-reasons">
                     <h2>Valid reasons</h2>
                     <table class="ref">
-                        <tr><th>Code</th><th>Reason</th><th>Needs</th></tr>
+                        <tr><th>Check</th><th>Code</th><th>Reason</th><th>Needs</th></tr>
                         <asp:Repeater ID="rptReasonRef" runat="server"><ItemTemplate>
-                            <tr><td><code><%# PORDHelper.Enc(R(Container.DataItem).Code) %></code></td><td><%# PORDHelper.Enc(R(Container.DataItem).Description) %></td>
+                            <tr><td><%# PORDHelper.Enc(PORDChecks.Get(R(Container.DataItem).CheckType).ShortName) %></td><td><code><%# PORDHelper.Enc(R(Container.DataItem).Code) %></code></td><td><%# PORDHelper.Enc(R(Container.DataItem).Description) %></td>
                                 <td><%# (R(Container.DataItem).RequiresEvidence ? "Objective reference" : "") + (R(Container.DataItem).RequiresEvidence && R(Container.DataItem).RequiresComments ? " + " : "") + (R(Container.DataItem).RequiresComments ? "comments" : "") %></td></tr>
                         </ItemTemplate></asp:Repeater>
                     </table>
@@ -150,12 +144,12 @@
                 <section id="i-faq">
                     <h2>FAQ</h2>
                     <dl>
-                        <dt>Where do I change the payment terms?</dt>
-                        <dd>Click the PO number to open it in ERP, then change the payment terms on the PO header. If the supplier master is also wrong, note it in Comments.</dd>
+                        <dt>Where do I change the PO?</dt>
+                        <dd>Click the PO number to open it in ERP. Payment terms are on the PO header. If the supplier master is also wrong, note it in Comments.</dd>
                         <dt>The supplier insists on shorter terms.</dt>
                         <dd>Shorter terms are allowed only for a valid reason, for example a demonstrated benefit such as an early-payment discount. Record it as a valid reason with evidence.</dd>
                         <dt>The PO is finished and should be closed.</dt>
-                        <dd>Choose <em>Will amend</em>, close the PO in ERP, and say so in Comments. Closed POs drop out of the next extract.</dd>
+                        <dd>Choose <em>Will fix</em>, close the PO in ERP, and say so in Comments. Closed POs drop out of the next extract.</dd>
                     </dl>
                 </section>
             </div>
@@ -164,6 +158,7 @@
 
     <%-- ===================== Review ===================== --%>
     <div id="paneReview" class="pord-pane active" role="tabpanel">
+        <%= CheckBarHtml %>
         <div class="toolbar pord-toolbar">
             <div class="toolbar-left">
                 <div class="search-wrap">
@@ -210,10 +205,7 @@
             </div>
         </div>
 
-        <div class="pord-chips" id="pordChips">
-            <button type="button" class="pord-chip on" data-cat="">All issues <span class="n"><%= TotalCount %></span></button>
-            <%= CategoryChipsHtml %>
-        </div>
+        <div class="pord-chips" id="pordChips"><%= CategoryChipsHtml %></div>
 
         <div id="pordReady" class="pord-ready<%= IsAllReviewed && !IsReadOnly ? " show" : "" %>" role="status">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="16 9 10.5 15 8 12.5"/></svg>
@@ -237,7 +229,7 @@
                     <th class="col-sel"><input type="checkbox" id="pordSelAll" title="Select all visible" /></th>
                     <th class="col-po">PO</th>
                     <th class="col-bp">Supplier</th>
-                    <th>Terms (PO vs BP) &amp; issue</th>
+                    <th id="pordIssueHead"><%= PORDHelper.Enc(FirstCheck.IssueHeader) %></th>
                     <th class="num col-val" title="Value still to be delivered">Open value</th>
                     <th class="num" title="Number of monthly reviews this PO has appeared in">Nbr</th>
                     <% if (!IsPoc) { %><th>PO contact</th><% } %>
@@ -252,30 +244,31 @@
                 <ItemTemplate>
                 <tr class="po-row" data-id="<%# Po(Container.DataItem).PoID %>"
                     data-version="<%# PORDHelper.Attr(PORDHelper.VersionOf(Po(Container.DataItem).ReviewedDate)) %>"
-                    data-cat="<%# PORDRules.CategoryKey(Po(Container.DataItem).Category) %>"
+                    data-cat="<%# PORDHelper.Attr(Po(Container.DataItem).IssueKey) %>"
+                    data-check="<%# PORDHelper.Attr(Po(Container.DataItem).CheckType) %>"
                     data-rn="<%# Po(Container.DataItem).ReviewNbr %>"
                     data-poc="<%# PORDHelper.Attr(Po(Container.DataItem).PocEmail) %>"
                     data-search="<%# PORDHelper.Attr(SearchBlob(Po(Container.DataItem))) %>">
                     <td class="col-sel"><input type="checkbox" class="po-sel" /></td>
                     <td class="col-po"><%# PORDHelper.PoLinkHtml(Po(Container.DataItem).PoNumber) %><span class="sub">Created <%# PORDHelper.Date(Po(Container.DataItem).PoCreatedDate) %></span></td>
                     <td class="col-bp"><span class="nm"><%# PORDHelper.Enc(Po(Container.DataItem).BpName) %></span><span class="sub">BP <%# PORDHelper.Enc(Po(Container.DataItem).BpNumber) %></span></td>
-                    <td class="col-terms"><%# PORD_Admin.TermsHtmlStatic(Po(Container.DataItem)) %><div style="margin-top:6px;"><%# PORDHelper.CategoryPill(Po(Container.DataItem).Category) %></div></td>
+                    <td class="col-terms"><%# PORDChecks.Get(Po(Container.DataItem).CheckType).IssueCell(Po(Container.DataItem)) %><div style="margin-top:6px;"><%# PORDChecks.IssuePill(Po(Container.DataItem)) %></div></td>
                     <td class="num col-val"><%# PORDHelper.Money(Po(Container.DataItem).StillToDeliver) %><span class="pord-ccy<%# PORDRules.IsForeignCurrency(Po(Container.DataItem).Currency) ? " fx" : "" %>"><%# PORDHelper.Enc(Po(Container.DataItem).Currency) %></span></td>
                     <td class="num"><%# PORDHelper.ReviewNbrChip(Po(Container.DataItem).ReviewNbr) %></td>
                     <%# IsPoc ? "" : "<td><span title=\"" + PORDHelper.Attr(Po(Container.DataItem).PocEmail) + "\">" + PORDHelper.Enc(Po(Container.DataItem).PocName) + "</span></td>" %>
                     <td class="col-resp">
                         <select class="input resp-select" data-v="<%# PORDHelper.Attr(Po(Container.DataItem).Response) %>" aria-label="Response">
-                            <%# ResponseOptions(Po(Container.DataItem).Response) %>
+                            <%# ResponseOptions(Po(Container.DataItem)) %>
                         </select>
                     </td>
                     <td class="col-detail">
                         <div class="detail-field f-target<%# Po(Container.DataItem).Response == PordResponse.Amend ? " show" : "" %>">
-                            <label>Amend by</label>
+                            <label><%# PORDHelper.Enc(PORDChecks.Get(Po(Container.DataItem).CheckType).FixDateLabel) %></label>
                             <input type="date" class="input in-target" value="<%# PORDHelper.IsoDate(Po(Container.DataItem).TargetDate) %>" />
                         </div>
                         <div class="detail-field f-reason<%# Po(Container.DataItem).Response == PordResponse.Reason ? " show" : "" %>">
                             <label>Reason</label>
-                            <select class="input in-reason"><%# ReasonOptions(Po(Container.DataItem).ReasonCode) %></select>
+                            <select class="input in-reason"><%# ReasonOptions(Po(Container.DataItem).CheckType, Po(Container.DataItem).ReasonCode) %></select>
                         </div>
                         <div class="detail-field f-evidence<%# Po(Container.DataItem).Response == PordResponse.Reason ? " show" : "" %>">
                             <label>Evidence (Objective ref)</label>
@@ -299,11 +292,11 @@
             <span><span id="pordBulkCount" class="count">0</span> selected</span>
             <select id="pordBulkResp">
                 <option value="">Set response…</option>
-                <option value="Amend">Will amend PO terms</option>
+                <option value="Amend">Will fix</option>
                 <option value="Reason">Valid reason</option>
             </select>
-            <input type="date" id="pordBulkDate" style="display:none;" title="Amend by" />
-            <select id="pordBulkReason" style="display:none;"><%= ReasonOptions(null) %></select>
+            <input type="date" id="pordBulkDate" style="display:none;" title="Fix by" />
+            <select id="pordBulkReason" style="display:none;"><%= BulkReasonOptions %></select>
             <button type="button" id="pordBulkApply" class="btn btn-primary">Apply</button>
             <button type="button" id="pordBulkClear" class="btn btn-ghost" style="color:#fff;">Clear</button>
         </div>
@@ -313,9 +306,9 @@
     <div id="paneSummary" class="pord-pane" role="tabpanel">
         <div class="pord-cols">
             <div class="card">
-                <h2>By issue</h2>
+                <h2>By check &amp; issue</h2>
                 <table class="tbl tbl-compact">
-                    <thead><tr><th>Issue</th><th class="num">POs</th><th class="num">Open value</th><th class="num">Responded</th></tr></thead>
+                    <thead><tr><th>Check / issue</th><th class="num">POs</th><th class="num">Open value</th><th class="num">Responded</th></tr></thead>
                     <tbody><%= SummaryByCategoryHtml %></tbody>
                 </table>
             </div>

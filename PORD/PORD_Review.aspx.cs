@@ -26,7 +26,10 @@ namespace CPlatform.PORD
         protected decimal OpenValue;
         protected PordPackage Package;
         protected string StatusBannerHtml = "", CategoryBarHtml = "", CategoryChipsHtml = "", PocOptionsHtml = "",
-                         SummaryByCategoryHtml = "", SummarySecondHtml = "";
+                         SummaryByCategoryHtml = "", SummarySecondHtml = "", CheckBarHtml = "", ChecksMetaHtml = "",
+                         IssuesRefHtml = "", BulkReasonOptions = "";
+        protected PordCheckDef FirstCheck;
+        private List<PordCheckDef> _checks;   // checks present in this view, registry order
 
         private IList<PordPo> _pos;
         private IList<PordReasonCode> _reasons;
@@ -48,6 +51,9 @@ namespace CPlatform.PORD
             var all = store.GetPos(packageId);
             _pos = IsPoc ? all.Where(p => string.Equals(p.PocEmail, pocEmail, StringComparison.OrdinalIgnoreCase)).ToList() : all;
             _reasons = store.GetReasonCodes(true);
+            _checks = PORDChecks.All.Where(c => _pos.Any(p => p.CheckType == c.Key)).ToList();
+            if (_checks.Count == 0) _checks.Add(PORDChecks.Get(PORDChecks.Nspt));
+            FirstCheck = _checks[0];
 
             if (IsPoc)
             {
@@ -118,37 +124,81 @@ namespace CPlatform.PORD
                 StatusBannerHtml = "<div class=\"pord-banner notsent\"><strong>Preview.</strong> This package has not been issued yet — recipients have not been notified.</div>";
         }
 
-        private static readonly PordCategory[] Cats =
-            { PordCategory.NonStandard, PordCategory.Override, PordCategory.NonStandardAndOverride, PordCategory.ForeignCurrency };
-
+        /// <summary>
+        /// Check bar (one tab per check in the package), issue chips per check,
+        /// the header issue bar, and the instructions' issue reference.
+        /// </summary>
         private void BuildCategoryBits()
         {
             var bar = new StringBuilder();
             var chips = new StringBuilder();
-            foreach (var c in Cats)
+            var cb = new StringBuilder();
+            var meta = new StringBuilder();
+            var refs = new StringBuilder();
+            var bulk = new StringBuilder("<option value=\"\">Choose reason…</option>");
+
+            if (_checks.Count > 1)
+                cb.Append("<div class=\"pord-checkbar\" id=\"pordCheckBar\" role=\"tablist\"><span class=\"lbl\">Check</span>");
+
+            foreach (var c in _checks)
             {
-                int n = _pos.Count(p => p.Category == c);
-                if (n == 0) continue;
-                bar.Append("<i class=\"").Append(PORDRules.CategoryKey(c)).Append("\" style=\"width:")
-                   .Append((n * 100.0 / Math.Max(1, TotalCount)).ToString("0.##", CultureInfo.InvariantCulture))
-                   .Append("%\" title=\"").Append(PORDHelper.Attr(PORDRules.CategoryLabel(c))).Append(": ").Append(n).Append("\"></i>");
-                chips.Append("<button type=\"button\" class=\"pord-chip\" data-cat=\"").Append(PORDRules.CategoryKey(c)).Append("\">")
-                     .Append(PORDHelper.Enc(PORDRules.CategoryLabel(c))).Append(" <span class=\"n\">").Append(n).Append("</span></button>");
+                var mine = _pos.Where(p => p.CheckType == c.Key).ToList();
+                bool first = c == FirstCheck;
+                if (_checks.Count > 1)
+                    cb.Append("<button type=\"button\" role=\"tab\" data-check=\"").Append(c.Key).Append("\" data-head=\"").Append(PORDHelper.Attr(c.IssueHeader)).Append("\"")
+                      .Append(first ? " class=\"on\"" : "").Append(">").Append(PORDHelper.Enc(c.ShortName))
+                      .Append(" <span class=\"n\">").Append(mine.Count).Append("</span><span class=\"done\"></span></button>");
+
+                meta.Append("<div class=\"s\" style=\"font-size:13px;color:var(--ink-2);\"><strong>").Append(PORDHelper.Enc(c.ShortName)).Append("</strong> · ")
+                    .Append(mine.Count).Append(" PO").Append(mine.Count == 1 ? "" : "s").Append(c.Status == "Example" ? " <span class=\"muted\">(example)</span>" : "").Append("</div>");
+
+                chips.Append("<button type=\"button\" class=\"pord-chip").Append(first ? " on" : " chk-hidden").Append("\" data-check=\"").Append(c.Key)
+                     .Append("\" data-cat=\"\">All ").Append(PORDHelper.Enc(c.ShortName.ToLowerInvariant())).Append(" <span class=\"n\">").Append(mine.Count).Append("</span></button>");
+
+                refs.Append("<h3>").Append(PORDHelper.Enc(c.Name)).Append("</h3><table class=\"ref\"><tr><th>Issue</th><th>Meaning</th></tr>");
+                foreach (var i in c.Issues)
+                {
+                    int n = mine.Count(p => p.IssueKey == i.Key);
+                    refs.Append("<tr><td>").Append(PORDChecks.IssuePill(c.Key, i.Key)).Append("</td><td>").Append(PORDHelper.Enc(i.Description)).Append("</td></tr>");
+                    if (n == 0) continue;
+                    bar.Append("<i class=\"").Append(i.Css).Append("\" style=\"width:")
+                       .Append((n * 100.0 / Math.Max(1, TotalCount)).ToString("0.##", CultureInfo.InvariantCulture))
+                       .Append("%\" title=\"").Append(PORDHelper.Attr(c.ShortName + " — " + i.Label)).Append(": ").Append(n).Append("\"></i>");
+                    chips.Append("<button type=\"button\" class=\"pord-chip").Append(first ? "" : " chk-hidden").Append("\" data-check=\"").Append(c.Key)
+                         .Append("\" data-cat=\"").Append(i.Key).Append("\">").Append(PORDHelper.Enc(i.Label)).Append(" <span class=\"n\">").Append(n).Append("</span></button>");
+                }
+                refs.Append("</table>");
+
+                foreach (var r in _reasons.Where(x => x.CheckType == c.Key))
+                    bulk.Append(ReasonOption(r, null, !first));
             }
+            if (_checks.Count > 1) cb.Append("</div>");
+
             CategoryBarHtml = bar.ToString();
             CategoryChipsHtml = chips.ToString();
+            CheckBarHtml = cb.ToString();
+            ChecksMetaHtml = meta.ToString();
+            IssuesRefHtml = refs.ToString();
+            BulkReasonOptions = bulk.ToString();
         }
 
         private void BuildSummary()
         {
             var sb = new StringBuilder();
-            foreach (var c in Cats)
+            foreach (var c in _checks)
             {
-                var inCat = _pos.Where(p => p.Category == c).ToList();
-                if (inCat.Count == 0) continue;
-                sb.Append("<tr><td>").Append(PORDHelper.CategoryPill(c)).Append("</td><td class=\"num\">").Append(inCat.Count)
-                  .Append("</td><td class=\"num\">$").Append(PORDHelper.Money(inCat.Sum(p => p.StillToDeliver)))
-                  .Append("</td><td class=\"num\">").Append(inCat.Count(p => p.IsReviewed)).Append("</td></tr>");
+                var mine = _pos.Where(p => p.CheckType == c.Key).ToList();
+                sb.Append("<tr style=\"background:var(--line-2)\"><td><strong>").Append(PORDHelper.Enc(c.Name)).Append("</strong></td><td class=\"num\"><strong>").Append(mine.Count)
+                  .Append("</strong></td><td class=\"num\"><strong>$").Append(PORDHelper.Money(mine.Sum(p => p.StillToDeliver)))
+                  .Append("</strong></td><td class=\"num\"><strong>").Append(mine.Count(p => p.IsReviewed)).Append("</strong></td></tr>");
+                foreach (var i in c.Issues)
+                {
+                    var inCat = mine.Where(p => p.IssueKey == i.Key).ToList();
+                    if (inCat.Count == 0) continue;
+                    sb.Append("<tr><td style=\"padding-left:22px\">").Append(PORDChecks.IssuePill(c.Key, i.Key)).Append("</td><td class=\"num\">").Append(inCat.Count)
+                      .Append("</td><td class=\"num\">$").Append(PORDHelper.Money(inCat.Sum(p => p.StillToDeliver)))
+                      .Append("</td><td class=\"num\">").Append(inCat.Count(p => p.IsReviewed)).Append("</td></tr>");
+                }
             }
             SummaryByCategoryHtml = sb.ToString();
 
@@ -186,32 +236,36 @@ namespace CPlatform.PORD
         protected string SearchBlob(PordPo p)
         {
             return (p.PoNumber + " " + p.BpName + " " + p.BpNumber + " " + p.PoTermKey + " " + p.BpTermKey + " " + p.Currency + " "
-                  + p.PocName + " " + p.PocEmail + " " + p.PurchasingGroup + " " + p.ContractNumber + " " + PORDRules.CategoryLabel(p.Category)).ToLowerInvariant();
+                  + p.PocName + " " + p.PocEmail + " " + p.PurchasingGroup + " " + p.ContractNumber + " " + PORDChecks.IssueOf(p).Label + " "
+                  + PORDChecks.Get(p.CheckType).ShortName).ToLowerInvariant();
         }
 
-        protected string ResponseOptions(string current)
+        protected string ResponseOptions(PordPo p)
         {
+            string current = p.Response;
             var sb = new StringBuilder();
             sb.Append(Opt("", "Choose…", current));
-            sb.Append(Opt(PordResponse.Amend, "Amend PO terms", current));
+            sb.Append(Opt(PordResponse.Amend, PORDChecks.Get(p.CheckType).FixLabel, current));
             sb.Append(Opt(PordResponse.Reason, "Valid reason", current));
             sb.Append(Opt(PordResponse.Reassign, "Not mine – reassign", current));
             if (current == PordResponse.NoResponse) sb.Append(Opt(PordResponse.NoResponse, "No response", current));
             return sb.ToString();
         }
 
-        protected string ReasonOptions(string current)
+        /// <summary>Reason codes for the row's own check only.</summary>
+        protected string ReasonOptions(string check, string current)
         {
             var sb = new StringBuilder("<option value=\"\">Choose reason…</option>");
-            foreach (var r in _reasons)
-            {
-                sb.Append("<option value=\"").Append(PORDHelper.Attr(r.Code)).Append("\"")
-                  .Append(" data-comments=\"").Append(r.RequiresComments ? "1" : "0").Append("\"")
-                  .Append(" data-evidence=\"").Append(r.RequiresEvidence ? "1" : "0").Append("\"")
-                  .Append(r.Code == current ? " selected" : "").Append(">")
-                  .Append(PORDHelper.Enc(r.Code + " — " + r.Description)).Append("</option>");
-            }
+            foreach (var r in _reasons.Where(x => x.CheckType == check)) sb.Append(ReasonOption(r, current, false));
             return sb.ToString();
+        }
+
+        private static string ReasonOption(PordReasonCode r, string current, bool hidden)
+        {
+            return "<option value=\"" + PORDHelper.Attr(r.Code) + "\" data-check=\"" + PORDHelper.Attr(r.CheckType) + "\""
+                 + " data-comments=\"" + (r.RequiresComments ? "1" : "0") + "\" data-evidence=\"" + (r.RequiresEvidence ? "1" : "0") + "\""
+                 + (hidden ? " class=\"chk-hidden\" disabled" : "") + (r.Code == current ? " selected" : "") + ">"
+                 + PORDHelper.Enc(r.Code + " — " + r.Description) + "</option>";
         }
 
         private static string Opt(string v, string label, string current)
@@ -228,7 +282,7 @@ namespace CPlatform.PORD
         {
             if (p.Response == PordResponse.Reassign) return "Say who owns it in Comments.";
             if (p.Response == PordResponse.NoResponse) return "No response recorded at finalise.";
-            if (p.ContractDate.HasValue && p.ContractDate.Value < new DateTime(2022, 7, 1))
+            if (p.CheckType == PORDChecks.Nspt && p.ContractDate.HasValue && p.ContractDate.Value < new DateTime(2022, 7, 1))
                 return "Contract dated " + PORDHelper.Date(p.ContractDate) + " — may qualify as VR03.";
             return "Choose a response.";
         }
@@ -255,9 +309,8 @@ namespace CPlatform.PORD
               .Append(Math.Max(0, del - inv)).Append("%\"></i></div><div class=\"lg\">").Append(inv).Append("% invoiced · ").Append(del)
               .Append("% delivered · $").Append(PORDHelper.Money(p.StillToDeliver)).Append(" still to deliver</div></div>");
 
-            sb.Append("<div class=\"po-why\"><strong>Why flagged:</strong> ").Append(PORDHelper.Enc(PORDRules.CategoryDescription(p.Category)))
-              .Append(" PO terms <code>").Append(PORDHelper.Enc(PORDRules.TermLabel(p.PoTermKey, p.PoTermDays))).Append("</code>, BP master <code>")
-              .Append(PORDHelper.Enc(PORDRules.TermLabel(p.BpTermKey, p.BpTermDays))).Append("</code>.");
+            sb.Append("<div class=\"po-why\"><strong>Why flagged (").Append(PORDHelper.Enc(PORDChecks.Get(p.CheckType).ShortName)).Append("):</strong> ")
+              .Append(PORDHelper.Enc(PORDChecks.Get(p.CheckType).Why(p)));
             if (p.ReviewNbr > 1)
                 sb.Append(" <strong style=\"color:var(--err)\">This is review ").Append(p.ReviewNbr).Append(" for this PO.</strong>");
             if (!string.IsNullOrEmpty(p.ReviewedBy))

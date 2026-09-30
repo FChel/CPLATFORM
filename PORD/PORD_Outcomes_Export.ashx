@@ -30,17 +30,17 @@ namespace CPlatform.PORD
             else
             {
                 name = "PO_NSPT_Outcomes_";
-                var reasons = store.GetReasonCodes(false).ToDictionary(r => r.Code, r => r.Description);
-                sb.AppendLine("Program,Package,Package Status,PO Number,BP Number,BP Name,PO Term,BP Term,Currency,Issue,Review Nbr,Still to Deliver,PO Contact,Response,Reason Code,Reason,Evidence Ref,Amend By,Comments,Responded By,Responded");
+                var reasons = store.GetReasonCodes(false).ToDictionary(r => r.CheckType + "|" + r.Code, r => r.Description);
+                sb.AppendLine("Check,Program,Package,Package Status,PO Number,BP Number,BP Name,PO Term,BP Term,Currency,Issue,Review Nbr,Still to Deliver,PO Contact,Response,Reason Code,Reason,Evidence Ref,Fix By,Comments,Responded By,Responded");
                 foreach (var p in store.GetPackages(false))
                     foreach (var po in store.GetPos(p.PackageID))
                     {
                         string rdesc;
-                        reasons.TryGetValue(po.ReasonCode ?? "", out rdesc);
+                        reasons.TryGetValue(po.CheckType + "|" + (po.ReasonCode ?? ""), out rdesc);
                         sb.AppendLine(string.Join(",", new[]
                         {
-                            Q(p.DmProgram), p.PackageID.ToString(), p.Status, po.PoNumber, po.BpNumber, Q(po.BpName), po.PoTermKey, po.BpTermKey,
-                            po.Currency, Q(PORDRules.CategoryLabel(po.Category)), po.ReviewNbr.ToString(), po.StillToDeliver.ToString("0.00"),
+                            Q(PORDChecks.Get(po.CheckType).Name), Q(p.DmProgram), p.PackageID.ToString(), p.Status, po.PoNumber, po.BpNumber, Q(po.BpName), po.PoTermKey, po.BpTermKey,
+                            po.Currency, Q(PORDChecks.IssueOf(po).Label), po.ReviewNbr.ToString(), po.StillToDeliver.ToString("0.00"),
                             po.PocEmail, Q(PORDRules.ResponseLabel(po.Response)), po.ReasonCode, Q(rdesc), Q(po.EvidenceRef),
                             PORDHelper.Date(po.TargetDate), Q(po.Comments), Q(po.ReviewedBy), PORDHelper.DateTimeShort(po.ReviewedDate)
                         }));

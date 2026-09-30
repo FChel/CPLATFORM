@@ -50,7 +50,11 @@ namespace CPlatform.PORD
         public const string Cancelled = "Cancelled";
     }
 
-    /// <summary>One flagged purchase order (header-level: payment terms live on EKKO).</summary>
+    /// <summary>
+    /// One exception: a PO flagged by one check (PO × CheckType). A PO with
+    /// issues under two checks appears once per check. Common PO fields are
+    /// typed; check-specific values live in Attr (NSPT keeps typed term fields).
+    /// </summary>
     public class PordPo
     {
         public int      PoID;
@@ -82,7 +86,9 @@ namespace CPlatform.PORD
         public string   ContractNumber;
         public DateTime? ContractDate;
         public int      ReviewNbr;             // how many rounds this PO has appeared in
-        public PordCategory Category;
+        public PordCategory Category;          // NSPT-specific classification
+        public string   IssueKey;              // generic issue key within the check (see PORDChecks)
+        public Dictionary<string, string> Attr; // check-specific attributes (e.g. BankCurrency)
 
         // Latest review state (one row per PO)
         public string   Response;
@@ -136,6 +142,7 @@ namespace CPlatform.PORD
 
     public class PordReasonCode
     {
+        public string CheckType;   // reason codes belong to a check
         public string Code;
         public string Description;
         public bool   RequiresComments;
@@ -148,6 +155,7 @@ namespace CPlatform.PORD
     public class PordLoadBatch
     {
         public int      BatchID;
+        public string   CheckType;
         public string   FileName;
         public DateTime LoadedDate;
         public string   LoadedBy;
@@ -165,6 +173,7 @@ namespace CPlatform.PORD
     /// </summary>
     public class PordExclusion
     {
+        public string   CheckType;
         public string   PoNumber;
         public string   PoTermKey;
         public string   BpName;

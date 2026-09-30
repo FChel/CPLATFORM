@@ -32,10 +32,10 @@
                 <h2>1 · Outcomes report — FSO Compliance Team</h2>
                 <a class="btn btn-secondary btn-sm" href="PORD_Outcomes_Export.ashx?kind=outcomes">Download CSV</a>
             </div>
-            <p class="card-lead">One row per flagged PO with its response, reason, evidence and commitment date. Issue it once every package is finalised; issuing closes the cycle's packages.</p>
+            <p class="card-lead">One row per exception (PO × check) with its check, response, reason, evidence and fix-by date. Issue it once every package is finalised; issuing closes the cycle's packages.</p>
             <div class="tbl-wrap" style="max-height:none;">
                 <table class="tbl">
-                    <thead><tr><th>Program</th><th>Status</th><th class="num">POs</th><th class="num">Will amend</th><th class="num">Valid reason</th><th class="num">Reassign</th><th class="num">No response</th><th class="num">Awaiting</th></tr></thead>
+                    <thead><tr><th>Program</th><th>Status</th><th class="num">POs</th><th class="num">Will fix</th><th class="num">Valid reason</th><th class="num">Reassign</th><th class="num">No response</th><th class="num">Awaiting</th></tr></thead>
                     <tbody><%= OutcomeRowsHtml %></tbody>
                 </table>
             </div>
