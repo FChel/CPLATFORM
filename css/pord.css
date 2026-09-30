@@ -84,6 +84,7 @@
 .pord-terms .match.no  { color: var(--err); }
 .pord-terms .match.yes { color: var(--ok); }
 
+.pord-peppol { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--ok); background: var(--ok-bg); border-radius: 3px; padding: 1px 5px; }
 .pord-ccy { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-left: 4px; }
 .pord-ccy.fx { color: var(--cat-fx); font-weight: 700; }
 
@@ -296,7 +297,7 @@
 .tbl-pord .col-val { white-space: nowrap; }
 .tbl-pord .col-resp { min-width: 170px; width: 170px; }
 .tbl-pord .col-detail { min-width: 180px; width: 190px; }
-.tbl-pord .col-cmt { min-width: 190px; }
+.tbl-pord .col-cmt { min-width: 160px; }
 .tbl-pord .col-terms { white-space: nowrap; }
 .tbl-pord .col-bp { min-width: 160px; max-width: 220px; }
 .tbl-pord .col-exp { width: 36px; }

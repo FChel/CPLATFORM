@@ -35,7 +35,7 @@ namespace CPlatform.PORD
             P(sb, "Good morning,");
             P(sb, "The monthly <b>Non-Standard Payment Terms</b> review for <b>" + E(pkg.DmProgram) + "</b> is ready. "
                 + Plural(pos.Count, "open purchase order") + " in your area have payment terms that differ from the "
-                + "Commonwealth standard (5 or 20 days for AUD, at least 14 days for foreign currency) or from the supplier’s master record.");
+                + "Defence standard (20 days, or 5 days for PEPPOL e-invoicing suppliers; at least 14 days for foreign currency) held on the supplier’s master record.");
             P(sb, "Each PO contact has been sent a link to their own POs. You have the full list, and you finalise the package once responses are in.");
 
             Kpis(sb, pos);

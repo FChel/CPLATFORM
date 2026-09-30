@@ -15,7 +15,7 @@ namespace CPlatform.PORD
     {
         protected string   CycleLabel;
         protected int      FlaggedCount, ReviewedCount, RowsInFile, PackageCount, SentPackages, FinalisedPackages;
-        protected int      OpenPackages, DueSoon, Overdue, RepeatCount, ActiveExclusions, BpIssues, DistinctBps, ResolvedLastCycle;
+        protected int      OpenPackages, DueSoon, Overdue, RepeatCount, ActiveExclusions, NonPeppolFiveDay, DistinctBps, ResolvedLastCycle;
         protected decimal  ValueStillToDeliver;
         protected DateTime LoadedDate;
 
@@ -66,7 +66,8 @@ namespace CPlatform.PORD
                              .OrderByDescending(p => p.ReviewNbr).ThenByDescending(p => p.StillToDeliver).ToList();
             RepeatCount = repeat.Count;
             ActiveExclusions = store.GetExclusions().Count(x => !x.IsRevoked && x.ExpiryDate >= DateTime.Today);
-            BpIssues = store.GetBpIssues().Count(b => b.Status != "Updated");
+            NonPeppolFiveDay = _pos.Count(p => !PORDRules.IsForeignCurrency(p.Currency)
+                                            && PORDRules.IsPeppolTerm(p.PoTermDays) && !PORDRules.IsPeppolTerm(p.BpTermDays));
 
             rptPackages.DataSource = pkgs;
             rptPackages.DataBind();
@@ -115,6 +116,7 @@ namespace CPlatform.PORD
             sb.Append(Chip(p.PoTermKey, p.PoTermDays, poBad));
             sb.Append("<span class=\"arrow\" title=\"PO terms vs BP master terms\">vs</span>");
             sb.Append(Chip(p.BpTermKey, p.BpTermDays, false));
+            if (PORDRules.IsPeppolTerm(p.BpTermDays)) sb.Append("<span class=\"pord-peppol\" title=\"PEPPOL e-invoicing supplier: 5-day terms are standard\">PEPPOL</span>");
             sb.Append(p.TermsMatch ? "" : "<span class=\"match no\" title=\"PO terms override the BP master\">≠</span>");
             if (fx) sb.Append("<span class=\"pord-ccy fx\">").Append(PORDHelper.Enc(p.Currency)).Append("</span>");
             sb.Append("</span>");

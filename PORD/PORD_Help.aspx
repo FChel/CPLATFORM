@@ -61,12 +61,14 @@
 
                 <section id="h-rules">
                     <h2>Business rules</h2>
+                    <p>Defence standard payment terms are <strong>20 days</strong>, or <strong>5 days for suppliers invoicing through PEPPOL</strong> e-invoicing.
+                    Business Partner master records carry these standard terms, so an exception is normally a PO whose terms were changed from the BP master.</p>
                     <p>A PO is flagged when <strong>any</strong> of these is true:</p>
                     <table class="ref">
                         <tr><th>Rule</th><th>Test</th><th>Category</th></tr>
-                        <tr><td>Non-standard</td><td>AUD and PO net days not 5 or 20</td><td><%= PORDHelper.CategoryPill(PordCategory.NonStandard) %></td></tr>
-                        <tr><td>Override</td><td>PO payment-term key ≠ BP <strong>purchasing-org</strong> payment-term key</td><td><%= PORDHelper.CategoryPill(PordCategory.Override) %></td></tr>
-                        <tr><td>Both</td><td>Both of the above</td><td><%= PORDHelper.CategoryPill(PordCategory.NonStandardAndOverride) %></td></tr>
+                        <tr><td>Non-standard</td><td>AUD, PO net days not 5 or 20, and PO equals the BP master. This should not occur, and means the BP master itself is wrong (goes to DFIM).</td><td><%= PORDHelper.CategoryPill(PordCategory.NonStandard) %></td></tr>
+                        <tr><td>Override</td><td>PO payment-term key ≠ BP master payment-term key, e.g. 5 days on a supplier that is not PEPPOL-enabled</td><td><%= PORDHelper.CategoryPill(PordCategory.Override) %></td></tr>
+                        <tr><td>Both</td><td>PO net days not 5 or 20, and so different from the BP master</td><td><%= PORDHelper.CategoryPill(PordCategory.NonStandardAndOverride) %></td></tr>
                         <tr><td>Foreign currency</td><td>Non-AUD and PO net days &lt; 14</td><td><%= PORDHelper.CategoryPill(PordCategory.ForeignCurrency) %></td></tr>
                     </table>
                     <p>Excluded at extract: GL accounts <code>211455</code> (capital construction support charges) and <code>212208</code> (estate projects).</p>
@@ -126,8 +128,8 @@
                     <table class="ref">
                         <tr><th>#</th><th>Question</th><th>Working assumption</th></tr>
                         <tr><td>1</td><td>Foreign-currency POs: exclude, or apply the 14-day rule?</td><td>Include, and apply the 14-day rule (KL comment). Needs a Currency column.</td></tr>
-                        <tr><td>2</td><td>Grouping and routing columns</td><td>Add DM Program, Delivery Manager cost centre and POC email to the extract.</td></tr>
-                        <tr><td>3</td><td>Which BP payment term?</td><td>Purchasing-org level (LFM1), which is where the PO default comes from.</td></tr>
+                        <tr><td>2</td><td>Grouping and routing columns</td><td><strong>BODS owns this.</strong> The NSPT extract is a new file. We will review the first file against the expected columns and tell BODS what is missing.</td></tr>
+                        <tr><td>3</td><td>Which BP payment term?</td><td><strong>Confirmed:</strong> BP master terms are the Defence standard, 20 days or 5 days for PEPPOL suppliers.</td></tr>
                         <tr><td>4</td><td>Who is the PO contact?</td><td>PO Creator, resolved to an email by BODS.</td></tr>
                         <tr><td>5</td><td>Definition of "open PO"</td><td>Still to deliver &gt; 0, or delivered but not fully invoiced.</td></tr>
                         <tr><td>6</td><td>No response at finalise</td><td>Recorded as No response; carried forward; escalated at Review Nbr ≥ <%= PORDHelper.EscalateAtReview %>.</td></tr>

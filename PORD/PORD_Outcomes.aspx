@@ -52,7 +52,8 @@
                 <h2>2 · Supplier master data — DFIM</h2>
                 <a class="btn btn-secondary btn-sm" href="PORD_Outcomes_Export.ashx?kind=bp">Download CSV</a>
             </div>
-            <p class="card-lead">Business Partners whose <em>master</em> payment terms are non-standard. Every new PO copies these terms, so fixing the master prevents future exceptions.</p>
+            <p class="card-lead">A safety net. BP master records should always carry standard Defence terms (20 days, or 5 days for PEPPOL). Any supplier listed here has non-standard master terms, which every new PO copies, so DFIM needs to correct it.</p>
+            <asp:PlaceHolder ID="phBpNone" runat="server" Visible="false"><div class="alert ok" style="margin:0 0 12px;">All supplier master records in this cycle carry standard terms. Nothing to send to DFIM.</div></asp:PlaceHolder>
             <div class="tbl-wrap">
                 <table class="tbl">
                     <thead><tr><th style="width:34px;"></th><th>BP</th><th>Supplier</th><th>Master terms</th><th class="num">Open POs</th><th class="num">Still to deliver</th><th>DFIM status</th></tr></thead>

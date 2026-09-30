@@ -74,7 +74,7 @@
             <div class="policy">
                 <div class="k">Policy</div>
                 <a href="<%= PORDHelper.PolicyUrl %>" target="_blank" rel="noopener">RMG-417 — Supplier Pay On-Time or Pay Interest Policy</a>
-                <div class="s">Standard terms: 5 or 20 days (AUD); at least 14 days for foreign currency.</div>
+                <div class="s">Standard terms: 20 days, or 5 days for PEPPOL e-invoicing suppliers. Foreign currency: at least 14 days.</div>
             </div>
         </div>
     </div>
@@ -121,9 +121,9 @@
                     <h2>What the issues mean</h2>
                     <table class="ref">
                         <tr><th>Issue</th><th>Meaning</th><th>Typical fix</th></tr>
-                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.NonStandard) %></td><td>AUD PO terms are not 5 or 20 days, and match the supplier master.</td><td>Amend the PO; ask DFIM to correct the supplier master.</td></tr>
-                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.Override) %></td><td>PO terms were changed from the supplier master (both may be standard).</td><td>Reset the PO terms to the master value.</td></tr>
-                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.NonStandardAndOverride) %></td><td>PO terms are non-standard <em>and</em> differ from the master.</td><td>Reset the PO terms to the master value.</td></tr>
+                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.NonStandard) %></td><td>PO terms are not 5 or 20 days, and the supplier master has the same terms. This is rare because supplier masters carry standard terms.</td><td>Amend the PO. The admin team will ask DFIM to correct the supplier master.</td></tr>
+                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.Override) %></td><td>PO terms were changed from the supplier master, for example 5 days on a supplier that does not invoice through PEPPOL.</td><td>Reset the PO terms to the master value.</td></tr>
+                        <tr><td><%= PORDHelper.CategoryPill(PordCategory.NonStandardAndOverride) %></td><td>PO terms are not 5 or 20 days, so they differ from the supplier master.</td><td>Reset the PO terms to the master value.</td></tr>
                         <tr><td><%= PORDHelper.CategoryPill(PordCategory.ForeignCurrency) %></td><td>Foreign-currency PO with terms under 14 days. DFG cannot reliably make a foreign-currency payment within 5 days.</td><td>Use 14-day terms (PEPPOL arrangements included).</td></tr>
                     </table>
                     <p>The <strong>Nbr</strong> column shows how many monthly reviews the PO has appeared in. A red number means it was flagged before and is still not fixed.</p>

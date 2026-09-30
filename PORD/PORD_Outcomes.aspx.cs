@@ -50,8 +50,11 @@ namespace CPlatform.PORD
             OutcomeRowsHtml = sb.ToString();
             btnClose.Enabled = FinalisedCount > 0;
 
-            rptBp.DataSource = store.GetBpIssues();
+            var bp = store.GetBpIssues();
+            rptBp.DataSource = bp;
             rptBp.DataBind();
+            phBpNone.Visible = bp.Count == 0;
+            btnNotify.Visible = bp.Count > 0;
             rptResolved.DataSource = store.GetResolved();
             rptResolved.DataBind();
         }

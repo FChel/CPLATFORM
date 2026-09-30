@@ -468,30 +468,30 @@ namespace CPlatform.PORD
             {
                 new Bp("1000210045", "Southern Cross Logistics Pty Ltd", "Z020"),
                 new Bp("1000210112", "Harbourline Marine Services",       "Z020"),
-                new Bp("1000210387", "Redgum Engineering Group",          "Z030"),
+                new Bp("1000210387", "Redgum Engineering Group",          "Z020"),
                 new Bp("1000210401", "Blue Ridge Aerotech",               "Z020"),
                 new Bp("1000210533", "Kestrel Systems Integration",       "Z005"),
-                new Bp("1000210678", "Coastal Fuel Distributors",         "Z014"),
+                new Bp("1000210678", "Coastal Fuel Distributors",         "Z005"),
                 new Bp("1000210702", "Wattle Facilities Management",      "Z020"),
-                new Bp("1000210819", "Tasman Defence Training",           "Z045"),
+                new Bp("1000210819", "Tasman Defence Training",           "Z020"),
                 new Bp("1000210926", "Ironbark Construction Services",    "Z020"),
                 new Bp("1000211004", "Pinnacle Cyber Assurance",          "Z005"),
-                new Bp("1000211150", "Outback Vehicle Parts Co",          "Z030"),
+                new Bp("1000211150", "Outback Vehicle Parts Co",          "Z020"),
                 new Bp("1000211276", "Meridian Medical Supplies",         "Z020"),
                 new Bp("1000211391", "Brindabella Consulting",            "Z020"),
-                new Bp("1000211405", "Nullarbor Freight Lines",           "Z007"),
+                new Bp("1000211405", "Nullarbor Freight Lines",           "Z020"),
                 new Bp("1000211588", "Ember Electronics Australia",       "Z020"),
-                new Bp("1000211623", "Sapphire Coast Catering",           "Z010"),
+                new Bp("1000211623", "Sapphire Coast Catering",           "Z005"),
                 new Bp("1000211747", "Granite Peak Survey & Mapping",     "Z020"),
                 new Bp("1000211872", "Lighthouse Software Services",      "Z005"),
-                new Bp("1000211990", "Kookaburra Uniform Supply",         "Z060"),
+                new Bp("1000211990", "Kookaburra Uniform Supply",         "Z020"),
                 new Bp("1000212014", "Stirling Range Munitions Handling", "Z020")
             };
             var fxBps = new List<Bp>
             {
-                new Bp("1000300118", "Atlantic Avionics Inc (US)",       "Z030"),
-                new Bp("1000300245", "Nordic Sonar AB (SE)",              "Z030"),
-                new Bp("1000300372", "Thames Precision Optics Ltd (UK)",  "Z045"),
+                new Bp("1000300118", "Atlantic Avionics Inc (US)",       "Z020"),
+                new Bp("1000300245", "Nordic Sonar AB (SE)",              "Z020"),
+                new Bp("1000300372", "Thames Precision Optics Ltd (UK)",  "Z020"),
                 new Bp("1000300419", "Aoraki Marine NZ Ltd",              "Z020")
             };
             var fxCcy = new[] { "USD", "EUR", "GBP", "NZD" };
@@ -678,7 +678,7 @@ namespace CPlatform.PORD
                 });
             }
 
-            _bpStatus = new Dictionary<string, string> { { "1000210387", "Notified" } };
+            _bpStatus = new Dictionary<string, string>();
         }
     }
 }

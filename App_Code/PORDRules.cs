@@ -14,6 +14,13 @@ namespace CPlatform.PORD
     ///          or (PO term key differs from the BP purchasing-org term key)
     ///          or (foreign currency and net days &lt; 14)
     ///
+    /// Defence standard terms are 20 days, or 5 days for suppliers invoicing
+    /// through PEPPOL e-invoicing. BP master records carry these standard terms,
+    /// so in practice an exception is a PO whose terms were changed from the BP
+    /// master. "Non-standard" on its own (PO matches a non-standard BP master)
+    /// should therefore not occur; when it does, the BP master itself is wrong
+    /// and goes to DFIM.
+    ///
     /// SAP payment terms are keys, not day counts. TermDays resolves a key to
     /// net days from the configured map (PORD.TermKeyDays) with a fallback
     /// that reads trailing digits (e.g. "Z020" → 20). The real key list must
@@ -121,11 +128,11 @@ namespace CPlatform.PORD
             switch (c)
             {
                 case PordCategory.NonStandard:
-                    return "AUD PO payment terms are not 5 or 20 days.";
+                    return "PO terms are not 5 or 20 days, and the BP master has the same non-standard terms. The BP master record needs correcting.";
                 case PordCategory.Override:
-                    return "PO payment terms differ from the Business Partner master terms.";
+                    return "PO terms are 5 or 20 days but differ from the BP master, for example 5 days on a supplier that is not PEPPOL-enabled.";
                 case PordCategory.NonStandardAndOverride:
-                    return "PO payment terms are non-standard and differ from the Business Partner master terms.";
+                    return "PO terms are not 5 or 20 days, so they differ from the BP master's standard terms.";
                 case PordCategory.ForeignCurrency:
                     return "Foreign-currency PO with payment terms shorter than 14 days. DFG cannot reliably pay FX within 5 days.";
                 default:
@@ -155,6 +162,12 @@ namespace CPlatform.PORD
                 case PordCategory.ForeignCurrency:        return "fx";
                 default:                                  return "";
             }
+        }
+
+        /// <summary>5-day terms are standard only for PEPPOL e-invoicing suppliers.</summary>
+        public static bool IsPeppolTerm(int? days)
+        {
+            return days.HasValue && days.Value == 5;
         }
 
         public static string TermLabel(string key, int? days)

@@ -81,7 +81,7 @@
             <div class="stat err"><div class="lbl">Overdue</div><div class="val"><%= Overdue %></div><div class="sub">past respond-by date</div></div>
             <div class="stat err"><div class="lbl">Repeat offenders</div><div class="val"><%= RepeatCount %></div><div class="sub">Review Nbr &ge; <%= PORDHelper.EscalateAtReview %></div></div>
             <div class="stat"><div class="lbl">Active exclusions</div><div class="val"><%= ActiveExclusions %></div><div class="sub">skipped at load</div></div>
-            <div class="stat warn"><div class="lbl">BP master issues</div><div class="val"><%= BpIssues %></div><div class="sub">to send to DFIM</div></div>
+            <div class="stat warn"><div class="lbl">5-day, not PEPPOL</div><div class="val"><%= NonPeppolFiveDay %></div><div class="sub">paying faster than required</div></div>
         </div>
 
         <div class="pord-mix pord-section">
