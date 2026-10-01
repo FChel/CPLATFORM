@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 function Test-ApplicationPath([string]$Path) {
     if ($Path -match '[\\:]|(^|/)\.{1,2}(/|$)|(^|/)(web\.config|app_offline\.htm)$' -or
         $Path -match '(?i)(^|/)(App_Data|Database|uploads|evidence)(/|$)') { return $false }
-    return $Path -cmatch '^((App_Code|bin|css|js|images|LPPI|NORM|Prepayment|eJET)/[A-Za-z0-9_./ -]+\.(cs|dll|css|js|png|jpg|jpeg|gif|svg|ico|aspx|ashx|master|ascx|html)|[A-Za-z0-9_-]+\.aspx(\.cs)?)$'
+    return $Path -cmatch '^((App_Code|bin|css|js|images|LPPI|NORM|PORD|Prepayment|eJET)/[A-Za-z0-9_./ -]+\.(cs|dll|css|js|png|jpg|jpeg|gif|svg|ico|aspx|ashx|master|ascx|html)|[A-Za-z0-9_-]+\.aspx(\.cs)?)$'
 }
 
 function Get-SafePath([string]$Root, [string]$Relative) {
