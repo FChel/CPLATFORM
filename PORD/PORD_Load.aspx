@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true"
+﻿<%@ Page Language="C#" AutoEventWireup="true"
     CodeFile="PORD_Load.aspx.cs" Inherits="CPlatform.PORD.PORD_Load" %>
 <%@ Import Namespace="CPlatform.PORD" %>
 <!DOCTYPE html>
@@ -6,9 +6,9 @@
 <head runat="server">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PO Review — Load file</title>
+    <title>POD — Load file</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <link rel="stylesheet" href="../css/pord.css" />
+    <link rel="stylesheet" href="../css/pord.css?v=20261021d" />
 </head>
 <body>
 <form id="form1" runat="server" enctype="multipart/form-data">
@@ -17,7 +17,7 @@
     <main class="lppi-main">
         <div class="page-head">
             <div>
-                <div class="crumb">PO Review</div>
+                <div class="crumb">POD</div>
                 <h1>Load monthly extract</h1>
                 <p class="lead">Each check has its own BODS extract. Choose the extract type, then upload the file. It is checked and classified before anything is saved.</p>
             </div>
@@ -26,7 +26,6 @@
             </div>
         </div>
 
-        <%= RenderDemoNotice() %>
         <asp:PlaceHolder ID="phMsg" runat="server" />
 
         <div class="pord-cols">
@@ -49,7 +48,7 @@
             </div>
             <div class="card">
                 <h2>Expected columns</h2>
-                <p class="card-lead"><%= PORDHelper.Enc(SelectedCheck.Name) %>. <%= SelectedCheck.Key == PORDChecks.Nspt ? "The business requirement's report output, plus the columns needed to group by program and email PO contacts. We will review the first BODS file against this list." : "Example layout, showing that each check brings its own extract." %></p>
+                <p class="card-lead"><%= PORDHelper.Enc(SelectedCheck.Name) %>. Check that the extract includes these columns before loading a monthly cycle.</p>
                 <ul class="pord-check"><%= ColumnChecklistHtml %></ul>
             </div>
         </div>
@@ -76,9 +75,10 @@
             <p class="muted" style="font-size:13px;">Committing creates or refreshes one package per program, increments Review Nbr for POs seen before,
                 skips POs with an active exclusion, and marks last month's "will amend" POs that no longer appear as resolved.</p>
             <div class="btn-row">
-                <asp:Button ID="btnCommit" runat="server" CssClass="btn btn-primary" Text="Commit load" OnClick="btnCommit_Click" />
+                <asp:Button ID="btnCommit" runat="server" CssClass="btn btn-primary" Text="Load review packages" Enabled="false" OnClick="btnCommit_Click" />
                 <a class="btn btn-secondary" href="PORD_Load.aspx">Cancel</a>
             </div>
+            <p class="hint">File checking is available. Loading review packages is not enabled in this environment.</p>
         </asp:Panel>
 
         <div class="card" style="margin-top:16px;">

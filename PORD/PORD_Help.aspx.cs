@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Text;
 
@@ -10,6 +10,7 @@ namespace CPlatform.PORD
 
         protected void Page_Load(object sender, EventArgs e)
         {
+            pnlSampleData.Visible = PORDHelper.DemoMode;
             var sb = new StringBuilder();
             foreach (var c in PORDChecks.All)
             {
@@ -19,6 +20,14 @@ namespace CPlatform.PORD
                   .Append("</td></tr>");
             }
             ChecksTableHtml = sb.ToString();
+        }
+
+        protected void btnRestore_Click(object sender, EventArgs e)
+        {
+            if (!PORDHelper.DemoMode) return;
+            if (!chkRestore.Checked) { litRestore.Text = "<p role=\"alert\">Confirm the checkbox before restoring the sample data.</p>"; return; }
+            PORDHelper.Store.Reset();
+            Response.Redirect("PORD_Admin.aspx", true);
         }
     }
 }

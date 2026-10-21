@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true"
+﻿<%@ Page Language="C#" AutoEventWireup="true"
     CodeFile="PORD_Outcomes.aspx.cs" Inherits="CPlatform.PORD.PORD_Outcomes" %>
 <%@ Import Namespace="CPlatform.PORD" %>
 <!DOCTYPE html>
@@ -6,9 +6,9 @@
 <head runat="server">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PO Review — Outcomes</title>
+    <title>POD — Outcomes</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <link rel="stylesheet" href="../css/pord.css" />
+    <link rel="stylesheet" href="../css/pord.css?v=20261021d" />
 </head>
 <body>
 <form id="form1" runat="server">
@@ -17,13 +17,12 @@
     <main class="lppi-main">
         <div class="page-head">
             <div>
-                <div class="crumb">PO Review</div>
+                <div class="crumb">POD</div>
                 <h1>Outcomes &amp; closing the loop</h1>
                 <p class="lead">What goes out at the end of each cycle: the outcomes report for the FSO Compliance Team, supplier master-data fixes for DFIM,
                 and proof from the next load that committed changes were made.</p>
             </div>
         </div>
-        <%= RenderDemoNotice() %>
         <asp:PlaceHolder ID="phMsg" runat="server" />
 
         <%-- 1. Outcomes report --%>
@@ -40,10 +39,11 @@
                 </table>
             </div>
             <div class="btn-row" style="margin-top:14px;align-items:center;">
-                <asp:Button ID="btnClose" runat="server" CssClass="btn btn-primary" Text="Issue outcomes &amp; close finalised packages" OnClick="btnClose_Click"
+                <asp:Button ID="btnClose" runat="server" CssClass="btn btn-primary" Text="Close finalised packages" OnClick="btnClose_Click"
                     OnClientClick="return confirm('Close every finalised package? Their review links become read only.');" />
                 <span class="muted" style="font-size:12px;"><%= FinalisedCount %> of <%= PackageCount %> packages finalised</span>
             </div>
+            <p class="hint">Download and provide the outcomes CSV to the FSO Compliance Team before closing packages.</p>
         </div>
 
         <%-- 2. BP master data --%>

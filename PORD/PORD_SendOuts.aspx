@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true"
+﻿<%@ Page Language="C#" AutoEventWireup="true"
     CodeFile="PORD_SendOuts.aspx.cs" Inherits="CPlatform.PORD.PORD_SendOuts" %>
 <%@ Import Namespace="CPlatform.PORD" %>
 <!DOCTYPE html>
@@ -6,9 +6,9 @@
 <head runat="server">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PO Review — Send-outs</title>
+    <title>POD — Send-outs</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <link rel="stylesheet" href="../css/pord.css" />
+    <link rel="stylesheet" href="../css/pord.css?v=20261021d" />
     <style>
         details.links { position: relative; display: inline-block; }
         details.links summary { list-style: none; cursor: pointer; }
@@ -29,13 +29,12 @@
     <main class="lppi-main">
         <div class="page-head">
             <div>
-                <div class="crumb">PO Review</div>
+                <div class="crumb">POD</div>
                 <h1>Send for review</h1>
                 <p class="lead">Packages are created when a file is loaded, one per Delivery Manager program. Each package covers every check. One send emails AS Fin the full package and each PO contact a link to their own POs, with a tab per check.</p>
             </div>
         </div>
 
-        <%= RenderDemoNotice() %>
         <asp:PlaceHolder ID="phMsg" runat="server" />
 
         <div class="card">
@@ -82,7 +81,7 @@
 </div>
 
 <div class="pord-modal" id="pvModal" onclick="if(event.target===this)pvClose();">
-    <div class="pord-modal-card" role="dialog" aria-label="Email preview">
+    <div class="pord-modal-card" role="dialog" aria-modal="true" aria-label="Email preview">
         <div class="pord-modal-bar">
             <span class="ttl" id="pvTitle">Email preview</span>
             <span class="seg" id="pvSeg"></span>
@@ -92,11 +91,13 @@
     </div>
 </div>
 <script>
+    var pvReturnFocus;
     function pvOpen(pkg, program, pocs) {
+        pvReturnFocus = document.activeElement;
         var seg = document.getElementById('pvSeg'); seg.innerHTML = '';
         var opts = [{ l: 'AS Fin', u: 'PORD_EmailPreview.aspx?pkg=' + pkg + '&aud=asfin' }];
         (pocs || []).forEach(function (p) { opts.push({ l: p.n, u: 'PORD_EmailPreview.aspx?pkg=' + pkg + '&aud=poc&poc=' + encodeURIComponent(p.e) }); });
-        opts.slice(0, 5).forEach(function (o, i) {
+        opts.forEach(function (o, i) {
             var b = document.createElement('button'); b.type = 'button'; b.textContent = o.l; if (!i) b.className = 'on';
             b.onclick = function () { seg.querySelectorAll('button').forEach(function (x) { x.className = ''; }); b.className = 'on'; document.getElementById('pvFrame').src = o.u; };
             seg.appendChild(b);
@@ -104,8 +105,9 @@
         document.getElementById('pvTitle').textContent = program + ' — email preview';
         document.getElementById('pvFrame').src = opts[0].u;
         document.getElementById('pvModal').classList.add('show');
+        seg.querySelector('button').focus();
     }
-    function pvClose() { document.getElementById('pvModal').classList.remove('show'); document.getElementById('pvFrame').src = 'about:blank'; }
+    function pvClose() { document.getElementById('pvModal').classList.remove('show'); document.getElementById('pvFrame').src = 'about:blank'; if(pvReturnFocus) pvReturnFocus.focus(); }
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') pvClose(); });
     document.addEventListener('click', function (e) {
         document.querySelectorAll('details.links[open]').forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute('open'); });
