@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -71,7 +71,7 @@ namespace CPlatform.PORD
         {
             int n = PORDHelper.Store.CloseFinalised(CurrentUser);
             phMsg.Controls.Add(new LiteralControl("<div class=\"alert ok\">" + n + " package" + (n == 1 ? "" : "s")
-                + " closed." + (PORDHelper.DemoMode ? " (Demo: the outcomes report was not emailed — use Download CSV.)" : "") + "</div>"));
+                + " closed. Provide the downloaded outcomes CSV to the FSO Compliance Team.</div>"));
             Bind();
         }
 

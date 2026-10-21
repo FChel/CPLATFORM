@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -22,8 +22,8 @@ namespace CPlatform.PORD
     /// and goes to DFIM.
     ///
     /// SAP payment terms are keys, not day counts. TermDays resolves a key to
-    /// net days from the configured map (PORD.TermKeyDays) with a fallback
-    /// that reads trailing digits (e.g. "Z020" → 20). The real key list must
+    /// net days from the configured map (PORD.TermKeyDays). Unknown keys are
+    /// rejected by the file checker. The real key list must
     /// be confirmed with the ERP team before go-live.
     /// </summary>
     public static class PORDRules
@@ -69,11 +69,6 @@ namespace CPlatform.PORD
             int d;
             if (TermMap.TryGetValue(termKey.Trim(), out d)) return d;
 
-            // Fallback: trailing digits of the key.
-            string k = termKey.Trim();
-            int i = k.Length;
-            while (i > 0 && char.IsDigit(k[i - 1])) i--;
-            if (i < k.Length && int.TryParse(k.Substring(i), out d)) return d;
             return null;
         }
 
@@ -182,7 +177,7 @@ namespace CPlatform.PORD
         {
             switch (response ?? "")
             {
-                case PordResponse.Amend:      return "Will amend PO terms";
+                case PordResponse.Amend:      return "Will fix";
                 case PordResponse.Reason:     return "Valid reason";
                 case PordResponse.Reassign:   return "Not mine – reassign";
                 case PordResponse.NoResponse: return "No response";

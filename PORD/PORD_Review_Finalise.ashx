@@ -1,4 +1,4 @@
-<%@ WebHandler Language="C#" Class="CPlatform.PORD.PORD_Review_Finalise" %>
+﻿<%@ WebHandler Language="C#" Class="CPlatform.PORD.PORD_Review_Finalise" %>
 
 using System;
 using System.Web;
@@ -38,7 +38,8 @@ namespace CPlatform.PORD
             string user = PORDHelper.CurrentUser, error;
             bool ok; int auto = 0;
             if (ctx.Request.Form["action"] == "unfinalise") ok = store.Unfinalise(packageId, user, out error);
-            else ok = store.Finalise(packageId, user, out auto, out error);
+            else if (ctx.Request.Form["action"] == "finalise") ok = store.Finalise(packageId, user, out auto, out error);
+            else { ok = false; error = "Choose finalise or reopen."; }
 
             ctx.Response.Write("{\"ok\":" + (ok ? "true" : "false") + ",\"error\":" + PORDHelper.Js(error) + ",\"autoApplied\":" + auto + "}");
         }

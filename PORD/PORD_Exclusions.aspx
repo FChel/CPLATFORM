@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true"
+﻿<%@ Page Language="C#" AutoEventWireup="true"
     CodeFile="PORD_Exclusions.aspx.cs" Inherits="CPlatform.PORD.PORD_Exclusions" %>
 <%@ Import Namespace="CPlatform.PORD" %>
 <!DOCTYPE html>
@@ -6,9 +6,9 @@
 <head runat="server">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PO Review — Exclusions</title>
+    <title>POD — Exclusions</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <link rel="stylesheet" href="../css/pord.css" />
+    <link rel="stylesheet" href="../css/pord.css?v=20261021d" />
 </head>
 <body>
 <form id="form1" runat="server">
@@ -17,13 +17,12 @@
     <main class="lppi-main">
         <div class="page-head">
             <div>
-                <div class="crumb">PO Review</div>
+                <div class="crumb">POD</div>
                 <h1>Exclusions</h1>
                 <p class="lead">POs with an accepted valid reason are skipped at load, so owners are not asked the same question every month.
                 An exclusion is tied to the PO, the check <em>and</em> the value that was accepted (for payment terms, the term key): if that changes, the PO is checked again. Exclusions last <%= PORDHelper.ExclusionMonths %> months.</p>
             </div>
         </div>
-        <%= RenderDemoNotice() %>
         <asp:PlaceHolder ID="phMsg" runat="server" />
 
         <div class="stat-grid">
@@ -51,7 +50,7 @@
                             <td class="nowrap"><%# PORDHelper.Date(X(Container.DataItem).ExpiryDate) %></td>
                             <td><%# StatusPill(X(Container.DataItem)) %></td>
                             <td><asp:Button runat="server" CssClass="btn btn-sm btn-danger" Text="Revoke" CommandName="revoke"
-                                    CommandArgument='<%# X(Container.DataItem).PoNumber %>' Visible='<%# !X(Container.DataItem).IsRevoked %>'
+                                    CommandArgument='<%# X(Container.DataItem).PoNumber + "|" + X(Container.DataItem).CheckType + "|" + X(Container.DataItem).PoTermKey %>' Visible='<%# !X(Container.DataItem).IsRevoked && X(Container.DataItem).ExpiryDate >= DateTime.Today %>'
                                     OnClientClick="return confirm('Revoke this exclusion? The PO will be flagged again at the next load if it is still non-compliant.');" /></td>
                         </tr>
                     </ItemTemplate></asp:Repeater>

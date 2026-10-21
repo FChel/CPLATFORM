@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -117,7 +117,7 @@ namespace CPlatform.PORD
             var bank = new PordCheckDef
             {
                 Key = CcyBank, Name = "Currency vs bank mismatch", ShortName = "Currency vs bank", Status = "Example",
-                Description = "POs whose currency does not match the supplier's bank account currency or country. Payments fail or incur conversion costs. Example check showing how further checks plug in.",
+                Description = "POs whose currency differs from the supplier's bank account currency or country. Review the nominated account to help prevent failed payments and conversion costs.",
                 FilePattern = "PO_CCYBANK_REVIEW_*.csv", IssueHeader = "PO vs bank & issue",
                 FixLabel = "Correct PO / bank details", FixDateLabel = "Fix by",
                 PolicyText = "Decision Brief — compliance monitoring",

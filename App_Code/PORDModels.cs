@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace CPlatform.PORD
@@ -173,6 +173,7 @@ namespace CPlatform.PORD
     /// </summary>
     public class PordExclusion
     {
+        public int      SourcePackageID;
         public string   CheckType;
         public string   PoNumber;
         public string   PoTermKey;
