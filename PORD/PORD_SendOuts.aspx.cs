@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -26,8 +26,9 @@ namespace CPlatform.PORD
                 ? PORDHelper.Attr(Request.Form["dueDate"])
                 : DateTime.Today.AddDays(PORDHelper.DefaultDueDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             litSendNote.Text = PORDHelper.DemoMode
-                ? "Demo: sends are recorded (status and date) but no email leaves the server. Use Preview to see the emails."
+                ? "Email delivery is off in this environment. Mark packages as sent to continue the review, or preview each email."
                 : "Emails go to the AS Fin mailbox and every PO contact in the selected packages.";
+            if (PORDHelper.DemoMode) btnSend.Text = "Mark selected as sent / reminded";
             Bind();
         }
 
@@ -65,8 +66,9 @@ namespace CPlatform.PORD
                 return p != null && CanSendStatus(p.Status) && groups.TryGetValue(p.DmProgram, out g) && g.IsConfigured;
             }).ToList();
 
-            int n = store.MarkSent(ids, due, CurrentUser);
-            Msg("ok", n + " package" + (n == 1 ? "" : "s") + " " + (PORDHelper.DemoMode ? "marked as sent (demo — no email sent)." : "sent."));
+            if (ids.Count == 0) { Msg("warn", "No selected packages can be sent. Check their status and AS Fin mailbox."); Bind(); return; }
+            int n = store.MarkSent(ids.Distinct().ToList(), due, CurrentUser);
+            Msg("ok", n + " package" + (n == 1 ? "" : "s") + " " + (PORDHelper.DemoMode ? "marked as sent / reminded. Email delivery is off." : "sent."));
             Bind();
         }
 

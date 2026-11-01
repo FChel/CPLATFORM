@@ -32,6 +32,9 @@
     var token    = tokenEl.value;
     var readOnly = ($('pordReadOnly') || {}).value === '1';
     var isPoc    = ($('pordIsPoc') || {}).value === '1';
+    var today = $('pordToday').value;
+    var defaultTarget = $('pordDefaultTarget').value;
+    var escalateAt = +$('pordEscalateAt').value;
 
     var rows = [];               // { id, tr, msg, exp, orig }
     var byId = {};
@@ -61,7 +64,7 @@
             var inputs = document.querySelectorAll('#pordTable .input');
             for (var k = 0; k < inputs.length; k++) inputs[k].disabled = true;
         }
-        bindChecks(); bindFilters(); bindBulk(); bindSave(); bindFinalise();
+        bindChecks(); bindFilters(); bindBulk(); bindSave(); bindFinalise(); bindTabKeys();
         applyFilter();
         window.addEventListener('beforeunload', function (e) {
             if (Object.keys(dirty).length) { e.preventDefault(); e.returnValue = ''; return ''; }
@@ -69,16 +72,19 @@
         document.addEventListener('keydown', function (e) {
             if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); if (!saveBtn.disabled) save(); }
         });
-        updateProgress();
+        refreshSaveState(); updateProgress();
     }
 
     // ------------------------------------------------------------------ tabs
     function bindTabs() {
         var tabs = document.querySelectorAll('.pord-tab');
         for (var i = 0; i < tabs.length; i++) {
+            tabs[i].setAttribute('aria-selected', tabs[i].classList.contains('active') ? 'true' : 'false');
+            tabs[i].setAttribute('aria-controls', tabs[i].getAttribute('data-pane'));
             tabs[i].addEventListener('click', function () {
-                for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
+                for (var j = 0; j < tabs.length; j++) { tabs[j].classList.remove('active'); tabs[j].setAttribute('aria-selected', 'false'); }
                 this.classList.add('active');
+                this.setAttribute('aria-selected', 'true');
                 var panes = document.querySelectorAll('.pord-pane');
                 for (var k = 0; k < panes.length; k++) panes[k].classList.toggle('active', panes[k].id === this.getAttribute('data-pane'));
             });
@@ -89,6 +95,27 @@
                 var el = document.querySelector(this.getAttribute('href'));
                 if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
             });
+        }
+    }
+
+    function bindTabKeys() {
+        var lists = document.querySelectorAll('[role="tablist"]');
+        for (var i = 0; i < lists.length; i++) {
+            (function (list) {
+                var tabs = list.querySelectorAll('[role="tab"]');
+                function sync() { for (var t = 0; t < tabs.length; t++) tabs[t].tabIndex = tabs[t].getAttribute('aria-selected') === 'true' ? 0 : -1; }
+                sync(); list.addEventListener('click', sync);
+                list.addEventListener('keydown', function (e) {
+                    var at = Array.prototype.indexOf.call(tabs, e.target), next = at;
+                    if (at < 0) return;
+                    if (e.key === 'ArrowRight') next = (at + 1) % tabs.length;
+                    else if (e.key === 'ArrowLeft') next = (at + tabs.length - 1) % tabs.length;
+                    else if (e.key === 'Home') next = 0;
+                    else if (e.key === 'End') next = tabs.length - 1;
+                    else return;
+                    e.preventDefault(); tabs[next].click(); tabs[next].focus();
+                });
+            })(lists[i]);
         }
     }
 
@@ -118,8 +145,10 @@
         var inputs = r.tr.querySelectorAll('.in-reason, .in-target, .in-evidence, .in-comments');
         for (var i = 0; i < inputs.length; i++) {
             inputs[i].addEventListener('input', function () { touched(r); });
-            inputs[i].addEventListener('change', function () { touched(r); });
+            inputs[i].addEventListener('change', function () { layout(r); touched(r); });
         }
+        var labels = { '.in-target': 'Fix-by date', '.in-reason': 'Reason code', '.in-evidence': 'Objective reference', '.in-comments': 'Comments', '.po-sel': 'Select exception', '.btn-chev': 'Show PO details' };
+        Object.keys(labels).forEach(function (selector) { q(r, selector).setAttribute('aria-label', labels[selector] + ' for PO ' + r.tr.getAttribute('data-po')); });
         q(r, '.btn-chev').addEventListener('click', function () {
             var open = this.getAttribute('aria-expanded') !== 'true';
             this.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -140,8 +169,7 @@
         else if (v === '') hint.textContent = 'Choose a response.';
         q(r, '.in-comments').placeholder = v === 'Reassign' ? 'Who owns this PO?' : (needsComments(r) ? 'Required for this reason' : 'Optional');
         if (v === 'Amend' && !q(r, '.in-target').value) {
-            var d = new Date(); d.setDate(d.getDate() + 14);
-            q(r, '.in-target').value = d.toISOString().slice(0, 10);
+            q(r, '.in-target').value = defaultTarget;
         }
     }
 
@@ -162,10 +190,9 @@
     /** Returns an error message or null. When show is false only clears stale highlights. */
     function validate(r, show) {
         var v = read(r), err = null, bad = [];
-        var today = new Date(); today.setHours(0, 0, 0, 0);
         if (v.response === 'Amend') {
             if (!v.target) { err = 'Enter the date you expect the PO terms to be amended by.'; bad.push('.in-target'); }
-            else if (new Date(v.target + 'T00:00:00') < today) { err = 'The amendment date cannot be in the past.'; bad.push('.in-target'); }
+            else if (v.target < today) { err = 'The fix-by date cannot be in the past.'; bad.push('.in-target'); }
         } else if (v.response === 'Reason') {
             var opt = q(r, '.in-reason').selectedOptions[0];
             if (!v.reason) { err = 'Choose the reason that applies.'; bad.push('.in-reason'); }
@@ -177,9 +204,9 @@
             err = 'Tell us who owns this PO (name or email) in Comments.'; bad.push('.in-comments');
         }
         var all = r.tr.querySelectorAll('.input');
-        for (var i = 0; i < all.length; i++) all[i].classList.remove('invalid');
+        for (var i = 0; i < all.length; i++) { all[i].classList.remove('invalid'); all[i].removeAttribute('aria-invalid'); }
         if (show) {
-            for (var j = 0; j < bad.length; j++) q(r, bad[j]).classList.add('invalid');
+            for (var j = 0; j < bad.length; j++) { q(r, bad[j]).classList.add('invalid'); q(r, bad[j]).setAttribute('aria-invalid', 'true'); }
             if (err) showMsg(r, err, false); else clearMsg(r);
         } else if (!err) {
             clearMsg(r);
@@ -201,6 +228,7 @@
     function refreshSaveState(state, text) {
         var n = Object.keys(dirty).length;
         saveBtn.disabled = readOnly || busy || n === 0;
+        var finalBtn = $('pordFinaliseBtn'); if (finalBtn) finalBtn.disabled = busy;
         saveLbl.textContent = n ? 'Save ' + n + ' change' + (n === 1 ? '' : 's') : 'Save changes';
         if (state) { ind.className = 'pord-save-ind ' + state; ind.textContent = text; return; }
         if (readOnly) { ind.className = 'pord-save-ind'; ind.textContent = 'Read only'; }
@@ -217,13 +245,23 @@
             if (validate(byId[ids[i]], true)) { invalid++; first = first || byId[ids[i]]; }
         }
         if (invalid) {
+            // Saves include edits on every check, including filtered-out rows.
+            // Bring the first error into view before asking the reviewer to fix it.
+            ['pordSearch', 'pordFilterResp', 'pordFilterPoc', 'pordFilterRn'].forEach(function (id) { if ($(id)) $(id).value = ''; });
+            var key = first.tr.getAttribute('data-check');
+            var checkTab = document.querySelector('#pordCheckBar button[data-check="' + key + '"]');
+            if (checkTab && key !== checkFilter) checkTab.click();
+            setCheck(key, checkTab ? checkTab.getAttribute('data-head') : null);
             refreshSaveState('error', 'Fix ' + invalid + ' row' + (invalid === 1 ? '' : 's') + ' first');
             first.tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            var badInput = first.tr.querySelector('.invalid'); if (badInput) badInput.focus();
             return;
         }
+        var submitted = {};
         var body = ['token=' + enc(token), 'rowCount=' + ids.length];
         for (var k = 0; k < ids.length; k++) {
             var r = byId[ids[k]], v = read(r), p = 'rows[' + k + '].';
+            submitted[r.id] = v;
             body.push(p + 'poId=' + enc(r.id), p + 'response=' + enc(v.response), p + 'reason=' + enc(v.reason),
                       p + 'target=' + enc(v.target), p + 'evidence=' + enc(v.evidence), p + 'comments=' + enc(v.comments),
                       p + 'version=' + enc(r.tr.getAttribute('data-version')));
@@ -238,8 +276,10 @@
                 if (!row) continue;
                 if (res.ok) {
                     if (res.version) row.tr.setAttribute('data-version', res.version);
-                    row.orig = read(row); delete dirty[row.id];
-                    row.tr.classList.remove('dirty'); clearMsg(row);
+                    row.orig = submitted[row.id];
+                    if (same(read(row), row.orig)) { delete dirty[row.id]; row.tr.classList.remove('dirty'); }
+                    else { dirty[row.id] = true; row.tr.classList.add('dirty'); }
+                    clearMsg(row);
                     row.tr.classList.remove('saved-flash'); void row.tr.offsetWidth; row.tr.classList.add('saved-flash');
                 } else {
                     failed++;
@@ -248,20 +288,24 @@
             }
             if (failed) refreshSaveState('error', failed + ' row' + (failed === 1 ? '' : 's') + ' not saved');
             else refreshSaveState();
-            updateProgress();
+            updateProgress(); applyFilter();
         });
     }
 
     function post(url, body, cb) {
         var x = new XMLHttpRequest();
+        var finished = false;
+        function finish(err, resp) { if (!finished) { finished = true; cb(err, resp); } }
         x.open('POST', url, true);
+        x.timeout = 30000;
         x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
         x.onreadystatechange = function () {
             if (x.readyState !== 4) return;
             var json = null;
             try { json = JSON.parse(x.responseText); } catch (e) { }
-            cb(x.status !== 200 ? x.status : null, json);
+            finish(x.status !== 200 ? x.status : null, json);
         };
+        x.onerror = x.ontimeout = function () { finish('network', null); };
         x.send(body);
     }
     function enc(s) { return encodeURIComponent(s == null ? '' : s); }
@@ -271,22 +315,33 @@
         var btn = $('pordFinaliseBtn');
         if (!btn) return;
         btn.addEventListener('click', function () {
+            if (busy) return;
             if (Object.keys(dirty).length) { alertUnsaved(); return; }
             var action = btn.getAttribute('data-action');
             var msg;
             if (action === 'finalise') {
                 var open = rows.filter(function (r) { return !r.orig.response; }).length;
                 msg = 'Finalise this package?\n\n' + (open ? open + ' PO' + (open === 1 ? '' : 's') + ' without a response will be recorded as "No response" and carried into next month\'s review.\n\n' : 'Every PO has a response.\n\n')
-                    + 'Accepted valid reasons will exclude those POs from future reviews. You can reopen the package later.';
+                    + 'Accepted reasons that qualify create an exclusion. Other reasons remain in future reviews. You can reopen the package later.';
             } else {
                 msg = 'Reopen this package for changes?\n\n"No response" markers applied at finalise will be cleared.';
             }
-            if (!window.confirm(msg)) return;
-            btn.disabled = true;
-            post(FINAL_URL, 'token=' + enc(token) + '&action=' + enc(action), function (err, resp) {
-                if (err || !resp || !resp.ok) { btn.disabled = false; refreshSaveState('error', (resp && resp.error) || 'Request failed'); return; }
-                window.location.reload();
-            });
+            var dialog = $('pordConfirm');
+            $('pordConfirmTitle').textContent = action === 'finalise' ? 'Finalise package' : 'Reopen package';
+            $('pordConfirmText').textContent = msg;
+            $('pordConfirmAccept').textContent = action === 'finalise' ? 'Finalise package' : 'Reopen package';
+            $('pordConfirmCancel').onclick = function () { dialog.close(); btn.focus(); };
+            $('pordConfirmAccept').onclick = function () {
+                dialog.close();
+                busy = true; refreshSaveState('saving', action === 'finalise' ? 'Finalising…' : 'Reopening…');
+                post(FINAL_URL, 'token=' + enc(token) + '&action=' + enc(action), function (err, resp) {
+                    busy = false;
+                    if (err || !resp || !resp.ok) { btn.disabled = false; refreshSaveState('error', (resp && resp.error) || 'Request failed'); return; }
+                    window.location.reload();
+                });
+            };
+            dialog.showModal();
+            $('pordConfirmCancel').focus();
         });
     }
     function alertUnsaved() {
@@ -308,6 +363,20 @@
             for (var r = 0; r < rows.length; r++) if (rows[r].tr.getAttribute('data-check') === key) { n++; if (rows[r].orig.response) d++; }
             btns[b].querySelector('.done').textContent = d === n ? '\u2713 done' : (n - d) + ' left';
         }
+        var cells = document.querySelectorAll('[data-summary-check], [data-summary-poc], [data-summary-response]');
+        for (var c = 0; c < cells.length; c++) {
+            var cell = cells[c], count = 0;
+            for (var j = 0; j < rows.length; j++) {
+                var row = rows[j], response = cell.getAttribute('data-summary-response');
+                if (response !== null) { if (row.orig.response === response) count++; continue; }
+                if (!row.orig.response) continue;
+                if (cell.hasAttribute('data-summary-check') && row.tr.getAttribute('data-check') !== cell.getAttribute('data-summary-check')) continue;
+                if (cell.hasAttribute('data-summary-issue') && row.tr.getAttribute('data-cat') !== cell.getAttribute('data-summary-issue')) continue;
+                if (cell.hasAttribute('data-summary-poc') && row.tr.getAttribute('data-poc') !== cell.getAttribute('data-summary-poc')) continue;
+                count++;
+            }
+            cell.textContent = count;
+        }
     }
 
     // ------------------------------------------------------------------ checks
@@ -318,9 +387,11 @@
         if (!bar) return;
         var btns = bar.querySelectorAll('button');
         for (var i = 0; i < btns.length; i++) {
+            btns[i].setAttribute('aria-selected', btns[i].classList.contains('on') ? 'true' : 'false');
             btns[i].addEventListener('click', function () {
-                for (var j = 0; j < btns.length; j++) btns[j].classList.remove('on');
+                for (var j = 0; j < btns.length; j++) { btns[j].classList.remove('on'); btns[j].setAttribute('aria-selected', 'false'); }
                 this.classList.add('on');
+                this.setAttribute('aria-selected', 'true');
                 setCheck(this.getAttribute('data-check'), this.getAttribute('data-head'));
             });
         }
@@ -352,6 +423,10 @@
     // ------------------------------------------------------------------ filters
     function bindFilters() {
         var s = $('pordSearch'), fr = $('pordFilterResp'), fp = $('pordFilterPoc'), fn = $('pordFilterRn');
+        $('pordClearFilters').addEventListener('click', function () {
+            [s, fr, fp, fn].forEach(function (el) { if (el) el.value = ''; });
+            setCheck(checkFilter, null);
+        });
         var t;
         if (s) s.addEventListener('input', function () { clearTimeout(t); t = setTimeout(applyFilter, 120); });
         [fr, fp, fn].forEach(function (el) { if (el) el.addEventListener('change', applyFilter); });
@@ -383,7 +458,7 @@
             if (ok && s && tr.getAttribute('data-search').indexOf(s) < 0) ok = false;
             if (ok && catFilter && tr.getAttribute('data-cat') !== catFilter) ok = false;
             if (ok && poc && tr.getAttribute('data-poc') !== poc) ok = false;
-            if (ok && rn === 'repeat' && +tr.getAttribute('data-rn') < 2) ok = false;
+            if (ok && rn === 'repeat' && +tr.getAttribute('data-rn') < escalateAt) ok = false;
             if (ok && rn === 'first' && +tr.getAttribute('data-rn') !== 1) ok = false;
             if (ok && resp) {
                 if (resp === 'awaiting') ok = !v.response;
@@ -397,6 +472,7 @@
             if (ok) shown++;
         }
         $('pordNoMatch').style.display = shown || !rows.length ? 'none' : '';
+        $('pordVisibleCount').textContent = shown + ' exception' + (shown === 1 ? '' : 's') + ' shown';
         updateBulk();
     }
 
@@ -405,6 +481,9 @@
 
     function updateBulk() {
         var n = selected().length, bar = $('pordBulk');
+        var visible = rows.filter(function (r) { return !r.tr.classList.contains('hidden'); }).length;
+        var all = $('pordSelAll');
+        if (all) { all.checked = n > 0 && n === visible; all.indeterminate = n > 0 && n < visible; }
         if (!bar) return;
         $('pordBulkCount').textContent = n;
         bar.classList.toggle('show', n > 0 && !readOnly);
@@ -416,7 +495,7 @@
         resp.addEventListener('change', function () {
             date.style.display = resp.value === 'Amend' ? '' : 'none';
             reason.style.display = resp.value === 'Reason' ? '' : 'none';
-            if (resp.value === 'Amend' && !date.value) { var d = new Date(); d.setDate(d.getDate() + 14); date.value = d.toISOString().slice(0, 10); }
+            if (resp.value === 'Amend' && !date.value) date.value = defaultTarget;
         });
         $('pordBulkApply').addEventListener('click', function () {
             if (!resp.value) { resp.focus(); return; }

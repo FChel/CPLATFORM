@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -32,7 +32,7 @@ namespace CPlatform.PORD
         PordReasonCode         GetReasonCode(string code);
         IList<PordLoadBatch>   GetBatches();
         IList<PordExclusion>   GetExclusions();
-        void                   RevokeExclusion(string poNumber, string user);
+        void                   RevokeExclusion(string poNumber, string checkType, string acceptedValue, string user);
         IList<PordResolved>    GetResolved();
         IList<PordBpIssue>     GetBpIssues();
         void                   MarkBpNotified(IList<string> bpNumbers);
@@ -140,7 +140,13 @@ namespace CPlatform.PORD
             error = null;
             email = (email ?? "").Trim().ToLowerInvariant();
             displayName = (displayName ?? "").Trim();
-            if (email.Length > 0 && !(email.EndsWith("@defence.gov.au") || email.EndsWith(".defence.gov.au")))
+            System.Net.Mail.MailAddress address = null;
+            if (email.Length > 0)
+            {
+                try { address = new System.Net.Mail.MailAddress(email); } catch (FormatException) { }
+            }
+            if (email.Length > 0 && (address == null || address.Address != email
+                || !(address.Host == "defence.gov.au" || address.Host.EndsWith(".defence.gov.au"))))
             {
                 error = "Use a Defence mailbox (@defence.gov.au).";
                 return false;
@@ -180,11 +186,11 @@ namespace CPlatform.PORD
             lock (_sync) { return _exclusions.OrderBy(e => e.IsRevoked).ThenBy(e => e.ExpiryDate).ToList(); }
         }
 
-        public void RevokeExclusion(string poNumber, string user)
+        public void RevokeExclusion(string poNumber, string checkType, string acceptedValue, string user)
         {
             lock (_sync)
             {
-                foreach (var e in _exclusions.Where(x => x.PoNumber == poNumber)) e.IsRevoked = true;
+                foreach (var e in _exclusions.Where(x => x.PoNumber == poNumber && x.CheckType == checkType && x.PoTermKey == acceptedValue)) e.IsRevoked = true;
             }
         }
 
@@ -285,7 +291,10 @@ namespace CPlatform.PORD
                     po.EvidenceRef = string.IsNullOrEmpty(evidence) ? null : evidence;
                     po.TargetDate  = target;
                     po.ReviewedBy  = user;
-                    po.ReviewedDate = DateTime.Now;
+                    // The wire version has millisecond precision. Always advance it.
+                    DateTime now = DateTime.Now;
+                    po.ReviewedDate = po.ReviewedDate.HasValue && now <= po.ReviewedDate.Value.AddMilliseconds(1)
+                        ? po.ReviewedDate.Value.AddMilliseconds(1) : now;
                     res.Ok = true;
                     res.Version = PORDHelper.VersionOf(po.ReviewedDate);
                     anySaved = true;
@@ -350,11 +359,13 @@ namespace CPlatform.PORD
                     else if (po.Response == PordResponse.Reason)
                     {
                         var rc = _reasons.FirstOrDefault(r => r.Code == po.ReasonCode && r.CheckType == po.CheckType);
-                        if (rc != null && rc.CreatesExclusion && !_exclusions.Any(e => e.PoNumber == po.PoNumber && e.CheckType == po.CheckType && !e.IsRevoked))
+                        string accepted = po.CheckType == PORDChecks.Nspt ? po.PoTermKey : po.Currency;
+                        if (rc != null && rc.CreatesExclusion && !_exclusions.Any(e => e.PoNumber == po.PoNumber && e.CheckType == po.CheckType
+                            && e.PoTermKey == accepted && !e.IsRevoked && e.ExpiryDate >= DateTime.Today))
                         {
                             _exclusions.Add(new PordExclusion
                             {
-                                CheckType = po.CheckType, PoNumber = po.PoNumber,
+                                SourcePackageID = packageId, CheckType = po.CheckType, PoNumber = po.PoNumber,
                                 PoTermKey = po.CheckType == PORDChecks.Nspt ? po.PoTermKey : po.Currency, BpName = po.BpName, DmProgram = po.DmProgram,
                                 ReasonCode = po.ReasonCode, EvidenceRef = po.EvidenceRef, GrantedDate = DateTime.Today,
                                 ExpiryDate = DateTime.Today.AddMonths(PORDHelper.ExclusionMonths), GrantedBy = user
@@ -381,8 +392,7 @@ namespace CPlatform.PORD
                 {
                     po.Response = null; po.ReviewedBy = null; po.ReviewedDate = null;
                 }
-                var poNums = new HashSet<string>(pos.Select(p => p.PoNumber));
-                _exclusions.RemoveAll(e => poNums.Contains(e.PoNumber) && e.GrantedDate == DateTime.Today);
+                _exclusions.RemoveAll(e => e.SourcePackageID == packageId);
                 pkg.Status = PordStatus.InReview;
                 pkg.FinalisedDate = null; pkg.FinalisedBy = null;
             }
@@ -484,7 +494,7 @@ namespace CPlatform.PORD
                 new Bp("1000211150", "Outback Vehicle Parts Co",          "Z020"),
                 new Bp("1000211276", "Meridian Medical Supplies",         "Z020"),
                 new Bp("1000211391", "Brindabella Consulting",            "Z020"),
-                new Bp("1000211405", "Nullarbor Freight Lines",           "Z020"),
+                new Bp("1000211405", "Nullarbor Freight Lines",           "Z007"),
                 new Bp("1000211588", "Ember Electronics Australia",       "Z020"),
                 new Bp("1000211623", "Sapphire Coast Catering",           "Z005"),
                 new Bp("1000211747", "Granite Peak Survey & Mapping",     "Z020"),
@@ -691,6 +701,18 @@ namespace CPlatform.PORD
             }
 
             _bpStatus = new Dictionary<string, string>();
+
+            // Seed finalised packages through the same grant path as an actual
+            // AS Fin finalisation so Exclusions agrees with the review screen.
+            foreach (var pkg in _packages.Where(p => p.Status == PordStatus.Finalised).ToList())
+            {
+                DateTime? finalised = pkg.FinalisedDate;
+                string finalisedBy = pkg.FinalisedBy, error;
+                int automatic;
+                pkg.Status = PordStatus.InReview;
+                Finalise(pkg.PackageID, finalisedBy, out automatic, out error);
+                pkg.FinalisedDate = finalised;
+            }
         }
             /// <summary>
         /// Example second check (Currency vs bank mismatch) so the multi-check

@@ -644,6 +644,14 @@
             </a>
             <% } %>
 
+            <% if (IsTileVisible("PORD")) { %>
+            <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("PORD")) %>">
+                <div class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H5V3z"/><path d="M14 3v5h5M8 12h8M8 16h5"/></svg></div>
+                <div><h3>POD — PO Review Dashboard</h3><p>Review purchase order exceptions, track responses and finalise monthly compliance packages.</p></div>
+                <span class="arrow" aria-hidden="true">&rarr;</span>
+            </a>
+            <% } %>
+
             <% if (IsTileVisible("COA")) { %>
             <a class="tile" href="<%= HttpUtility.HtmlAttributeEncode(TileUrl("COA")) %>" target="_blank" rel="noopener noreferrer">
                 <div>

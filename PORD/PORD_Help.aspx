@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true"
+﻿<%@ Page Language="C#" AutoEventWireup="true"
     CodeFile="PORD_Help.aspx.cs" Inherits="CPlatform.PORD.PORD_Help" %>
 <%@ Import Namespace="CPlatform.PORD" %>
 <!DOCTYPE html>
@@ -6,9 +6,9 @@
 <head runat="server">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PO Review — Help</title>
+    <title>POD — Help</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <link rel="stylesheet" href="../css/pord.css" />
+    <link rel="stylesheet" href="../css/pord.css?v=20261021d" />
 </head>
 <body>
 <form id="form1" runat="server">
@@ -17,32 +17,29 @@
     <main class="lppi-main">
         <div class="page-head">
             <div>
-                <div class="crumb">PO Review</div>
+                <div class="crumb">POD</div>
                 <h1>Help</h1>
-                <p class="lead">How the PO Review module works, for administrators. Reviewers get their own Instructions tab on the review page.</p>
+                <p class="lead">How to run the monthly PO review. Reviewers get their own Instructions tab on the review page.</p>
             </div>
         </div>
-        <%= RenderDemoNotice() %>
 
         <div class="pord-instr pord-help-main">
             <nav class="pord-toc"><div class="t">Contents</div>
                 <ol>
-                    <li><a href="#h-what">What PO Review does</a></li>
+                    <li><a href="#h-what">What POD does</a></li>
                     <li><a href="#h-checks">Checks</a></li>
                     <li><a href="#h-cycle">The monthly cycle</a></li>
                     <li><a href="#h-rules">Payment terms rules</a></li>
                     <li><a href="#h-resp">Responses &amp; reasons</a></li>
                     <li><a href="#h-life">Package lifecycle</a></li>
                     <li><a href="#h-pages">Pages</a></li>
-                    <li><a href="#h-settings">Settings</a></li>
-                    <li><a href="#h-decisions">Assumptions to confirm</a></li>
-                    <li><a href="#h-next">Adding a check</a></li>
+                    <li><a href="#h-prepare">Before each cycle</a></li>
                 </ol>
             </nav>
             <div class="pord-doc">
                 <section id="h-what">
-                    <h2>What PO Review does</h2>
-                    <p>PO Review is the purchase-order dashboard for the <strong>Financial Operations Compliance Program</strong>. It works like LPPI Review:
+                    <h2>What POD does</h2>
+                    <p>POD is the purchase order dashboard for the <strong>Financial Operations Compliance Program</strong>. It works like LPPI Review:
                     BODS extracts exceptions each month, the business responds on a single page, and each round is verified against the next month's data.</p>
                     <p>Each compliance rule is a <strong>check</strong>. <strong>Non-standard payment terms</strong> is the first live check, and more will follow.
                     All checks share one monthly cycle and <strong>one package per Delivery Manager program</strong>. AS Fin and PO contacts get one email and
@@ -84,8 +81,7 @@
                         <tr><td>Foreign currency</td><td>Non-AUD and PO net days &lt; 14</td><td><%= PORDHelper.CategoryPill(PordCategory.ForeignCurrency) %></td></tr>
                     </table>
                     <p>Excluded at extract: GL accounts <code>211455</code> (capital construction support charges) and <code>212208</code> (estate projects).</p>
-                    <p>SAP payment terms are <em>keys</em>. Net days come from the <code>PORD.TermKeyDays</code> setting (demo: <code>Z005 → 5</code>, <code>Z020 → 20</code>, …).
-                    The real key list, and the treatment of keys with cash-discount tiers, must be confirmed with the ERP team.</p>
+                    <p>SAP payment terms are <em>keys</em>, mapped to net days for the check. Unmapped keys must be confirmed with ERP before the file can be loaded.</p>
                 </section>
 
                 <section id="h-resp">
@@ -118,51 +114,26 @@
                     </dl>
                 </section>
 
-                <section id="h-settings">
-                    <h2>Settings</h2>
-                    <p>All settings are optional <code>web.config</code> appSettings with safe defaults. The server owns <code>web.config</code>, so nothing needs to change there for the demo.</p>
-                    <table class="ref">
-                        <tr><th>Key</th><th>Default</th><th>Purpose</th></tr>
-                        <tr><td><code>PORD.DemoMode</code></td><td>true</td><td>In-memory demo data. Set to false once the PORD schema is installed.</td></tr>
-                        <tr><td><code>PORD.DefaultDueDays</code></td><td>14</td><td>Default respond-by window on Send-outs.</td></tr>
-                        <tr><td><code>PORD.ReminderWindowDays</code></td><td>3</td><td>Days before the due date that "Due soon" shows.</td></tr>
-                        <tr><td><code>PORD.EscalateAtReview</code></td><td>2</td><td>Review Nbr at which a PO counts as a repeat exception.</td></tr>
-                        <tr><td><code>PORD.ExclusionMonths</code></td><td>12</td><td>How long an accepted valid reason excludes a PO.</td></tr>
-                        <tr><td><code>PORD.TermKeyDays</code></td><td>Z000:0;Z005:5;…</td><td>Payment-term key to net-days map.</td></tr>
-                        <tr><td><code>PORD.BaseUrl</code></td><td>LPPI.BaseUrl</td><td>Host used in email links.</td></tr>
-                    </table>
-                    <p>Admin access currently uses the LPPI admin list. SAP deep links use <code>LPPI.SapBaseUrl</code>.</p>
-                </section>
-
-                <section id="h-decisions">
-                    <h2>Assumptions to confirm</h2>
-                    <p>The demo is built on these working assumptions from the spec review. Each one needs a business decision before build.</p>
-                    <table class="ref">
-                        <tr><th>#</th><th>Question</th><th>Working assumption</th></tr>
-                        <tr><td>1</td><td>Foreign-currency POs: exclude, or apply the 14-day rule?</td><td>Include, and apply the 14-day rule (KL comment). Needs a Currency column.</td></tr>
-                        <tr><td>2</td><td>Grouping and routing columns</td><td><strong>BODS owns this.</strong> The NSPT extract is a new file. We will review the first file against the expected columns and tell BODS what is missing.</td></tr>
-                        <tr><td>3</td><td>Which BP payment term?</td><td><strong>Confirmed:</strong> BP master terms are the Defence standard, 20 days or 5 days for PEPPOL suppliers.</td></tr>
-                        <tr><td>4</td><td>Who is the PO contact?</td><td>PO Creator, resolved to an email by BODS.</td></tr>
-                        <tr><td>5</td><td>Definition of "open PO"</td><td>Still to deliver &gt; 0, or delivered but not fully invoiced.</td></tr>
-                        <tr><td>6</td><td>No response at finalise</td><td>Recorded as No response; carried forward; escalated at Review Nbr ≥ <%= PORDHelper.EscalateAtReview %>.</td></tr>
-                        <tr><td>7</td><td>Exclusion lifetime</td><td><%= PORDHelper.ExclusionMonths %> months, tied to PO + term key, revocable.</td></tr>
-                        <tr><td>8</td><td>Closing the loop</td><td>Outcomes CSV to FSO Compliance, BP list to DFIM, verification by the next load.</td></tr>
-                        <tr><td>9</td><td>Contracts over $1m (outside RMG-417 scope)</td><td>Not treated as a valid reason until policy confirms.</td></tr>
-                        <tr><td>10</td><td>Run date</td><td>A fixed business day that does not clash with the LPPI load.</td></tr>
-                    </table>
-                </section>
-
-                <section id="h-next">
-                    <h2>Adding a check</h2>
-                    <p>A check is a registry entry (<code>App_Code/PORDChecks.cs</code>), not a new module. To add one:</p>
+                <section id="h-prepare">
+                    <h2>Before each cycle</h2>
                     <ol>
-                        <li><strong>Define it.</strong> Give it a key, name, tab label, issue categories (label, colour, meaning), the issue cell shown on the review page, "why flagged" text, and fix wording (for example <em>Amend PO terms</em>).</li>
-                        <li><strong>Add its reason codes.</strong> Reason codes are tagged with their check, and reviewers only see the reasons for the check they are answering.</li>
-                        <li><strong>Agree the extract with BODS.</strong> Each check has its own monthly file. Load file gains the extract type, and a pure rule classifies each row, like <code>PORDRules</code> for payment terms.</li>
-                        <li><strong>Everything else is shared:</strong> packages, POC routing, emails, responses (fix / valid reason / reassign), finalise, exclusions (per PO + check), repeat tracking, outcomes and next-load verification.</li>
+                        <li>Confirm the review period and open-PO scope with BODS. The payment terms extract is separate from LPPI.</li>
+                        <li>Check the file headers, currency and payment-term mappings. Refer missing columns to BODS and unmapped terms to ERP before loading.</li>
+                        <li>Check each program's AS Fin mailbox and PO contacts, then agree a respond-by date.</li>
+                        <li>Preview the AS Fin and PO contact emails before issuing packages.</li>
+                        <li>After finalisation, provide the outcomes CSV to the FSO Compliance Team and the supplier-master list to DFIM.</li>
                     </ol>
-                    <p>Each exception is stored as a PO × check pair, so a PO flagged by two checks appears once on each tab and is answered separately.</p>
+                    <p>Refer policy questions, including contracts over $1 million, to the FSO Compliance Team. Use the agreed monthly run date so this review does not clash with LPPI.</p>
                 </section>
+                <asp:Panel ID="pnlSampleData" runat="server">
+                    <section class="pord-sample-settings">
+                        <h2>Sample data</h2>
+                        <p>Restore the starting review cycle when preparing another review session. This clears sample responses and mailbox changes for everyone using this environment.</p>
+                        <asp:Button ID="btnRestore" runat="server" CssClass="btn btn-secondary" Text="Restore sample data" OnClick="btnRestore_Click" />
+                        <asp:CheckBox ID="chkRestore" runat="server" Text=" I understand this clears the shared sample responses" />
+                        <asp:Literal ID="litRestore" runat="server" />
+                    </section>
+                </asp:Panel>
             </div>
         </div>
     </main>

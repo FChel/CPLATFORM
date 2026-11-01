@@ -1,6 +1,7 @@
-<%@ WebHandler Language="C#" Class="CPlatform.PORD.PORD_SampleFile" %>
+﻿<%@ WebHandler Language="C#" Class="CPlatform.PORD.PORD_SampleFile" %>
 
 using System;
+using System.Linq;
 using System.Text;
 using System.Web;
 
@@ -17,7 +18,7 @@ namespace CPlatform.PORD
         public void ProcessRequest(HttpContext ctx)
         {
             if (!PORDHelper.HasAccess()) { ctx.Response.StatusCode = 403; return; }
-            string csv = PORDCsvParser.SampleCsv(PORDHelper.Store.GetCurrentCyclePos());
+            string csv = PORDCsvParser.SampleCsv(PORDHelper.Store.GetCurrentCyclePos().Where(p => p.CheckType == PORDChecks.Nspt).ToList());
             ctx.Response.ContentType = "text/csv; charset=utf-8";
             ctx.Response.AddHeader("Content-Disposition",
                 "attachment; filename=\"" + LPPI.LPPIHelper.EnvironmentFileTag + "PO_NSPT_REVIEW_sample_" + DateTime.Today.ToString("yyyyMMdd") + ".csv\"");

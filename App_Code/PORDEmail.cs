@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -33,7 +33,7 @@ namespace CPlatform.PORD
             var sb = Open(Subject(pkg, false, reminder));
 
             P(sb, "Good morning,");
-            P(sb, "The monthly <b>PO compliance review</b> for <b>" + E(pkg.DmProgram) + "</b> is ready. "
+            P(sb, "The monthly <b style=\"" + F + "\">PO compliance review</b> for <b style=\"" + F + "\">" + E(pkg.DmProgram) + "</b> is ready. "
                 + Plural(pos.Count, "open purchase order exception") + " in your area were flagged by the checks below. "
                 + "One review page covers every check, with a tab for each.");
             P(sb, "Each PO contact has been sent a link to their own POs. You have the full list, and you finalise the package once responses are in.");
@@ -54,7 +54,7 @@ namespace CPlatform.PORD
             sb.Append("</table>");
 
             HowTo(sb);
-            P(sb, "Please finalise by <b>" + PORDHelper.Date(pkg.DueDate) + "</b>. POs with no response at finalise carry into next month’s review and are escalated.");
+            P(sb, "Please finalise by <b style=\"" + F + "\">" + PORDHelper.Date(pkg.DueDate) + "</b>. POs with no response at finalise carry into next month’s review and are escalated.");
             return Close(sb);
         }
 
@@ -83,7 +83,7 @@ namespace CPlatform.PORD
             if (mine.Count > 12) P(sb, "…and " + (mine.Count - 12) + " more on the review page.");
 
             HowTo(sb);
-            P(sb, "Please respond by <b>" + PORDHelper.Date(pkg.DueDate) + "</b>. Replies to this email go to the "
+            P(sb, "Please respond by <b style=\"" + F + "\">" + PORDHelper.Date(pkg.DueDate) + "</b>. Replies to this email go to the "
                 + E(pkg.DmProgram) + " AS Fin team.");
             return Close(sb);
         }
@@ -99,7 +99,7 @@ namespace CPlatform.PORD
             sb.Append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f4f4f6;\"><tr><td align=\"center\" style=\"padding:24px 12px;" + F + "\">");
             sb.Append("<table role=\"presentation\" width=\"640\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #e6e6ea;border-top:4px solid " + Orange + ";\">");
             sb.Append("<tr><td style=\"padding:22px 28px 6px;" + F + "\">");
-            sb.Append("<div style=\"" + F + "font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:" + Orange + ";font-weight:700;\">PO Review · Financial Operations Compliance</div>");
+            sb.Append("<div style=\"" + F + "font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:" + Orange + ";font-weight:700;\">POD · Financial Operations Compliance</div>");
             sb.Append("<div style=\"" + F + "font-size:20px;font-weight:700;color:#1a1a1c;margin-top:6px;\">").Append(E(title)).Append("</div>");
             sb.Append("</td></tr><tr><td style=\"padding:10px 28px 24px;" + F + "\">");
             return sb;
@@ -156,9 +156,9 @@ namespace CPlatform.PORD
         {
             H(sb, "How to respond");
             sb.Append("<ol style=\"" + F + "font-size:14px;line-height:1.55;color:#3a3a3e;margin:0 0 12px;padding-left:20px;\">");
-            sb.Append("<li style=\"" + F + "\"><b>Will fix</b> — you will correct the PO in ERP (for payment terms, amend them to standard); give the date you expect it done.</li>");
-            sb.Append("<li style=\"" + F + "\"><b>Valid reason</b> — pick the reason (clear and direct benefit to Defence, legislative requirement, contract before 1 July 2022, or other) and add the Objective reference for your evidence. Accepted reasons exclude the PO from future reviews.</li>");
-            sb.Append("<li style=\"" + F + "\"><b>Not mine</b> — tell us who owns the PO and we will redirect it.</li>");
+            sb.Append("<li style=\"" + F + "\"><b style=\"" + F + "\">Will fix</b> — you will correct the PO in ERP (for payment terms, amend them to standard); give the date you expect it done.</li>");
+            sb.Append("<li style=\"" + F + "\"><b style=\"" + F + "\">Valid reason</b> — choose a reason and add the Objective reference for your evidence. Accepted reasons that qualify exclude the current value for " + PORDHelper.ExclusionMonths + " months. Other reasons remain in future reviews.</li>");
+            sb.Append("<li style=\"" + F + "\"><b style=\"" + F + "\">Not mine</b> — tell us who owns the PO and we will redirect it.</li>");
             sb.Append("</ol>");
         }
 
@@ -177,7 +177,7 @@ namespace CPlatform.PORD
 
         private static string Plural(int n, string noun)
         {
-            return "<b>" + n + "</b> " + noun + (n == 1 ? "" : "s");
+            return "<b style=\"" + F + "\">" + n + "</b> " + noun + (n == 1 ? "" : "s");
         }
 
         private static string E(string s) { return HttpUtility.HtmlEncode(s ?? ""); }

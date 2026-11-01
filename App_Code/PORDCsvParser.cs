@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -114,6 +114,8 @@ namespace CPlatform.PORD
 
                 if (string.IsNullOrEmpty(row.Get("PoNumber"))) row.Error = "PO Number is blank.";
                 else if (string.IsNullOrEmpty(row.Get("PoTerm"))) row.Error = "PO Payment Term is blank.";
+                else if (!PORDRules.TermDays(row.Get("PoTerm")).HasValue) row.Error = "PO Payment Term is not mapped to net days: " + row.Get("PoTerm") + ". Confirm the key with ERP.";
+                else if (!PORDRules.TermDays(row.Get("BpTerm")).HasValue) row.Error = "BP Payment Term is not mapped to net days: " + row.Get("BpTerm") + ". Confirm the key with ERP.";
 
                 if (row.Error != null) { res.Failed++; res.Rows.Add(row); continue; }
 

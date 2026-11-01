@@ -1,6 +1,8 @@
-using System;
+﻿using System;
 using System.Configuration;
 using System.Globalization;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Web;
 using CPlatform.LPPI;
@@ -28,7 +30,7 @@ namespace CPlatform.PORD
     /// </summary>
     public static class PORDHelper
     {
-        public const string ModuleName  = "PO Review";
+        public const string ModuleName  = "POD";
         public const string CheckName   = "Non-Standard Payment Terms";
         public const string PolicyUrl   =
             "https://www.finance.gov.au/publications/resource-management-guides/supplier-pay-time-or-pay-interest-policy-rmg-417";
@@ -77,7 +79,11 @@ namespace CPlatform.PORD
 
         public static IPordStore Store
         {
-            get { return PordDemoStore.Instance; }
+            get
+            {
+                if (!DemoMode) throw new ConfigurationErrorsException("POD storage is not configured for this environment. Contact application support.");
+                return PordDemoStore.Instance;
+            }
         }
 
         // ------------------------------------------------------------------
@@ -123,6 +129,14 @@ namespace CPlatform.PORD
             if (a >= 1000000m) return (v / 1000000m).ToString("0.0", AU) + "m";
             if (a >= 1000m)    return (v / 1000m).ToString("0", AU) + "k";
             return v.ToString("0", AU);
+        }
+
+        // Never add unlike currencies or count the same PO twice across checks.
+        public static string OpenValues(IEnumerable<PordPo> pos, bool compact)
+        {
+            var unique = pos.GroupBy(p => p.CompanyCode + "|" + p.PoNumber).Select(g => g.First());
+            return string.Join(" · ", unique.GroupBy(p => string.IsNullOrEmpty(p.Currency) ? "AUD" : p.Currency)
+                .OrderBy(g => g.Key).Select(g => g.Key + " " + (compact ? MoneyShort(g.Sum(p => p.StillToDeliver)) : Money(g.Sum(p => p.StillToDeliver)))).ToArray());
         }
 
         public static string Num(int v)

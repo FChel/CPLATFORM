@@ -511,11 +511,14 @@
                         <dt>I approved an invoice late &mdash; why isn't it in LPPI Review?</dt>
                         <dd>Automated logic identifies late payments using a priority-based rule set. Not every late approval triggers an LPPI charge &mdash; see <a href="#instr-faq-logic">LPPI Logic</a> for the conditions that apply.</dd>
 
-                        <dt>My Purchase Order is raised under a SON dated prior to 1 July 2022, but is supported by a deed containing provisions for the payment of interest (before or after 1 July 2022), is LPPI payable?</dt>
+                        <dt>My Purchase Order was raised on or after 1 July 2022 and relates to a SON established before that date, is interest payable?</dt>
                         <dd>
-                            If there is a deed (contract) under the SON &ndash; dated either prior to or after the effective date, but the deed specifically states that interest is payable, then it is payable.
-                            <p style="margin:10px 0 0;">Where transactions are not adequately supported by the existing RMG&nbsp;417 review logic, the appropriate treatment should be considered in consultation with the relevant POC and Policy teams.</p>
-                            <p style="margin:10px 0 0;">The LPPI review logic is intended to apply established business rules using available data attributes and should not be relied upon as a mechanism for enforcing or interpreting policy requirements.</p>
+                            Outline Agreements and Purchase Orders created before 1 July 2022 are excluded from the automated LPPI review process and are not assessed for RMG 417 compliance.
+                            <p style="margin:10px 0 0;">Outline Agreements and Purchase Orders created on or after 1 July 2022 are included in the automated LPPI review process, even if they relate to a SON established before that date.</p>
+                            <p style="margin:10px 0 0;">The LPPI review tool uses information stored in the finance system to identify potential late payment interest cases. Because contract documents such as SONs/Deeds are not stored in the system, the tool cannot assess all contractual conditions and exceptions.</p>
+			    <p style="margin:10px 0 0;">If a contract or deed states that interest is payable for late payment, that contractual requirement applies.</p>
+			    <p style="margin:10px 0 0;">Where a transaction cannot be assessed accurately using the standard LPPI review rules, the matter should be referred to the relevant business area or policy adviser for a case-by-case decision.</p>
+			    <p style="margin:10px 0 0;">The LPPI review tool is designed to support the consistent application of business rules using available system data. It should not be used as the sole source for interpreting policy or contractual obligations.</p>
                         </dd>
 
                         <dt>I confirmed interest has already been paid for an invoice paid late &mdash; what should I do?</dt>

@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true"
+﻿<%@ Page Language="C#" AutoEventWireup="true"
     CodeFile="PORD_Admin.aspx.cs" Inherits="CPlatform.PORD.PORD_Admin" %>
 <%@ Import Namespace="CPlatform.PORD" %>
 <!DOCTYPE html>
@@ -6,9 +6,9 @@
 <head runat="server">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PO Review — Dashboard</title>
+    <title>POD — Dashboard</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <link rel="stylesheet" href="../css/pord.css" />
+    <link rel="stylesheet" href="../css/pord.css?v=20261021d" />
 </head>
 <body>
 <form id="form1" runat="server">
@@ -18,20 +18,18 @@
     <main class="lppi-main">
         <div class="page-head">
             <div>
-                <div class="crumb">PO Review · Purchase order compliance</div>
+                <div class="crumb">POD · Purchase order compliance</div>
                 <h1>Dashboard</h1>
                 <p class="lead">Current cycle: <strong><%= PORDHelper.Enc(CycleLabel) %></strong>. Open purchase orders flagged by each compliance check, reviewed in one package per program.</p>
             </div>
             <div class="btn-row">
-                <asp:Button ID="btnReset" runat="server" CssClass="btn btn-ghost" Text="Reset demo data"
-                            OnClick="btnReset_Click" OnClientClick="return confirm('Reset the demo to its starting state? Everyone viewing the demo will see the reset.');" />
                 <a class="btn btn-secondary" href="PORD_SendOuts.aspx">Send-outs</a>
                 <a class="btn btn-primary" href="PORD_Load.aspx">Load new file</a>
             </div>
         </div>
 
-        <%= RenderDemoNotice() %>
         <asp:PlaceHolder ID="phMsg" runat="server" />
+        <%= AttentionHtml %>
 
         <%-- ============ Check tabs: All checks | one tab per active check ============ --%>
         <nav class="pord-dtabs" aria-label="Compliance checks"><%= CheckTabsHtml %></nav>
@@ -70,16 +68,17 @@
         <section class="pord-section">
             <div class="pord-section-label">Checks</div>
             <div class="pord-checks"><%= CheckCardsHtml %></div>
+            <details class="pord-upcoming"><summary>Upcoming checks</summary><%= PlannedChecksHtml %></details>
         </section>
         <% } else { %>
         <%-- ============ One check: exceptions by issue ============ --%>
         <section class="pord-section">
             <div class="pord-section-label"><%= PORDHelper.Enc(Check.Name) %> — exceptions this cycle</div>
-            <div class="pord-hero-grid" style="grid-template-columns:minmax(260px,1.35fr) repeat(<%= Math.Max(1, Check.Issues.Count) %>, 1fr);">
+            <div class="pord-hero-grid">
                 <div class="pord-hero">
                     <div class="lbl">Open POs flagged</div>
                     <div class="val"><%= PORDHelper.Num(FlaggedCount) %></div>
-                    <div class="sub"><strong>$<%= PORDHelper.MoneyShort(ValueStillToDeliver) %></strong> still to deliver across <strong><%= DistinctBps %></strong> suppliers</div>
+                    <div class="sub"><strong><%= PORDHelper.Enc(OpenValueText) %></strong> still to deliver across <strong><%= DistinctBps %></strong> suppliers</div>
                 </div>
                 <%= IssueCardsHtml %>
             </div>
@@ -90,7 +89,7 @@
             <div class="stat"><div class="lbl">Open packages</div><div class="val"><%= OpenPackages %></div><div class="sub">not yet finalised</div></div>
             <div class="stat warn"><div class="lbl">Due soon</div><div class="val"><%= DueSoon %></div><div class="sub">within <%= PORDHelper.ReminderWindowDays %> days</div></div>
             <div class="stat err"><div class="lbl">Overdue</div><div class="val"><%= Overdue %></div><div class="sub">past respond-by date</div></div>
-            <div class="stat err"><div class="lbl">Repeat offenders</div><div class="val"><%= RepeatCount %></div><div class="sub">Review Nbr &ge; <%= PORDHelper.EscalateAtReview %></div></div>
+            <div class="stat err"><div class="lbl">Repeat exceptions</div><div class="val"><%= RepeatCount %></div><div class="sub">Review Nbr &ge; <%= PORDHelper.EscalateAtReview %></div></div>
             <div class="stat"><div class="lbl">Active exclusions</div><div class="val"><%= ActiveExclusions %></div><div class="sub">skipped at load</div></div>
             <%= SixthTileHtml %>
         </div>
@@ -111,7 +110,7 @@
                 <table class="tbl">
                     <thead><tr>
                         <th>Program</th><th>AS Fin</th><%= CheckColumnHeads %><th class="num">Repeat</th>
-                        <th>Responses<%= IsAllView ? "" : " (" + PORDHelper.Enc(Check.ShortName) + ")" %></th><th>Due</th><th>Status</th>
+                        <th>Responses<%= IsAllView ? "" : " (" + PORDHelper.Enc(Check.ShortName) + ")" %></th><th>Due</th><th>Status</th><th></th>
                     </tr></thead>
                     <tbody>
                     <asp:Repeater ID="rptPackages" runat="server">
@@ -124,6 +123,7 @@
                                 <td><%# ProgressCell(P(Container.DataItem).PackageID) %></td>
                                 <td class="nowrap"><%# PORDHelper.Date(P(Container.DataItem).DueDate) %></td>
                                 <td class="nowrap"><%# PORDHelper.StatusPill(P(Container.DataItem).Status, P(Container.DataItem).DueDate) %></td>
+                                <td><a class="btn btn-sm btn-secondary" href="<%# PORDHelper.Attr(PORDHelper.ReviewUrl(P(Container.DataItem).Token)) %>">Open review &rarr;</a></td>
                             </tr>
                         </ItemTemplate>
                     </asp:Repeater>

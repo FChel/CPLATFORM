@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true"
+﻿<%@ Page Language="C#" AutoEventWireup="true"
     CodeFile="PORD_ReasonCodes.aspx.cs" Inherits="CPlatform.PORD.PORD_ReasonCodes" %>
 <%@ Import Namespace="CPlatform.PORD" %>
 <!DOCTYPE html>
@@ -6,9 +6,9 @@
 <head runat="server">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PO Review — Reason codes</title>
+    <title>POD — Reason codes</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <link rel="stylesheet" href="../css/pord.css" />
+    <link rel="stylesheet" href="../css/pord.css?v=20261021d" />
 </head>
 <body>
 <form id="form1" runat="server">
@@ -17,12 +17,11 @@
     <main class="lppi-main">
         <div class="page-head">
             <div>
-                <div class="crumb">PO Review</div>
+                <div class="crumb">POD</div>
                 <h1>Valid reason codes</h1>
                 <p class="lead">Each check has its own valid reasons. Reviewers see only the reasons for the check they are responding to, when they choose <em>Valid reason</em>.</p>
             </div>
         </div>
-        <%= RenderDemoNotice() %>
         <div class="card">
             <div class="tbl-wrap" style="max-height:none;">
                 <table class="tbl">
@@ -44,8 +43,7 @@
                 </table>
             </div>
             <p class="muted" style="font-size:12px;margin:12px 0 0;">
-                Payment terms: the first three come from the business requirement. <code>VR99 Other</code> is proposed so genuine edge cases are captured rather than forced into the wrong code; it does not create an exclusion, so the PO is reconsidered next month.
-                Editing codes will be enabled with the PORD schema (demo is read only).
+                <code>VR01</code>–<code>VR03</code> can create a 12-month exclusion when accepted at finalisation. <code>VR99 Other</code> requires comments and evidence and is reconsidered next month. Contact the FSO Compliance Team to request a reason-code change.
             </p>
         </div>
     </main>

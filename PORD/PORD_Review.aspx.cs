@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -23,7 +23,7 @@ namespace CPlatform.PORD
         protected string Token, PageTitle = "Review", ViewerName, ViewerEmail, DueText, DueCss;
         protected bool   IsPoc, IsReadOnly, ShowFinalise, ShowReopen, IsAllReviewed;
         protected int    TotalCount, ReviewedCount, ColumnCount;
-        protected decimal OpenValue;
+        protected string OpenValueText = "";
         protected PordPackage Package;
         protected string StatusBannerHtml = "", CategoryBarHtml = "", CategoryChipsHtml = "", PocOptionsHtml = "",
                          SummaryByCategoryHtml = "", SummarySecondHtml = "", CheckBarHtml = "", ChecksMetaHtml = "",
@@ -50,7 +50,7 @@ namespace CPlatform.PORD
             IsPoc = kind == PordTokenKind.Poc;
             var all = store.GetPos(packageId);
             _pos = IsPoc ? all.Where(p => string.Equals(p.PocEmail, pocEmail, StringComparison.OrdinalIgnoreCase)).ToList() : all;
-            _reasons = store.GetReasonCodes(true);
+            _reasons = store.GetReasonCodes(true).Where(r => _pos.Any(p => p.CheckType == r.CheckType)).ToList();
             _checks = PORDChecks.All.Where(c => _pos.Any(p => p.CheckType == c.Key)).ToList();
             if (_checks.Count == 0) _checks.Add(PORDChecks.Get(PORDChecks.Nspt));
             FirstCheck = _checks[0];
@@ -68,7 +68,7 @@ namespace CPlatform.PORD
                 ViewerEmail = g != null ? g.Email : "";
             }
             PageTitle = Package.DmProgram + (IsPoc ? " · " + ViewerName : "");
-            Title = "PO Review — " + PageTitle;
+            Title = "POD — " + PageTitle;
 
             bool editable = Package.Status == PordStatus.NotSent || Package.Status == PordStatus.Sent || Package.Status == PordStatus.InReview;
             IsReadOnly   = !editable;
@@ -78,7 +78,7 @@ namespace CPlatform.PORD
             TotalCount    = _pos.Count;
             ReviewedCount = _pos.Count(p => p.IsReviewed);
             IsAllReviewed = TotalCount > 0 && ReviewedCount == TotalCount;
-            OpenValue     = _pos.Sum(p => p.StillToDeliver);
+            OpenValueText = PORDHelper.OpenValues(_pos, true);
             ColumnCount   = IsPoc ? 10 : 11;
 
             BuildDue();
@@ -189,15 +189,15 @@ namespace CPlatform.PORD
             {
                 var mine = _pos.Where(p => p.CheckType == c.Key).ToList();
                 sb.Append("<tr style=\"background:var(--line-2)\"><td><strong>").Append(PORDHelper.Enc(c.Name)).Append("</strong></td><td class=\"num\"><strong>").Append(mine.Count)
-                  .Append("</strong></td><td class=\"num\"><strong>$").Append(PORDHelper.Money(mine.Sum(p => p.StillToDeliver)))
-                  .Append("</strong></td><td class=\"num\"><strong>").Append(mine.Count(p => p.IsReviewed)).Append("</strong></td></tr>");
+                  .Append("</strong></td><td class=\"num\"><strong>").Append(PORDHelper.Enc(PORDHelper.OpenValues(mine, false)))
+                  .Append("</strong></td><td class=\"num\" data-summary-check=\"").Append(c.Key).Append("\">").Append(mine.Count(p => p.IsReviewed)).Append("</td></tr>");
                 foreach (var i in c.Issues)
                 {
                     var inCat = mine.Where(p => p.IssueKey == i.Key).ToList();
                     if (inCat.Count == 0) continue;
                     sb.Append("<tr><td style=\"padding-left:22px\">").Append(PORDChecks.IssuePill(c.Key, i.Key)).Append("</td><td class=\"num\">").Append(inCat.Count)
-                      .Append("</td><td class=\"num\">$").Append(PORDHelper.Money(inCat.Sum(p => p.StillToDeliver)))
-                      .Append("</td><td class=\"num\">").Append(inCat.Count(p => p.IsReviewed)).Append("</td></tr>");
+                      .Append("</td><td class=\"num\">").Append(PORDHelper.Enc(PORDHelper.OpenValues(inCat, false)))
+                      .Append("</td><td class=\"num\" data-summary-check=\"").Append(c.Key).Append("\" data-summary-issue=\"").Append(i.Key).Append("\">").Append(inCat.Count(p => p.IsReviewed)).Append("</td></tr>");
                 }
             }
             SummaryByCategoryHtml = sb.ToString();
@@ -210,7 +210,7 @@ namespace CPlatform.PORD
                 {
                     int n = _pos.Count(p => (p.Response ?? "") == r);
                     if (n == 0 && r == PordResponse.NoResponse) continue;
-                    sb.Append("<tr><td>").Append(PORDHelper.Enc(PORDRules.ResponseLabel(r))).Append("</td><td class=\"num\">").Append(n).Append("</td></tr>");
+                    sb.Append("<tr><td>").Append(PORDHelper.Enc(PORDRules.ResponseLabel(r))).Append("</td><td class=\"num\" data-summary-response=\"").Append(r).Append("\">").Append(n).Append("</td></tr>");
                 }
             }
             else
@@ -221,7 +221,7 @@ namespace CPlatform.PORD
                     int done = g.Count(p => p.IsReviewed);
                     sb.Append("<tr><td>").Append(PORDHelper.Enc(g.First().PocName)).Append("<span class=\"sub\">").Append(PORDHelper.Enc(g.Key)).Append("</span></td>")
                       .Append("<td class=\"num\">").Append(g.Count()).Append("</td>")
-                      .Append("<td class=\"num\"").Append(done == g.Count() ? " style=\"color:var(--ok);font-weight:700\"" : "").Append(">").Append(done).Append("</td>")
+                      .Append("<td class=\"num\" data-summary-poc=\"").Append(PORDHelper.Attr(g.Key)).Append("\">").Append(done).Append("</td>")
                       .Append("<td class=\"num\">").Append(g.Count(p => p.ReviewNbr >= PORDHelper.EscalateAtReview)).Append("</td></tr>");
                 }
             }
@@ -307,7 +307,7 @@ namespace CPlatform.PORD
             int del = PORDHelper.Pct(p.Delivered, p.Ordered), inv = PORDHelper.Pct(p.Invoiced, p.Ordered);
             sb.Append("<div class=\"po-deliv\"><div class=\"t\"><i class=\"inv\" style=\"width:").Append(inv).Append("%\"></i><i class=\"del\" style=\"width:")
               .Append(Math.Max(0, del - inv)).Append("%\"></i></div><div class=\"lg\">").Append(inv).Append("% invoiced · ").Append(del)
-              .Append("% delivered · $").Append(PORDHelper.Money(p.StillToDeliver)).Append(" still to deliver</div></div>");
+              .Append("% delivered · ").Append(PORDHelper.Enc(p.Currency)).Append(" ").Append(PORDHelper.Money(p.StillToDeliver)).Append(" still to deliver</div></div>");
 
             sb.Append("<div class=\"po-why\"><strong>Why flagged (").Append(PORDHelper.Enc(PORDChecks.Get(p.CheckType).ShortName)).Append("):</strong> ")
               .Append(PORDHelper.Enc(PORDChecks.Get(p.CheckType).Why(p)));

@@ -1,4 +1,4 @@
-<%@ WebHandler Language="C#" Class="CPlatform.PORD.PORD_Outcomes_Export" %>
+﻿<%@ WebHandler Language="C#" Class="CPlatform.PORD.PORD_Outcomes_Export" %>
 
 using System;
 using System.Linq;
@@ -29,7 +29,7 @@ namespace CPlatform.PORD
             }
             else
             {
-                name = "PO_NSPT_Outcomes_";
+                name = "POD_Outcomes_";
                 var reasons = store.GetReasonCodes(false).ToDictionary(r => r.CheckType + "|" + r.Code, r => r.Description);
                 sb.AppendLine("Check,Program,Package,Package Status,PO Number,BP Number,BP Name,PO Term,BP Term,Currency,Issue,Review Nbr,Still to Deliver,PO Contact,Response,Reason Code,Reason,Evidence Ref,Fix By,Comments,Responded By,Responded");
                 foreach (var p in store.GetPackages(false))

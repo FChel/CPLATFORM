@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Web.UI;
 using System.Web.UI.WebControls;
@@ -39,8 +39,10 @@ namespace CPlatform.PORD
         protected void rpt_ItemCommand(object source, RepeaterCommandEventArgs e)
         {
             if (e.CommandName != "revoke") return;
-            string po = Convert.ToString(e.CommandArgument);
-            PORDHelper.Store.RevokeExclusion(po, CurrentUser);
+            string[] key = Convert.ToString(e.CommandArgument).Split('|');
+            if (key.Length != 3) return;
+            string po = key[0];
+            PORDHelper.Store.RevokeExclusion(po, key[1], key[2], CurrentUser);
             phMsg.Controls.Add(new LiteralControl("<div class=\"alert ok\">Exclusion for PO " + PORDHelper.Enc(po) + " revoked.</div>"));
             Bind();
         }

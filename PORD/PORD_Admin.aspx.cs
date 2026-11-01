@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -22,7 +22,7 @@ namespace CPlatform.PORD
                            SixthTileHtml, CheckColumnHeads;
         protected int      FlaggedCount, ReviewedCount, PackageCount, SentPackages, FinalisedPackages;
         protected int      OpenPackages, DueSoon, Overdue, RepeatCount, ActiveExclusions, DistinctBps, ResolvedLastCycle;
-        protected decimal  ValueStillToDeliver;
+        protected string OpenValueText = "", AttentionHtml = "", PlannedChecksHtml = "";
         protected bool     IsAllView;
         protected PordCheckDef Check;
 
@@ -32,14 +32,6 @@ namespace CPlatform.PORD
 
         protected void Page_Load(object sender, EventArgs e)
         {
-            btnReset.Visible = PORDHelper.DemoMode;
-            if (!IsPostBack) Bind();
-        }
-
-        protected void btnReset_Click(object sender, EventArgs e)
-        {
-            PORDHelper.Store.Reset();
-            phMsg.Controls.Add(new LiteralControl("<div class=\"alert ok\">Demo data reset to its starting state.</div>"));
             Bind();
         }
 
@@ -55,6 +47,7 @@ namespace CPlatform.PORD
             var pkgs = store.GetPackages(true);
             _all = store.GetCurrentCyclePos();
             _pos = IsAllView ? _all : _all.Where(p => p.CheckType == Check.Key).ToList();
+            if (!IsAllView) pkgs = pkgs.Where(p => _pos.Any(po => po.PackageID == p.PackageID)).ToList();
             _groups = store.GetAsFinGroups().ToDictionary(g => g.DmProgram);
 
             var batches = store.GetBatches().Where(b => IsAllView || b.CheckType == Check.Key).ToList();
@@ -68,7 +61,7 @@ namespace CPlatform.PORD
 
             FlaggedCount = _pos.Count;
             ReviewedCount = _pos.Count(p => p.IsReviewed);
-            ValueStillToDeliver = _pos.Sum(p => p.StillToDeliver);
+            OpenValueText = PORDHelper.OpenValues(_pos, true);
             DistinctBps = _pos.Select(p => p.BpNumber).Distinct().Count();
 
             PackageCount = pkgs.Count;
@@ -79,6 +72,10 @@ namespace CPlatform.PORD
             Overdue = pkgs.Count(p => (p.Status == PordStatus.Sent || p.Status == PordStatus.InReview) && p.DueDate.Date < DateTime.Today);
             DueSoon = pkgs.Count(p => (p.Status == PordStatus.Sent || p.Status == PordStatus.InReview)
                                    && p.DueDate.Date >= DateTime.Today && p.DueDate.Date <= DateTime.Today.AddDays(win));
+            int missing = pkgs.Count(p => !_groups.ContainsKey(p.DmProgram) || !_groups[p.DmProgram].IsConfigured);
+            AttentionHtml = "<div class=\"pord-attention\"><strong>Needs attention</strong>"
+                + "<a href=\"PORD_SendOuts.aspx\">" + Overdue + " overdue · " + DueSoon + " due soon &rarr;</a>"
+                + (missing > 0 ? "<a href=\"PORD_AsFin.aspx\">" + missing + " AS Fin mailbox to configure &rarr;</a>" : "") + "</div>";
 
             var repeat = _pos.Where(p => p.ReviewNbr >= PORDHelper.EscalateAtReview)
                              .OrderByDescending(p => p.ReviewNbr).ThenByDescending(p => p.StillToDeliver).ToList();
@@ -121,34 +118,27 @@ namespace CPlatform.PORD
         private void BuildCheckCards()
         {
             var sb = new StringBuilder();
-            foreach (var c in PORDChecks.All)
+            foreach (var c in PORDChecks.Active)
             {
                 var mine = _all.Where(p => p.CheckType == c.Key).ToList();
-                bool live = c.IsActive;
-                sb.Append(live ? "<a class=\"pord-checkcard\" href=\"PORD_Admin.aspx?check=" + c.Key + "\">" : "<div class=\"pord-checkcard planned\">");
+                sb.Append("<a class=\"pord-checkcard\" href=\"PORD_Admin.aspx?check=" + c.Key + "\">");
                 sb.Append("<div class=\"top\"><span class=\"nm\">").Append(PORDHelper.Enc(c.Name)).Append("</span>").Append(PORDChecks.CheckBadge(c)).Append("</div>");
                 sb.Append("<div class=\"desc\">").Append(PORDHelper.Enc(c.Description)).Append("</div>");
-                if (live)
+                int done = mine.Count(p => p.IsReviewed), pct = PORDHelper.Pct(done, mine.Count);
+                sb.Append("<div class=\"nums\"><div><b>").Append(mine.Count).Append("</b><span>flagged</span></div>")
+                  .Append("<div><b>").Append(pct).Append("%</b><span>answered</span></div>")
+                  .Append("<div><b>").Append(mine.Count(p => p.ReviewNbr >= PORDHelper.EscalateAtReview)).Append("</b><span>repeat</span></div>")
+                  .Append("<div class=\"pord-currency-total\"><b>").Append(PORDHelper.Enc(PORDHelper.OpenValues(mine, true))).Append("</b><span>open value by currency</span></div></div>");
+                sb.Append("<div class=\"issues\">");
+                foreach (var i in c.Issues)
                 {
-                    int done = mine.Count(p => p.IsReviewed), pct = PORDHelper.Pct(done, mine.Count);
-                    sb.Append("<div class=\"nums\"><div><b>").Append(mine.Count).Append("</b><span>flagged</span></div>")
-                      .Append("<div><b>").Append(pct).Append("%</b><span>answered</span></div>")
-                      .Append("<div><b>").Append(mine.Count(p => p.ReviewNbr >= PORDHelper.EscalateAtReview)).Append("</b><span>repeat</span></div>")
-                      .Append("<div><b>$").Append(PORDHelper.MoneyShort(mine.Sum(p => p.StillToDeliver))).Append("</b><span>open value</span></div></div>");
-                    sb.Append("<div class=\"issues\">");
-                    foreach (var i in c.Issues)
-                    {
-                        int n = mine.Count(p => p.IssueKey == i.Key);
-                        if (n > 0) sb.Append(PORDChecks.IssuePill(c.Key, i.Key)).Append(" <b>").Append(n).Append("</b> ");
-                    }
-                    sb.Append("</div><span class=\"go\">Open &rarr;</span></a>");
+                    int n = mine.Count(p => p.IssueKey == i.Key);
+                    if (n > 0) sb.Append(PORDChecks.IssuePill(c.Key, i.Key)).Append(" <b>").Append(n).Append("</b> ");
                 }
-                else
-                {
-                    sb.Append("<div class=\"nums muted\">Plugs into the same load → review → finalise cycle once BODS provides the extract.</div></div>");
-                }
+                sb.Append("</div><span class=\"go\">Open &rarr;</span></a>");
             }
             CheckCardsHtml = sb.ToString();
+            PlannedChecksHtml = "<ul>" + string.Concat(PORDChecks.All.Where(c => !c.IsActive).Select(c => "<li><strong>" + PORDHelper.Enc(c.Name) + "</strong> — " + PORDHelper.Enc(c.Description) + "</li>")) + "</ul>";
         }
 
         private void BuildIssueCards()
@@ -161,7 +151,7 @@ namespace CPlatform.PORD
                 sb.Append("<div class=\"pord-catcard ").Append(i.Css).Append("\">")
                   .Append("<div><div class=\"lbl\">").Append(PORDHelper.Enc(i.Label)).Append("</div>")
                   .Append("<div class=\"desc\">").Append(PORDHelper.Enc(i.Description)).Append("</div></div>")
-                  .Append("<div><div class=\"val\">").Append(inIssue.Count).Append("<small>$").Append(PORDHelper.MoneyShort(inIssue.Sum(p => p.StillToDeliver))).Append("</small></div>")
+                  .Append("<div><div class=\"val\">").Append(inIssue.Count).Append("<small>").Append(PORDHelper.Enc(PORDHelper.OpenValues(inIssue, true))).Append("</small></div>")
                   .Append("<div class=\"bar\"><i style=\"width:").Append(pct).Append("%\"></i></div></div></div>");
             }
             IssueCardsHtml = sb.ToString();
@@ -176,8 +166,8 @@ namespace CPlatform.PORD
             }
             else
             {
-                SixthTileHtml = "<div class=\"stat\"><div class=\"lbl\">Open value</div><div class=\"val\">$" + PORDHelper.MoneyShort(ValueStillToDeliver)
-                              + "</div><div class=\"sub\">still to deliver</div></div>";
+                SixthTileHtml = "<div class=\"stat\"><div class=\"lbl\">Purchase orders</div><div class=\"val\">" + _pos.Select(p => p.CompanyCode + "|" + p.PoNumber).Distinct().Count()
+                              + "</div><div class=\"sub\">distinct POs across checks</div></div>";
             }
         }
 

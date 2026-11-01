@@ -31,7 +31,7 @@
 .pord-demo-chip {
     font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
     padding: 4px 10px; border-radius: 999px;
-    background: var(--orange-soft); color: var(--orange-deep); border: 1px dashed var(--orange);
+    background: var(--line-2); color: var(--ink-3); border: 1px solid var(--line);
 }
 .pord-demo-notice { align-items: center; }
 
@@ -158,9 +158,10 @@
 @media (max-width: 900px) { .pord-loop { grid-template-columns: 1fr 1fr; } .pord-loop .step { border-bottom: 1px solid var(--line); } }
 
 /* ---------- Two-column card layout ---------- */
-.pord-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pord-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.pord-cols > * { min-width:0; }
 .pord-cols > .card + .card { margin-top: 0; }
-@media (max-width: 1000px) { .pord-cols { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .pord-cols { grid-template-columns: minmax(0, 1fr); } }
 .card .card-lead { color: var(--ink-3); font-size: 13px; margin-top: -2px; }
 .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .card-head h2 { margin: 0; }
@@ -417,7 +418,7 @@ tr.po-exp > td { background: var(--bg); padding: 14px 18px 16px 46px; }
 .pord-dtabs .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--warn); background: var(--warn-bg); padding: 1px 6px; border-radius: 3px; }
 .pord-dtabs .planned { margin-left: auto; font-size: 12px; color: var(--ink-4); white-space: nowrap; padding-right: 4px; }
 
-.pord-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.pord-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .pord-checkcard { display: flex; flex-direction: column; gap: 8px; background: var(--white); border: 1px solid var(--line); border-radius: var(--r-lg);
     padding: 16px 18px; box-shadow: var(--shadow-sm); color: var(--ink); border-left: 4px solid var(--orange); transition: box-shadow .15s, transform .15s; }
 a.pord-checkcard:hover { text-decoration: none; box-shadow: var(--shadow); transform: translateY(-1px); }
@@ -446,3 +447,58 @@ a.pord-checkcard:hover { text-decoration: none; box-shadow: var(--shadow); trans
 .pord-rv-meta .catbar .cat-ns { background: var(--cat-ns); } .pord-rv-meta .catbar .cat-ov { background: var(--cat-ov); }
 .pord-rv-meta .catbar .cat-both { background: var(--cat-both); } .pord-rv-meta .catbar .cat-fx { background: var(--cat-fx); }
 .pord-rv-meta .catbar .cat-ccy { background: var(--cat-ccy); } .pord-rv-meta .catbar .cat-ctry { background: var(--cat-ctry); }
+
+/* Client review: actions first, readable values and keyboard focus. */
+.pord-access { max-width:620px; margin:10vh auto; padding:32px; line-height:1.6; }
+.pord-sample-settings { margin-top:24px; padding-top:24px; border-top:1px solid var(--line); }
+.pord-dtabs, .pord-tabs { overflow-y:hidden; }
+.pord-confirm { width:min(520px,calc(100% - 40px)); padding:28px; border:1px solid var(--line); border-top:4px solid var(--orange); border-radius:var(--r-lg); color:var(--ink); box-shadow:var(--shadow); }
+.pord-confirm::backdrop { background:rgba(15,20,30,.45); }
+.pord-confirm p { white-space:pre-line; font-size:14px; line-height:1.6; margin:14px 0 24px; }
+.pord-attention { display:flex; flex-wrap:wrap; align-items:center; gap:12px 24px; padding:12px 16px; margin-bottom:18px; border:1px solid #efd5b1; border-radius:var(--r); background:#fffaf2; font-size:13px; }
+.pord-attention strong { color:var(--ink); }
+.pord-attention a { color:var(--orange-deep); font-weight:600; }
+.pord-upcoming { margin-top:14px; padding:12px 16px; border:1px solid var(--line); border-radius:var(--r); color:var(--ink-3); font-size:13px; }
+.pord-upcoming summary { cursor:pointer; font-weight:600; }
+.pord-upcoming li { margin:8px 0; }
+.pord-checkcard .nums { grid-template-columns:repeat(3,1fr); margin-top:6px; }
+.pord-checkcard .pord-currency-total { grid-column:1/-1; border-top:1px solid var(--line-2); padding-top:10px; }
+.pord-checkcard .pord-currency-total b { font-size:14px; line-height:1.65; }
+.pord-checkcard .issues { margin:6px 0; }
+.pord-checkcard .go { padding-top:8px; }
+.pord-catcard .val small { display:block; margin:6px 0 0; font-size:12px; line-height:1.5; }
+.pord-table-meta { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin:0 0 12px; font-size:12px; }
+#paneSummary .card { overflow-x:auto; }
+#pordVisibleCount { font-weight:600; }
+.pord-rv-wrap { min-height:180px; }
+.pord-review-page .review-shell { padding-bottom:110px; }
+.pord-review-page .toolbar { position:sticky; top:0; z-index:20; }
+.pord-checkbar .done { white-space:nowrap; }
+.pord-bulk { flex-wrap:wrap; }
+.pord-header a:focus-visible, .pord-review-page button:focus-visible, .pord-dtabs a:focus-visible, a.pord-checkcard:focus-visible, .pord-upcoming summary:focus-visible { outline:3px solid var(--orange); outline-offset:3px; }
+@media (max-width:800px) {
+    .pord-checks { grid-template-columns:1fr; }
+    .pord-hero-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .pord-rv-meta { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .pord-rv-top { align-items:flex-start; flex-wrap:wrap; gap:16px; }
+    .pord-rv-who { text-align:left; }
+    .pord-toolbar .toolbar-left, .pord-toolbar .toolbar-right { flex-wrap:wrap; }
+    .pord-review-page .toolbar { position:static; }
+    .pord-rv-wrap { max-height:70vh; }
+    .pord-modal-bar { flex-wrap:wrap; }
+    .pord-modal-bar .seg { max-width:100%; overflow-x:auto; }
+    .pord-doc { padding:18px; overflow-x:auto; }
+}
+@media (max-width:480px) {
+    .page-head { display:block; }
+    .page-head .btn-row { margin-top:14px; }
+    .pord-hero-grid { grid-template-columns:1fr; }
+    .pord-rv-meta { grid-template-columns:1fr; }
+    .pord-header .lppi-header-right { flex-wrap:wrap; }
+    .pord-loop { overflow-x:auto; }
+    .pord-loop .step { min-width:125px; }
+}
+@media (prefers-reduced-motion:reduce) {
+    .pord-checkcard, .tbl-pord textarea.input, .btn-chev svg { transition:none; }
+    tr.po-row.saved-flash { animation:none; }
+}

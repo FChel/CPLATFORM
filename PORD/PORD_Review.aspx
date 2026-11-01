@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true"
+﻿<%@ Page Language="C#" AutoEventWireup="true"
     CodeFile="PORD_Review.aspx.cs" Inherits="CPlatform.PORD.PORD_Review" %>
 <%@ Import Namespace="CPlatform.PORD" %>
 <!DOCTYPE html>
@@ -6,9 +6,9 @@
 <head runat="server">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PO Review</title>
+    <title>POD</title>
     <link rel="stylesheet" href="../css/lppi.css" />
-    <link rel="stylesheet" href="../css/pord.css" />
+    <link rel="stylesheet" href="../css/pord.css?v=20261021d" />
 </head>
 <body class="pord-review-page">
 
@@ -18,7 +18,7 @@
     <div class="pord-rv-head">
         <div class="pord-rv-brand">
             <div class="brand-mark"><svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" fill="none" stroke-width="2"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6"/></svg></div>
-            <div><div class="crumb">PO Review</div><h1>Review link invalid or expired</h1></div>
+            <div><div class="crumb">POD</div><h1>Review link invalid or expired</h1></div>
         </div>
         <p style="margin:16px 0 0;">This review link is no longer active. It may have been replaced by a newer review, or the package may be closed.
         Reply to the email that brought you here and your AS Fin team will send you a current link.</p>
@@ -31,20 +31,25 @@
 <input type="hidden" id="pordToken" value="<%= PORDHelper.Attr(Token) %>" />
 <input type="hidden" id="pordReadOnly" value="<%= IsReadOnly ? "1" : "0" %>" />
 <input type="hidden" id="pordIsPoc" value="<%= IsPoc ? "1" : "0" %>" />
+<input type="hidden" id="pordToday" value="<%= DateTime.Today.ToString("yyyy-MM-dd") %>" />
+<input type="hidden" id="pordDefaultTarget" value="<%= DateTime.Today.AddDays(PORDHelper.DefaultDueDays).ToString("yyyy-MM-dd") %>" />
+<input type="hidden" id="pordEscalateAt" value="<%= PORDHelper.EscalateAtReview %>" />
+<dialog id="pordConfirm" class="pord-confirm" aria-labelledby="pordConfirmTitle" aria-describedby="pordConfirmText">
+    <h2 id="pordConfirmTitle">Finalise package</h2>
+    <p id="pordConfirmText"></p>
+    <div class="btn-row"><button type="button" id="pordConfirmCancel" class="btn btn-secondary">Keep reviewing</button><button type="button" id="pordConfirmAccept" class="btn btn-primary">Finalise package</button></div>
+</dialog>
 
 <div class="review-shell<%= IsReadOnly ? " pord-readonly" : "" %>">
 
     <%= StatusBannerHtml %>
-    <% if (PORDHelper.DemoMode) { %>
-    <div class="alert info" style="align-items:center;"><strong>Demonstration.</strong>&nbsp;Suppliers, people and values are fictional. Saves are held in memory only.</div>
-    <% } %>
 
     <div class="pord-rv-head">
         <div class="pord-rv-top">
             <div class="pord-rv-brand">
                 <div class="brand-mark"><svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6"/><path d="M8 13h5M8 17h3"/></svg></div>
                 <div>
-                    <div class="crumb">PO Review · Purchase order compliance</div>
+                    <div class="crumb">POD · Purchase order compliance</div>
                     <h1><%= PORDHelper.Enc(Package.DmProgram) %></h1>
                 </div>
             </div>
@@ -68,7 +73,8 @@
             </div>
             <div>
                 <div class="k">Issues</div>
-                <div class="v"><%= TotalCount %> <span style="font-size:13px;font-weight:600;color:var(--ink-3);">POs · $<%= PORDHelper.MoneyShort(OpenValue) %> open</span></div>
+                <div class="v"><%= TotalCount %> <span style="font-size:13px;font-weight:600;color:var(--ink-3);">exceptions</span></div>
+                <div class="s"><%= PORDHelper.Enc(OpenValueText) %> still to deliver</div>
                 <div class="catbar"><%= CategoryBarHtml %></div>
             </div>
             <div class="policy">
@@ -112,7 +118,7 @@
                     <p>For each PO, choose one <strong>Response</strong>, then click <strong>Save changes</strong>. Nothing is saved until you do.</p>
                     <div class="opts">
                         <div class="opt amend"><strong>Will fix</strong>Correct the PO in ERP (for payment terms: <em>Amend PO terms</em>). Give the date you expect it done. Next month's check confirms the fix automatically.</div>
-                        <div class="opt reason"><strong>Valid reason</strong>The PO should stay as it is. Choose the reason and add the Objective reference for your evidence. Accepted reasons stop the PO being flagged for <%= PORDHelper.ExclusionMonths %> months.</div>
+                        <div class="opt reason"><strong>Valid reason</strong>The PO should stay as it is. Choose the reason and add the Objective reference for your evidence. Accepted VR01–VR03 reasons exclude the current terms for <%= PORDHelper.ExclusionMonths %> months. VR99 does not create an exclusion.</div>
                         <div class="opt reassign"><strong>Not mine – reassign</strong>Tell us who owns the PO in Comments. The PO is redirected to them next cycle.</div>
                     </div>
                     <p>To apply the same response to several POs, tick them and use the bar at the bottom of the screen.</p>
@@ -163,12 +169,12 @@
             <div class="toolbar-left">
                 <div class="search-wrap">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                    <input type="text" id="pordSearch" class="input" placeholder="Search PO, supplier, BP, terms…" />
+                    <input type="search" id="pordSearch" class="input" aria-label="Search purchase orders" placeholder="Search PO, supplier, BP, terms…" />
                 </div>
                 <select id="pordFilterResp" title="Response">
                     <option value="">All responses</option>
                     <option value="awaiting">Awaiting response</option>
-                    <option value="Amend">Will amend</option>
+                    <option value="Amend">Will fix</option>
                     <option value="Reason">Valid reason</option>
                     <option value="Reassign">Reassign</option>
                     <option value="NoResponse">No response</option>
@@ -206,6 +212,7 @@
         </div>
 
         <div class="pord-chips" id="pordChips"><%= CategoryChipsHtml %></div>
+        <div class="pord-table-meta"><span id="pordVisibleCount" role="status" aria-live="polite"></span><button type="button" id="pordClearFilters" class="btn btn-sm btn-ghost">Clear filters</button><span class="muted">Select a row to apply a response to several POs. Scroll across for all fields.</span></div>
 
         <div id="pordReady" class="pord-ready<%= IsAllReviewed && !IsReadOnly ? " show" : "" %>" role="status">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="16 9 10.5 15 8 12.5"/></svg>
@@ -243,6 +250,7 @@
             <asp:Repeater ID="rptPos" runat="server">
                 <ItemTemplate>
                 <tr class="po-row" data-id="<%# Po(Container.DataItem).PoID %>"
+                    data-po="<%# PORDHelper.Attr(Po(Container.DataItem).PoNumber) %>"
                     data-version="<%# PORDHelper.Attr(PORDHelper.VersionOf(Po(Container.DataItem).ReviewedDate)) %>"
                     data-cat="<%# PORDHelper.Attr(Po(Container.DataItem).IssueKey) %>"
                     data-check="<%# PORDHelper.Attr(Po(Container.DataItem).CheckType) %>"
@@ -321,7 +329,7 @@
         </div>
     </div>
 </div>
-<script src="../js/pord.js"></script>
+<script src="../js/pord.js?v=20261021d"></script>
 </asp:PlaceHolder>
 </body>
 </html>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -26,6 +26,7 @@ namespace CPlatform.PORD
                     .Append(c.IsActive ? "" : " disabled").Append(">").Append(PORDHelper.Enc(c.Name))
                     .Append(c.Status == "Live" ? "" : " (" + c.Status.ToLowerInvariant() + ")").Append("</option>");
             CheckOptionsHtml = opts.ToString();
+            btnCommit.Enabled = false;
             BuildChecklist(null);
             rptBatches.DataSource = PORDHelper.Store.GetBatches();
             rptBatches.DataBind();
@@ -42,7 +43,7 @@ namespace CPlatform.PORD
             Show(res);
         }
 
-        private const string ExampleLoaderMsg = "The Currency vs bank check is an example that shows how further checks plug in. Its loader will be built when BODS provides the extract.";
+        private const string ExampleLoaderMsg = "File checking is currently available for payment terms. The currency vs bank extract is not enabled.";
 
         protected void btnSample_Click(object sender, EventArgs e)
         {
@@ -63,7 +64,7 @@ namespace CPlatform.PORD
         {
             if (PORDHelper.DemoMode)
             {
-                Msg("info", "Commit is disabled in the demonstration build. It will be enabled once the first BODS file has been reviewed and the PORD tables are approved through the SQL change process.");
+                Msg("info", "File checking is available. Loading review packages is not enabled in this environment.");
                 return;
             }
             Msg("err", "Commit requires the PORD database schema, which is not installed yet.");
@@ -94,7 +95,7 @@ namespace CPlatform.PORD
                           + ". Without them POs cannot be grouped by program or routed to a PO contact, and foreign-currency POs are treated as AUD.");
 
             var exclusions = PORDHelper.Store.GetExclusions().Where(x => !x.IsRevoked && x.ExpiryDate >= DateTime.Today).ToList();
-            int excluded = res.Rows.Count(r => r.Category != PordCategory.None && exclusions.Any(x => x.PoNumber == r.Get("PoNumber") && x.PoTermKey == r.Get("PoTerm")));
+            int excluded = res.Rows.Count(r => r.Error == null && r.Category != PordCategory.None && exclusions.Any(x => x.CheckType == PORDChecks.Nspt && x.PoNumber == r.Get("PoNumber") && x.PoTermKey == r.Get("PoTerm")));
 
             litRows.Text = res.Rows.Count.ToString();
             litFlagged.Text = (res.Flagged - excluded).ToString();
@@ -122,7 +123,7 @@ namespace CPlatform.PORD
             }
             sb.Append("</tbody></table>");
             litPreview.Text = sb.ToString();
-            btnCommit.Enabled = true;
+            btnCommit.Enabled = false;
         }
 
         private void BuildChecklist(PORDCsvParser.Result res)
