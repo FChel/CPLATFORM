@@ -7,6 +7,22 @@ using System.Text.RegularExpressions;
 /// <summary>Strict parser for historical ROMAN pipe-framed trial balances.</summary>
 public static class RomanTrialBalanceImporter
 {
+    public static bool Recognises(byte[] content)
+    {
+        bool header = false, detail = false;
+        using (MemoryStream stream = new MemoryStream(content, false))
+        using (StreamReader reader = new StreamReader(stream, true))
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                header |= PeriodPattern.IsMatch(line);
+                detail |= LinePattern.IsMatch(line);
+                if (header && detail) { return true; }
+            }
+        }
+        return false;
+    }
     private static readonly Regex LinePattern = new Regex(
         @"^\|\s*(\d{4})\s+(\w+)\s+(.{1,20})\s+AUD\s+(.*)\|\s*$", RegexOptions.Compiled);
     private static readonly Regex NumberPattern = new Regex(@"[\d,]+\.\d{2}-?", RegexOptions.Compiled);

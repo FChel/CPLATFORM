@@ -1503,8 +1503,9 @@ namespace CPlatform.NORM
             DataTable table = NORMHelper.Query(
                 "SELECT l.LineResultId,l.AccountMapId,l.SourceAmount,l.PresentedContribution,l.DerivationCode,l.MappingSnapshot," +
                 "l.AccountTypeSnapshot,l.NoteSubLineSnapshot,l.CashFlowClassSnapshot," +
-                "tb.SourceRowNo,tb.SourceLedger,tb.GlAccount,tb.GlText,tb.DebitMovement,tb.CreditMovement,tb.IsSynthetic " +
+                "tb.SourceRowNo,tb.SourceCompanyCode,tb.SourceLedger,tb.GlAccount,tb.GlText,tb.DebitMovement,tb.CreditMovement,tb.IsSynthetic,i.SourceType " +
                 "FROM dbo.tblNORM_Lineage l INNER JOIN dbo.tblNORM_TrialBalanceRow tb ON tb.TbRowId = l.TbRowId " +
+                "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=tb.ImportId " +
                 "WHERE l.CalculationRunId = @run ORDER BY l.LineResultId,ABS(l.PresentedContribution) DESC,tb.GlAccount",
                 NORMHelper.P("@run", runId));
             Dictionary<long, List<Dictionary<string, object>>> values =
@@ -1516,7 +1517,8 @@ namespace CPlatform.NORM
                 if (!values.ContainsKey(resultId)) { values[resultId] = new List<Dictionary<string, object>>(); }
                 Dictionary<string, object> row = new Dictionary<string, object>();
                 row["row"] = NORMHelper.Int(source, "SourceRowNo");
-                row["ledger"] = NORMHelper.Str(source, "SourceLedger");
+                row["company"] = NORMHelper.SourceCompany(source);
+                row["ledger"] = NORMHelper.SourceLedgerLabel(source);
                 row["gl"] = NORMHelper.Str(source, "GlAccount");
                 row["text"] = NORMHelper.Str(source, "GlText");
                 row["sourceAmount"] = NORMHelper.Dec(source, "SourceAmount");
@@ -1532,7 +1534,7 @@ namespace CPlatform.NORM
                 row["sapUrl"] = Convert.ToBoolean(source["IsSynthetic"]) ? "" :
                     NORMHelper.SapGlLineItemsLink(
                         NORMHelper.Str(source, "GlAccount"),
-                        NORMHelper.Str(source, "SourceLedger"),
+                        NORMHelper.SourceCompany(source),
                         financialYear);
                 values[resultId].Add(row);
             }
