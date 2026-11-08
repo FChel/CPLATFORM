@@ -291,8 +291,10 @@ public static class NORMStatementEngine
     {
         decimal tbDifference = totalNet / 1000m;
         AddValidation(connection, transaction, runId, "DEBITS_EQUAL_CREDITS", "Debits equal credits", "Blocking",
-            Math.Abs(tbDifference) <= 0.001m ? "Pass" : "Fail", tbDifference, 0m, 0.001m,
-            "Net of all imported trial-balance rows in $'000. A difference above $1 blocks assurance.");
+            totalNet == 0m ? "Pass" : "Fail", tbDifference, 0m, 0m,
+            "Net of all imported trial-balance rows in $'000. Exact difference in AUD: " +
+            totalNet.ToString("0.00##########################", CultureInfo.InvariantCulture) +
+            ". Any non-zero difference fails this check.");
 
         decimal coverage = totalAbs == 0m ? 0m : 100m * mappedAbs / totalAbs;
         AddValidation(connection, transaction, runId, "MAPPING_VALUE_COVERAGE", "Trial balance mapped by value", "Warning",

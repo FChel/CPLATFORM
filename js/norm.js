@@ -562,11 +562,11 @@
       notes.map(function (note) { return '<tr><td>' + esc(note.label) + '<small>' + note.count + ' source rows</small></td><td>' + number(note.amount) + '</td></tr>'; }).join("") +
       '</tbody></table></section>' : "";
     var sourceRows = sources.length ? sources.map(function (source) {
-      var search = [source.gl, source.ledger, source.text, source.note, source.cash, source.mapping].join(" ").toLowerCase();
+      var search = [source.gl, source.company, source.ledger, source.text, source.note, source.cash, source.mapping].join(" ").toLowerCase();
       var account = source.sapUrl
         ? '<a class="norm-sap-link" href="' + esc(source.sapUrl) + '" target="_blank" rel="noopener" title="Open G/L line items in SAP Fiori"><strong>' + esc(source.gl) + '</strong><span>Open in SAP ↗</span></a>'
         : '<strong>' + esc(source.gl) + '</strong>';
-      return '<tr data-source-row data-search="' + esc(search) + '" class="' + (source.synthetic ? 'synthetic' : '') + '"><td>' + account + '<small>' + esc(source.ledger) + ' · source row ' + esc(source.row) + '</small></td>' +
+      return '<tr data-source-row data-search="' + esc(search) + '" class="' + (source.synthetic ? 'synthetic' : '') + '"><td>' + account + '<small>' + (source.company ? 'Company ' + esc(source.company) + ' · ' : '') + esc(source.ledger) + ' · source row ' + esc(source.row) + '</small></td>' +
         '<td>' + esc(source.text) + (source.cash ? '<span class="norm-tag">' + esc(source.cash) + '</span>' : '') +
         (source.mapping ? '<small class="norm-mapping-rule">' + esc(source.mapping) + '</small>' : '') +
         '</td><td>' + number(source.sourceAmount) + '</td><td>' + number(source.amount) + '</td></tr>';

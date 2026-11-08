@@ -375,8 +375,8 @@ namespace CPlatform.NORM
             string poolFilter = unmappedOnly ? " AND r.StatementCode = 'POOL' AND r.LineCode = 'UNMAPPED' " : " AND r.StatementCode <> 'POOL' ";
             DataTable table = NORMHelper.Query(
                 "SELECT r.StatementCode,r.LineCode,ISNULL(t.LineLabel,r.LineCode) AS LineLabel,l.DerivationCode," +
-                "tb.SourceRowNo,tb.SourceLedger,tb.GlAccount,tb.GlText,tb.RowHash,tb.IsSynthetic,l.SourceAmount,l.PresentedContribution," +
-                "l.AccountMapId,l.AccountTypeSnapshot,l.NoteSubLineSnapshot,l.CashFlowClassSnapshot,l.MappingSnapshot,i.FinancialYear " +
+                "tb.SourceRowNo,tb.SourceCompanyCode,tb.SourceLedger,tb.GlAccount,tb.GlText,tb.RowHash,tb.IsSynthetic,l.SourceAmount,l.PresentedContribution," +
+                "l.AccountMapId,l.AccountTypeSnapshot,l.NoteSubLineSnapshot,l.CashFlowClassSnapshot,l.MappingSnapshot,i.FinancialYear,i.SourceType " +
                 "FROM dbo.tblNORM_Lineage l " +
                 "INNER JOIN dbo.tblNORM_LineResult r ON r.LineResultId = l.LineResultId " +
                 "INNER JOIN dbo.tblNORM_TrialBalanceRow tb ON tb.TbRowId = l.TbRowId " +
@@ -389,7 +389,7 @@ namespace CPlatform.NORM
             ExcelWorksheet sheet = package.Workbook.Worksheets.Add(unmappedOnly ? "Unmapped rows" : "Figure lineage");
             AddTitle(sheet, unmappedOnly ? "Unmapped source rows" : "Figure lineage",
                 unmappedOnly ? "Every row requires an accounting disposition" : "Frozen source-to-figure derivation for the selected run");
-            string[] headers = { "Statement", "Line code", "Line label", "Derivation", "Source row", "Ledger", "G/L account", "Description", "Row SHA-256", "Source amount ($)", "Contribution ($'000)", "Mapping ID", "Account type", "Note classification", "Cash-flow classification", "Frozen mapping evidence" };
+            string[] headers = { "Statement", "Line code", "Line label", "Derivation", "Source row", "Ledger", "G/L account", "Description", "Row SHA-256", "Source amount ($)", "Contribution ($'000)", "Mapping ID", "Account type", "Note classification", "Cash-flow classification", "Frozen mapping evidence", "Company" };
             int headerRow = 4;
             AddHeaders(sheet, headerRow, headers);
             for (int i = 0; i < table.Rows.Count; i++)
@@ -399,12 +399,13 @@ namespace CPlatform.NORM
                 string[] textColumns = { "StatementCode", "LineCode", "LineLabel", "DerivationCode" };
                 for (int c = 0; c < textColumns.Length; c++) { sheet.Cells[row, c + 1].Value = NORMHelper.Str(source, textColumns[c]); }
                 sheet.Cells[row, 5].Value = NORMHelper.Int(source, "SourceRowNo");
-                sheet.Cells[row, 6].Value = NORMHelper.Str(source, "SourceLedger");
+                sheet.Cells[row, 6].Value = NORMHelper.SourceLedgerLabel(source);
+                sheet.Cells[row, 17].Value = NORMHelper.SourceCompany(source);
                 sheet.Cells[row, 7].Value = NORMHelper.Str(source, "GlAccount");
                 string sapUrl = Convert.ToBoolean(source["IsSynthetic"]) ? "" :
                     NORMHelper.SapGlLineItemsLink(
                         NORMHelper.Str(source, "GlAccount"),
-                        NORMHelper.Str(source, "SourceLedger"),
+                        NORMHelper.SourceCompany(source),
                         NORMHelper.Int(source, "FinancialYear"));
                 if (sapUrl.Length > 0)
                 {

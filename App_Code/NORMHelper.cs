@@ -87,6 +87,22 @@ public static class NORMHelper
     /// investigation route rather than a substitute for the retained source
     /// file or frozen NORM lineage.
     /// </summary>
+    public static string SourceCompany(DataRow row)
+    {
+        string company = Str(row, "SourceCompanyCode");
+        if (!String.IsNullOrWhiteSpace(company)) { return company; }
+        // Only the documented legacy ERP contract establishes a company code.
+        string type = Str(row, "SourceType");
+        return type == "ERP" || type == "ROMAN+ERP" ? Str(row, "SourceLedger") : "";
+    }
+
+    public static string SourceLedgerLabel(DataRow row)
+    {
+        return String.IsNullOrWhiteSpace(Str(row, "SourceCompanyCode"))
+            ? "Legacy source " + Str(row, "SourceLedger") + "; actual ledger unknown"
+            : Str(row, "SourceLedger");
+    }
+
     public static string SapGlLineItemsLink(string glAccount, string companyCode, int financialYear)
     {
         string baseUrl = SapBaseUrl;

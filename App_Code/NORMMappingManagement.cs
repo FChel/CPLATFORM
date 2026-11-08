@@ -445,8 +445,8 @@ namespace CPlatform.NORM
                         "SELECT @target,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent FROM dbo.tblNORM_ImportFile WHERE ImportId=@source",
                         NORMHelper.P("@target", importId), NORMHelper.P("@source", sourceImportId));
                     NORMHelper.Exec(connection, transaction,
-                        "INSERT dbo.tblNORM_TrialBalanceRow (ImportId,SourceRowNo,SourceLedger,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic) " +
-                        "SELECT @target,SourceRowNo,SourceLedger,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@source AND IsDeactivated=0",
+                        "INSERT dbo.tblNORM_TrialBalanceRow (ImportId,SourceRowNo,SourceCompanyCode,SourceLedger,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic) " +
+                        "SELECT @target,SourceRowNo,SourceCompanyCode,SourceLedger,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@source AND IsDeactivated=0",
                         NORMHelper.P("@target", importId), NORMHelper.P("@source", sourceImportId));
                     Audit(connection, transaction, "MAPPING_RECALCULATION_CREATED", releaseId,
                         "Source import " + sourceImportId + " copied without alteration to import " + importId + " for recalculation under approved release " + releaseId + ".", user);
