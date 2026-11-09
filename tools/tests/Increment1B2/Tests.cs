@@ -2,6 +2,7 @@ using System;
 using System.Data;
 using System.IO;
 using System.Text;
+using System.Web;
 using OfficeOpenXml;
 using CPlatform.NORM;
 
@@ -157,16 +158,49 @@ public static class Tests
             Test("existing source warning and cancellation preserve prior source", delegate {
                 NORMHelper.CurrentSource = ExistingScopedSource;
                 NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true);
-                Assert(page.PreviewForTest.Contains("Replacement:") && page.PreviewForTest.Contains("Import 2") &&
-                    page.PreviewForTest.Contains("prior &amp; original.xlsx") && page.PreviewForTest.Contains("ledger 0L"),
-                    "Replacement target was not shown");
+                Assert(page.PreviewForTest.Contains("2026 figures for Company 1000, Ledger 0L already exist. They were imported on 09/11/2026 from prior &amp; original.xlsx.") &&
+                    page.PreviewForTest.Contains("Confirming this replacement will replace the existing figures with those from the newly uploaded file. The previous import will be retained as historical evidence.") &&
+                    page.PreviewForTest.Contains("<small>The preview expires after 15 minutes.") &&
+                    HttpUtility.HtmlDecode(page.PreviewForTest).Contains("01\u201312"), "Replacement wording or period display was incorrect");
+                Assert(page.ReplacementLabelForTest == "I confirm that I wish to replace the existing trial balance figures with those from the uploaded file." &&
+                    page.ConfirmLabelForTest == "Confirm replacement", "Replacement controls were unclear");
                 page.CancelForTest(); page.ConfirmForTest(); NoAcceptance();
             });
-            Test("unchecked replacement is rejected by the page", delegate {
+            Test("multi-file replacement lists each ledger and uses plural wording", delegate {
+                NORMHelper.CurrentSource = call => ExistingScopedSource(call) == 2 ? 2 : 3;
+                NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true, OtherLedger());
+                Assert(page.PreviewForTest.Contains("Ledger 0L already exist") && page.PreviewForTest.Contains("Ledger 2L already exist") &&
+                    page.PreviewForTest.Contains("Confirming these replacements") &&
+                    page.ReplacementLabelForTest.Contains("corresponding uploaded files") &&
+                    page.ConfirmLabelForTest == "Confirm replacement", "Batch replacement wording was unclear");
+                NoAcceptance();
+            });
+            Test("unchecked replacement retains preview and allows retry without upload", delegate {
                 NORMHelper.CurrentSource = ExistingScopedSource;
                 NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true);
+                string preview = page.PreviewForTest;
+                int reads = snapshotReads;
+                for (int i = 0; i < 2; i++)
+                {
+                    page.ConfirmForTest(); NoAcceptance();
+                    Assert(page.ReplacementErrorForTest.Contains("Please tick the checkbox to confirm replacement.") &&
+                        page.PendingForTest && page.ReplacementControlsForTest && page.PreviewForTest == preview,
+                        "Checkbox validation discarded the staged preview");
+                    Assert(snapshotReads == reads && NORMHelper.Committed.Count == 0, "Unchecked confirmation inspected or wrote data");
+                }
+                page.CheckReplacementForTest(); page.ConfirmForTest();
+                Assert(AcceptedRows() == 984 && !page.PendingForTest && page.ReplacementErrorForTest == "",
+                    "Retry did not accept the staged source");
+            });
+            Test("expired replacement requires inspection even with checkbox unchecked", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                NORMImportPreview preview = Inspect(original);
+                NORM_Import page = new NORM_Import(); page.StageForTest(preview, true);
+                page.ConfirmForTest();
+                preview.ExpiresUtc = DateTime.UtcNow.AddSeconds(-1);
                 page.ConfirmForTest(); NoAcceptance();
-                Assert(page.ErrorForTest.Contains("Explicit replacement confirmation"), "Missing confirmation error");
+                Assert(!page.PendingForTest && page.ErrorForTest.Contains("Inspect the batch again") &&
+                    page.ReplacementErrorForTest == "", "Expired preview was treated as recoverable");
             });
             Test("checked replacement retains source and writes linked audit", delegate {
                 NORMHelper.CurrentSource = ExistingScopedSource;

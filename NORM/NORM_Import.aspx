@@ -37,7 +37,8 @@
             <asp:Panel ID="PreviewPanel" runat="server" EnableViewState="false" Visible="false">
                 <h2>Review before acceptance</h2>
                 <asp:Literal ID="PreviewMessage" runat="server" />
-                <asp:CheckBox ID="ReplaceExisting" runat="server" Visible="false" Text="I confirm replacement of the listed accepted sources." />
+                <asp:CheckBox ID="ReplaceExisting" runat="server" Visible="false" />
+                <asp:Literal ID="ReplacementError" runat="server" EnableViewState="false" />
                 <asp:Button ID="ConfirmButton" runat="server" Text="Confirm acceptance" CssClass="norm-button" OnClick="ConfirmButton_Click" />
             </asp:Panel>
         </section>
