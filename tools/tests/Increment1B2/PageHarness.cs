@@ -17,6 +17,7 @@ namespace CPlatform.NORM
         protected Literal ErrorMessage = new Literal(), ResultMessage = new Literal(), PreviewMessage = new Literal();
         protected Button ImportButton = new Button(), ConfirmButton = new Button();
         protected DropDownList ReleaseList = new DropDownList();
+        protected CheckBox ReplaceExisting = new CheckBox();
         protected FileUpload TrialBalanceFile = new FileUpload();
 
         public void StageForTest(NORMImportPreview preview, bool correctToken)
@@ -26,13 +27,15 @@ namespace CPlatform.NORM
                 new HttpStaticObjectsCollection(), 20, true, HttpCookieMode.UseCookies, SessionStateMode.InProc, false));
             HttpContext.Current = context;
             typeof(Page).GetField("_context", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(this, context);
-            Session[PendingKey] = preview;
+            var previews = new System.Collections.Generic.List<NORMImportPreview> { preview };
+            Session[PendingKey] = previews;
             ViewState["PreviewToken"] = correctToken ? preview.Token : "stale-tab-token";
             ReleaseList.Items.Add(new ListItem("Release 1", "1"));
             ReleaseList.Items.Add(new ListItem("Release 2", "2"));
             ReleaseList.SelectedValue = preview.ReleaseId.ToString();
-            ShowPreview(preview);
+            ShowPreview(previews);
         }
+        public void CheckReplacementForTest() { ReplaceExisting.Checked = true; }
         public void ConfirmForTest() { ConfirmButton_Click(this, EventArgs.Empty); }
         public void CancelForTest() { CancelButton_Click(this, EventArgs.Empty); }
         public void SwitchReleaseForTest() { ReleaseList.SelectedValue = "2"; }

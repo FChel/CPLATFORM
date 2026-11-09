@@ -32,7 +32,7 @@ public static class Tests
         if (sql.Contains("FROM dbo.tblNORM_EntityLedger"))
         {
             if (sql.Contains("SELECT SourceLedger")) { t = Table("SourceLedger"); t.Rows.Add("1000"); return t; }
-            t = Table("SourceCompanyCode,SourceLedger"); t.Rows.Add("1000", ledger); t.Rows.Add(DBNull.Value, "1000"); return t;
+            t = Table("SourceCompanyCode,SourceLedger"); t.Rows.Add("1000", ledger); t.Rows.Add("1000", "2L"); t.Rows.Add(DBNull.Value, "1000"); return t;
         }
         if (sql.Contains("FROM dbo.tblNORM_AccountMap")) { t = Table("GlCode,AccountType,StatementLine"); t.Rows.Add("100000", "Income", mappingLine); return t; }
         if (sql.Contains("FROM dbo.tblNORM_StatementLine")) { t = Table("LineCode,StatementCode"); t.Rows.Add(mappingLine, "SOCI"); return t; }
@@ -65,6 +65,32 @@ public static class Tests
         }
     }
     static byte[] Roman() { return Encoding.UTF8.GetBytes("Carryforward Periods 00-00 " + year + " Reporting Periods 01-12 " + year + "\n|1000 100 Cash AUD 100.00|\n|1000 200 Equity AUD 100.00-|\n"); }
+    static NORMImportPreview OtherLedger()
+    {
+        using (ExcelPackage package = new ExcelPackage(new MemoryStream(original)))
+        {
+            ExcelWorksheet sheet = package.Workbook.Worksheets[1];
+            for (int row = 1; row < 28; row++)
+            {
+                for (int column = 1; column <= 8; column++)
+                {
+                    if (sheet.Cells[row,column].Text == "0L") { sheet.Cells[row,column].Value = "2L"; }
+                }
+            }
+            return NORMImportService.Inspect(package.GetAsByteArray(), "other-ledger.xlsx", 1, "isolated-test");
+        }
+    }
+
+    static int ExistingScopedSource(NORMHelper.Call call)
+    {
+        Assert(call.Sql.Contains("i.EntityCode=@entity AND i.FinancialYear=@fy") &&
+            call.Sql.Contains("tb.SourceLedger=@ledger") && call.Sql.Contains("tb.SourceCompanyCode=@company") &&
+            call.Sql.Contains("i.ParentImportId IS NULL"), "Source lookup lost its exact scope or included calculation copies");
+        Assert((string)call["@entity"] == "DEPT" && (int)call["@fy"] == 2026 && (string)call["@company"] == "1000",
+            "Source lookup supplied wrong scope");
+        return (string)call["@ledger"] == "0L" ? 2 : 0;
+    }
+
     public static int Main(string[] args)
     {
         try
@@ -128,6 +154,69 @@ public static class Tests
             Test("changed permitted ledger rejected", delegate { NORMImportPreview p = Inspect(original); ledger = "2L"; Fails(delegate { NORMImportService.Confirm(p, "isolated-test"); }); });
             Test("configuration rechecked inside acceptance transaction", delegate { NORMImportPreview p = Inspect(original); changeAtCommit = true; Fails(delegate { NORMImportService.Confirm(p, "isolated-test"); }); Assert(snapshotReads == 3, "Transaction snapshot not read"); });
             Test("replacement rejected after preview", delegate { NORMImportPreview p = Inspect(original); NORMHelper.ExistingCompany = true; Fails(delegate { NORMImportService.Confirm(p, "isolated-test"); }); });
+            Test("existing source warning and cancellation preserve prior source", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true);
+                Assert(page.PreviewForTest.Contains("Replacement:") && page.PreviewForTest.Contains("Import 2") &&
+                    page.PreviewForTest.Contains("prior &amp; original.xlsx") && page.PreviewForTest.Contains("ledger 0L"),
+                    "Replacement target was not shown");
+                page.CancelForTest(); page.ConfirmForTest(); NoAcceptance();
+            });
+            Test("unchecked replacement is rejected by the page", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true);
+                page.ConfirmForTest(); NoAcceptance();
+                Assert(page.ErrorForTest.Contains("Explicit replacement confirmation"), "Missing confirmation error");
+            });
+            Test("checked replacement retains source and writes linked audit", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true);
+                page.CheckReplacementForTest(); page.ConfirmForTest();
+                Assert(AcceptedRows() == 984 && page.ResultForTest.Contains("Source accepted"), "Replacement failed: " + page.ErrorForTest);
+                var audit = NORMHelper.Committed.Find(c => c.Values.ContainsKey("@event") && (string)c["@event"] == "IMPORT_SOURCE_REPLACED");
+                Assert(audit != null && audit.Values.ContainsValue("42") &&
+                    audit.Values.ContainsValue("Prior import=2; entity=DEPT; financial year=2026; company=1000; ledger=0L"),
+                    "Missing replacement link");
+                Assert(!NORMHelper.Committed.Exists(c => c.Sql.Contains("DELETE") || c.Values.ContainsValue(2)),
+                    "Replacement attempted to mutate historical data");
+            });
+            Test("replacement and new ledger commit as a single multi-file batch", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                NORMImportPreview first = Inspect(original), second = OtherLedger();
+                Assert(first.HasReplacement && !second.HasReplacement && second.Ledgers == "2L", "Replacement crossed ledger boundary");
+                var outcomes = NORMImportService.ConfirmBatch(new[] { first, second }, "isolated-test", true);
+                Assert(outcomes.Count == 2 && outcomes[0].ImportId != outcomes[1].ImportId &&
+                    AcceptedRows() == 1968 && NORMHelper.Runs == 2, "Batch was not accepted");
+                Assert(NORMHelper.Committed.FindAll(c => c.Values.ContainsKey("@event") &&
+                    (string)c["@event"] == "IMPORT_SOURCE_REPLACED").Count == 1, "Unrelated ledger was marked replaced");
+            });
+            Test("invalid file leaves the entire replacement batch unchanged", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                var first = Inspect(original);
+                NORMHelper.CurrentSource = null;
+                var invalid = Inspect(Legacy(false));
+                Fails(delegate { NORMImportService.ConfirmBatch(new[] { first, invalid }, "isolated-test", true); });
+                Assert(NORMHelper.Opens == 0, "Invalid batch opened a write transaction");
+            });
+            Test("two files for the same scope are rejected", delegate {
+                Fails(delegate { NORMImportService.ValidateBatch(new[] { Inspect(original), Inspect(original) }); });
+            });
+            Test("failure writing second file rolls back first file and replacement audit", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                var first = Inspect(original); var second = OtherLedger();
+                NORMHelper.FailImportFileName = second.FileName;
+                Fails(delegate { NORMImportService.ConfirmBatch(new[] { first, second }, "isolated-test", true); });
+                Assert(NORMHelper.Committed.Count == 0, "Failed batch retained partial evidence");
+            });
+            Test("another confirmation changing a prior import invalidates the replacement", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                var first = Inspect(original);
+                NORMHelper.CurrentSource = call => {
+                    Assert(call.Sql.Contains("UPDLOCK,HOLDLOCK"), "Confirmation lookup lacked transaction locks");
+                    return 3;
+                };
+                Fails(delegate { NORMImportService.ConfirmBatch(new[] { first }, "isolated-test", true); });
+            });
             Test("service replay cannot create another import", delegate {
                 NORMImportPreview p = Inspect(original); NORMImportService.Confirm(p, "isolated-test"); int count = NORMHelper.Committed.Count;
                 try { NORMImportService.Confirm(p, "isolated-test"); } catch (InvalidOperationException) { Assert(NORMHelper.Committed.Count == count, "Replay wrote data"); return; }

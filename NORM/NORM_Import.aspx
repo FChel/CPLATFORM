@@ -28,15 +28,16 @@
             <asp:Panel ID="ResultPanel" runat="server" EnableViewState="false" Visible="false" CssClass="norm-alert"><asp:Literal ID="ResultMessage" runat="server" /></asp:Panel>
             <label for="ReleaseList">Approved configuration</label>
             <asp:DropDownList ID="ReleaseList" runat="server" CssClass="norm-input" />
-            <div id="SingleFileImport">
-                <label for="TrialBalanceFile">Authoritative trial balance file</label>
-                <div class="norm-file-box"><asp:FileUpload ID="TrialBalanceFile" runat="server" CssClass="norm-file-input" /><small>One trial balance file. NORM identifies its layout and reporting periods from the contents. Maximum 100 MB.</small></div>
-                <p class="norm-transition-method">Existing company/year sources cannot be replaced through this page.</p>
+            <div id="BatchImport">
+                <label for="TrialBalanceFile">Authoritative trial balance files</label>
+                <div class="norm-file-box"><asp:FileUpload ID="TrialBalanceFile" runat="server" AllowMultiple="true" CssClass="norm-file-input" /><small>Select one or more files for the approved configuration. NORM identifies each layout and reporting period from its contents. Combined maximum 100 MB, subject to the site upload limit.</small></div>
+                <p class="norm-transition-method">Existing sources for the same company and ledger require explicit replacement confirmation.</p>
             </div>
-            <div class="norm-form-actions"><asp:Button ID="CancelButton" runat="server" Text="Cancel preview" OnClick="CancelButton_Click" /><asp:Button ID="ImportButton" runat="server" Text="Inspect file" CssClass="norm-button" OnClick="ImportButton_Click" /></div>
+            <div class="norm-form-actions"><asp:Button ID="CancelButton" runat="server" Text="Cancel preview" OnClick="CancelButton_Click" /><asp:Button ID="ImportButton" runat="server" Text="Inspect files" CssClass="norm-button" OnClick="ImportButton_Click" /></div>
             <asp:Panel ID="PreviewPanel" runat="server" EnableViewState="false" Visible="false">
                 <h2>Review before acceptance</h2>
                 <asp:Literal ID="PreviewMessage" runat="server" />
+                <asp:CheckBox ID="ReplaceExisting" runat="server" Visible="false" Text="I confirm replacement of the listed accepted sources." />
                 <asp:Button ID="ConfirmButton" runat="server" Text="Confirm acceptance" CssClass="norm-button" OnClick="ConfirmButton_Click" />
             </asp:Panel>
         </section>
