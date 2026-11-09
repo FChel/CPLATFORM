@@ -33,13 +33,16 @@
                 <div class="norm-file-box"><asp:FileUpload ID="TrialBalanceFile" runat="server" AllowMultiple="true" CssClass="norm-file-input" /><small>Select one or more files for the approved configuration. NORM identifies each layout and reporting period from its contents. Combined maximum 100 MB, subject to the site upload limit.</small></div>
                 <p class="norm-transition-method">Existing sources for the same company and ledger require explicit replacement confirmation.</p>
             </div>
-            <div class="norm-form-actions"><asp:Button ID="CancelButton" runat="server" Text="Cancel preview" OnClick="CancelButton_Click" /><asp:Button ID="ImportButton" runat="server" Text="Inspect files" CssClass="norm-button" OnClick="ImportButton_Click" /></div>
+            <div class="norm-form-actions"><asp:Button ID="ImportButton" runat="server" Text="Inspect files" CssClass="norm-button" OnClick="ImportButton_Click" /></div>
             <asp:Panel ID="PreviewPanel" runat="server" EnableViewState="false" Visible="false">
                 <h2>Review before acceptance</h2>
                 <asp:Literal ID="PreviewMessage" runat="server" />
-                <asp:CheckBox ID="ReplaceExisting" runat="server" Visible="false" />
+                <asp:CheckBox ID="ReplaceExisting" runat="server" Visible="false" Text="I confirm replacement of the existing figures." />
                 <asp:Literal ID="ReplacementError" runat="server" EnableViewState="false" />
-                <asp:Button ID="ConfirmButton" runat="server" Text="Confirm acceptance" CssClass="norm-button" OnClick="ConfirmButton_Click" />
+                <div class="norm-form-actions norm-import-review-actions">
+                    <asp:Button ID="CancelButton" runat="server" Text="Cancel" CausesValidation="false" OnClick="CancelButton_Click" />
+                    <asp:Button ID="ConfirmButton" runat="server" Text="Confirm acceptance" CssClass="norm-button" OnClick="ConfirmButton_Click" />
+                </div>
             </asp:Panel>
         </section>
     </main>

@@ -150,9 +150,6 @@ namespace CPlatform.NORM
             bool replacement = replacementFiles > 0;
             bool multipleFiles = replacementFiles > 1;
             ReplaceExisting.Visible = replacement && canAccept;
-            ReplaceExisting.Text = multipleFiles
-                ? "I confirm that I wish to replace the existing trial balance figures with those from the corresponding uploaded files."
-                : "I confirm that I wish to replace the existing trial balance figures with those from the uploaded file.";
             ConfirmButton.Text = replacement ? "Confirm replacement" : "Confirm batch acceptance";
             if (replacement)
             {
@@ -170,20 +167,23 @@ namespace CPlatform.NORM
 
         private static int AppendSourcePreview(StringBuilder html, NORMImportPreview preview)
         {
-            html.Append("<dl>");
+            html.Append("<dl class=\"norm-import-review\">");
             string[,] fields = {
-                { "Source file", preview.FileName }, { "Identified layout", preview.Layout },
-                { "Approved configuration", preview.ConfigurationVersion + " (release " + preview.ReleaseId.ToString() + ")" },
-                { "Agency/entity", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
+                { "Source file", preview.FileName }, { "Layout", preview.Layout },
+                { "Configuration", preview.ConfigurationVersion + " (release " + preview.ReleaseId.ToString() + ")" },
+                { "Agency", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
                 { "Company", preview.Companies }, { "Ledger", preview.Ledgers },
-                { "Reporting periods", preview.PeriodStart.ToString("00") + "\u2013" + preview.PeriodEnd.ToString("00") },
-                { "Account rows", preview.RowCount.ToString("N0") }, { "Unmapped accounts", preview.UnmappedAccounts.ToString("N0") },
-                { "Debit balances (AUD)", preview.TotalsAvailable ? preview.Debit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
-                { "Credit balances (AUD)", preview.TotalsAvailable ? preview.Credit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
+                { "Periods", preview.PeriodStart.ToString("00") + "\u2013" + preview.PeriodEnd.ToString("00") },
+                { "Rows", preview.RowCount.ToString("N0") }, { "Unmapped accounts", preview.UnmappedAccounts.ToString("N0") },
+                { "Debit (AUD)", preview.TotalsAvailable ? preview.Debit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
+                { "Credit (AUD)", preview.TotalsAvailable ? preview.Credit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
                 { "Net (AUD)", preview.TotalsAvailable ? preview.Net.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" }
             };
             for (int i = 0; i < fields.GetLength(0); i++)
-            { html.Append("<dt>").Append(HttpUtility.HtmlEncode(fields[i,0])).Append("</dt><dd>").Append(HttpUtility.HtmlEncode(fields[i,1])).Append("</dd>"); }
+            {
+                html.Append("<div><dt>").Append(HttpUtility.HtmlEncode(fields[i,0]))
+                    .Append("</dt><dd>").Append(HttpUtility.HtmlEncode(fields[i,1])).Append("</dd></div>");
+            }
             html.Append("</dl><p>").Append(preview.CanAccept ? "Source validation passed. This upload has not been accepted." : "Source validation failed. Acceptance is disabled.").Append("</p>");
             html.Append("<ul><li>Content layout, year, period and permitted source: Pass</li>");
             if (preview.Layout == "Defence ERP") { html.Append("<li>Detail reconciles to company and grand-total controls: Pass</li>"); }
@@ -195,10 +195,11 @@ namespace CPlatform.NORM
             foreach (NORMSourceScope scope in preview.SourceScopes)
             {
                 if (scope.ImportId == 0) { continue; }
+                if (replacements == 0) { html.Append("<h3>Existing trial balance will be replaced</h3>"); }
                 replacements++;
                 string scopeName = scope.Company == null ? "legacy source " + scope.Ledger
                     : "Company " + scope.Company + ", Ledger " + scope.Ledger;
-                html.Append("<p>").Append(HttpUtility.HtmlEncode(
+                html.Append("<p class=\"norm-import-existing-source\">").Append(HttpUtility.HtmlEncode(
                     preview.FinancialYear.ToString(CultureInfo.InvariantCulture) + " figures for " + scopeName +
                     " already exist. They were imported on " + scope.ImportedUtc.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) +
                     " from " + scope.SourceFileName + ".")).Append("</p>");
