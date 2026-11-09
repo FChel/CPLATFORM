@@ -42,7 +42,8 @@ public sealed class NORMSourceScope
     public string Company { get; internal set; }
     public string Ledger { get; internal set; }
     public int ImportId { get; internal set; }
-    public string Description { get; internal set; }
+    public string SourceFileName { get; internal set; }
+    public System.DateTime ImportedUtc { get; internal set; }
 }
 
 /// <summary>One short-lived server-session preview. Never serialised into ViewState.</summary>

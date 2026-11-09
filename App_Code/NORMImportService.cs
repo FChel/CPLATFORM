@@ -261,10 +261,8 @@ public static class NORMImportService
         {
             DataRow row = current.Rows[0];
             scope.ImportId = NORMHelper.Int(row, "ImportId");
-            scope.Description = "Import " + scope.ImportId + " Â· " + NORMHelper.Str(row, "SourceFileName") +
-                " Â· " + NORMHelper.Int(row, "ScopeRows") + " rows in scope Â· accepted " +
-                ((DateTime)row["ImportedUtc"]).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) +
-                " UTC Â· SHA-256 " + NORMHelper.Str(row, "SourceFileHash");
+            scope.SourceFileName = NORMHelper.Str(row, "SourceFileName");
+            scope.ImportedUtc = (DateTime)row["ImportedUtc"];
         }
         return scope;
     }

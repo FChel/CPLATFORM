@@ -68,6 +68,7 @@ namespace CPlatform.NORM
         protected void ConfirmButton_Click(object sender, EventArgs e)
         {
             ErrorPanel.Visible = false;
+            ReplacementError.Text = "";
             List<NORMImportPreview> previews = Session[PendingKey] as List<NORMImportPreview>;
             try
             {
@@ -76,11 +77,25 @@ namespace CPlatform.NORM
                 { throw new InvalidOperationException("This preview expired, was cancelled or has already been used. Check existing imports before inspecting again."); }
                 if (TrialBalanceFile.HasFiles || ReleaseList.SelectedValue != previews[0].ReleaseId.ToString(CultureInfo.InvariantCulture))
                 { throw new InvalidOperationException("The selected files or configuration changed. Inspect the batch again."); }
+                string user = NORMHelper.CurrentUserId();
+                bool needsReplacement = false;
+                foreach (NORMImportPreview preview in previews)
+                {
+                    if (!preview.CanAccept || !String.Equals(preview.Owner, user, StringComparison.Ordinal))
+                    { throw new InvalidOperationException("This preview is invalid or expired. Inspect the batch again."); }
+                    needsReplacement |= preview.HasReplacement;
+                }
+                bool replace = ReplaceExisting.Checked;
+                if (needsReplacement && !replace)
+                {
+                    ReplacementError.Text = "<p class=\"norm-alert norm-alert-error\" role=\"alert\">Please tick the checkbox to confirm replacement.</p>";
+                    return;
+                }
+
                 // ASP.NET's exclusive session lock serialises requests for this session.
                 // Consume before acceptance: replay, refresh and double clicks cannot reuse it.
-                bool replace = ReplaceExisting.Checked;
                 ClearPreview();
-                List<NORMImportOutcome> outcomes = NORMImportService.ConfirmBatch(previews, NORMHelper.CurrentUserId(), replace);
+                List<NORMImportOutcome> outcomes = NORMImportService.ConfirmBatch(previews, user, replace);
                 ResultPanel.Visible = true;
                 StringBuilder result = new StringBuilder();
                 foreach (NORMImportOutcome outcome in outcomes)
@@ -122,24 +137,38 @@ namespace CPlatform.NORM
         {
             PreviewPanel.Visible = true;
             bool canAccept = true;
-            bool replacement = false;
+            int replacementFiles = 0;
+            int replacementScopes = 0;
             StringBuilder html = new StringBuilder();
             foreach (NORMImportPreview preview in previews)
             {
                 canAccept &= preview.CanAccept;
-                replacement |= preview.HasReplacement;
-                AppendSourcePreview(html, preview);
+                if (preview.HasReplacement) { replacementFiles++; }
+                replacementScopes += AppendSourcePreview(html, preview);
             }
             ConfirmButton.Enabled = canAccept;
+            bool replacement = replacementFiles > 0;
+            bool multipleFiles = replacementFiles > 1;
             ReplaceExisting.Visible = replacement && canAccept;
-            ConfirmButton.Text = replacement ? "Confirm batch and replace sources" : "Confirm batch acceptance";
+            ReplaceExisting.Text = multipleFiles
+                ? "I confirm that I wish to replace the existing trial balance figures with those from the corresponding uploaded files."
+                : "I confirm that I wish to replace the existing trial balance figures with those from the uploaded file.";
+            ConfirmButton.Text = replacement ? "Confirm replacement" : "Confirm batch acceptance";
+            if (replacement)
+            {
+                html.Append(replacementScopes > 1
+                    ? "<p>Confirming these replacements will replace the listed figures with those from the " +
+                        (multipleFiles ? "corresponding uploaded files" : "newly uploaded file") +
+                        ". The previous figures will be retained as historical evidence.</p>"
+                    : "<p>Confirming this replacement will replace the existing figures with those from the newly uploaded file. The previous import will be retained as historical evidence.</p>");
+            }
             html.Append("<p>").Append(canAccept ? "Confirmation applies to the entire batch." :
                 "The batch cannot be accepted while any selected source fails validation.").Append("</p>");
-            html.Append("<p>The preview expires after 15 minutes. Changes to the files, configuration or accepted sources require another inspection.</p>");
+            html.Append("<p><small>The preview expires after 15 minutes. Changes to the files, configuration or accepted sources require another inspection.</small></p>");
             PreviewMessage.Text = html.ToString();
         }
 
-        private static void AppendSourcePreview(StringBuilder html, NORMImportPreview preview)
+        private static int AppendSourcePreview(StringBuilder html, NORMImportPreview preview)
         {
             html.Append("<dl>");
             string[,] fields = {
@@ -147,7 +176,7 @@ namespace CPlatform.NORM
                 { "Approved configuration", preview.ConfigurationVersion + " (release " + preview.ReleaseId.ToString() + ")" },
                 { "Agency/entity", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
                 { "Company", preview.Companies }, { "Ledger", preview.Ledgers },
-                { "Reporting periods", preview.PeriodStart.ToString("00") + "â€“" + preview.PeriodEnd.ToString("00") },
+                { "Reporting periods", preview.PeriodStart.ToString("00") + "\u2013" + preview.PeriodEnd.ToString("00") },
                 { "Account rows", preview.RowCount.ToString("N0") }, { "Unmapped accounts", preview.UnmappedAccounts.ToString("N0") },
                 { "Debit balances (AUD)", preview.TotalsAvailable ? preview.Debit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
                 { "Credit balances (AUD)", preview.TotalsAvailable ? preview.Credit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
@@ -162,14 +191,19 @@ namespace CPlatform.NORM
             html.Append("<li>Lossless decimal storage: ").Append(preview.PrecisionValid ? "Pass" : "Fail").Append("</li></ul>");
             foreach (string error in preview.Errors) { html.Append("<p>").Append(HttpUtility.HtmlEncode(error)).Append("</p>"); }
             foreach (string warning in preview.Warnings) { html.Append("<p>").Append(HttpUtility.HtmlEncode(warning)).Append("</p>"); }
+            int replacements = 0;
             foreach (NORMSourceScope scope in preview.SourceScopes)
             {
                 if (scope.ImportId == 0) { continue; }
-                html.Append("<p><strong>Replacement:</strong> ")
-                    .Append(HttpUtility.HtmlEncode("Company " + (scope.Company ?? "(legacy)") + ", ledger " + scope.Ledger +
-                        " will replace " + scope.Description + ". The original remains available as historical evidence."))
-                    .Append("</p>");
+                replacements++;
+                string scopeName = scope.Company == null ? "legacy source " + scope.Ledger
+                    : "Company " + scope.Company + ", Ledger " + scope.Ledger;
+                html.Append("<p>").Append(HttpUtility.HtmlEncode(
+                    preview.FinancialYear.ToString(CultureInfo.InvariantCulture) + " figures for " + scopeName +
+                    " already exist. They were imported on " + scope.ImportedUtc.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) +
+                    " from " + scope.SourceFileName + ".")).Append("</p>");
             }
+            return replacements;
         }
         private void BindReleases()
         {
