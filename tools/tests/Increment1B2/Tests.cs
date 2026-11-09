@@ -158,20 +158,27 @@ public static class Tests
             Test("existing source warning and cancellation preserve prior source", delegate {
                 NORMHelper.CurrentSource = ExistingScopedSource;
                 NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true);
-                Assert(page.PreviewForTest.Contains("2026 figures for Company 1000, Ledger 0L already exist. They were imported on 09/11/2026 from prior &amp; original.xlsx.") &&
+                Assert(page.PreviewForTest.Contains("<div><dt>Configuration</dt><dd>test-v1 (release 1)</dd></div>") &&
+                    page.PreviewForTest.Contains("<h3>Existing trial balance will be replaced</h3><p class=\"norm-import-existing-source\">") &&
+                    page.PreviewForTest.Contains("2026 figures for Company 1000, Ledger 0L already exist. They were imported on 09/11/2026 from prior &amp; original.xlsx.") &&
                     page.PreviewForTest.Contains("Confirming this replacement will replace the existing figures with those from the newly uploaded file. The previous import will be retained as historical evidence.") &&
                     page.PreviewForTest.Contains("<small>The preview expires after 15 minutes.") &&
                     HttpUtility.HtmlDecode(page.PreviewForTest).Contains("01\u201312"), "Replacement wording or period display was incorrect");
-                Assert(page.ReplacementLabelForTest == "I confirm that I wish to replace the existing trial balance figures with those from the uploaded file." &&
+                Assert(page.ReplacementLabelForTest == "I confirm replacement of the existing figures." &&
                     page.ConfirmLabelForTest == "Confirm replacement", "Replacement controls were unclear");
-                page.CancelForTest(); page.ConfirmForTest(); NoAcceptance();
+                page.CheckReplacementForTest();
+                page.CancelForTest();
+                Assert(!page.PendingForTest && !page.ReviewVisibleForTest && !page.ReplacementCheckedForTest,
+                    "Cancel did not return to file selection and clear the staged replacement");
+                page.ConfirmForTest(); NoAcceptance();
+                Assert(NORMHelper.Committed.Count == 0, "Cancel modified source or audit history");
             });
             Test("multi-file replacement lists each ledger and uses plural wording", delegate {
                 NORMHelper.CurrentSource = call => ExistingScopedSource(call) == 2 ? 2 : 3;
                 NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true, OtherLedger());
                 Assert(page.PreviewForTest.Contains("Ledger 0L already exist") && page.PreviewForTest.Contains("Ledger 2L already exist") &&
                     page.PreviewForTest.Contains("Confirming these replacements") &&
-                    page.ReplacementLabelForTest.Contains("corresponding uploaded files") &&
+                    page.ReplacementLabelForTest == "I confirm replacement of the existing figures." &&
                     page.ConfirmLabelForTest == "Confirm replacement", "Batch replacement wording was unclear");
                 NoAcceptance();
             });

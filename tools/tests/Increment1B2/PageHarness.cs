@@ -17,7 +17,7 @@ namespace CPlatform.NORM
         protected Literal ErrorMessage = new Literal(), ResultMessage = new Literal(), PreviewMessage = new Literal(), ReplacementError = new Literal();
         protected Button ImportButton = new Button(), ConfirmButton = new Button();
         protected DropDownList ReleaseList = new DropDownList();
-        protected CheckBox ReplaceExisting = new CheckBox();
+        protected CheckBox ReplaceExisting = new CheckBox { Text = "I confirm replacement of the existing figures." };
         protected FileUpload TrialBalanceFile = new FileUpload();
 
         public void StageForTest(NORMImportPreview preview, bool correctToken, params NORMImportPreview[] additionalFiles)
@@ -48,6 +48,8 @@ namespace CPlatform.NORM
         }
         public string ResultForTest { get { return ResultMessage.Text; } }
         public string ErrorForTest { get { return ErrorMessage.Text; } }
+        public bool ReviewVisibleForTest { get { return PreviewPanel.Visible; } }
+        public bool ReplacementCheckedForTest { get { return ReplaceExisting.Checked; } }
         public string ReplacementErrorForTest { get { return ReplacementError.Text; } }
         public bool ReplacementControlsForTest { get { return PreviewPanel.Visible && ReplaceExisting.Visible && ConfirmButton.Enabled; } }
         public string ReplacementLabelForTest { get { return ReplaceExisting.Text; } }

@@ -50,3 +50,29 @@
 .norm-transition-method strong {
     color: #36434e;
 }
+
+.norm-import-review > div {
+    display: grid;
+    grid-template-columns: minmax(0, min(38%, 9rem)) minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.2rem 0;
+    overflow-wrap: anywhere;
+}
+
+.norm-import-review dt {
+    font-weight: 700;
+}
+
+.norm-import-review dd {
+    margin: 0;
+}
+
+.norm-import-existing-source {
+    overflow-wrap: anywhere;
+}
+
+.norm-import-review-actions {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
