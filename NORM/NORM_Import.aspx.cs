@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -10,7 +11,7 @@ namespace CPlatform.NORM
 {
     public partial class NORM_Import : NORMBasePage
     {
-        private const string PendingKey = "NORM.SingleFileImportPreview";
+        private const string PendingKey = "NORM.BatchImportPreview";
 
         protected override void OnInit(EventArgs e)
         {
@@ -23,9 +24,9 @@ namespace CPlatform.NORM
             if (!IsPostBack) { ClearPreview(); BindReleases(); }
             else
             {
-                NORMImportPreview preview = Session[PendingKey] as NORMImportPreview;
-                if (preview != null && preview.Token == ViewState["PreviewToken"] as string && preview.Owner == NORMHelper.CurrentUserId())
-                { ShowPreview(preview); }
+                List<NORMImportPreview> previews = Session[PendingKey] as List<NORMImportPreview>;
+                if (previews != null && previews[0].Token == ViewState["PreviewToken"] as string && previews[0].Owner == NORMHelper.CurrentUserId())
+                { ShowPreview(previews); }
             }
         }
 
@@ -40,12 +41,26 @@ namespace CPlatform.NORM
                 int releaseId;
                 if (!Int32.TryParse(ReleaseList.SelectedValue, out releaseId))
                 { throw new InvalidOperationException("Select an approved configuration release."); }
-                if (!TrialBalanceFile.HasFile) { throw new InvalidDataException("Choose a non-empty trial balance file."); }
-                NORMImportPreview preview = NORMImportService.Inspect(TrialBalanceFile.FileBytes,
-                    TrialBalanceFile.FileName, releaseId, NORMHelper.CurrentUserId());
-                Session[PendingKey] = preview;
-                ViewState["PreviewToken"] = preview.Token;
-                ShowPreview(preview);
+                long bytes = 0;
+                foreach (HttpPostedFile file in TrialBalanceFile.PostedFiles) { bytes += file.ContentLength; }
+                if (bytes == 0) { throw new InvalidDataException("Choose non-empty trial balance files."); }
+                if (bytes > NORMHelper.SettingInt("NORM.MaxUploadBytes", 104857600))
+                { throw new InvalidDataException("The combined files exceed the configured upload limit."); }
+                List<NORMImportPreview> previews = new List<NORMImportPreview>();
+                foreach (HttpPostedFile file in TrialBalanceFile.PostedFiles)
+                {
+                    byte[] content;
+                    using (MemoryStream buffer = new MemoryStream())
+                    {
+                        file.InputStream.CopyTo(buffer);
+                        content = buffer.ToArray();
+                    }
+                    previews.Add(NORMImportService.Inspect(content, file.FileName, releaseId, NORMHelper.CurrentUserId()));
+                }
+                NORMImportService.ValidateBatch(previews);
+                Session[PendingKey] = previews;
+                ViewState["PreviewToken"] = previews[0].Token;
+                ShowPreview(previews);
             }
             catch (Exception error) { ShowError(error.Message); }
         }
@@ -53,25 +68,33 @@ namespace CPlatform.NORM
         protected void ConfirmButton_Click(object sender, EventArgs e)
         {
             ErrorPanel.Visible = false;
-            NORMImportPreview preview = Session[PendingKey] as NORMImportPreview;
+            List<NORMImportPreview> previews = Session[PendingKey] as List<NORMImportPreview>;
             try
             {
                 if (!NORMHelper.HasPrepareAccess()) { throw new UnauthorizedAccessException("Preparer access is required."); }
-                if (preview == null || !String.Equals(preview.Token, ViewState["PreviewToken"] as string, StringComparison.Ordinal))
+                if (previews == null || !String.Equals(previews[0].Token, ViewState["PreviewToken"] as string, StringComparison.Ordinal))
                 { throw new InvalidOperationException("This preview expired, was cancelled or has already been used. Check existing imports before inspecting again."); }
-                if (TrialBalanceFile.HasFile || ReleaseList.SelectedValue != preview.ReleaseId.ToString(CultureInfo.InvariantCulture))
-                { throw new InvalidOperationException("The file or selected configuration changed. Inspect the file again."); }
+                if (TrialBalanceFile.HasFiles || ReleaseList.SelectedValue != previews[0].ReleaseId.ToString(CultureInfo.InvariantCulture))
+                { throw new InvalidOperationException("The selected files or configuration changed. Inspect the batch again."); }
                 // ASP.NET's exclusive session lock serialises requests for this session.
                 // Consume before acceptance: replay, refresh and double clicks cannot reuse it.
+                bool replace = ReplaceExisting.Checked;
                 ClearPreview();
-                NORMImportOutcome outcome = NORMImportService.Confirm(preview, NORMHelper.CurrentUserId());
+                List<NORMImportOutcome> outcomes = NORMImportService.ConfirmBatch(previews, NORMHelper.CurrentUserId(), replace);
                 ResultPanel.Visible = true;
-                ResultMessage.Text = "<p>Source accepted. Import reference: " + outcome.ImportId.ToString(CultureInfo.InvariantCulture) + ".</p>";
-                if (outcome.CalculationRunId > 0)
+                StringBuilder result = new StringBuilder();
+                foreach (NORMImportOutcome outcome in outcomes)
                 {
-                    ResultMessage.Text += "<p>Calculation completed. <a href=\"NORM_Statements.aspx?run=" + outcome.CalculationRunId.ToString(CultureInfo.InvariantCulture) + "\">Review statements, validation results and unmapped accounts</a>.</p>";
+                    result.Append("<p>Source accepted. Import reference: ").Append(outcome.ImportId.ToString(CultureInfo.InvariantCulture)).Append(".</p>");
+                    if (outcome.CalculationRunId > 0)
+                    {
+                        result.Append("<p>Calculation completed. <a href=\"NORM_Statements.aspx?run=")
+                            .Append(outcome.CalculationRunId.ToString(CultureInfo.InvariantCulture))
+                            .Append("\">Review statements, validation results and unmapped accounts</a>.</p>");
+                    }
+                    else { result.Append("<p>").Append(HttpUtility.HtmlEncode(outcome.CalculationError)).Append("</p>"); }
                 }
-                else { ResultMessage.Text += "<p>" + HttpUtility.HtmlEncode(outcome.CalculationError) + "</p>"; }
+                ResultMessage.Text = result.ToString();
             }
             catch (Exception error) { ClearPreview(); ShowError(error.Message); }
         }
@@ -86,6 +109,7 @@ namespace CPlatform.NORM
             Session.Remove(PendingKey);
             ViewState.Remove("PreviewToken");
             PreviewPanel.Visible = false;
+            ReplaceExisting.Checked = false;
         }
 
         private void ShowError(string message)
@@ -94,17 +118,36 @@ namespace CPlatform.NORM
             ErrorMessage.Text = "<p>" + HttpUtility.HtmlEncode(message) + "</p>";
         }
 
-        private void ShowPreview(NORMImportPreview preview)
+        private void ShowPreview(IList<NORMImportPreview> previews)
         {
             PreviewPanel.Visible = true;
-            ConfirmButton.Enabled = preview.CanAccept;
-            StringBuilder html = new StringBuilder("<dl>");
+            bool canAccept = true;
+            bool replacement = false;
+            StringBuilder html = new StringBuilder();
+            foreach (NORMImportPreview preview in previews)
+            {
+                canAccept &= preview.CanAccept;
+                replacement |= preview.HasReplacement;
+                AppendSourcePreview(html, preview);
+            }
+            ConfirmButton.Enabled = canAccept;
+            ReplaceExisting.Visible = replacement && canAccept;
+            ConfirmButton.Text = replacement ? "Confirm batch and replace sources" : "Confirm batch acceptance";
+            html.Append("<p>").Append(canAccept ? "Confirmation applies to the entire batch." :
+                "The batch cannot be accepted while any selected source fails validation.").Append("</p>");
+            html.Append("<p>The preview expires after 15 minutes. Changes to the files, configuration or accepted sources require another inspection.</p>");
+            PreviewMessage.Text = html.ToString();
+        }
+
+        private static void AppendSourcePreview(StringBuilder html, NORMImportPreview preview)
+        {
+            html.Append("<dl>");
             string[,] fields = {
                 { "Source file", preview.FileName }, { "Identified layout", preview.Layout },
                 { "Approved configuration", preview.ConfigurationVersion + " (release " + preview.ReleaseId.ToString() + ")" },
                 { "Agency/entity", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
                 { "Company", preview.Companies }, { "Ledger", preview.Ledgers },
-                { "Reporting periods", preview.PeriodStart.ToString("00") + "–" + preview.PeriodEnd.ToString("00") },
+                { "Reporting periods", preview.PeriodStart.ToString("00") + "â€“" + preview.PeriodEnd.ToString("00") },
                 { "Account rows", preview.RowCount.ToString("N0") }, { "Unmapped accounts", preview.UnmappedAccounts.ToString("N0") },
                 { "Debit balances (AUD)", preview.TotalsAvailable ? preview.Debit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
                 { "Credit balances (AUD)", preview.TotalsAvailable ? preview.Credit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
@@ -112,15 +155,21 @@ namespace CPlatform.NORM
             };
             for (int i = 0; i < fields.GetLength(0); i++)
             { html.Append("<dt>").Append(HttpUtility.HtmlEncode(fields[i,0])).Append("</dt><dd>").Append(HttpUtility.HtmlEncode(fields[i,1])).Append("</dd>"); }
-            html.Append("</dl><p>").Append(preview.CanAccept ? "Source validation passed. No source has been accepted yet." : "Source validation failed. Acceptance is disabled.").Append("</p>");
+            html.Append("</dl><p>").Append(preview.CanAccept ? "Source validation passed. This upload has not been accepted." : "Source validation failed. Acceptance is disabled.").Append("</p>");
             html.Append("<ul><li>Content layout, year, period and permitted source: Pass</li>");
             if (preview.Layout == "Defence ERP") { html.Append("<li>Detail reconciles to company and grand-total controls: Pass</li>"); }
             html.Append("<li>Exact-zero balance: ").Append(!preview.TotalsAvailable ? "Not run" : preview.Net == 0m ? "Pass" : "Fail").Append("</li>");
             html.Append("<li>Lossless decimal storage: ").Append(preview.PrecisionValid ? "Pass" : "Fail").Append("</li></ul>");
             foreach (string error in preview.Errors) { html.Append("<p>").Append(HttpUtility.HtmlEncode(error)).Append("</p>"); }
             foreach (string warning in preview.Warnings) { html.Append("<p>").Append(HttpUtility.HtmlEncode(warning)).Append("</p>"); }
-            html.Append("<p>Confirm acceptance of this file and configuration. The preview expires after 15 minutes; changed files or configuration require another inspection.</p>");
-            PreviewMessage.Text = html.ToString();
+            foreach (NORMSourceScope scope in preview.SourceScopes)
+            {
+                if (scope.ImportId == 0) { continue; }
+                html.Append("<p><strong>Replacement:</strong> ")
+                    .Append(HttpUtility.HtmlEncode("Company " + (scope.Company ?? "(legacy)") + ", ledger " + scope.Ledger +
+                        " will replace " + scope.Description + ". The original remains available as historical evidence."))
+                    .Append("</p>");
+            }
         }
         private void BindReleases()
         {

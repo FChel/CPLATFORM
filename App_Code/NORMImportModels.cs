@@ -36,6 +36,15 @@ public class NORMImportOutcome
     public decimal NetBalance;
 }
 
+[System.Serializable]
+public sealed class NORMSourceScope
+{
+    public string Company { get; internal set; }
+    public string Ledger { get; internal set; }
+    public int ImportId { get; internal set; }
+    public string Description { get; internal set; }
+}
+
 /// <summary>One short-lived server-session preview. Never serialised into ViewState.</summary>
 [System.Serializable]
 public sealed class NORMImportPreview
@@ -66,6 +75,17 @@ public sealed class NORMImportPreview
     public decimal Net { get; internal set; }
     public bool TotalsAvailable { get; internal set; }
     public bool PrecisionValid { get; internal set; }
+    internal readonly Dictionary<string, NORMSourceScope> Scopes =
+        new Dictionary<string, NORMSourceScope>(System.StringComparer.OrdinalIgnoreCase);
+    public IEnumerable<NORMSourceScope> SourceScopes { get { return Scopes.Values; } }
+    public bool HasReplacement
+    {
+        get
+        {
+            foreach (NORMSourceScope scope in Scopes.Values) { if (scope.ImportId != 0) { return true; } }
+            return false;
+        }
+    }
     public List<string> Errors = new List<string>();
     public List<string> Warnings = new List<string>();
     public bool CanAccept { get { return !Consumed && Errors.Count == 0 && System.DateTime.UtcNow < ExpiresUtc; } }

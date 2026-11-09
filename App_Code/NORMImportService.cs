@@ -11,6 +11,13 @@ public static class NORMImportService
 {
     public static NORMImportPreview Inspect(byte[] content, string fileName, int releaseId, string user)
     {
+        NORMParsedImport parsed;
+        return InspectSource(content, fileName, releaseId, user, true, out parsed);
+    }
+
+    private static NORMImportPreview InspectSource(byte[] content, string fileName, int releaseId, string user,
+        bool loadCurrentSources, out NORMParsedImport parsed)
+    {
         ValidateContent(content, "trial balance");
         byte[] bytes = (byte[])content.Clone();
         DataRow release = LoadApprovedRelease(releaseId);
@@ -24,7 +31,6 @@ public static class NORMImportService
             companies.Add(company);
         }
         int year = NORMHelper.Int(release, "FinancialYear");
-        NORMParsedImport parsed;
         string type, layout;
         bool workbook = bytes.Length >= 4 && bytes[0] == 0x50 && bytes[1] == 0x4b && bytes[2] == 3 && bytes[3] == 4;
         if (workbook)
@@ -64,7 +70,10 @@ public static class NORMImportService
         preview.Content = bytes; preview.Token = Guid.NewGuid().ToString("N"); preview.Owner = user;
         preview.ExpiresUtc = DateTime.UtcNow.AddMinutes(15); preview.ReleaseId = releaseId;
         preview.ConfigurationVersion = NORMHelper.Str(release, "VersionCode");
-        preview.FileName = Path.GetFileName(fileName); preview.FileHash = NORMCrypto.Sha256(bytes);
+        preview.FileName = Path.GetFileName(fileName);
+        if (String.IsNullOrEmpty(preview.FileName) || preview.FileName.Length > 260)
+        { preview.Errors.Add("The source filename cannot be retained within the supported storage limit."); }
+        preview.FileHash = NORMCrypto.Sha256(bytes);
         preview.ConfigurationFingerprint = configuration; preview.SourceType = type; preview.Layout = layout;
         preview.Entity = NORMHelper.Str(release, "EntityCode"); preview.FinancialYear = parsed.FinancialYear;
         preview.PeriodStart = parsed.PeriodStart; preview.PeriodEnd = parsed.PeriodEnd; preview.RowCount = parsed.Rows.Count;
@@ -106,33 +115,158 @@ public static class NORMImportService
         preview.UnmappedAccounts = unmapped.Count; preview.Warnings.AddRange(parsed.Warnings);
         if (unmapped.Count > 0) { preview.Warnings.Add(unmapped.Count.ToString() + " unmapped accounts remain eligible for acceptance and the existing mapping workflow."); }
         preview.IdentityFingerprint = NORMCrypto.Sha256(preview.Entity + "|" + year + "|" + parsed.PeriodStart + "|" + parsed.PeriodEnd + "|" + identity);
+        if (loadCurrentSources)
+        {
+            foreach (NORMTrialBalanceRow row in parsed.Rows)
+            {
+                string company = row.SourceCompanyCode;
+                string ledger = row.SourceLedger;
+                string key = (company ?? "") + "|" + ledger;
+                if (!preview.Scopes.ContainsKey(key))
+                {
+                    preview.Scopes.Add(key, FindCurrentSource(preview, company, ledger, null, null));
+                }
+            }
+        }
         return preview;
     }
 
     public static NORMImportOutcome Confirm(NORMImportPreview preview, string user)
     {
-        if (preview == null) { throw new InvalidOperationException("Inspect a file before confirming acceptance."); }
-        lock (preview)
+        return ConfirmBatch(new[] { preview }, user, false)[0];
+    }
+
+    public static void ValidateBatch(IList<NORMImportPreview> previews)
+    {
+        if (previews == null || previews.Count == 0)
+        { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
+        NORMImportPreview first = previews[0];
+        long bytes = 0;
+        HashSet<string> scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (NORMImportPreview preview in previews)
         {
-            if (!String.Equals(preview.Owner, user, StringComparison.Ordinal) || !preview.CanAccept)
-            { throw new InvalidOperationException("This preview is invalid, expired or already consumed. Inspect the file again."); }
-            preview.Consumed = true;
+            if (preview == null || preview.ReleaseId != first.ReleaseId ||
+                preview.ConfigurationFingerprint != first.ConfigurationFingerprint)
+            { throw new InvalidOperationException("The batch must use one approved configuration. Inspect again."); }
+            bytes += preview.Content.LongLength;
+            foreach (string scope in preview.Scopes.Keys)
+            {
+                if (!scopes.Add(scope))
+                { throw new InvalidDataException("More than one file supplies the same company and ledger. Select one authoritative file per source scope."); }
+            }
         }
-        if (NORMCrypto.Sha256(preview.Content) != preview.FileHash) { throw new InvalidDataException("The inspected source bytes changed. Inspect again."); }
-        NORMImportPreview fresh = Inspect(preview.Content, preview.FileName, preview.ReleaseId, user);
-        if (!fresh.CanAccept || fresh.ConfigurationFingerprint != preview.ConfigurationFingerprint || fresh.IdentityFingerprint != preview.IdentityFingerprint || fresh.Layout != preview.Layout)
-        { throw new InvalidOperationException("The configuration, source identity or validation changed. Inspect again."); }
-        DataRow release = LoadApprovedRelease(preview.ReleaseId);
-        List<string> codes = new List<string>(fresh.Companies.Split(new string[] { ", " }, StringSplitOptions.None));
-        NORMParsedImport parsed = fresh.SourceType == "ROMAN"
-            ? RomanTrialBalanceImporter.Parse(preview.Content, LoadLedgers(fresh.FinancialYear, fresh.Entity), fresh.FinancialYear)
-            : ErpTrialBalanceImporter.ParseForInspection(preview.Content, codes, fresh.FinancialYear);
-        if (fresh.Layout == "Defence ERP")
-        { foreach (NORMTrialBalanceRow row in parsed.Rows) { row.GlAccount = ErpTrialBalanceImporter.ExtractGl(row.GlAccount); } }
-        NORMImportSource source = BuildSource(preview.Content, preview.FileName, fresh.SourceType, parsed, true);
-        return CommitImport(release, fresh.SourceType, source.FileName, source.FileHash, parsed,
-            new List<NORMImportSource> { source }, user, "Confirmed " + fresh.Layout + "; company=" + fresh.Companies +
-            ";ledger=" + fresh.Ledgers + ";periods=" + PeriodLabel(parsed) + ";unmapped=" + fresh.UnmappedAccounts + ";units=AUD.", fresh.ConfigurationFingerprint);
+        if (bytes > NORMHelper.SettingInt("NORM.MaxUploadBytes", 104857600))
+        { throw new InvalidDataException("The combined files exceed the configured upload limit."); }
+    }
+
+    public static List<NORMImportOutcome> ConfirmBatch(IList<NORMImportPreview> previews, string user, bool replaceExisting)
+    {
+        ValidateBatch(previews);
+        NORMImportPreview first = previews[0];
+        List<NORMImportSource> sources = new List<NORMImportSource>();
+        List<NORMImportPreview> validated = new List<NORMImportPreview>();
+        foreach (NORMImportPreview preview in previews)
+        {
+            lock (preview)
+            {
+                if (!String.Equals(preview.Owner, user, StringComparison.Ordinal) || !preview.CanAccept)
+                { throw new InvalidOperationException("This preview is invalid, expired or already consumed. Inspect the files again."); }
+                if (preview.HasReplacement && !replaceExisting)
+                { throw new InvalidOperationException("Explicit replacement confirmation is required."); }
+                preview.Consumed = true;
+            }
+            if (NORMCrypto.Sha256(preview.Content) != preview.FileHash)
+            { throw new InvalidDataException("The inspected source bytes changed. Inspect again."); }
+            NORMParsedImport parsed;
+            NORMImportPreview fresh = InspectSource(preview.Content, preview.FileName, preview.ReleaseId, user, false, out parsed);
+            if (!fresh.CanAccept || fresh.ConfigurationFingerprint != preview.ConfigurationFingerprint ||
+                fresh.IdentityFingerprint != preview.IdentityFingerprint || fresh.Layout != preview.Layout)
+            { throw new InvalidOperationException("The configuration, source identity or validation changed. Inspect again."); }
+            validated.Add(fresh);
+            sources.Add(BuildSource(fresh.Content, fresh.FileName, fresh.SourceType, parsed, true));
+        }
+
+        List<int> importIds = new List<int>();
+        using (OleDbConnection connection = NORMHelper.OpenConnection())
+        using (OleDbTransaction transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
+        {
+            try
+            {
+                DataTable permitted, mappings;
+                if (PreviewConfiguration(first.ReleaseId, connection, transaction, out permitted, out mappings) != first.ConfigurationFingerprint)
+                { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
+                foreach (NORMImportPreview preview in previews)
+                {
+                    foreach (NORMSourceScope scope in preview.Scopes.Values)
+                    {
+                        NORMSourceScope current = FindCurrentSource(preview, scope.Company, scope.Ledger, connection, transaction);
+                        if (current.ImportId != scope.ImportId)
+                        { throw new InvalidOperationException("The accepted source changed after inspection. Inspect the batch again."); }
+                    }
+                }
+
+                for (int i = 0; i < sources.Count; i++)
+                {
+                    NORMImportSource source = sources[i];
+                    NORMImportPreview preview = validated[i];
+                    int importId = PersistImport(connection, transaction, first.ReleaseId, first.FinancialYear, first.Entity,
+                        source.SourceType, source.FileName, source.FileHash, source.Parsed, new[] { source }, user,
+                        "Confirmed " + preview.Layout + "; company=" + preview.Companies + ";ledger=" + preview.Ledgers +
+                        ";periods=" + PeriodLabel(source.Parsed) + ";unmapped=" + preview.UnmappedAccounts + ";units=AUD.",
+                        source.Content.LongLength, preview.Debit, preview.Credit, preview.Net);
+                    importIds.Add(importId);
+                    foreach (NORMSourceScope scope in previews[i].Scopes.Values)
+                    {
+                        if (scope.ImportId == 0) { continue; }
+                        WriteAudit(connection, transaction, "IMPORT_SOURCE_REPLACED", "Import", importId.ToString(CultureInfo.InvariantCulture),
+                            "Prior import=" + scope.ImportId.ToString(CultureInfo.InvariantCulture) + "; entity=" + first.Entity +
+                            "; financial year=" + first.FinancialYear + "; company=" + (scope.Company ?? "(legacy)") +
+                            "; ledger=" + scope.Ledger, user);
+                    }
+                }
+                transaction.Commit();
+            }
+            catch { transaction.Rollback(); throw; }
+        }
+
+        List<NORMImportOutcome> outcomes = new List<NORMImportOutcome>();
+        for (int i = 0; i < previews.Count; i++)
+        {
+            NORMImportPreview preview = validated[i];
+            outcomes.Add(Calculate(importIds[i], preview.RowCount, preview.Debit, preview.Credit, preview.Net, user));
+        }
+        return outcomes;
+    }
+
+    private static NORMSourceScope FindCurrentSource(NORMImportPreview preview, string company, string ledger,
+        OleDbConnection connection, OleDbTransaction transaction)
+    {
+        // Accepted imports are immutable. The newest original import supplying this exact
+        // scope is current. Recalculation copies and test breaks never become source versions.
+        string hints = transaction == null ? "" : " WITH (UPDLOCK,HOLDLOCK)";
+        string sql = "SELECT TOP 1 i.ImportId,i.SourceFileName,i.SourceFileHash,i.ImportedUtc,COUNT(*) AS ScopeRows " +
+            "FROM dbo.tblNORM_Import i" + hints + " INNER JOIN dbo.tblNORM_TrialBalanceRow tb" + hints + " ON tb.ImportId=i.ImportId " +
+            "WHERE i.EntityCode=@entity AND i.FinancialYear=@fy AND i.IsTestBreak=0 AND i.IsDeactivated=0 " +
+            "AND i.ParentImportId IS NULL AND i.StatusCode IN ('Imported','Calculated') AND tb.IsDeactivated=0 " +
+            "AND tb.SourceLedger=@ledger AND " + (company == null ? "tb.SourceCompanyCode IS NULL " : "tb.SourceCompanyCode=@company ") +
+            "GROUP BY i.ImportId,i.SourceFileName,i.SourceFileHash,i.ImportedUtc ORDER BY i.ImportId DESC";
+        List<OleDbParameter> parameters = new List<OleDbParameter> {
+            NORMHelper.P("@entity", preview.Entity), NORMHelper.P("@fy", preview.FinancialYear), NORMHelper.P("@ledger", ledger)
+        };
+        if (company != null) { parameters.Add(NORMHelper.P("@company", company)); }
+        DataTable current = connection == null ? NORMHelper.Query(sql, parameters.ToArray()) :
+            NORMHelper.Query(connection, transaction, sql, parameters.ToArray());
+        NORMSourceScope scope = new NORMSourceScope { Company = company, Ledger = ledger };
+        if (current.Rows.Count == 1)
+        {
+            DataRow row = current.Rows[0];
+            scope.ImportId = NORMHelper.Int(row, "ImportId");
+            scope.Description = "Import " + scope.ImportId + " Â· " + NORMHelper.Str(row, "SourceFileName") +
+                " Â· " + NORMHelper.Int(row, "ScopeRows") + " rows in scope Â· accepted " +
+                ((DateTime)row["ImportedUtc"]).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) +
+                " UTC Â· SHA-256 " + NORMHelper.Str(row, "SourceFileHash");
+        }
+        return scope;
     }
 
     private static string PreviewConfiguration(int releaseId, OleDbConnection connection, OleDbTransaction transaction,
@@ -291,7 +425,7 @@ public static class NORMImportService
 
     private static NORMImportOutcome CommitImport(DataRow release, string sourceType, string sourceFileName,
         string sourceHash, NORMParsedImport statementInput, IList<NORMImportSource> sources, string importedBy,
-        string auditDetail, string confirmationFingerprint = null)
+        string auditDetail)
     {
         int configurationReleaseId = NORMHelper.Int(release, "ConfigurationReleaseId");
         int financialYear = NORMHelper.Int(release, "FinancialYear");
@@ -398,104 +532,16 @@ public static class NORMImportService
         {
             try
             {
-                if (confirmationFingerprint != null)
-                {
-                    DataTable permitted, mappings;
-                    if (PreviewConfiguration(configurationReleaseId, connection, transaction, out permitted, out mappings) != confirmationFingerprint)
-                    { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
-                }
                 HashSet<string> populations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                NORMImportPreview scope = new NORMImportPreview { Entity = entityCode, FinancialYear = financialYear };
                 foreach (NORMTrialBalanceRow row in statementInput.Rows)
                 {
-                    string company = row.SourceCompanyCode ?? row.SourceLedger;
-                    // Preserve existing FY2025 pair/recalculation paths; new browser
-                    // confirmations also protect legacy source populations.
-                    if (row.SourceCompanyCode == null && confirmationFingerprint == null) { continue; }
-                    if (!populations.Add(company)) { continue; }
-                    object existing = NORMHelper.Scalar(connection, transaction,
-                        "SELECT TOP 1 i.ImportId FROM dbo.tblNORM_Import i WITH (UPDLOCK,HOLDLOCK) " +
-                        "INNER JOIN dbo.tblNORM_TrialBalanceRow tb WITH (UPDLOCK,HOLDLOCK) ON tb.ImportId=i.ImportId " +
-                        "WHERE i.EntityCode=@entity AND i.FinancialYear=@fy AND i.IsTestBreak=0 AND i.IsDeactivated=0 " +
-                        "AND tb.IsDeactivated=0 AND (tb.SourceCompanyCode=@company OR " +
-                        "(tb.SourceCompanyCode IS NULL AND tb.SourceLedger=@company AND i.SourceType IN ('ERP','ROMAN+ERP','ROMAN')))",
-                        NORMHelper.P("@entity", entityCode), NORMHelper.P("@fy", financialYear),
-                        NORMHelper.P("@company", company));
-                    if (existing != null)
-                    { throw new InvalidOperationException("This company/year already has retained reporting data. Confirmed replacement is not available."); }
+                    if (row.SourceCompanyCode == null || !populations.Add(row.SourceCompanyCode + "|" + row.SourceLedger)) { continue; }
+                    if (FindCurrentSource(scope, row.SourceCompanyCode, row.SourceLedger, connection, transaction).ImportId != 0)
+                    { throw new InvalidOperationException("Confirmed replacement is not available through this entry point. Use the import preview."); }
                 }
-                importId = NORMHelper.InsertId(connection, transaction,
-                    "INSERT dbo.tblNORM_Import " +
-                    "(ConfigurationReleaseId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,SourceFileBytes," +
-                    " [RowCount],TotalDebit,TotalCredit,NetBalance,StatusCode,ImportedBy) " +
-                    "VALUES (@release,@fy,@entity,@type,@file,@hash,@hash,@bytes,@rows,@debit,@credit,@net,'Importing',@user)",
-                    NORMHelper.P("@release", configurationReleaseId),
-                    NORMHelper.P("@fy", financialYear),
-                    NORMHelper.P("@entity", entityCode),
-                    NORMHelper.P("@type", sourceType),
-                    NORMHelper.P("@file", sourceFileName),
-                    NORMHelper.P("@hash", sourceHash),
-                    NORMHelper.P("@bytes", totalBytes),
-                    NORMHelper.P("@rows", statementInput.Rows.Count),
-                    NORMHelper.P("@debit", debit),
-                    NORMHelper.P("@credit", credit),
-                    NORMHelper.P("@net", net),
-                    NORMHelper.P("@user", importedBy));
-
-                for (int sourceIndex = 0; sourceIndex < sources.Count; sourceIndex++)
-                {
-                    NORMImportSource source = sources[sourceIndex];
-                    OleDbParameter contentParameter = NORMHelper.P("@content", source.Content);
-                    contentParameter.OleDbType = OleDbType.LongVarBinary;
-                    NORMHelper.Exec(connection, transaction,
-                        "INSERT dbo.tblNORM_ImportFile " +
-                        "(ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent) " +
-                        "VALUES (@import,@type,@file,@hash,@bytes,@periodStart,@periodEnd,@rows,@input,@content)",
-                        NORMHelper.P("@import", importId), NORMHelper.P("@type", source.SourceType),
-                        NORMHelper.P("@file", source.FileName), NORMHelper.P("@hash", source.FileHash),
-                        NORMHelper.P("@bytes", source.Content.LongLength),
-                        NORMHelper.P("@periodStart", source.Parsed.PeriodStart),
-                        NORMHelper.P("@periodEnd", source.Parsed.PeriodEnd),
-                        NORMHelper.P("@rows", source.Parsed.Rows.Count),
-                        NORMHelper.P("@input", source.IsStatementInput), contentParameter);
-                }
-
-                for (int i = 0; i < statementInput.Rows.Count; i++)
-                {
-                    NORMTrialBalanceRow row = statementInput.Rows[i];
-                    NORMHelper.Exec(connection, transaction,
-                        "INSERT dbo.tblNORM_TrialBalanceRow " +
-                        "(ImportId,SourceRowNo,SourceCompanyCode,SourceLedger,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement," +
-                        " AccumBalance,RowHash,IsSynthetic) " +
-                        "VALUES (@import,@row,@company,@ledger,@gl,@text,@opening,@debit,@credit,@balance,@hash,0)",
-                        NORMHelper.P("@import", importId),
-                        NORMHelper.P("@row", row.SourceRowNo),
-                        NORMHelper.P("@company", (object)row.SourceCompanyCode ?? DBNull.Value),
-                        NORMHelper.P("@ledger", row.SourceLedger),
-                        NORMHelper.P("@gl", row.GlAccount),
-                        NORMHelper.P("@text", row.GlText),
-                        NORMHelper.P("@opening", row.OpeningBalance),
-                        NORMHelper.P("@debit", row.DebitMovement),
-                        NORMHelper.P("@credit", row.CreditMovement),
-                        NORMHelper.P("@balance", row.AccumBalance),
-                        NORMHelper.P("@hash", row.RowHash));
-                }
-
-                NORMHelper.Exec(connection, transaction,
-                    "UPDATE dbo.tblNORM_Import SET StatusCode = 'Imported' WHERE ImportId = @import AND StatusCode = 'Importing'",
-                    NORMHelper.P("@import", importId));
-                WriteAudit(connection, transaction, "IMPORT_CREATED", "Import", importId.ToString(),
-                    statementInput.Rows.Count.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) +
-                    " statement-input rows; " + sources.Count.ToString() + " retained source file(s); SHA-256 " +
-                    sourceHash + ". " + auditDetail, importedBy);
-                try
-                {
-                    WriteBalanceAudit(connection, transaction, "Import", importId.ToString(CultureInfo.InvariantCulture),
-                        debit, credit, net, null, importedBy);
-                }
-                catch
-                {
-                    throw new InvalidDataException("Import not accepted: validation evidence could not be saved. No calculation was created; contact support.");
-                }
+                importId = PersistImport(connection, transaction, configurationReleaseId, financialYear, entityCode,
+                    sourceType, sourceFileName, sourceHash, statementInput, sources, importedBy, auditDetail, totalBytes, debit, credit, net);
                 transaction.Commit();
             }
             catch
@@ -505,9 +551,95 @@ public static class NORMImportService
             }
         }
 
+        return Calculate(importId, statementInput.Rows.Count, debit, credit, net, importedBy);
+    }
+
+    private static int PersistImport(OleDbConnection connection, OleDbTransaction transaction,
+        int configurationReleaseId, int financialYear, string entityCode, string sourceType, string sourceFileName,
+        string sourceHash, NORMParsedImport statementInput, IList<NORMImportSource> sources, string importedBy,
+        string auditDetail, long totalBytes, decimal debit, decimal credit, decimal net)
+    {
+        int importId = NORMHelper.InsertId(connection, transaction,
+            "INSERT dbo.tblNORM_Import " +
+            "(ConfigurationReleaseId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,SourceFileBytes," +
+            " [RowCount],TotalDebit,TotalCredit,NetBalance,StatusCode,ImportedBy) " +
+            "VALUES (@release,@fy,@entity,@type,@file,@hash,@hash,@bytes,@rows,@debit,@credit,@net,'Importing',@user)",
+            NORMHelper.P("@release", configurationReleaseId),
+            NORMHelper.P("@fy", financialYear),
+            NORMHelper.P("@entity", entityCode),
+            NORMHelper.P("@type", sourceType),
+            NORMHelper.P("@file", sourceFileName),
+            NORMHelper.P("@hash", sourceHash),
+            NORMHelper.P("@bytes", totalBytes),
+            NORMHelper.P("@rows", statementInput.Rows.Count),
+            NORMHelper.P("@debit", debit),
+            NORMHelper.P("@credit", credit),
+            NORMHelper.P("@net", net),
+            NORMHelper.P("@user", importedBy));
+
+        for (int sourceIndex = 0; sourceIndex < sources.Count; sourceIndex++)
+        {
+            NORMImportSource source = sources[sourceIndex];
+            OleDbParameter contentParameter = NORMHelper.P("@content", source.Content);
+            contentParameter.OleDbType = OleDbType.LongVarBinary;
+            NORMHelper.Exec(connection, transaction,
+                "INSERT dbo.tblNORM_ImportFile " +
+                "(ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent) " +
+                "VALUES (@import,@type,@file,@hash,@bytes,@periodStart,@periodEnd,@rows,@input,@content)",
+                NORMHelper.P("@import", importId), NORMHelper.P("@type", source.SourceType),
+                NORMHelper.P("@file", source.FileName), NORMHelper.P("@hash", source.FileHash),
+                NORMHelper.P("@bytes", source.Content.LongLength),
+                NORMHelper.P("@periodStart", source.Parsed.PeriodStart),
+                NORMHelper.P("@periodEnd", source.Parsed.PeriodEnd),
+                NORMHelper.P("@rows", source.Parsed.Rows.Count),
+                NORMHelper.P("@input", source.IsStatementInput), contentParameter);
+        }
+
+        for (int i = 0; i < statementInput.Rows.Count; i++)
+        {
+            NORMTrialBalanceRow row = statementInput.Rows[i];
+            NORMHelper.Exec(connection, transaction,
+                "INSERT dbo.tblNORM_TrialBalanceRow " +
+                "(ImportId,SourceRowNo,SourceCompanyCode,SourceLedger,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement," +
+                " AccumBalance,RowHash,IsSynthetic) " +
+                "VALUES (@import,@row,@company,@ledger,@gl,@text,@opening,@debit,@credit,@balance,@hash,0)",
+                NORMHelper.P("@import", importId),
+                NORMHelper.P("@row", row.SourceRowNo),
+                NORMHelper.P("@company", (object)row.SourceCompanyCode ?? DBNull.Value),
+                NORMHelper.P("@ledger", row.SourceLedger),
+                NORMHelper.P("@gl", row.GlAccount),
+                NORMHelper.P("@text", row.GlText),
+                NORMHelper.P("@opening", row.OpeningBalance),
+                NORMHelper.P("@debit", row.DebitMovement),
+                NORMHelper.P("@credit", row.CreditMovement),
+                NORMHelper.P("@balance", row.AccumBalance),
+                NORMHelper.P("@hash", row.RowHash));
+        }
+
+        NORMHelper.Exec(connection, transaction,
+            "UPDATE dbo.tblNORM_Import SET StatusCode = 'Imported' WHERE ImportId = @import AND StatusCode = 'Importing'",
+            NORMHelper.P("@import", importId));
+        WriteAudit(connection, transaction, "IMPORT_CREATED", "Import", importId.ToString(),
+            statementInput.Rows.Count.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) +
+            " statement-input rows; " + sources.Count.ToString() + " retained source file(s); SHA-256 " +
+            sourceHash + ". " + auditDetail, importedBy);
+        try
+        {
+            WriteBalanceAudit(connection, transaction, "Import", importId.ToString(CultureInfo.InvariantCulture),
+                debit, credit, net, null, importedBy);
+        }
+        catch
+        {
+            throw new InvalidDataException("Import not accepted: validation evidence could not be saved. No calculation was created; contact support.");
+        }
+        return importId;
+    }
+
+    private static NORMImportOutcome Calculate(int importId, int rowCount, decimal debit, decimal credit, decimal net, string importedBy)
+    {
         NORMImportOutcome outcome = new NORMImportOutcome();
         outcome.ImportId = importId;
-        outcome.RowCount = statementInput.Rows.Count;
+        outcome.RowCount = rowCount;
         outcome.TotalDebit = debit;
         outcome.TotalCredit = credit;
         outcome.NetBalance = net;

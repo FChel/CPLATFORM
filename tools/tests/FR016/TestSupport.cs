@@ -39,9 +39,12 @@ public static class NORMHelper
     public static List<string[]> PermittedPairs = new List<string[]>();
     public static List<string> Queries = new List<string>();
     public static Func<string, DataTable> QueryResponse;
+    public static Func<Call, int> CurrentSource;
+    public static string FailImportFileName;
+    private static int nextImportId;
     public static string FailAuditCode;
     public static int Runs, Opens;
-    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; FailAuditCode = null; Runs = Opens = 0; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; }
+    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; FailAuditCode = null; Runs = Opens = 0; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
     public static string CurrentUserId() { return "isolated-test"; }
     public static bool HasPrepareAccess() { return PrepareAccess; }
     public static OleDbParameter P(string name, object value) { return new OleDbParameter { Name = name, Value = value }; }
@@ -64,11 +67,14 @@ public static class NORMHelper
         Call call = new Call { Sql = sql };
         foreach (OleDbParameter item in p) call.Values[item.Name] = item.Value;
         if (call.Values.ContainsKey("@event") && (string)call["@event"] == FailAuditCode) throw new Exception("private connection detail");
+        if (FailImportFileName != null && sql.Contains("INSERT dbo.tblNORM_ImportFile") &&
+            (string)call["@file"] == FailImportFileName) { throw new InvalidOperationException("Injected source write failure"); }
         t.Pending.Add(call); return 1;
     }
-    public static int InsertId(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p) { Exec(c, t, sql, p); return 42; }
+    public static int InsertId(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p) { Exec(c, t, sql, p); return sql.Contains("INSERT dbo.tblNORM_Import ") ? nextImportId++ : 42; }
     public static DataTable Query(string sql, params OleDbParameter[] p)
     {
+        if (sql.Contains("AS ScopeRows")) { return ScopeRows(sql, p); }
         if (QueryResponse != null) { return QueryResponse(sql); }
         DataTable table = new DataTable();
         Queries.Add(sql);
@@ -87,7 +93,23 @@ public static class NORMHelper
         throw new Exception("Unexpected query: " + sql);
     }
     public static DataTable Query(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p)
-    { if (QueryResponse != null) { return QueryResponse(sql); } throw new Exception("Unexpected query"); }
+    {
+        if (sql.Contains("AS ScopeRows")) { return ScopeRows(sql, p); }
+        if (QueryResponse != null) { return QueryResponse(sql); }
+        throw new Exception("Unexpected query");
+    }
+
+    private static DataTable ScopeRows(string sql, OleDbParameter[] p)
+    {
+        Call call = new Call { Sql = sql };
+        foreach (OleDbParameter item in p) { call.Values[item.Name] = item.Value; }
+        int id = CurrentSource != null ? CurrentSource(call) : ExistingCompany ? 7 : 0;
+        DataTable table = new DataTable();
+        foreach (string column in new[] { "ImportId", "SourceFileName", "SourceFileHash", "ImportedUtc", "ScopeRows" })
+        { table.Columns.Add(column, typeof(object)); }
+        if (id != 0) { table.Rows.Add(id, "prior & original.xlsx", new string('a', 64), new DateTime(2026, 11, 9), 984); }
+        return table;
+    }
 }
 
 #if SERVICE
