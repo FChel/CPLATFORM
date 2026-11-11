@@ -331,7 +331,7 @@ public static class ErpTrialBalanceImporter
         }
         int periodStart = FiscalPeriod(from, financialYear);
         int periodEnd = FiscalPeriod(to, financialYear);
-        if (periodStart == 0 || periodEnd == 0 || periodStart > periodEnd)
+        if (periodStart == 0 || periodEnd == 0 || periodStart > periodEnd || from > to)
         {
             throw new InvalidDataException("The ERP posting-date range does not fall within FY" +
                 financialYear.ToString() + ".");
@@ -339,6 +339,8 @@ public static class ErpTrialBalanceImporter
         parsed.FinancialYear = financialYear;
         parsed.PeriodStart = periodStart;
         parsed.PeriodEnd = periodEnd;
+        parsed.CoverageStart = from;
+        parsed.CoverageEnd = to;
     }
 
     private static string ReadReportingStream(ExcelWorksheet sheet, int header)

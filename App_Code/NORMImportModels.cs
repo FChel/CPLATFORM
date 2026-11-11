@@ -24,6 +24,17 @@ public class NORMParsedImport
     public int FinancialYear;
     public int PeriodStart;
     public int PeriodEnd;
+    public System.DateTime? CoverageStart;
+    public System.DateTime? CoverageEnd;
+    public bool? IsFullYear
+    {
+        get
+        {
+            if (!CoverageStart.HasValue || !CoverageEnd.HasValue) { return null; }
+            return CoverageStart.Value == new System.DateTime(FinancialYear - 1, 7, 1) &&
+                CoverageEnd.Value == new System.DateTime(FinancialYear, 6, 30);
+        }
+    }
 }
 
 public class NORMImportOutcome
@@ -74,6 +85,10 @@ public sealed class NORMImportPreview
     public string ReportingStreams { get; internal set; }
     public int PeriodStart { get; internal set; }
     public int PeriodEnd { get; internal set; }
+    public System.DateTime? CoverageStart { get; internal set; }
+    public System.DateTime? CoverageEnd { get; internal set; }
+    public bool? IsFullYear { get; internal set; }
+    public int ConfiguredFinancialYear { get; internal set; }
     public int RowCount { get; internal set; }
     public int UnmappedAccounts { get; internal set; }
     public decimal Debit { get; internal set; }

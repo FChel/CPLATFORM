@@ -447,8 +447,8 @@ namespace CPlatform.NORM
                         "SELECT @release,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,@fingerprint,SourceFileBytes,[RowCount],TotalDebit,TotalCredit,NetBalance,'Imported',0,ImportId,@user FROM dbo.tblNORM_Import WHERE ImportId=@source",
                         NORMHelper.P("@release", releaseId), NORMHelper.P("@fingerprint", fingerprint), NORMHelper.P("@user", user), NORMHelper.P("@source", sourceImportId));
                     NORMHelper.Exec(connection, transaction,
-                        "INSERT dbo.tblNORM_ImportFile (ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent) " +
-                        "SELECT @target,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent FROM dbo.tblNORM_ImportFile WHERE ImportId=@source",
+                        "INSERT dbo.tblNORM_ImportFile (ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,CoverageStart,CoverageEnd,IsFullYear,[RowCount],IsStatementInput,FileContent) " +
+                        "SELECT @target,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,CoverageStart,CoverageEnd,IsFullYear,[RowCount],IsStatementInput,FileContent FROM dbo.tblNORM_ImportFile WHERE ImportId=@source",
                         NORMHelper.P("@target", importId), NORMHelper.P("@source", sourceImportId));
                     NORMHelper.Exec(connection, transaction,
                         "INSERT dbo.tblNORM_TrialBalanceRow (ImportId,SourceRowNo,SourceCompanyCode,SourceLedger,ReportingStream,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic) " +
