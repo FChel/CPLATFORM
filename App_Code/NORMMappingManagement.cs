@@ -48,6 +48,7 @@ namespace CPlatform.NORM
                 NORMHelper.P("@release", parentReleaseId));
             if (parentTable.Rows.Count == 0) throw new InvalidOperationException("Select an approved release to use as the starting point.");
             DataRow parent = parentTable.Rows[0];
+            NORMHelper.RequireEntityAccess(NORMHelper.Str(parent, "EntityCode"));
             object duplicate = NORMHelper.Scalar(
                 "SELECT ConfigurationReleaseId FROM dbo.tblNORM_ConfigurationRelease WHERE FinancialYear=@fy AND EntityCode=@entity AND VersionCode=@version",
                 NORMHelper.P("@fy", NORMHelper.Int(parent, "FinancialYear")), NORMHelper.P("@entity", NORMHelper.Str(parent, "EntityCode")), NORMHelper.P("@version", version));
@@ -100,6 +101,11 @@ namespace CPlatform.NORM
 
         private static void CopyReleaseContent(OleDbConnection c, OleDbTransaction t, int source, int target, string user)
         {
+            NORMHelper.Exec(c, t,
+                "INSERT dbo.tblNORM_EntityLedger (ConfigurationReleaseId,FinancialYear,EntityCode,SourceCompanyCode,SourceLedger,ReportingStream,IsRequired,IsDeactivated) " +
+                "SELECT @target,FinancialYear,EntityCode,SourceCompanyCode,SourceLedger,ReportingStream,IsRequired,IsDeactivated " +
+                "FROM dbo.tblNORM_EntityLedger WHERE ConfigurationReleaseId=@source",
+                NORMHelper.P("@target", target), NORMHelper.P("@source", source));
             NORMHelper.Exec(c, t,
                 "INSERT dbo.tblNORM_AccountMap (ConfigurationReleaseId,FinancialYear,EntityCode,GlCode,GlDescription,AccountType,StatementLine,NoteSubLine,CashFlowClass,MappingRationale,IsDeactivated) " +
                 "SELECT @target,FinancialYear,EntityCode,GlCode,GlDescription,AccountType,StatementLine,NoteSubLine,CashFlowClass,MappingRationale,IsDeactivated " +
@@ -445,8 +451,8 @@ namespace CPlatform.NORM
                         "SELECT @target,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent FROM dbo.tblNORM_ImportFile WHERE ImportId=@source",
                         NORMHelper.P("@target", importId), NORMHelper.P("@source", sourceImportId));
                     NORMHelper.Exec(connection, transaction,
-                        "INSERT dbo.tblNORM_TrialBalanceRow (ImportId,SourceRowNo,SourceCompanyCode,SourceLedger,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic) " +
-                        "SELECT @target,SourceRowNo,SourceCompanyCode,SourceLedger,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@source AND IsDeactivated=0",
+                        "INSERT dbo.tblNORM_TrialBalanceRow (ImportId,SourceRowNo,SourceCompanyCode,SourceLedger,ReportingStream,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic) " +
+                        "SELECT @target,SourceRowNo,SourceCompanyCode,SourceLedger,ReportingStream,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement,AccumBalance,RowHash,IsSynthetic FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@source AND IsDeactivated=0",
                         NORMHelper.P("@target", importId), NORMHelper.P("@source", sourceImportId));
                     Audit(connection, transaction, "MAPPING_RECALCULATION_CREATED", releaseId,
                         "Source import " + sourceImportId + " copied without alteration to import " + importId + " for recalculation under approved release " + releaseId + ".", user);
@@ -472,7 +478,9 @@ namespace CPlatform.NORM
         private static DataRow Release(int releaseId)
         {
             DataTable table = NORMHelper.Query("SELECT * FROM dbo.tblNORM_ConfigurationRelease WHERE ConfigurationReleaseId=@release AND IsDeactivated=0", NORMHelper.P("@release", releaseId));
-            if (table.Rows.Count == 0) throw new InvalidOperationException("The configuration release was not found."); return table.Rows[0];
+            if (table.Rows.Count == 0) throw new InvalidOperationException("The configuration release was not found.");
+            NORMHelper.RequireEntityAccess(NORMHelper.Str(table.Rows[0], "EntityCode"));
+            return table.Rows[0];
         }
         private static int LatestImportId(int preferredRelease, int financialYear, string entity)
         {

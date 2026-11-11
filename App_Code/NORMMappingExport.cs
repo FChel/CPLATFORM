@@ -33,6 +33,11 @@ namespace CPlatform.NORM
                 WriteError(context, 400, "Choose a valid completed calculation run.");
                 return;
             }
+            if (!NORMHelper.CanAccessCompletedRun(runId))
+            {
+                WriteError(context, 403, "You do not have access to this calculation run.");
+                return;
+            }
 
             DataTable runTable = NORMHelper.Query(
                 "SELECT r.CalculationRunId,r.CompletedUtc,i.ImportId,i.FinancialYear,i.EntityCode,i.SourceFileName," +

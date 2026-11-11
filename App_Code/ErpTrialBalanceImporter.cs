@@ -17,6 +17,7 @@ public static class ErpTrialBalanceImporter
         if (content == null || content.Length == 0) { throw new InvalidDataException("Choose a non-empty ERP workbook."); }
         if (content.Length < 4 || content[0] != 0x50 || content[1] != 0x4b || content[2] != 0x03 || content[3] != 0x04)
         { throw new InvalidDataException("Unsupported ERP content: expected an XLSX workbook."); }
+        string legacyStream;
         using (MemoryStream stream = new MemoryStream(content, false))
         using (ExcelPackage package = new ExcelPackage(stream))
         {
@@ -56,8 +57,10 @@ public static class ErpTrialBalanceImporter
             {
                 throw new InvalidDataException("The legacy ERP data must be on the first worksheet.");
             }
+            legacyStream = ReadReportingStream(selected, header);
         }
-        NORMParsedImport legacy = Parse(content, allowedCompanyCodes, expectedFinancialYear);
+        NORMParsedImport legacy = Parse(content, null, expectedFinancialYear);
+        foreach (NORMTrialBalanceRow row in legacy.Rows) { row.ReportingStream = legacyStream; }
         legacy.Warnings.Add("Legacy ERP inspection preserves the historical company-in-SourceLedger contract; actual ledger identity is not established.");
         return legacy;
     }
@@ -106,10 +109,14 @@ public static class ErpTrialBalanceImporter
         ReadPeriodRange(sheet, header, year, parsed);
         ValidateDefenceUnits(sheet, header);
         string company = Text(FindMetadataValue(sheet, header, "Company Code"));
-        string ledger = Text(FindMetadataValue(sheet, header, "Ledger"));
-        string sourceLedger = Text(FindMetadataValue(sheet, header, "Source Ledger"));
-        if (!IsCompanyCode(company) || String.IsNullOrWhiteSpace(ledger) || !Same(ledger, sourceLedger))
+        string ledger = Text(FindMetadataValue(sheet, header, "Ledger")) ?? "";
+        string sourceLedger = Text(FindMetadataValue(sheet, header, "Source Ledger")) ?? "";
+        if (!IsCompanyCode(company) || (ledger.Length != 0 && sourceLedger.Length != 0 && !Same(ledger, sourceLedger)))
         { throw new InvalidDataException("The Defence ERP company or consistent Ledger/Source Ledger identity is missing."); }
+        ledger = ledger.Length != 0 ? ledger : sourceLedger.Length != 0 ? sourceLedger : null;
+        string stream = ReadReportingStream(sheet, header);
+        if (ledger != null && ledger.Length > 20)
+        { throw new InvalidDataException("The source ledger exceeds the supported identity length."); }
         if (allowedCompanyCodes == null || allowedCompanyCodes.Count == 0 || !Contains(allowedCompanyCodes, company))
         { throw new InvalidDataException("The Defence ERP company is not authorised for inspection."); }
 
@@ -156,6 +163,7 @@ public static class ErpTrialBalanceImporter
             NORMTrialBalanceRow item = new NORMTrialBalanceRow();
             item.SourceRowNo = row;
             item.SourceCompanyCode = company;
+            item.ReportingStream = stream;
             item.SourceLedger = ledger;
             // Keep the complete source identifier; no mapping/persistence occurs here.
             item.GlAccount = account;
@@ -331,6 +339,14 @@ public static class ErpTrialBalanceImporter
         parsed.FinancialYear = financialYear;
         parsed.PeriodStart = periodStart;
         parsed.PeriodEnd = periodEnd;
+    }
+
+    private static string ReadReportingStream(ExcelWorksheet sheet, int header)
+    {
+        string stream = Text(FindMetadataValue(sheet, header, "Reporting Stream"));
+        if (!String.IsNullOrEmpty(stream) && !Same(stream, "Departmental") && !Same(stream, "Administered"))
+        { throw new InvalidDataException("The source reporting stream is not recognised."); }
+        return String.IsNullOrEmpty(stream) ? null : stream;
     }
 
     private static object FindMetadataValue(ExcelWorksheet sheet, int headerRow, string label)

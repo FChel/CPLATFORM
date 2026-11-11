@@ -100,7 +100,7 @@ public static class NORMHelper
     {
         return String.IsNullOrWhiteSpace(Str(row, "SourceCompanyCode"))
             ? "Legacy source " + Str(row, "SourceLedger") + "; actual ledger unknown"
-            : Str(row, "SourceLedger");
+            : (Str(row, "SourceLedger") ?? "Not applicable");
     }
 
     public static string SapGlLineItemsLink(string glAccount, string companyCode, int financialYear)
@@ -150,7 +150,7 @@ public static class NORMHelper
 
         if (!HasAuthenticatedIdentity()) { return false; }
         object result = Scalar(
-            "SELECT COUNT(1) FROM dbo.tblNORM_AdminUser WHERE UserId = @user AND IsDeactivated = 0",
+            "SELECT COUNT(1) FROM dbo.tblNORM_AdminUser WHERE LOWER(UserId)=LOWER(@user) AND IsDeactivated=0 AND RoleCode IN ('Preparer','Administrator')",
             P("@user", CurrentUserId()));
         return result != null && Convert.ToInt32(result) > 0;
     }
@@ -163,6 +163,54 @@ public static class NORMHelper
             "WHERE LOWER(UserId) = LOWER(@user) AND RoleCode = 'Administrator' AND IsDeactivated = 0",
             P("@user", CurrentUserId()));
         return result != null && Convert.ToInt32(result) > 0;
+    }
+
+    // Both existing roles may prepare within their allowed entities.
+    // Protected entity actions never use the AllAuthenticated shortcut.
+    public static bool CanPrepareEntity(string entity, OleDbConnection connection = null, OleDbTransaction transaction = null)
+    {
+        if (!HasAuthenticatedIdentity() || String.IsNullOrWhiteSpace(entity)) { return false; }
+        string lockHint = transaction == null ? "" : " WITH (HOLDLOCK)";
+        string sql = "SELECT COUNT(*) FROM dbo.tblNORM_AdminUser u" + lockHint +
+            " WHERE LOWER(u.UserId)=LOWER(@user) AND u.IsDeactivated=0" +
+            " AND EXISTS (SELECT 1 FROM dbo.tblNORM_ReportingEntity e WHERE e.EntityCode=@entity AND e.IsDeactivated=0)" +
+            " AND (u.RoleCode='Administrator' OR (u.RoleCode='Preparer' AND EXISTS" +
+            " (SELECT 1 FROM dbo.tblNORM_UserEntity a" + lockHint +
+            " WHERE a.AdminUserId=u.AdminUserId AND a.EntityCode=@entity)))";
+        OleDbParameter[] parameters = { P("@user", CurrentUserId()), P("@entity", entity) };
+        object result = connection == null ? Scalar(sql, parameters) : Scalar(connection, transaction, sql, parameters);
+        return Convert.ToInt32(result) > 0;
+    }
+
+    public static void RequireEntityAccess(string entity, OleDbConnection connection = null, OleDbTransaction transaction = null)
+    {
+        if (!CanPrepareEntity(entity, connection, transaction))
+        { throw new UnauthorizedAccessException("You do not have access to this NORM entity."); }
+    }
+
+    public static bool CanAccessCompletedRun(int runId)
+    {
+        if (!HasAuthenticatedIdentity()) { return false; }
+        string entity = Convert.ToString(Scalar(
+            "SELECT i.EntityCode FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
+            "WHERE r.CalculationRunId=@run AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0",
+            P("@run", runId)));
+        return CanPrepareEntity(entity);
+    }
+
+    public static int LatestAccessibleCompletedRun()
+    {
+        if (!HasAuthenticatedIdentity()) { return 0; }
+        DataTable runs = Query(
+            "SELECT i.EntityCode,MAX(r.CalculationRunId) AS RunId FROM dbo.tblNORM_CalculationRun r " +
+            "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
+            "WHERE r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0 AND i.IsTestBreak=0 " +
+            "GROUP BY i.EntityCode ORDER BY MAX(r.CalculationRunId) DESC");
+        foreach (DataRow run in runs.Rows)
+        {
+            if (CanPrepareEntity(Str(run, "EntityCode"))) { return Int(run, "RunId"); }
+        }
+        return 0;
     }
 
     private static bool HasAuthenticatedIdentity()

@@ -74,7 +74,8 @@ namespace CPlatform.NORM
             html.Append("\">Return to statements</a></main></body></html>");
 
             Response.Clear();
-            Response.StatusCode = 500;
+            HttpException httpError = error as HttpException;
+            Response.StatusCode = httpError == null ? 500 : httpError.GetHttpCode();
             Response.TrySkipIisCustomErrors = true;
             Response.ContentType = "text/html; charset=utf-8";
             Response.Write(html.ToString());

@@ -32,7 +32,7 @@ namespace CPlatform.NORM
             }
 
             DataTable table = NORMHelper.Query(
-                "SELECT TOP 1 f.ImportFileId,f.SourceType,f.SourceFileName,f.SourceFileHash,f.FileContent " +
+                "SELECT TOP 1 f.ImportFileId,f.SourceType,f.SourceFileName,f.SourceFileHash,i.EntityCode " +
                 "FROM dbo.tblNORM_ImportFile f " +
                 "INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId = f.ImportId " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
@@ -47,7 +47,24 @@ namespace CPlatform.NORM
 
             DataRow row = table.Rows[0];
             string fileName = SafeFileName(NORMHelper.Str(row, "SourceFileName"));
-            byte[] content = (byte[])row["FileContent"];
+            string entity = NORMHelper.Str(row, "EntityCode");
+            if (!NORMHelper.CanPrepareEntity(entity))
+            {
+                WriteError(context, 403, "You do not have access to this source evidence.");
+                return;
+            }
+            byte[] content = (byte[])NORMHelper.Scalar(
+                "SELECT f.FileContent FROM dbo.tblNORM_ImportFile f " +
+                "INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId=f.ImportId " +
+                "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
+                "WHERE r.CalculationRunId=@run AND f.ImportFileId=@file AND i.EntityCode=@entity " +
+                "AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0",
+                NORMHelper.P("@run", runId), NORMHelper.P("@file", fileId), NORMHelper.P("@entity", entity));
+            if (content == null)
+            {
+                WriteError(context, 404, "The source evidence was not found for this completed run.");
+                return;
+            }
             string detail = "Run #" + runId.ToString() + "; " +
                 NORMHelper.Str(row, "SourceType") + "; " + fileName + "; SHA-256 " +
                 NORMHelper.Str(row, "SourceFileHash");

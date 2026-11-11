@@ -138,20 +138,12 @@ namespace CPlatform.NORM
 
         private int ResolveRunId()
         {
+            string value = Request.QueryString["run"];
+            if (value == null) { return NORMHelper.LatestAccessibleCompletedRun(); }
             int requested;
-            if (Int32.TryParse(Request.QueryString["run"], out requested) && requested > 0)
-            {
-                object exists = NORMHelper.Scalar(
-                    "SELECT COUNT(1) FROM dbo.tblNORM_CalculationRun WHERE CalculationRunId=@run AND StatusCode='Complete' AND IsDeactivated=0",
-                    NORMHelper.P("@run", requested));
-                if (exists != null && Convert.ToInt32(exists) > 0) { return requested; }
-            }
-            object latest = NORMHelper.Scalar(
-                "SELECT TOP 1 r.CalculationRunId FROM dbo.tblNORM_CalculationRun r " +
-                "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
-                "WHERE r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0 AND i.IsTestBreak=0 " +
-                "ORDER BY r.CalculationRunId DESC");
-            return latest == null ? 0 : Convert.ToInt32(latest);
+            if (!Int32.TryParse(value, out requested) || requested <= 0 || !NORMHelper.CanAccessCompletedRun(requested))
+            { throw new System.Web.HttpException(403, "You do not have access to this calculation run."); }
+            return requested;
         }
 
         private void LoadContext()

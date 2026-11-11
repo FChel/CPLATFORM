@@ -9,15 +9,15 @@ using CPlatform.NORM;
 public static class Tests
 {
     static byte[] original;
-    static int passed, year, snapshotReads;
-    static bool approved, changeAtCommit;
+    static int passed, year, snapshotReads, release;
+    static bool approved, changeAtCommit, dualStream;
     static string mappingLine, version, ledger;
     static DataTable Table(string columns)
     { DataTable t = new DataTable(); foreach (string c in columns.Split(',')) { t.Columns.Add(c, typeof(object)); } return t; }
     static void Assert(bool condition, string message) { if (!condition) { throw new Exception(message); } }
     static void Test(string name, Action action)
     {
-        NORMHelper.Reset(); year = 2026; approved = true; changeAtCommit = false; snapshotReads = 0;
+        NORMHelper.Reset(); year = 2026; release = 1; approved = true; changeAtCommit = false; dualStream = false; snapshotReads = 0;
         mappingLine = "Revenue"; version = "test-v1"; ledger = "0L";
         NORMHelper.QueryResponse = Query; action(); passed++; Console.WriteLine("PASS " + name);
     }
@@ -28,23 +28,28 @@ public static class Tests
         {
             t = Table("ConfigurationReleaseId,FinancialYear,EntityCode,VersionCode,ContentHash");
             if (sql.Contains("HOLDLOCK")) { snapshotReads++; if (changeAtCommit && snapshotReads == 3) { mappingLine = "Changed during acceptance"; } }
-            if (approved) { t.Rows.Add(1, year, "DEPT", version, "approved-hash"); } return t;
+            if (approved) { t.Rows.Add(release, year, "DEPT", version, "approved-hash"); } return t;
         }
         if (sql.Contains("FROM dbo.tblNORM_EntityLedger"))
         {
             if (sql.Contains("SELECT SourceLedger")) { t = Table("SourceLedger"); t.Rows.Add("1000"); return t; }
-            t = Table("SourceCompanyCode,SourceLedger"); t.Rows.Add("1000", ledger); t.Rows.Add("1000", "2L"); t.Rows.Add(DBNull.Value, "1000"); return t;
+            t = Table("SourceCompanyCode,SourceLedger,ReportingStream,IsRequired");
+            if (!sql.Contains("IsRequired=1")) { t.Rows.Add("1000", ledger, "Departmental", false); }
+            t.Rows.Add("1000", "2L", "Departmental", true);
+            t.Rows.Add("1000", DBNull.Value, "Departmental", true);
+            if (dualStream) { t.Rows.Add("1000", ledger, "Administered", true); }
+            return t;
         }
         if (sql.Contains("FROM dbo.tblNORM_AccountMap")) { t = Table("GlCode,AccountType,StatementLine"); t.Rows.Add("100000", "Income", mappingLine); return t; }
         if (sql.Contains("FROM dbo.tblNORM_StatementLine")) { t = Table("LineCode,StatementCode"); t.Rows.Add(mappingLine, "SOCI"); return t; }
         throw new Exception("Unexpected query: " + sql);
     }
-    static NORMImportPreview Inspect(byte[] bytes) { return NORMImportService.Inspect(bytes, "source & file.arbitrary", 1, "isolated-test"); }
+    static NORMImportPreview Inspect(byte[] bytes) { return NORMImportService.Inspect(bytes, "source & file.arbitrary", release, "isolated-test"); }
     static int AcceptedRows() { return NORMHelper.Committed.FindAll(delegate(NORMHelper.Call c) { return c.Sql.Contains("INSERT dbo.tblNORM_TrialBalanceRow"); }).Count; }
     static void NoAcceptance() { Assert(AcceptedRows() == 0 && NORMHelper.Runs == 0 && !NORMHelper.Committed.Exists(delegate(NORMHelper.Call c) { return c.Sql.Contains("INSERT dbo.tblNORM_Import "); }), "Unexpected acceptance"); }
     static void Fails(Action action)
     {
-        try { action(); } catch (InvalidOperationException) { NoAcceptance(); return; } catch (InvalidDataException) { NoAcceptance(); return; }
+        try { action(); } catch (UnauthorizedAccessException) { NoAcceptance(); return; } catch (InvalidOperationException) { NoAcceptance(); return; } catch (InvalidDataException) { NoAcceptance(); return; }
         throw new Exception("Expected failure");
     }
     static byte[] Legacy(bool balanced)
@@ -79,6 +84,17 @@ public static class Tests
                 }
             }
             return NORMImportService.Inspect(package.GetAsByteArray(), "other-ledger.xlsx", 1, "isolated-test");
+        }
+    }
+
+    static byte[] WithStream(string stream)
+    {
+        using (ExcelPackage package = new ExcelPackage(new MemoryStream(original)))
+        {
+            ExcelWorksheet sheet = package.Workbook.Worksheets[1];
+            sheet.Cells[26,1].Value = "Reporting Stream";
+            sheet.Cells[26,2].Value = stream;
+            return package.GetAsByteArray();
         }
     }
 
@@ -160,7 +176,7 @@ public static class Tests
                 NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true);
                 Assert(page.PreviewForTest.Contains("<div><dt>Configuration</dt><dd>test-v1 (release 1)</dd></div>") &&
                     page.PreviewForTest.Contains("<h3>Existing trial balance will be replaced</h3><p class=\"norm-import-existing-source\">") &&
-                    page.PreviewForTest.Contains("2026 figures for Company 1000, Ledger 0L already exist. They were imported on 09/11/2026 from prior &amp; original.xlsx.") &&
+                    page.PreviewForTest.Contains("2026 figures for Company 1000, Ledger 0L, Departmental already exist. They were imported on 09/11/2026 from prior &amp; original.xlsx.") &&
                     page.PreviewForTest.Contains("Confirming this replacement will replace the existing figures with those from the newly uploaded file. The previous import will be retained as historical evidence.") &&
                     page.PreviewForTest.Contains("<small>The preview expires after 15 minutes.") &&
                     HttpUtility.HtmlDecode(page.PreviewForTest).Contains("01\u201312"), "Replacement wording or period display was incorrect");
@@ -176,7 +192,7 @@ public static class Tests
             Test("multi-file replacement lists each ledger and uses plural wording", delegate {
                 NORMHelper.CurrentSource = call => ExistingScopedSource(call) == 2 ? 2 : 3;
                 NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true, OtherLedger());
-                Assert(page.PreviewForTest.Contains("Ledger 0L already exist") && page.PreviewForTest.Contains("Ledger 2L already exist") &&
+                Assert(page.PreviewForTest.Contains("Ledger 0L, Departmental already exist") && page.PreviewForTest.Contains("Ledger 2L, Departmental already exist") &&
                     page.PreviewForTest.Contains("Confirming these replacements") &&
                     page.ReplacementLabelForTest == "I confirm replacement of the existing figures." &&
                     page.ConfirmLabelForTest == "Confirm replacement", "Batch replacement wording was unclear");
@@ -216,7 +232,7 @@ public static class Tests
                 Assert(AcceptedRows() == 984 && page.ResultForTest.Contains("Source accepted"), "Replacement failed: " + page.ErrorForTest);
                 var audit = NORMHelper.Committed.Find(c => c.Values.ContainsKey("@event") && (string)c["@event"] == "IMPORT_SOURCE_REPLACED");
                 Assert(audit != null && audit.Values.ContainsValue("42") &&
-                    audit.Values.ContainsValue("Prior import=2; entity=DEPT; financial year=2026; company=1000; ledger=0L"),
+                    audit.Values.ContainsValue("Prior import=2; entity=DEPT; financial year=2026; company=1000; ledger=0L; stream=Departmental"),
                     "Missing replacement link");
                 Assert(!NORMHelper.Committed.Exists(c => c.Sql.Contains("DELETE") || c.Values.ContainsValue(2)),
                     "Replacement attempted to mutate historical data");
@@ -268,10 +284,97 @@ public static class Tests
                 Assert(AcceptedRows() == 984 && page.ResultForTest.Contains("Source accepted") && page.ResultForTest.Contains("calculation failed") && page.ErrorForTest == "", "Accepted source misreported as rejected");
             });
             Test("legacy ERP auto recognition and confirmed acceptance", delegate { NORMImportPreview p = Inspect(Legacy(true)); Assert(p.Layout == "Legacy ERP", "Legacy layout lost"); NORMImportService.Confirm(p, "isolated-test"); Assert(AcceptedRows() == 2, "Legacy acceptance lost"); });
-            Test("ROMAN auto recognition and confirmed acceptance", delegate { NORMImportPreview p = Inspect(Roman()); Assert(p.Layout == "ROMAN", "ROMAN layout lost"); NORMImportService.Confirm(p, "isolated-test"); Assert(AcceptedRows() == 2, "ROMAN acceptance lost"); });
+            Test("ROMAN without identifiable company rejected", delegate { Fails(delegate { Inspect(Roman()); }); });
             Test("FY2025 legacy pair requirement remains explicit", delegate {
-                year = 2025; NORMImportPreview erp = Inspect(Legacy(true)), roman = Inspect(Roman());
-                Assert(!erp.CanAccept && !roman.CanAccept, "FY2025 transition bypassed"); NoAcceptance();
+                year = 2025; NORMImportPreview erp = Inspect(Legacy(true));
+                Assert(!erp.CanAccept, "FY2025 transition bypassed"); Fails(delegate { Inspect(Roman()); });
+            });
+            Test("missing required populations are independent of optional acceptance", delegate {
+                NORMHelper.CurrentSource = delegate(NORMHelper.Call call) {
+                    Assert(call.Sql.Contains("tb.ReportingStream=@stream") && !call.Sql.Contains("i.ConfigurationReleaseId"), "Lookup ignores stream or depends on release");
+                    return call.Sql.Contains("tb.SourceLedger IS NULL") ? 23 : 0;
+                };
+                var missing = NORMImportService.MissingRequiredPopulations(1);
+                Assert(missing.Count == 1 && missing[0].Ledger == "2L", "Wrong missing required set");
+                NORMImportPreview preview = Inspect(original);
+                Assert(!preview.HasReplacement, "Absent ledger matched 0L");
+                NORMImportService.Confirm(preview, "isolated-test");
+                Assert(AcceptedRows() == 984, "Missing required source blocked acceptance");
+            });
+            Test("absent ledger persists as null and uses IS NULL lookup", delegate {
+                NORMHelper.CurrentSource = delegate(NORMHelper.Call call) {
+                    Assert(call.Sql.Contains("tb.SourceLedger IS NULL") && !call.Values.ContainsKey("@ledger"), "Wrong absent ledger lookup");
+                    return 0;
+                };
+                NORMImportService.Confirm(Inspect(Legacy(true)), "isolated-test");
+                NORMHelper.Call row = NORMHelper.Committed.Find(delegate(NORMHelper.Call c) { return c.Sql.Contains("INSERT dbo.tblNORM_TrialBalanceRow"); });
+                Assert(row["@ledger"] == DBNull.Value && (string)row["@stream"] == "Departmental", "Absent ledger or stream lost");
+            });
+            Test("ambiguous configured streams require distinguishing evidence", delegate {
+                dualStream = true;
+                Fails(delegate { Inspect(original); });
+            });
+            Test("same company and ledger can identify both streams in one existing batch", delegate {
+                dualStream = true;
+                NORMImportPreview departmental = Inspect(WithStream("Departmental"));
+                NORMImportPreview administered = Inspect(WithStream("Administered"));
+                NORMImportService.ConfirmBatch(new[] { departmental, administered }, "isolated-test", false);
+                Assert(AcceptedRows() == 1968 && departmental.ReportingStreams == "Departmental" && administered.ReportingStreams == "Administered", "Streams were merged");
+            });
+            Test("entity assignment is required for direct release access", delegate {
+                NORMHelper.EntityAccess = delegate(string entity) { return entity == "OTHER"; };
+                Fails(delegate { Inspect(original); });
+                Fails(delegate { NORMImportService.MissingRequiredPopulations(1); });
+            });
+            Test("assignment revoked after inspection prevents confirmation", delegate {
+                NORMImportPreview preview = Inspect(original);
+                NORMHelper.EntityAccess = delegate { return false; };
+                Fails(delegate { NORMImportService.Confirm(preview, "isolated-test"); });
+            });
+            Test("confirmation checks access again inside the write transaction", delegate {
+                NORMImportPreview preview = Inspect(original);
+                int checks = 0;
+                NORMHelper.EntityAccess = delegate { return ++checks == 1; };
+                Fails(delegate { NORMImportService.Confirm(preview, "isolated-test"); });
+                Assert(checks == 2 && NORMHelper.Opens == 1, "Missing transactional recheck");
+            });
+            Test("unassigned users cannot read a source file via forged run/file IDs", delegate {
+                NORMHelper.EntityAccess = delegate(string entity) { return entity == "OTHER"; };
+                NORMHelper.QueryResponse = delegate(string sql) {
+                    Assert(sql.Contains("r.CalculationRunId = @run AND f.ImportFileId = @file") && !sql.Contains("FileContent"),
+                        "Authorisation must use the stored run/file link before reading bytes");
+                    DataTable evidence = Table("ImportFileId,SourceType,SourceFileName,SourceFileHash,EntityCode");
+                    evidence.Rows.Add(91, "ERP", "protected.xlsx", "hash", "DEPT");
+                    return evidence;
+                };
+                StringWriter output = new StringWriter();
+                HttpContext context = new HttpContext(
+                    new HttpRequest("", "http://localhost/NORM/NORM_SourceFile.ashx", "run=42&file=91&entity=OTHER"),
+                    new HttpResponse(output));
+                context.User = new System.Security.Principal.GenericPrincipal(
+                    new System.Security.Principal.GenericIdentity("isolated-test", "Windows"), new string[0]);
+                new NORMSourceFileHandler().ProcessRequest(context);
+                Assert(context.Response.StatusCode == 403 && !output.ToString().Contains("protected.xlsx"), "Cross-entity evidence was exposed");
+            });
+            Test("forged import IDs cannot create a cross-entity test break", delegate {
+                NORMHelper.QueryResponse = delegate(string sql) {
+                    Assert(sql.Contains("ImportId = @import"), "Import ID did not scope lookup");
+                    DataTable imports = Table("EntityCode");
+                    imports.Rows.Add("DEPT");
+                    return imports;
+                };
+                NORMHelper.EntityAccess = delegate { return false; };
+                Fails(delegate { NORMImportService.CreateTestBreak(91, 1m, "isolated-test"); });
+                Assert(NORMHelper.Opens == 0, "Unauthorised test break reached the write transaction");
+            });
+            Test("new approved release keeps the prior source current", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                Assert(Inspect(original).HasReplacement, "Baseline did not identify the current scope");
+                release = 2;
+                version = "test-v2";
+                NORMImportPreview next = Inspect(original);
+                Assert(next.ReleaseId == 2 && next.HasReplacement, "Approval created a new current scope");
+                Fails(delegate { NORMImportService.Confirm(next, "isolated-test"); });
             });
             Console.WriteLine("TOTAL PASS " + passed + " (real page handlers/session objects; substituted database/identity hosting)"); return 0;
         }
