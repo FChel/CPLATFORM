@@ -30,4 +30,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Engine context compilation failed' }
 & (Join-Path $output 'EngineContext.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Engine context tests failed' }
 Write-Output "Isolated artifacts: $output"
-
+& node (Join-Path $PSScriptRoot 'UploadFeedbackTests.js')
+if ($LASTEXITCODE -ne 0) { throw 'Upload feedback tests failed' }

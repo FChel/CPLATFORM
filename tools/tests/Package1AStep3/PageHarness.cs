@@ -27,7 +27,7 @@ namespace CPlatform.NORM
         public void Save(string year) { CurrentFinancialYear.Text=year; SaveYearButton_Click(this,EventArgs.Empty); }
         public void Name(string name) { ReportingName.Text=name; SaveNameButton_Click(this,EventArgs.Empty); }
         public void RenderForTest() { OnPreRender(EventArgs.Empty); }
-        public void NoFileUpload() { UploadPriorButton_Click(this,EventArgs.Empty); }
+        public void NoFileUpload() { CurrentFinancialYear.Text="2025"; UploadPriorButton_Click(this,EventArgs.Empty); }
         public void SelectEntity(string e) { EntitySelection.SelectedValue=e; EntitySelection_Changed(this,EventArgs.Empty); }
         public void SelectYear(int id) { SetupSelection.SelectedValue=id.ToString(); SetupSelection_Changed(this,EventArgs.Empty); }
         public void ForgeSetup(int id) { SetupSelection.Items.Add(new ListItem("forged",id.ToString())); SetupSelection.SelectedValue=id.ToString(); }
