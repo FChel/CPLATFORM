@@ -19,7 +19,8 @@ namespace CPlatform.NORM
 
         protected override void OnInit(EventArgs e)
         {
-            // Bind WebForms' signed state to the authenticated session for setup writes.
+            // Persist the session before binding signed state; an unused session ID can change on the next request.
+            Session["NORM.YearSetup.ViewStateInitialized"] = true;
             ViewStateUserKey = Session.SessionID + ":" + NORMHelper.CurrentUserId();
             base.OnInit(e);
         }
