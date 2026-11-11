@@ -36,6 +36,11 @@ public static class NORMHelper
     public static bool ExistingCompany;
     public static bool FailCalculation;
     public static bool PrepareAccess = true;
+    public static Func<string, bool> EntityAccess = delegate { return true; };
+    public static bool CanPrepareEntity(string entity, OleDbConnection c = null, OleDbTransaction t = null)
+    { return PrepareAccess && EntityAccess(entity); }
+    public static void RequireEntityAccess(string entity, OleDbConnection c = null, OleDbTransaction t = null)
+    { if (!CanPrepareEntity(entity, c, t)) { throw new UnauthorizedAccessException("Entity access denied."); } }
     public static List<string[]> PermittedPairs = new List<string[]>();
     public static List<string> Queries = new List<string>();
     public static Func<string, DataTable> QueryResponse;
@@ -44,13 +49,13 @@ public static class NORMHelper
     private static int nextImportId;
     public static string FailAuditCode;
     public static int Runs, Opens;
-    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; FailAuditCode = null; Runs = Opens = 0; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
+    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; EntityAccess = delegate { return true; }; FailAuditCode = null; Runs = Opens = 0; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
     public static string CurrentUserId() { return "isolated-test"; }
     public static bool HasPrepareAccess() { return PrepareAccess; }
-    public static OleDbParameter P(string name, object value) { return new OleDbParameter { Name = name, Value = value }; }
+    public static OleDbParameter P(string name, object value) { return new OleDbParameter { Name = name, Value = value ?? DBNull.Value }; }
     public static OleDbConnection OpenConnection() { Opens++; return new OleDbConnection(); }
     public static int SettingInt(string name, int fallback) { return fallback; }
-    public static string Str(DataRow r, string c) { return Convert.ToString(r[c], CultureInfo.InvariantCulture); }
+    public static string Str(DataRow r, string c) { return r.IsNull(c) ? null : Convert.ToString(r[c], CultureInfo.InvariantCulture); }
     public static int Int(DataRow r, string c) { return Convert.ToInt32(r[c]); }
     public static long Long(DataRow r, string c) { return Convert.ToInt64(r[c]); }
     public static decimal Dec(DataRow r, string c) { return Convert.ToDecimal(r[c]); }
@@ -80,8 +85,8 @@ public static class NORMHelper
         Queries.Add(sql);
         if (sql.Contains("SELECT SourceCompanyCode,SourceLedger"))
         {
-            table.Columns.Add("SourceCompanyCode"); table.Columns.Add("SourceLedger");
-            foreach (string[] pair in PermittedPairs) { table.Rows.Add(pair[0], pair[1]); }
+            table.Columns.Add("SourceCompanyCode"); table.Columns.Add("SourceLedger"); table.Columns.Add("ReportingStream");
+            foreach (string[] pair in PermittedPairs) { table.Rows.Add(pair[0], pair[1], "Departmental"); }
             return table;
         }
         if (sql.Contains("SELECT SourceLedger")) { table.Columns.Add("SourceLedger"); table.Rows.Add("1000"); return table; }

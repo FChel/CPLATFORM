@@ -150,7 +150,18 @@ public static class Tests
             Test("conflicting legacy year rejected", delegate { Reject(Change(delegate(ExcelPackage p) { p.Workbook.Worksheets[1].Cells[26,1].Value = "Fiscal Year"; p.Workbook.Worksheets[1].Cells[26,2].Value = 2025; }), "conflicting"); });
             Test("missing dates rejected", delegate { Reject(Change(delegate(ExcelPackage p) { p.Workbook.Worksheets[1].Cells[13,2].Value = null; p.Workbook.Worksheets[1].Cells[21,2].Value = null; }), "posting-date"); });
             Test("out-of-year dates rejected", delegate { Reject(Change(delegate(ExcelPackage p) { p.Workbook.Worksheets[1].Cells[13,2].Value = "01.07.2024"; p.Workbook.Worksheets[1].Cells[21,2].Value = "01.07.2024"; }), "posting-date range"); });
-            Test("missing ledger rejected", delegate { Reject(Change(delegate(ExcelPackage p) { p.Workbook.Worksheets[1].Cells[12,2].Value = null; p.Workbook.Worksheets[1].Cells[20,2].Value = null; }), "identity is missing"); });
+            Test("absent ledger is retained as null", delegate {
+                byte[] bytes = Change(delegate(ExcelPackage p) {
+                    ExcelWorksheet sheet = p.Workbook.Worksheets[1];
+                    for (int row = 1; row < 28; row++)
+                    {
+                        string label = sheet.Cells[row,1].Text;
+                        if (label == "Ledger" || label == "Source Ledger") { sheet.Cells[row,2].Value = null; }
+                    }
+                });
+                NORMParsedImport parsed = ErpTrialBalanceImporter.ParseForInspection(bytes, new[] { "1000" }, 2026);
+                Assert(parsed.Rows.Count == 984 && parsed.Rows[0].SourceLedger == null, "Missing ledger was invented");
+            });
             Test("different source ledger rejected", delegate { Reject(Change(delegate(ExcelPackage p) { p.Workbook.Worksheets[1].Cells[11,2].Value = "2L"; p.Workbook.Worksheets[1].Cells[22,2].Value = "2L"; }), "identity is missing"); });
             Test("missing description rejected", delegate { Reject(Change(delegate(ExcelPackage p) { p.Workbook.Worksheets[1].Cells[28,4].Value = null; }), "incomplete"); });
             Test("missing account rejected", delegate { Reject(Change(delegate(ExcelPackage p) { p.Workbook.Worksheets[1].Cells[28,3].Value = null; }), "incomplete"); });

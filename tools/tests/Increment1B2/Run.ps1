@@ -14,6 +14,7 @@ $options = @('/nologo','/warnaserror+','/define:SERVICE','/target:exe',"/out:$ex
     (Join-Path $root 'App_Code/NORMCrypto.cs'),(Join-Path $root 'App_Code/NORMImportModels.cs'),
     (Join-Path $root 'App_Code/ErpTrialBalanceImporter.cs'),(Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'),
     (Join-Path $root 'tools/tests/FR016/TestSupport.cs'),(Join-Path $output 'NORMImportService.cs'),
+    (Join-Path $root 'App_Code/NORMSourceFileHandler.cs'),
     (Join-Path $root 'NORM/NORM_Import.aspx.cs'),(Join-Path $PSScriptRoot 'PageHarness.cs'),(Join-Path $PSScriptRoot 'Tests.cs'))
 & $compiler @options
 if ($LASTEXITCODE -ne 0) { throw 'B2 compilation failed' }

@@ -77,6 +77,11 @@ namespace CPlatform.NORM
                 WriteError(context, 400, "Choose a completed calculation run.");
                 return;
             }
+            if (!NORMHelper.CanAccessCompletedRun(runId))
+            {
+                WriteError(context, 403, "You do not have access to this calculation run.");
+                return;
+            }
             ExportContext model = LoadContext(runId);
             if (model == null)
             {

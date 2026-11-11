@@ -76,7 +76,9 @@ namespace CPlatform.NORM
             int releaseId = CurrentReleaseId; if (releaseId <= 0) { WorkflowPanel.Visible = false; return; }
             DataTable releases = NORMHelper.Query("SELECT c.*,p.VersionCode ParentVersion FROM dbo.tblNORM_ConfigurationRelease c LEFT JOIN dbo.tblNORM_ConfigurationRelease p ON p.ConfigurationReleaseId=c.ParentConfigurationReleaseId WHERE c.ConfigurationReleaseId=@release", NORMHelper.P("@release", releaseId));
             if (releases.Rows.Count == 0) { WorkflowPanel.Visible = false; return; }
-            DataRow release = releases.Rows[0]; bool draft = String.Equals(NORMHelper.Str(release, "StatusCode"), "Draft", StringComparison.OrdinalIgnoreCase); bool approved = String.Equals(NORMHelper.Str(release, "StatusCode"), "Approved", StringComparison.OrdinalIgnoreCase);
+            DataRow release = releases.Rows[0];
+            if (!NORMHelper.CanPrepareEntity(NORMHelper.Str(release, "EntityCode"))) { WorkflowPanel.Visible = false; return; }
+            bool draft = String.Equals(NORMHelper.Str(release, "StatusCode"), "Draft", StringComparison.OrdinalIgnoreCase); bool approved = String.Equals(NORMHelper.Str(release, "StatusCode"), "Approved", StringComparison.OrdinalIgnoreCase);
             WorkflowPanel.Visible = true; UploadPanel.Visible = draft; ApprovalPanel.Visible = draft && IsAdministrator; RecalculatePanel.Visible = approved;
             DownloadWorkbookLink.Visible = draft; DownloadWorkbookLink.NavigateUrl = "NORM_MappingWorkbook.ashx?release=" + releaseId.ToString(CultureInfo.InvariantCulture);
             ApprovalNote.Text = draft ? (IsAdministrator ? "" : "<p class=\"norm-muted\">An active NORM administrator must approve this release.</p>") : "<p class=\"norm-success-copy\">Approved by " + Enc(NORMHelper.Str(release, "ApprovedBy")) + " on " + Enc(Convert.ToString(release["ApprovedUtc"])) + ". This version is locked.</p>";

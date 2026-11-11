@@ -6,6 +6,7 @@ public class NORMTrialBalanceRow
     public int SourceRowNo;
     public string SourceCompanyCode;
     public string SourceLedger;
+    public string ReportingStream;
     public string GlAccount;
     public string GlText;
     public decimal? OpeningBalance;
@@ -39,8 +40,11 @@ public class NORMImportOutcome
 [System.Serializable]
 public sealed class NORMSourceScope
 {
+    public string Entity { get; internal set; }
+    public int FinancialYear { get; internal set; }
     public string Company { get; internal set; }
     public string Ledger { get; internal set; }
+    public string ReportingStream { get; internal set; }
     public int ImportId { get; internal set; }
     public string SourceFileName { get; internal set; }
     public System.DateTime ImportedUtc { get; internal set; }
@@ -67,6 +71,7 @@ public sealed class NORMImportPreview
     public int FinancialYear { get; internal set; }
     public string Companies { get; internal set; }
     public string Ledgers { get; internal set; }
+    public string ReportingStreams { get; internal set; }
     public int PeriodStart { get; internal set; }
     public int PeriodEnd { get; internal set; }
     public int RowCount { get; internal set; }

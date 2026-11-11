@@ -52,7 +52,7 @@ public static class Tests
                 Assert(NORMCrypto.Sha256((byte[])file["@content"]) == NORMCrypto.Sha256(original) && (int)file["@periodStart"] == 1 && (int)file["@periodEnd"] == 12, "Evidence/period changed");
                 Assert(!NORMHelper.Queries.Exists(delegate(string sql) { return sql.Contains("AccountMap"); }), "Mapping completion became an acceptance gate");
             });
-            Test("wrong actual ledger rejected", delegate { NORMHelper.PermittedPairs[0][1] = "2L"; Rejected(original, "pair is not authorised"); });
+            Test("wrong actual ledger rejected", delegate { NORMHelper.PermittedPairs[0][1] = "2L"; Rejected(original, "not authorised"); });
             Test("wrong company rejected", delegate { NORMHelper.PermittedPairs[0][0] = "2000"; Rejected(original, "not authorised"); });
             Test("no permitted pairs rejected", delegate { NORMHelper.PermittedPairs.Clear(); Rejected(original, "not authorised"); });
             Test("same ledger allowed for another company", delegate {

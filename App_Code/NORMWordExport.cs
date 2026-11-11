@@ -25,6 +25,11 @@ public class NORM_WordExport : IHttpHandler
             WriteError(context, 400, "A completed calculation run is required.");
             return;
         }
+        if (!NORMHelper.CanAccessCompletedRun(runId))
+        {
+            WriteError(context, 403, "You do not have access to this calculation run.");
+            return;
+        }
         DataTable meta = NORMHelper.Query(
             "SELECT r.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,e.EntityName,c.VersionCode,c.ReleaseLabel " +
             "FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +

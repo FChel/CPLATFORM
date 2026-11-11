@@ -172,7 +172,7 @@ namespace CPlatform.NORM
                 { "Source file", preview.FileName }, { "Layout", preview.Layout },
                 { "Configuration", preview.ConfigurationVersion + " (release " + preview.ReleaseId.ToString() + ")" },
                 { "Agency", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
-                { "Company", preview.Companies }, { "Ledger", preview.Ledgers },
+                { "Company", preview.Companies }, { "Ledger", preview.Ledgers }, { "Reporting stream", preview.ReportingStreams },
                 { "Periods", preview.PeriodStart.ToString("00") + "\u2013" + preview.PeriodEnd.ToString("00") },
                 { "Rows", preview.RowCount.ToString("N0") }, { "Unmapped accounts", preview.UnmappedAccounts.ToString("N0") },
                 { "Debit (AUD)", preview.TotalsAvailable ? preview.Debit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
@@ -197,8 +197,7 @@ namespace CPlatform.NORM
                 if (scope.ImportId == 0) { continue; }
                 if (replacements == 0) { html.Append("<h3>Existing trial balance will be replaced</h3>"); }
                 replacements++;
-                string scopeName = scope.Company == null ? "legacy source " + scope.Ledger
-                    : "Company " + scope.Company + ", Ledger " + scope.Ledger;
+                string scopeName = "Company " + scope.Company + ", Ledger " + (scope.Ledger ?? "Not applicable") + ", " + scope.ReportingStream;
                 html.Append("<p class=\"norm-import-existing-source\">").Append(HttpUtility.HtmlEncode(
                     preview.FinancialYear.ToString(CultureInfo.InvariantCulture) + " figures for " + scopeName +
                     " already exist. They were imported on " + scope.ImportedUtc.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) +
@@ -209,13 +208,14 @@ namespace CPlatform.NORM
         private void BindReleases()
         {
             DataTable releases = NORMHelper.Query(
-                "SELECT ConfigurationReleaseId,FinancialYear,CAST(FinancialYear AS VARCHAR(4)) + ' ' + EntityCode + ' ' + VersionCode + ' - ' + ReleaseLabel AS DisplayLabel " +
+                "SELECT ConfigurationReleaseId,FinancialYear,EntityCode,CAST(FinancialYear AS VARCHAR(4)) + ' ' + EntityCode + ' ' + VersionCode + ' - ' + ReleaseLabel AS DisplayLabel " +
                 "FROM dbo.tblNORM_ConfigurationRelease WHERE StatusCode = 'Approved' AND IsDeactivated = 0 " +
                 "ORDER BY FinancialYear DESC,EntityCode,VersionCode DESC");
             ReleaseList.Items.Clear();
             for (int i = 0; i < releases.Rows.Count; i++)
             {
                 DataRow row = releases.Rows[i];
+                if (!NORMHelper.CanPrepareEntity(NORMHelper.Str(row, "EntityCode"))) { continue; }
                 ListItem item = new ListItem(NORMHelper.Str(row, "DisplayLabel"),
                     NORMHelper.Int(row, "ConfigurationReleaseId").ToString());
                 item.Attributes["data-financial-year"] = NORMHelper.Int(row, "FinancialYear").ToString();
