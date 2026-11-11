@@ -149,10 +149,9 @@ namespace CPlatform.NORM
         private void LoadContext()
         {
             DataTable context = NORMHelper.Query(
-                "SELECT r.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,e.EntityName,c.VersionCode " +
+                "SELECT r.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,COALESCE(r.ReportingEntityName,i.EntityCode) AS EntityName,c.VersionCode " +
                 "FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
                 "INNER JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId=r.ConfigurationReleaseId " +
-                "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.FinancialYear=i.FinancialYear AND e.EntityCode=i.EntityCode AND e.IsDeactivated=0 " +
                 "WHERE r.CalculationRunId=@run AND r.StatusCode='Complete' AND r.IsDeactivated=0",
                 NORMHelper.P("@run", SelectedRunId));
             if (context.Rows.Count == 0) { throw new InvalidOperationException("The calculation run is not available."); }

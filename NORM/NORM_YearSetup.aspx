@@ -25,9 +25,10 @@
         <asp:Panel ID="InstallPanel" runat="server" CssClass="norm-reporting-install" Visible="false"><strong>Start-of-year database objects are not installed.</strong><p>Run <code>sql/NORM_08_StartOfFinancialYearSetup.sql</code>, then reload this page.</p></asp:Panel>
 
         <section class="norm-year-setup-panel">
-            <header><div><span class="norm-step">01</span><div><span class="norm-kicker">Reporting period</span><h2>Set the current financial year</h2></div></div><p>This year drives statement headings. The comparative year is calculated automatically as current year minus one.</p></header>
+            <header><div><span class="norm-step">01</span><div><span class="norm-kicker">Reporting period</span><h2>Set the current financial year</h2></div></div><p>The saved designation controls current-year import eligibility. Historical runs retain their reporting context.</p></header>
+            <label><span>Entity</span><asp:DropDownList ID="EntitySelection" runat="server" CssClass="norm-input" AutoPostBack="true" OnSelectedIndexChanged="EntitySelection_Changed" /></label>
             <div class="norm-year-field-row">
-                <label for="CurrentFinancialYear"><span>Current financial year</span><asp:TextBox ID="CurrentFinancialYear" runat="server" CssClass="norm-input" MaxLength="4" inputmode="numeric" pattern="[0-9]{4}" required="required" title="Enter exactly four digits, for example 2025." placeholder="2025" /></label>
+                <label for="CurrentFinancialYear"><span>Current financial year</span><asp:TextBox ID="CurrentFinancialYear" runat="server" CssClass="norm-input" MaxLength="4" inputmode="numeric" pattern="[0-9]{4}" title="Enter exactly four digits, for example 2025." placeholder="2025" /></label>
                 <div class="norm-year-preview"><span>Previous financial year</span><strong id="priorYearPreview"><%= Server.HtmlEncode(PriorYearDisplay) %></strong><small>Calculated automatically</small></div>
                 <asp:Button ID="SaveYearButton" runat="server" Text="Save financial year" CssClass="norm-button" OnClick="SaveYearButton_Click" />
             </div>
@@ -35,6 +36,10 @@
 
         <section class="norm-year-setup-panel">
             <header><div><span class="norm-step">02</span><div><span class="norm-kicker">Controlled source documents</span><h2>Load comparatives and Original Budget</h2></div></div><p>NORM searches the full PDF, Word document or Excel workbook. A page or sheet is requested only if the document cannot be confidently located or read.</p></header>
+            <label><span>Document and reporting-name year</span><asp:DropDownList ID="SetupSelection" runat="server" CssClass="norm-input" AutoPostBack="true" OnSelectedIndexChanged="SetupSelection_Changed" /></label>
+            <p>Uploads apply to the selected saved year. They do not change the current-year designation. Retained earlier versions remain downloadable.</p>
+            <label><span>Reporting name for the selected year</span><asp:TextBox ID="ReportingName" runat="server" CssClass="norm-input" MaxLength="200" /></label>
+            <asp:Button ID="SaveNameButton" runat="server" Text="Save reporting name" CssClass="norm-button" OnClick="SaveNameButton_Click" CausesValidation="false" />
             <div class="norm-year-upload-grid">
                 <article class="norm-year-upload-card">
                     <div class="norm-year-upload-icon">PY</div><span class="norm-kicker">Comparative figures</span><h3>Prior Year Financial Statements</h3><p>Loads the audited current-year column from the prior-year statements into this year's comparative column.</p>

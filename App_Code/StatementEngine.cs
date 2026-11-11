@@ -21,6 +21,7 @@ public static class NORMStatementEngine
         public string SourceType;
         public string FileHash;
         public string ReleaseVersion;
+        public string ReportingEntityName;
     }
 
     private class MapEntry
@@ -65,7 +66,7 @@ public static class NORMStatementEngine
     {
         ImportContext context = LoadContext(importId);
         string configurationHash = ConfigurationFingerprint(context.ReleaseId);
-        string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash);
+        string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" + context.ReportingEntityName);
 
         object existing = NORMHelper.Scalar(
             "SELECT TOP 1 CalculationRunId FROM dbo.tblNORM_CalculationRun " +
@@ -81,10 +82,10 @@ public static class NORMStatementEngine
         {
             runId = NORMHelper.InsertId(connection, transaction,
                 "INSERT dbo.tblNORM_CalculationRun " +
-                "(ImportId,ConfigurationReleaseId,InputFingerprint,StatusCode,StartedBy) " +
-                "VALUES (@import,@release,@fingerprint,'Running',@user)",
+                "(ImportId,ConfigurationReleaseId,InputFingerprint,StatusCode,StartedBy,ReportingEntityName) " +
+                "VALUES (@import,@release,@fingerprint,'Running',@user,@name)",
                 NORMHelper.P("@import", importId), NORMHelper.P("@release", context.ReleaseId),
-                NORMHelper.P("@fingerprint", inputFingerprint), NORMHelper.P("@user", startedBy));
+                NORMHelper.P("@fingerprint", inputFingerprint), NORMHelper.P("@user", startedBy), NORMHelper.P("@name", context.ReportingEntityName));
             transaction.Commit();
         }
 
@@ -433,9 +434,10 @@ public static class NORMStatementEngine
     private static ImportContext LoadContext(int importId)
     {
         DataTable table = NORMHelper.Query(
-            "SELECT i.ImportId,i.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,i.SourceType,i.DataFingerprint,c.VersionCode " +
+            "SELECT i.ImportId,i.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,i.SourceType,i.DataFingerprint,c.VersionCode,COALESCE(e.EntityName,i.EntityCode) AS EntityName " +
             "FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_ConfigurationRelease c " +
             "ON c.ConfigurationReleaseId = i.ConfigurationReleaseId " +
+            "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.EntityCode=i.EntityCode AND e.FinancialYear=i.FinancialYear AND e.IsDeactivated=0 " +
             "WHERE i.ImportId = @import AND i.IsDeactivated = 0 AND c.StatusCode = 'Approved' AND c.IsDeactivated = 0",
             NORMHelper.P("@import", importId));
         if (table.Rows.Count == 0) { throw new InvalidOperationException("The import or its approved configuration release was not found."); }
@@ -448,6 +450,7 @@ public static class NORMStatementEngine
         context.SourceType = NORMHelper.Str(row, "SourceType");
         context.FileHash = NORMHelper.Str(row, "DataFingerprint");
         context.ReleaseVersion = NORMHelper.Str(row, "VersionCode");
+        context.ReportingEntityName = NORMHelper.Str(row, "EntityName");
         return context;
     }
 

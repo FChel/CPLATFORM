@@ -55,11 +55,10 @@ namespace CPlatform.NORM
                 "SELECT r.CalculationRunId,r.RunGuid,r.InputFingerprint,r.CompletedUtc," +
                 "i.ImportId,i.FinancialYear,i.EntityCode,i.SourceType,i.SourceFileName,i.SourceFileHash,i.[RowCount] AS [RowCount]," +
                 "i.TotalDebit,i.TotalCredit,i.NetBalance,i.ImportedUtc,i.IsTestBreak,i.ParentImportId," +
-                "c.ConfigurationReleaseId,c.VersionCode,c.ReleaseLabel,e.EntityName " +
+                "c.ConfigurationReleaseId,c.VersionCode,c.ReleaseLabel,COALESCE(r.ReportingEntityName,i.EntityCode) AS EntityName " +
                 "FROM dbo.tblNORM_CalculationRun r " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
                 "INNER JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId = r.ConfigurationReleaseId " +
-                "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.FinancialYear = i.FinancialYear AND e.EntityCode = i.EntityCode AND e.IsDeactivated = 0 " +
                 "WHERE r.CalculationRunId = @run AND r.StatusCode = 'Complete' AND r.IsDeactivated = 0",
                 NORMHelper.P("@run", runId));
             if (contextTable.Rows.Count == 0) { return new Dictionary<string, object>(); }
@@ -68,14 +67,13 @@ namespace CPlatform.NORM
 
             Dictionary<string, object> payload = new Dictionary<string, object>();
             Dictionary<string, object> meta = new Dictionary<string, object>();
-            int fy = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
-                NORMHelper.Str(context, "EntityCode"), NORMHelper.Int(context, "FinancialYear"));
+            int fy = NORMHelper.Int(context, "FinancialYear");
             string entityCode = NORMHelper.Str(context, "EntityCode");
             int importId = NORMHelper.Int(context, "ImportId");
             Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId, fy);
-            Dictionary<string, decimal> budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode);
-            Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
-            Dictionary<string, decimal> priorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(entityCode);
+            Dictionary<string, decimal> budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode, fy);
+            Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode, fy);
+            Dictionary<string, decimal> priorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(entityCode, fy);
             meta["runId"] = runId;
             meta["runGuid"] = Convert.ToString(context["RunGuid"]);
             meta["fingerprint"] = NORMHelper.Str(context, "InputFingerprint");
@@ -1410,8 +1408,9 @@ namespace CPlatform.NORM
             string entityCode = Convert.ToString(NORMHelper.Scalar(
                 "SELECT TOP 1 i.EntityCode FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i " +
                 "ON i.ImportId=r.ImportId WHERE r.CalculationRunId=@run", NORMHelper.P("@run", runId)));
-            Dictionary<string, decimal> budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode);
-            Dictionary<string, decimal> comparatives = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
+            int reportingYear = NORMStartOfYearSetup.RunFinancialYear(runId);
+            Dictionary<string, decimal> budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode, reportingYear);
+            Dictionary<string, decimal> comparatives = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode, reportingYear);
             bool budgetComplete = budgets.Count > 0;
             AddEnhancementValidation(validations, "ORIGINAL_BUDGET_INPUT", "Original Budget figures are loaded", "Warning",
                 budgetComplete ? "Pass" : "Warning", budgets.Count +
