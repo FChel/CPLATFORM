@@ -288,8 +288,9 @@ public static class NORMAdministeredStatements
                 else if (type == "OriginalBudget") baselineBudget[key] = NORMHelper.Dec(sources.Rows[i], "Amount");
             }
         }
-        Dictionary<string, decimal> setupPrior = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
-        Dictionary<string, decimal> setupBudget = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode);
+        int reportingYear = NORMStartOfYearSetup.RunFinancialYear(runId);
+        Dictionary<string, decimal> setupPrior = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode, reportingYear);
+        Dictionary<string, decimal> setupBudget = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode, reportingYear);
 
         Model model = new Model();
         string[,] primary = new string[,] {

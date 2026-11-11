@@ -63,50 +63,116 @@ public static class NORMStartOfYearSetup
         return value != null && Convert.ToInt32(value) == 1;
     }
 
-    public static int ResolveCurrentFinancialYear(string entityCode, int fallback)
+    public static int ResolveCurrentFinancialYear(string entityCode)
     {
-        if (!IsInstalled()) { return fallback; }
-        object value = NORMHelper.Scalar(
-            "SELECT TOP 1 CurrentFinancialYear FROM dbo.tblNORM_YearSetup " +
-            "WHERE EntityCode=@entity AND IsCurrent=1 AND IsDeactivated=0 ORDER BY UpdatedUtc DESC",
-            NORMHelper.P("@entity", entityCode));
-        return value == null ? fallback : Convert.ToInt32(value);
+        NORMHelper.RequireEntityAccess(entityCode);
+        DataTable current = CurrentDesignation(entityCode);
+        if (current.Rows.Count != 1) throw new InvalidOperationException("Designate a current financial year through Year Setup first.");
+        return NORMHelper.Int(current.Rows[0], "CurrentFinancialYear");
     }
 
-    public static int DefaultFinancialYear(string entityCode)
+    public static int DefaultFinancialYear(string entityCode) { return ResolveCurrentFinancialYear(entityCode); }
+
+    public static DataTable Entities()
     {
-        int resolved = ResolveCurrentFinancialYear(entityCode, 0);
-        if (resolved > 0) { return resolved; }
-        object value = NORMHelper.Scalar(
-            "SELECT TOP 1 FinancialYear FROM dbo.tblNORM_ConfigurationRelease " +
-            "WHERE EntityCode=@entity AND StatusCode='Approved' AND IsDeactivated=0 ORDER BY FinancialYear DESC,ConfigurationReleaseId DESC",
-            NORMHelper.P("@entity", entityCode));
-        return value == null ? DateTime.Today.Year : Convert.ToInt32(value);
+        DataTable rows = NORMHelper.Query("SELECT DISTINCT EntityCode FROM dbo.tblNORM_ReportingEntity WHERE IsDeactivated=0 ORDER BY EntityCode");
+        for (int i = rows.Rows.Count - 1; i >= 0; i--)
+            if (!NORMHelper.CanPrepareEntity(NORMHelper.Str(rows.Rows[i], "EntityCode"))) rows.Rows.RemoveAt(i);
+        return rows;
     }
 
-    public static int SaveYear(string entityCode, int financialYear, string user)
+    public static DataTable CurrentDesignation(string entityCode)
     {
-        ValidateYear(financialYear);
-        if (!IsInstalled()) { throw new InvalidOperationException("Install the start-of-year database objects first."); }
+        NORMHelper.RequireEntityAccess(entityCode);
+        return NORMHelper.Query("SELECT YearSetupId,CurrentFinancialYear,UpdatedUtc FROM dbo.tblNORM_YearSetup " +
+            "WHERE EntityCode=@entity AND IsCurrent=1 AND IsDeactivated=0", NORMHelper.P("@entity", entityCode));
+    }
+
+    public static DataTable Setups(string entityCode)
+    {
+        NORMHelper.RequireEntityAccess(entityCode);
+        return NORMHelper.Query("SELECT YearSetupId,CurrentFinancialYear,IsCurrent FROM dbo.tblNORM_YearSetup " +
+            "WHERE EntityCode=@entity AND IsDeactivated=0 ORDER BY CurrentFinancialYear DESC", NORMHelper.P("@entity", entityCode));
+    }
+
+    public static DataRow Setup(int setupId)
+    {
+        DataTable rows = NORMHelper.Query("SELECT YearSetupId,EntityCode,CurrentFinancialYear,UpdatedUtc FROM dbo.tblNORM_YearSetup " +
+            "WHERE YearSetupId=@id AND IsDeactivated=0", NORMHelper.P("@id", setupId));
+        if (rows.Rows.Count != 1) throw new InvalidOperationException("The selected year setup is unavailable.");
+        NORMHelper.RequireEntityAccess(NORMHelper.Str(rows.Rows[0], "EntityCode"));
+        return rows.Rows[0];
+    }
+
+    public static string ReportingName(int setupId)
+    {
+        DataRow setup = Setup(setupId);
+        return Convert.ToString(NORMHelper.Scalar("SELECT EntityName FROM dbo.tblNORM_ReportingEntity " +
+            "WHERE EntityCode=@entity AND FinancialYear=@year AND IsDeactivated=0",
+            NORMHelper.P("@entity", NORMHelper.Str(setup, "EntityCode")), NORMHelper.P("@year", NORMHelper.Int(setup, "CurrentFinancialYear"))));
+    }
+
+    public static void SaveReportingName(int setupId, string name, string expectedName, string user)
+    {
+        name = (name ?? "").Trim();
+        if (name.Length == 0 || name.Length > 200 || name.Any(Char.IsControl))
+            throw new InvalidDataException("Enter a reporting name of 1 to 200 characters without control characters.");
+        DataRow setup = Setup(setupId);
+        string entity = NORMHelper.Str(setup, "EntityCode");
+        int year = NORMHelper.Int(setup, "CurrentFinancialYear");
         using (OleDbConnection connection = NORMHelper.OpenConnection())
         using (OleDbTransaction transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
         {
             try
             {
+                NORMHelper.RequireEntityAccess(entity, connection, transaction);
+                object old = NORMHelper.Scalar(connection, transaction,
+                    "SELECT EntityName FROM dbo.tblNORM_ReportingEntity WITH (UPDLOCK,HOLDLOCK) " +
+                    "WHERE EntityCode=@entity AND FinancialYear=@year AND IsDeactivated=0",
+                    NORMHelper.P("@entity", entity), NORMHelper.P("@year", year));
+                if (old == null || !String.Equals(Convert.ToString(old), expectedName, StringComparison.Ordinal))
+                    throw new InvalidOperationException("The reporting name changed. Reload Year Setup before saving.");
+                NORMHelper.Exec(connection, transaction, "UPDATE dbo.tblNORM_ReportingEntity SET EntityName=@name " +
+                    "WHERE EntityCode=@entity AND FinancialYear=@year AND IsDeactivated=0",
+                    NORMHelper.P("@name", name), NORMHelper.P("@entity", entity), NORMHelper.P("@year", year));
+                WriteAudit(connection, transaction, "ENTITY_REPORTING_NAME_UPDATED", "YearSetup", setupId.ToString(CultureInfo.InvariantCulture),
+                    entity + "; FY" + year + "; previous: " + Convert.ToString(old) + "; new: " + name, user);
+                transaction.Commit();
+            }
+            catch { transaction.Rollback(); throw; }
+        }
+    }
+
+    public static int SaveYear(string entityCode, int financialYear, int expectedSetupId, DateTime? expectedUpdatedUtc, string user)
+    {
+        ValidateYear(financialYear);
+        using (OleDbConnection connection = NORMHelper.OpenConnection())
+        using (OleDbTransaction transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
+        {
+            try
+            {
+                NORMHelper.RequireEntityAccess(entityCode, connection, transaction);
+                DataTable current = NORMHelper.Query(connection, transaction,
+                    "SELECT YearSetupId,CurrentFinancialYear,UpdatedUtc FROM dbo.tblNORM_YearSetup WITH (UPDLOCK,HOLDLOCK) " +
+                    "WHERE EntityCode=@entity AND IsCurrent=1 AND IsDeactivated=0", NORMHelper.P("@entity", entityCode));
+                if (current.Rows.Count > 1 || (current.Rows.Count == 0 ? expectedSetupId != 0 :
+                    NORMHelper.Int(current.Rows[0], "YearSetupId") != expectedSetupId || !expectedUpdatedUtc.HasValue ||
+                    Convert.ToDateTime(current.Rows[0]["UpdatedUtc"]) != expectedUpdatedUtc.Value))
+                    throw new InvalidOperationException("The current designation changed. Reload Year Setup before saving.");
+                RequireApprovedYear(entityCode, financialYear, connection, transaction);
+                string previous = current.Rows.Count == 0 ? "not designated" : Convert.ToString(current.Rows[0]["CurrentFinancialYear"]);
                 NORMHelper.Exec(connection, transaction,
                     "UPDATE dbo.tblNORM_YearSetup SET IsCurrent=0,UpdatedBy=@user,UpdatedUtc=SYSUTCDATETIME() " +
                     "WHERE EntityCode=@entity AND IsCurrent=1 AND IsDeactivated=0 AND CurrentFinancialYear<>@year",
                     NORMHelper.P("@user", user), NORMHelper.P("@entity", entityCode), NORMHelper.P("@year", financialYear));
                 object existing = NORMHelper.Scalar(connection, transaction,
-                    "SELECT YearSetupId FROM dbo.tblNORM_YearSetup WHERE EntityCode=@entity AND CurrentFinancialYear=@year",
+                    "SELECT YearSetupId FROM dbo.tblNORM_YearSetup WITH (UPDLOCK,HOLDLOCK) WHERE EntityCode=@entity AND CurrentFinancialYear=@year",
                     NORMHelper.P("@entity", entityCode), NORMHelper.P("@year", financialYear));
                 int id;
                 if (existing == null)
-                {
                     id = NORMHelper.InsertId(connection, transaction,
                         "INSERT dbo.tblNORM_YearSetup(EntityCode,CurrentFinancialYear,IsCurrent,UpdatedBy) VALUES(@entity,@year,1,@user)",
                         NORMHelper.P("@entity", entityCode), NORMHelper.P("@year", financialYear), NORMHelper.P("@user", user));
-                }
                 else
                 {
                     id = Convert.ToInt32(existing);
@@ -115,8 +181,7 @@ public static class NORMStartOfYearSetup
                         NORMHelper.P("@user", user), NORMHelper.P("@id", id));
                 }
                 WriteAudit(connection, transaction, "YEAR_SETUP_UPDATED", "YearSetup", id.ToString(CultureInfo.InvariantCulture),
-                    "Current financial year set to " + financialYear.ToString(CultureInfo.InvariantCulture) +
-                    "; comparative year " + (financialYear - 1).ToString(CultureInfo.InvariantCulture) + ".", user);
+                    entityCode + "; previous current year: " + previous + "; current financial year: " + financialYear + ".", user);
                 transaction.Commit();
                 return id;
             }
@@ -124,19 +189,28 @@ public static class NORMStartOfYearSetup
         }
     }
 
-    public static int CurrentSetupId(string entityCode)
+    private static int RequireApprovedYear(string entity, int year, OleDbConnection connection, OleDbTransaction transaction)
     {
-        if (!IsInstalled()) { return 0; }
-        object value = NORMHelper.Scalar(
-            "SELECT TOP 1 YearSetupId FROM dbo.tblNORM_YearSetup WHERE EntityCode=@entity AND IsCurrent=1 AND IsDeactivated=0 ORDER BY UpdatedUtc DESC",
-            NORMHelper.P("@entity", entityCode));
-        return value == null ? 0 : Convert.ToInt32(value);
+        object value = NORMHelper.Scalar(connection, transaction,
+            "SELECT TOP 1 c.ConfigurationReleaseId FROM dbo.tblNORM_ConfigurationRelease c WITH (HOLDLOCK) " +
+            "INNER JOIN dbo.tblNORM_ReportingEntity e WITH (HOLDLOCK) ON e.EntityCode=c.EntityCode AND e.FinancialYear=c.FinancialYear " +
+            "WHERE c.EntityCode=@entity AND c.FinancialYear=@year AND c.StatusCode='Approved' AND c.IsDeactivated=0 AND e.IsDeactivated=0 " +
+            "ORDER BY c.ConfigurationReleaseId DESC", NORMHelper.P("@entity", entity), NORMHelper.P("@year", year));
+        if (value == null) throw new InvalidOperationException("An active entity and approved configuration for the selected financial year are required.");
+        return Convert.ToInt32(value);
     }
 
-    public static UploadOutcome Upload(int setupId, string documentType, byte[] content, string fileName, int? requestedStartPage, string user)
+    public static int CurrentSetupId(string entityCode)
+    {
+        DataTable rows = CurrentDesignation(entityCode);
+        if (rows.Rows.Count > 1) throw new InvalidOperationException("The current year designation is ambiguous.");
+        return rows.Rows.Count == 0 ? 0 : NORMHelper.Int(rows.Rows[0], "YearSetupId");
+    }
+
+    public static UploadOutcome Upload(int setupId, string documentType, byte[] content, string fileName, int? requestedStartPage, long expectedDocumentId, DateTime expectedSetupUpdatedUtc, string user)
     {
         if (!IsInstalled()) { throw new InvalidOperationException("Install the start-of-year database objects first."); }
-        if (setupId <= 0) { throw new InvalidOperationException("Save the current financial year before uploading source documents."); }
+        if (setupId <= 0) { throw new InvalidOperationException("Select a saved financial-year setup before uploading source documents."); }
         if (content == null || content.Length == 0) { throw new InvalidDataException("Choose a non-empty source document."); }
         int maximum = NORMHelper.SettingInt("NORM.MaxUploadBytes", 104857600);
         if (content.Length > maximum) { throw new InvalidDataException("The source document exceeds the configured upload limit."); }
@@ -147,12 +221,9 @@ public static class NORMStartOfYearSetup
         if (extension == ".pdf" && (!requestedStartPage.HasValue || requestedStartPage.Value < 1 || requestedStartPage.Value > 9999))
             throw new InvalidDataException("Enter the PDF page where the financial-statement tables commence.");
 
-        DataTable setup = NORMHelper.Query(
-            "SELECT YearSetupId,EntityCode,CurrentFinancialYear FROM dbo.tblNORM_YearSetup WHERE YearSetupId=@id AND IsCurrent=1 AND IsDeactivated=0",
-            NORMHelper.P("@id", setupId));
-        if (setup.Rows.Count == 0) { throw new InvalidOperationException("The active start-of-year setup was not found."); }
-        string entity = NORMHelper.Str(setup.Rows[0], "EntityCode");
-        int financialYear = NORMHelper.Int(setup.Rows[0], "CurrentFinancialYear");
+        DataRow setup = Setup(setupId);
+        string entity = NORMHelper.Str(setup, "EntityCode");
+        int financialYear = NORMHelper.Int(setup, "CurrentFinancialYear");
         int releaseId = ResolveRelease(entity, financialYear);
         string sourceHash = NORMCrypto.Sha256(content);
         List<SourceRow> rows = ExtractRows(content, extension, requestedStartPage);
@@ -208,6 +279,21 @@ public static class NORMStartOfYearSetup
         {
             try
             {
+                NORMHelper.RequireEntityAccess(entity, connection, transaction);
+                DataTable locked = NORMHelper.Query(connection, transaction,
+                    "SELECT EntityCode,CurrentFinancialYear,UpdatedUtc FROM dbo.tblNORM_YearSetup WITH (UPDLOCK,HOLDLOCK) " +
+                    "WHERE YearSetupId=@id AND IsDeactivated=0", NORMHelper.P("@id", setupId));
+                if (locked.Rows.Count != 1 || NORMHelper.Str(locked.Rows[0], "EntityCode") != entity ||
+                    NORMHelper.Int(locked.Rows[0], "CurrentFinancialYear") != financialYear ||
+                    Convert.ToDateTime(locked.Rows[0]["UpdatedUtc"]) != expectedSetupUpdatedUtc ||
+                    RequireApprovedYear(entity, financialYear, connection, transaction) != releaseId)
+                    throw new InvalidOperationException("The year setup or approved configuration changed. Reload before uploading.");
+                DataTable originals = NORMHelper.Query(connection, transaction,
+                    "SELECT YearSetupDocumentId FROM dbo.tblNORM_YearSetupDocument WITH (UPDLOCK,HOLDLOCK) " +
+                    "WHERE YearSetupId=@setup AND DocumentTypeCode=@type AND IsDeactivated=0",
+                    NORMHelper.P("@setup", setupId), NORMHelper.P("@type", documentType));
+                if (originals.Rows.Count > 1 || (originals.Rows.Count == 0 ? 0 : NORMHelper.Long(originals.Rows[0], "YearSetupDocumentId")) != expectedDocumentId)
+                    throw new InvalidOperationException("The source document changed. Reload before uploading a replacement.");
                 NORMHelper.Exec(connection, transaction,
                     "UPDATE dbo.tblNORM_YearSetupDocument SET IsDeactivated=1 WHERE YearSetupId=@setup AND DocumentTypeCode=@type AND IsDeactivated=0",
                     NORMHelper.P("@setup", setupId), NORMHelper.P("@type", documentType));
@@ -243,19 +329,57 @@ public static class NORMStartOfYearSetup
         return new UploadOutcome { DocumentId = documentId, FigureCount = figures.Count, Status = status, Detail = detail };
     }
 
+    public sealed class RetainedDocument
+    {
+        public string FileName;
+        public string Hash;
+        public byte[] Content;
+    }
+
+    public static RetainedDocument DownloadDocument(long documentId, string user)
+    {
+        if (documentId <= 0) throw new ArgumentException("A valid document identifier is required.");
+        using (OleDbConnection connection = NORMHelper.OpenConnection())
+        using (OleDbTransaction transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
+        {
+            try
+            {
+                // Include superseded documents and historical setups.
+                DataTable metadata = NORMHelper.Query(connection, transaction,
+                    "SELECT y.EntityCode,d.SourceFileName,d.SourceFileHash FROM dbo.tblNORM_YearSetupDocument d WITH (HOLDLOCK) " +
+                    "INNER JOIN dbo.tblNORM_YearSetup y WITH (HOLDLOCK) ON y.YearSetupId=d.YearSetupId WHERE d.YearSetupDocumentId=@id",
+                    NORMHelper.P("@id", documentId));
+                if (metadata.Rows.Count != 1) throw new FileNotFoundException("The retained document was not found.");
+                DataRow row = metadata.Rows[0];
+                NORMHelper.RequireEntityAccess(NORMHelper.Str(row, "EntityCode"), connection, transaction);
+                byte[] content = NORMHelper.Scalar(connection, transaction,
+                    "SELECT FileContent FROM dbo.tblNORM_YearSetupDocument WHERE YearSetupDocumentId=@id", NORMHelper.P("@id", documentId)) as byte[];
+                if (content == null) throw new FileNotFoundException("The retained original is unavailable.");
+                string hash = NORMHelper.Str(row, "SourceFileHash");
+                if (!String.Equals(NORMCrypto.Sha256(content), hash, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("The retained original failed its integrity check.");
+                WriteAudit(connection, transaction, "YEAR_SETUP_DOCUMENT_DOWNLOADED", "YearSetupDocument", documentId.ToString(CultureInfo.InvariantCulture),
+                    NORMHelper.Str(row, "SourceFileName") + "; SHA-256 " + hash, user);
+                transaction.Commit();
+                return new RetainedDocument { FileName = NORMHelper.Str(row, "SourceFileName"), Hash = hash, Content = content };
+            }
+            catch { transaction.Rollback(); throw; }
+        }
+    }
+
     public static DataTable LoadDocuments(int setupId)
     {
-        if (!IsInstalled() || setupId <= 0) { return new DataTable(); }
+        Setup(setupId);
         return NORMHelper.Query(
             "SELECT YearSetupDocumentId,DocumentTypeCode,SourceFileName,SourceFileHash,SourceFileBytes,ExtractionStatus," +
-            "DetectedStart,ExtractedFigureCount,ExtractionDetail,UploadedBy,UploadedUtc FROM dbo.tblNORM_YearSetupDocument " +
-            "WHERE YearSetupId=@setup AND IsDeactivated=0 ORDER BY UploadedUtc DESC",
+            "DetectedStart,ExtractedFigureCount,ExtractionDetail,UploadedBy,UploadedUtc,IsDeactivated FROM dbo.tblNORM_YearSetupDocument " +
+            "WHERE YearSetupId=@setup ORDER BY UploadedUtc DESC,YearSetupDocumentId DESC",
             NORMHelper.P("@setup", setupId));
     }
 
     public static DataTable LoadFigures(int setupId)
     {
-        if (!IsInstalled() || setupId <= 0) { return new DataTable(); }
+        Setup(setupId);
         return NORMHelper.Query(
             "SELECT TOP 120 d.DocumentTypeCode,d.SourceFileName,f.FigureType,f.StatementCode,f.LineCode,f.LineLabel,f.Amount," +
             "f.SourceLocator,f.MatchConfidence,f.ReviewStatus FROM dbo.tblNORM_YearSetupFigure f " +
@@ -265,29 +389,30 @@ public static class NORMStartOfYearSetup
             NORMHelper.P("@setup", setupId));
     }
 
-    public static Dictionary<string, decimal> LoadPriorActualFigures(string entityCode)
+    public static Dictionary<string, decimal> LoadPriorActualFigures(string entityCode, int? financialYear = null)
     {
-        return LoadSetupFigures(entityCode, "PriorActual");
+        return LoadSetupFigures(entityCode, "PriorActual", financialYear);
     }
 
-    public static Dictionary<string, decimal> LoadOriginalBudgetFigures(string entityCode)
+    public static Dictionary<string, decimal> LoadOriginalBudgetFigures(string entityCode, int? financialYear = null)
     {
-        return LoadSetupFigures(entityCode, "OriginalBudget");
+        return LoadSetupFigures(entityCode, "OriginalBudget", financialYear);
     }
 
-    public static Dictionary<string, decimal> LoadPriorNoteFigures(string entityCode)
+    public static Dictionary<string, decimal> LoadPriorNoteFigures(string entityCode, int? financialYear = null)
     {
         Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         if (!IsInstalled() || String.IsNullOrWhiteSpace(entityCode)) { return values; }
+        NORMHelper.RequireEntityAccess(entityCode);
         object installed = NORMHelper.Scalar("SELECT CASE WHEN OBJECT_ID('dbo.tblNORM_SourceNoteFigure','U') IS NULL THEN 0 ELSE 1 END");
         if (installed == null || Convert.ToInt32(installed) != 1) { return values; }
         DataTable table = NORMHelper.Query(
             "SELECT n.StatementLine,n.NoteSubLine,n.Amount FROM dbo.tblNORM_YearSetup y " +
             "INNER JOIN dbo.tblNORM_YearSetupDocument d ON d.YearSetupId=y.YearSetupId AND d.IsDeactivated=0 " +
             "INNER JOIN dbo.tblNORM_SourceNoteFigure n ON n.SourceFileHash=d.SourceFileHash AND n.IsDeactivated=0 " +
-            "WHERE y.EntityCode=@entity AND y.IsCurrent=1 AND y.IsDeactivated=0 " +
+            "WHERE y.EntityCode=@entity AND y.CurrentFinancialYear=@year AND y.IsDeactivated=0 " +
             "AND d.DocumentTypeCode=@type ORDER BY d.UploadedUtc,n.SourceNoteFigureId",
-            NORMHelper.P("@entity", entityCode), NORMHelper.P("@type", PriorDocumentType));
+            NORMHelper.P("@entity", entityCode), NORMHelper.P("@year", financialYear ?? DefaultFinancialYear(entityCode)), NORMHelper.P("@type", PriorDocumentType));
         for (int i = 0; i < table.Rows.Count; i++)
         {
             values[NORMHelper.Str(table.Rows[i], "StatementLine") + "|" + NORMHelper.Str(table.Rows[i], "NoteSubLine")] =
@@ -296,10 +421,11 @@ public static class NORMStartOfYearSetup
         return values;
     }
 
-    public static Dictionary<string, decimal> LoadPriorAssetMovementFigures(string entityCode)
+    public static Dictionary<string, decimal> LoadPriorAssetMovementFigures(string entityCode, int? financialYear = null)
     {
         Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         if (!IsInstalled() || String.IsNullOrWhiteSpace(entityCode)) { return values; }
+        NORMHelper.RequireEntityAccess(entityCode);
         object installed = NORMHelper.Scalar(
             "SELECT CASE WHEN OBJECT_ID('dbo.tblNORM_SourceAssetMovementFigure','U') IS NULL THEN 0 ELSE 1 END");
         if (installed == null || Convert.ToInt32(installed) != 1) { return values; }
@@ -307,9 +433,9 @@ public static class NORMStartOfYearSetup
             "SELECT f.RowCode,f.AssetClassCode,f.Amount FROM dbo.tblNORM_YearSetup y " +
             "INNER JOIN dbo.tblNORM_YearSetupDocument d ON d.YearSetupId=y.YearSetupId AND d.IsDeactivated=0 " +
             "INNER JOIN dbo.tblNORM_SourceAssetMovementFigure f ON f.SourceFileHash=d.SourceFileHash AND f.IsDeactivated=0 " +
-            "WHERE y.EntityCode=@entity AND y.IsCurrent=1 AND y.IsDeactivated=0 " +
+            "WHERE y.EntityCode=@entity AND y.CurrentFinancialYear=@year AND y.IsDeactivated=0 " +
             "AND d.DocumentTypeCode=@type ORDER BY d.UploadedUtc,f.SourceAssetMovementFigureId",
-            NORMHelper.P("@entity", entityCode), NORMHelper.P("@type", PriorDocumentType));
+            NORMHelper.P("@entity", entityCode), NORMHelper.P("@year", financialYear ?? DefaultFinancialYear(entityCode)), NORMHelper.P("@type", PriorDocumentType));
         for (int i = 0; i < table.Rows.Count; i++)
         {
             values[NORMHelper.Str(table.Rows[i], "RowCode") + "|" +
@@ -334,17 +460,18 @@ public static class NORMStartOfYearSetup
         foreach (KeyValuePair<string, decimal> item in overlay) { target[item.Key] = item.Value; }
     }
 
-    private static Dictionary<string, decimal> LoadSetupFigures(string entityCode, string figureType)
+    private static Dictionary<string, decimal> LoadSetupFigures(string entityCode, string figureType, int? financialYear)
     {
         Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         if (!IsInstalled() || String.IsNullOrWhiteSpace(entityCode)) { return values; }
+        NORMHelper.RequireEntityAccess(entityCode);
         DataTable table = NORMHelper.Query(
             "SELECT f.StatementCode,f.LineCode,f.Amount FROM dbo.tblNORM_YearSetup y " +
             "INNER JOIN dbo.tblNORM_YearSetupDocument d ON d.YearSetupId=y.YearSetupId AND d.IsDeactivated=0 " +
             "INNER JOIN dbo.tblNORM_YearSetupFigure f ON f.YearSetupDocumentId=d.YearSetupDocumentId AND f.IsDeactivated=0 " +
-            "WHERE y.EntityCode=@entity AND y.IsCurrent=1 AND y.IsDeactivated=0 AND f.FigureType=@type " +
+            "WHERE y.EntityCode=@entity AND y.CurrentFinancialYear=@year AND y.IsDeactivated=0 AND f.FigureType=@type " +
             "ORDER BY d.UploadedUtc,f.YearSetupFigureId",
-            NORMHelper.P("@entity", entityCode), NORMHelper.P("@type", figureType));
+            NORMHelper.P("@entity", entityCode), NORMHelper.P("@year", financialYear ?? DefaultFinancialYear(entityCode)), NORMHelper.P("@type", figureType));
         for (int i = 0; i < table.Rows.Count; i++)
         {
             values[NORMHelper.Str(table.Rows[i], "StatementCode") + "|" + NORMHelper.Str(table.Rows[i], "LineCode")] =
@@ -357,9 +484,19 @@ public static class NORMStartOfYearSetup
     {
         object value = NORMHelper.Scalar(
             "SELECT TOP 1 ConfigurationReleaseId FROM dbo.tblNORM_ConfigurationRelease WHERE EntityCode=@entity " +
-            "AND StatusCode='Approved' AND IsDeactivated=0 ORDER BY CASE WHEN FinancialYear=@year THEN 0 ELSE 1 END,FinancialYear DESC,ConfigurationReleaseId DESC",
+            "AND FinancialYear=@year AND StatusCode='Approved' AND IsDeactivated=0 ORDER BY ConfigurationReleaseId DESC",
             NORMHelper.P("@entity", entity), NORMHelper.P("@year", financialYear));
         if (value == null) { throw new InvalidOperationException("No approved NORM configuration release is available for " + entity + "."); }
+        object configured = NORMHelper.Scalar("SELECT EntityCode FROM dbo.tblNORM_ReportingEntity WHERE EntityCode=@entity AND FinancialYear=@year AND IsDeactivated=0",
+            NORMHelper.P("@entity", entity), NORMHelper.P("@year", financialYear));
+        if (configured == null) throw new InvalidOperationException("The entity is not configured for the selected year.");
+        return Convert.ToInt32(value);
+    }
+
+    public static int RunFinancialYear(int runId)
+    {
+        object value = NORMHelper.Scalar("SELECT i.FinancialYear FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId WHERE r.CalculationRunId=@run", NORMHelper.P("@run", runId));
+        if (value == null) throw new InvalidOperationException("The recorded reporting year is unavailable.");
         return Convert.ToInt32(value);
     }
 

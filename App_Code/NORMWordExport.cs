@@ -31,10 +31,9 @@ public class NORM_WordExport : IHttpHandler
             return;
         }
         DataTable meta = NORMHelper.Query(
-            "SELECT r.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,e.EntityName,c.VersionCode,c.ReleaseLabel " +
+            "SELECT r.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,COALESCE(r.ReportingEntityName,i.EntityCode) AS EntityName,c.VersionCode,c.ReleaseLabel " +
             "FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
             "INNER JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId=r.ConfigurationReleaseId " +
-            "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.FinancialYear=i.FinancialYear AND e.EntityCode=i.EntityCode AND e.IsDeactivated=0 " +
             "WHERE r.CalculationRunId=@run AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0",
             NORMHelper.P("@run", runId));
         if (meta.Rows.Count == 0)
@@ -45,11 +44,10 @@ public class NORM_WordExport : IHttpHandler
 
         DataRow header = meta.Rows[0];
         int releaseId = NORMHelper.Int(header, "ConfigurationReleaseId");
-        int year = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
-            NORMHelper.Str(header, "EntityCode"), NORMHelper.Int(header, "FinancialYear"));
+        int year = NORMHelper.Int(header, "FinancialYear");
         string entity = NORMHelper.Str(header, "EntityName") ?? NORMHelper.Str(header, "EntityCode");
-        priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(NORMHelper.Str(header, "EntityCode"));
-        priorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(NORMHelper.Str(header, "EntityCode"));
+        priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(NORMHelper.Str(header, "EntityCode"), year);
+        priorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(NORMHelper.Str(header, "EntityCode"), year);
         NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
         List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()
             ? NORMReportingFramework.LoadDisclosures(runId, releaseId, profile)

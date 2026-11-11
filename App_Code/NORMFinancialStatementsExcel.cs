@@ -142,10 +142,9 @@ namespace CPlatform.NORM
         private static ExportContext LoadContext(int runId)
         {
             DataTable table = NORMHelper.Query(
-                "SELECT r.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,e.EntityName,c.VersionCode " +
+                "SELECT r.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,COALESCE(r.ReportingEntityName,i.EntityCode) AS EntityName,c.VersionCode " +
                 "FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
                 "INNER JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId=r.ConfigurationReleaseId " +
-                "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.FinancialYear=i.FinancialYear AND e.EntityCode=i.EntityCode AND e.IsDeactivated=0 " +
                 "WHERE r.CalculationRunId=@run AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0",
                 NORMHelper.P("@run", runId));
             if (table.Rows.Count == 0) { return null; }
@@ -153,17 +152,16 @@ namespace CPlatform.NORM
             ExportContext model = new ExportContext();
             model.RunId = runId;
             model.ReleaseId = NORMHelper.Int(row, "ConfigurationReleaseId");
-            model.Year = NORMStartOfYearSetup.ResolveCurrentFinancialYear(
-                NORMHelper.Str(row, "EntityCode"), NORMHelper.Int(row, "FinancialYear"));
+            model.Year = NORMHelper.Int(row, "FinancialYear");
             model.EntityCode = NORMHelper.Str(row, "EntityCode");
             model.Entity = NORMHelper.Str(row, "EntityName") ?? NORMHelper.Str(row, "EntityCode");
             model.Version = NORMHelper.Str(row, "VersionCode");
             model.Profile = NORMReportingFramework.LoadProfile(model.ReleaseId);
             model.Disclosures = NORMReportingFramework.LoadDisclosures(runId, model.ReleaseId, model.Profile);
             NORMStatementEnhancements.ApplyManualInputs(runId, model.Disclosures);
-            model.Budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(model.EntityCode);
-            model.PriorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(model.EntityCode);
-            model.PriorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(model.EntityCode);
+            model.Budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(model.EntityCode, model.Year);
+            model.PriorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(model.EntityCode, model.Year);
+            model.PriorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(model.EntityCode, model.Year);
             model.ManualInputs = NORMStatementEnhancements.LoadManualInputs(runId);
             if (Required(model.Profile, "ADMINISTERED_ACTIVITIES"))
                 model.Administered = NORMAdministeredStatements.Load(runId, model.ReleaseId, model.EntityCode);

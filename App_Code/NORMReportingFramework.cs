@@ -267,7 +267,7 @@ public static class NORMReportingFramework
         List<SourceBucket> sources = LoadSourceBuckets(runId);
         string entityCode = ResolveRunEntity(runId);
         Dictionary<string, List<DemoNoteBucket>> demoNoteFigures = LoadDemoCurrentNoteFigures(runId, entityCode);
-        Dictionary<string, decimal> priorNoteFigures = NORMStartOfYearSetup.LoadPriorNoteFigures(entityCode);
+        Dictionary<string, decimal> priorNoteFigures = NORMStartOfYearSetup.LoadPriorNoteFigures(entityCode, NORMStartOfYearSetup.RunFinancialYear(runId));
         Dictionary<string, string[]> narratives = LoadNarratives(runId, releaseId);
         DataTable table = NORMHelper.Query(
             "SELECT DisclosureCode,SectionCode,SectionTitle,NoteRef,DisclosureTitle,TriggerCode," +

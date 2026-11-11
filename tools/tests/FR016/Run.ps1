@@ -39,7 +39,7 @@ Write-Output 'PASS production import and statement-engine compilation (.NET Fram
 $site = Join-Path $output 'site'
 New-Item -ItemType Directory -Path $site | Out-Null
 # Apply the existing application allowlist to working-tree files, without packaging or publishing.
-$tracked = & git -C $root ls-files
+$tracked = & git -C $root ls-files --cached --others --exclude-standard
 if ($LASTEXITCODE -ne 0) { throw 'Cannot list application files' }
 foreach ($relative in $tracked) {
     if (Test-ApplicationPath $relative) {

@@ -197,7 +197,7 @@ namespace CPlatform.NORM
 
         private static void AddStatements(ExcelPackage package, int runId, string entityCode)
         {
-            Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode);
+            Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode, NORMStartOfYearSetup.RunFinancialYear(runId));
             DataTable table = NORMHelper.Query(
                 "SELECT r.StatementCode,t.SeqNo,t.LineType,r.LineCode,ISNULL(t.LineLabel,r.LineCode) AS LineLabel,t.NoteRef," +
                 "r.ComputedAmount,r.PublishedAmount,p.AmountPrior,r.Variance,r.StatusCode " +
