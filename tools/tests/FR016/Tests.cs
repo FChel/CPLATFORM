@@ -101,7 +101,13 @@ public static class Tests
         Test("decimal aggregate overflow rejects with truthful evidence",delegate { var e=ImportFailure(Workbook(new decimal[]{Decimal.MaxValue,Decimal.MaxValue},false,null),"ERP"); NoReporting(); Assert(e.Message.Contains("evidence saved") && Audit("IMPORT_BALANCE_VALIDATION").Contains("Result=NotRun") && Audit("IMPORT_STORAGE_VALIDATION").Contains("Result=Fail"),"Overflow lost audit evidence"); });
         Test("missing ERP ending balance",delegate { var e=ImportFailure(Workbook(new decimal[]{1m,-1m},true,null),"ERP"); Assert(e.Message.Contains("invalid ending balance"),"Parser changed"); NoReporting(); });
         Test("malformed workbook",delegate { ImportFailure(new byte[]{1,2,3},"ERP"); NoReporting(); });
-        Test("ROMAN trailing minus accepted",delegate { var o=NORMImportService.Import(Roman("100.00","100.00-"),"synthetic.txt","ROMAN",1,"synthetic-user"); Assert(o.NetBalance==0 && NORMHelper.Runs==1,"ROMAN convention changed"); });
+        Test("ROMAN trailing minus parses but numeric-only coverage cannot be accepted",delegate {
+            NORMParsedImport parsed = RomanTrialBalanceImporter.Parse(Roman("100.00","100.00-"),new[]{"1000"},2026);
+            Assert(parsed.Rows[0].AccumBalance==100m && parsed.Rows[1].AccumBalance==-100m,"ROMAN convention changed");
+            Exception e=ImportFailure(Roman("100.00","100.00-"),"ROMAN");
+            Assert(e is InvalidDataException && e.Message.Contains("exact reporting-period boundaries"),"Unknown coverage was accepted");
+            NoReporting();
+        });
         Test("ROMAN imbalance rejected",delegate { ImportFailure(Roman("100.01","100.00-"),"ROMAN"); NoReporting(); Assert(Audit("IMPORT_BALANCE_VALIDATION").Contains("Result=Fail"),"ROMAN gate missing"); });
         Test("ROMAN missing amount",delegate { var e=ImportFailure(Roman("missing","100.00-"),"ROMAN"); Assert(e.Message.Contains("does not contain an accumulated balance"),"ROMAN parser changed"); NoReporting(); });
         Test("accepted duplicate behaviour preserved",delegate { NORMHelper.Duplicate=true; var e=ImportFailure(Workbook(new decimal[]{1m,-1m},false,null),"ERP"); Assert(e.Message.Contains("already been imported as import 7"),"Duplicate changed"); NoReporting(); Assert(NORMHelper.Opens==0,"Duplicate wrote evidence"); });

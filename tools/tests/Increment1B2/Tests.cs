@@ -98,6 +98,23 @@ public static class Tests
         }
     }
 
+    // Controlled copies are generated only in memory. The genuine fixture stays unchanged.
+    static byte[] WithCoverage(DateTime start, DateTime end)
+    {
+        using (ExcelPackage package = new ExcelPackage(new MemoryStream(original)))
+        {
+            ExcelWorksheet sheet = package.Workbook.Worksheets[1];
+            for (int row = 1; row < 28; row++)
+            {
+                if (sheet.Cells[row,1].Text == "Posting Date From")
+                { sheet.Cells[row,2].Value = start.ToString("dd.MM.yyyy"); }
+                if (sheet.Cells[row,1].Text == "Posting Date To")
+                { sheet.Cells[row,2].Value = end.ToString("dd.MM.yyyy"); }
+            }
+            return package.GetAsByteArray();
+        }
+    }
+
     static int ExistingScopedSource(NORMHelper.Call call)
     {
         Assert(call.Sql.Contains("i.EntityCode=@entity AND i.FinancialYear=@fy") &&
@@ -375,6 +392,129 @@ public static class Tests
                 NORMImportPreview next = Inspect(original);
                 Assert(next.ReleaseId == 2 && next.HasReplacement, "Approval created a new current scope");
                 Fails(delegate { NORMImportService.Confirm(next, "isolated-test"); });
+            });
+            Test("exact full-year boundaries survive preview", delegate {
+                NORMImportPreview preview = Inspect(original);
+                Assert(preview.CoverageStart == new DateTime(2025,7,1) &&
+                    preview.CoverageEnd == new DateTime(2026,6,30) && preview.IsFullYear == true &&
+                    preview.ConfiguredFinancialYear == 2026, "Exact full-year metadata lost");
+            });
+            Test("configured current year accepts partial coverage", delegate {
+                NORMImportPreview preview = Inspect(WithCoverage(new DateTime(2025,8,3), new DateTime(2025,12,19)));
+                Assert(preview.IsFullYear == false && preview.CoverageStart == new DateTime(2025,8,3) &&
+                    preview.CoverageEnd == new DateTime(2025,12,19), "Partial boundaries were expanded");
+                NORMImportService.Confirm(preview, "isolated-test");
+                Assert(AcceptedRows() == 984, "Configured current-year partial source rejected");
+            });
+            Test("same partial source rejected when another year is designated", delegate {
+                NORMHelper.CurrentYear = 2027;
+                Fails(delegate { Inspect(WithCoverage(new DateTime(2025,7,1), new DateTime(2025,12,31))); });
+            });
+            Test("non-current full year accepted independently of calendar date", delegate {
+                NORMHelper.CurrentYear = 2030;
+                NORMImportPreview preview = Inspect(original);
+                NORMImportService.Confirm(preview, "isolated-test");
+                Assert(preview.ConfiguredFinancialYear == 2030 && AcceptedRows() == 984, "System date determined eligibility");
+            });
+            Test("periods 01-12 are insufficient for full-year coverage", delegate {
+                byte[] bytes = WithCoverage(new DateTime(2025,7,2), new DateTime(2026,6,29));
+                NORMImportPreview current = Inspect(bytes);
+                Assert(current.PeriodStart == 1 && current.PeriodEnd == 12 && current.IsFullYear == false,
+                    "Numeric periods were treated as full coverage");
+                NORMHelper.CurrentYear = 2027;
+                Fails(delegate { Inspect(bytes); });
+            });
+            Test("reversed boundaries within the same month are rejected", delegate {
+                Fails(delegate { Inspect(WithCoverage(new DateTime(2025,7,19), new DateTime(2025,7,3))); });
+            });
+            Test("reversed boundaries across months are rejected", delegate {
+                Fails(delegate { Inspect(WithCoverage(new DateTime(2025,12,1), new DateTime(2025,8,31))); });
+            });
+            Test("coverage outside the identified financial year is rejected", delegate {
+                Fails(delegate { Inspect(WithCoverage(new DateTime(2025,6,30), new DateTime(2026,6,30))); });
+                Fails(delegate { Inspect(WithCoverage(new DateTime(2025,7,1), new DateTime(2026,7,1))); });
+            });
+            Test("missing year designation cannot fall back to release or calendar", delegate {
+                NORMHelper.CurrentYear = null;
+                Fails(delegate { Inspect(original); });
+                Fails(delegate { NORMImportService.ConfiguredCurrentYear("DEPT"); });
+            });
+            Test("year change between inspection and confirmation rejects even a full source", delegate {
+                NORMImportPreview preview = Inspect(original);
+                NORMHelper.CurrentYear = 2027;
+                Fails(delegate { NORMImportService.Confirm(preview, "isolated-test"); });
+            });
+            Test("year designation is locked and rechecked inside acceptance transaction", delegate {
+                NORMImportPreview preview = Inspect(WithCoverage(new DateTime(2025,7,1), new DateTime(2025,12,31)));
+                int reads = 0;
+                NORMHelper.ReadYear = delegate { return ++reads == 1 ? 2026 : 2027; };
+                Fails(delegate { NORMImportService.Confirm(preview, "isolated-test"); });
+                Assert(reads == 2 && NORMHelper.Committed.Count == 0, "Acceptance failed to recheck year transactionally");
+            });
+            Test("exact metadata and coverage audit are persisted with retained bytes", delegate {
+                byte[] bytes = WithCoverage(new DateTime(2025,8,3), new DateTime(2025,12,19));
+                NORMImportService.Confirm(Inspect(bytes), "isolated-test");
+                NORMHelper.Call file = NORMHelper.Committed.Find(delegate(NORMHelper.Call call) {
+                    return call.Sql.Contains("INSERT dbo.tblNORM_ImportFile");
+                });
+                Assert(file.Sql.Contains("CoverageStart,CoverageEnd,IsFullYear") &&
+                    (DateTime)file["@coverageStart"] == new DateTime(2025,8,3) &&
+                    (DateTime)file["@coverageEnd"] == new DateTime(2025,12,19) &&
+                    (bool)file["@isFullYear"] == false &&
+                    NORMCrypto.Sha256((byte[])file["@content"]) == NORMCrypto.Sha256(bytes), "Coverage persistence parameters or original changed");
+                Assert(NORMHelper.Committed.Exists(delegate(NORMHelper.Call call) {
+                    return call.Values.ContainsKey("@event") &&
+                        (string)call["@event"] == "IMPORT_COVERAGE_VALIDATION" &&
+                        ((string)call["@detail"]).Contains("Coverage=2025-08-03/2025-12-19;Partial") &&
+                        ((string)call["@detail"]).Contains("ConfiguredCurrentYear=2026;Result=Pass");
+                }), "Exact coverage validation evidence missing");
+            });
+            Test("replacement changes coverage without changing scope or appending history", delegate {
+                NORMHelper.CurrentSource = ExistingScopedSource;
+                NORMImportPreview full = Inspect(original);
+                NORMImportPreview partial = Inspect(WithCoverage(new DateTime(2025,7,1), new DateTime(2025,12,31)));
+                Assert(full.Scopes.Count == 1 && partial.Scopes.Count == 1, "Unexpected source scope count");
+                foreach (string key in full.Scopes.Keys) {
+                    Assert(partial.Scopes.ContainsKey(key) && partial.Scopes[key].ImportId == full.Scopes[key].ImportId,
+                        "Coverage changed the replacement identity");
+                }
+                NORMImportService.ConfirmBatch(new[] { partial }, "isolated-test", true);
+                Assert(NORMHelper.Committed.FindAll(delegate(NORMHelper.Call call) {
+                    return call.Sql.Contains("INSERT dbo.tblNORM_ImportFile");
+                }).Count == 1, "Replacement appended extra evidence");
+                Assert(!NORMHelper.Committed.Exists(delegate(NORMHelper.Call call) {
+                    return call.Sql.StartsWith("DELETE") || call.Sql.Contains("UPDATE dbo.tblNORM_ImportFile");
+                }), "Replacement altered historical evidence");
+            });
+            Test("coverage write failure rolls back acceptance", delegate {
+                NORMHelper.FailAuditCode = "IMPORT_COVERAGE_VALIDATION";
+                bool failed = false;
+                try { NORMImportService.Confirm(Inspect(original), "isolated-test"); }
+                catch (Exception error) {
+                    Assert(error.Message == "private connection detail", "Unexpected injected failure");
+                    failed = true;
+                }
+                Assert(failed && NORMHelper.Committed.Count == 0, "Coverage audit failure left partial acceptance");
+                NoAcceptance();
+            });
+            Test("invalid source date is rejected", delegate {
+                using (ExcelPackage package = new ExcelPackage(new MemoryStream(original)))
+                {
+                    ExcelWorksheet sheet = package.Workbook.Worksheets[1];
+                    for (int row = 1; row < 28; row++) {
+                        if (sheet.Cells[row,1].Text == "Posting Date From") {
+                            sheet.Cells[row,2].Value = "31.02.2026";
+                        }
+                    }
+                    byte[] invalid = package.GetAsByteArray();
+                    Fails(delegate { Inspect(invalid); });
+                }
+            });
+            Test("numeric-only historical evidence retains unknown exact coverage", delegate {
+                NORMParsedImport historical = RomanTrialBalanceImporter.Parse(Roman(), new[] { "1000" }, 2026);
+                Assert(historical.PeriodStart == 1 && historical.PeriodEnd == 12 &&
+                    historical.CoverageStart == null && historical.CoverageEnd == null &&
+                    historical.IsFullYear == null, "Numeric periods invented full-year dates");
             });
             Console.WriteLine("TOTAL PASS " + passed + " (real page handlers/session objects; substituted database/identity hosting)"); return 0;
         }

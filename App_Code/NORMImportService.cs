@@ -22,7 +22,8 @@ public static class NORMImportService
         byte[] bytes = (byte[])content.Clone();
         DataRow release = LoadApprovedRelease(releaseId);
         DataTable permitted, mappings;
-        string configuration = PreviewConfiguration(releaseId, null, null, out permitted, out mappings);
+        int currentYear;
+        string configuration = PreviewConfiguration(releaseId, null, null, out permitted, out mappings, out currentYear);
         List<string> companies = new List<string>();
         foreach (DataRow population in permitted.Rows)
         { companies.Add(NORMHelper.Str(population, "SourceCompanyCode")); }
@@ -66,6 +67,9 @@ public static class NORMImportService
         preview.FileHash = NORMCrypto.Sha256(bytes);
         preview.ConfigurationFingerprint = configuration; preview.SourceType = type; preview.Layout = layout;
         preview.Entity = NORMHelper.Str(release, "EntityCode"); preview.FinancialYear = parsed.FinancialYear;
+        preview.CoverageStart = parsed.CoverageStart; preview.CoverageEnd = parsed.CoverageEnd;
+        preview.IsFullYear = parsed.IsFullYear; preview.ConfiguredFinancialYear = currentYear;
+        ValidateCoverage(parsed, currentYear);
         preview.PeriodStart = parsed.PeriodStart; preview.PeriodEnd = parsed.PeriodEnd; preview.RowCount = parsed.Rows.Count;
         preview.TotalsAvailable = true;
         if (year == 2025) { preview.Errors.Add("FY2025 requires the existing controlled ROMAN 01-10 / ERP 11-12 pair. Single-file acceptance is unavailable for this year."); }
@@ -107,7 +111,7 @@ public static class NORMImportService
         preview.ReportingStreams = String.Join(", ", streams);
         preview.UnmappedAccounts = unmapped.Count; preview.Warnings.AddRange(parsed.Warnings);
         if (unmapped.Count > 0) { preview.Warnings.Add(unmapped.Count.ToString() + " unmapped accounts remain eligible for acceptance and the existing mapping workflow."); }
-        preview.IdentityFingerprint = NORMCrypto.Sha256(preview.Entity + "|" + year + "|" + parsed.PeriodStart + "|" + parsed.PeriodEnd + "|" + identity);
+        preview.IdentityFingerprint = NORMCrypto.Sha256(preview.Entity + "|" + year + "|" + parsed.PeriodStart + "|" + parsed.PeriodEnd + "|" + CoverageLabel(parsed) + "|" + identity);
         if (loadCurrentSources)
         {
             foreach (NORMTrialBalanceRow row in parsed.Rows)
@@ -186,8 +190,9 @@ public static class NORMImportService
             try
             {
                 DataTable permitted, mappings;
+                int currentYear;
                 NORMHelper.RequireEntityAccess(first.Entity, connection, transaction);
-                if (PreviewConfiguration(first.ReleaseId, connection, transaction, out permitted, out mappings) != first.ConfigurationFingerprint)
+                if (PreviewConfiguration(first.ReleaseId, connection, transaction, out permitted, out mappings, out currentYear) != first.ConfigurationFingerprint)
                 { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
                 foreach (NORMImportPreview preview in previews)
                 {
@@ -206,7 +211,7 @@ public static class NORMImportService
                     int importId = PersistImport(connection, transaction, first.ReleaseId, first.FinancialYear, first.Entity,
                         source.SourceType, source.FileName, source.FileHash, source.Parsed, new[] { source }, user,
                         "Confirmed " + preview.Layout + "; company=" + preview.Companies + ";ledger=" + preview.Ledgers +
-                        ";stream=" + preview.ReportingStreams + ";periods=" + PeriodLabel(source.Parsed) + ";unmapped=" + preview.UnmappedAccounts + ";units=AUD.",
+                        ";stream=" + preview.ReportingStreams + ";coverage=" + CoverageLabel(source.Parsed) + ";periods=" + PeriodLabel(source.Parsed) + ";unmapped=" + preview.UnmappedAccounts + ";units=AUD.",
                         source.Content.LongLength, preview.Debit, preview.Credit, preview.Net);
                     importIds.Add(importId);
                     foreach (NORMSourceScope scope in previews[i].Scopes.Values)
@@ -280,10 +285,39 @@ public static class NORMImportService
     public static int? ConfiguredCurrentYear(string entity)
     {
         NORMHelper.RequireEntityAccess(entity);
-        object value = NORMHelper.Scalar(
-            "SELECT CurrentFinancialYear FROM dbo.tblNORM_YearSetup WHERE EntityCode=@entity AND IsCurrent=1 AND IsDeactivated=0",
-            NORMHelper.P("@entity", entity));
-        return value == null ? (int?)null : Convert.ToInt32(value, CultureInfo.InvariantCulture);
+        return ReadConfiguredCurrentYear(entity, null, null);
+    }
+
+    private static int ReadConfiguredCurrentYear(string entity, OleDbConnection connection, OleDbTransaction transaction)
+    {
+        string sql = "SELECT CurrentFinancialYear FROM dbo.tblNORM_YearSetup WITH (HOLDLOCK) " +
+            "WHERE EntityCode=@entity AND IsCurrent=1 AND IsDeactivated=0";
+        OleDbParameter parameter = NORMHelper.P("@entity", entity);
+        DataTable years = connection == null ? NORMHelper.Query(sql, parameter) :
+            NORMHelper.Query(connection, transaction, sql, parameter);
+        if (years.Rows.Count != 1)
+        { throw new InvalidOperationException("Save an explicit current financial year for this entity in Year Setup before importing."); }
+        return NORMHelper.Int(years.Rows[0], "CurrentFinancialYear");
+    }
+
+    private static void ValidateCoverage(NORMParsedImport parsed, int currentYear)
+    {
+        if (!parsed.CoverageStart.HasValue || !parsed.CoverageEnd.HasValue)
+        { throw new InvalidDataException("The source does not establish exact reporting-period boundaries. Numeric period labels alone cannot establish coverage."); }
+        DateTime start = parsed.CoverageStart.Value, end = parsed.CoverageEnd.Value;
+        if (start > end || start < new DateTime(parsed.FinancialYear - 1, 7, 1) ||
+            end > new DateTime(parsed.FinancialYear, 6, 30))
+        { throw new InvalidDataException("The source reporting-period boundaries must be ordered and within the identified financial year."); }
+        if (parsed.FinancialYear != currentYear && parsed.IsFullYear != true)
+        { throw new InvalidDataException("A source outside the configured current financial year must cover the complete financial year."); }
+    }
+
+    private static string CoverageLabel(NORMParsedImport parsed)
+    {
+        if (!parsed.CoverageStart.HasValue || !parsed.CoverageEnd.HasValue) { return "Unknown"; }
+        return parsed.CoverageStart.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + "/" +
+            parsed.CoverageEnd.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) +
+            (parsed.IsFullYear == true ? ";Full" : ";Partial");
     }
 
     private static NORMSourceScope FindCurrentSource(NORMImportPreview preview, string company, string ledger, string stream,
@@ -322,7 +356,7 @@ public static class NORMImportService
     }
 
     private static string PreviewConfiguration(int releaseId, OleDbConnection connection, OleDbTransaction transaction,
-        out DataTable permitted, out DataTable mappings)
+        out DataTable permitted, out DataTable mappings, out int currentYear)
     {
         DataTable release = PreviewQuery(connection, transaction,
             "SELECT * FROM dbo.tblNORM_ConfigurationRelease WITH (HOLDLOCK) WHERE ConfigurationReleaseId=@release AND StatusCode='Approved' AND IsDeactivated=0", releaseId);
@@ -332,7 +366,10 @@ public static class NORMImportService
         permitted = connection == null ? NORMHelper.Query(ledgerSql, args) : NORMHelper.Query(connection, transaction, ledgerSql, args);
         mappings = PreviewQuery(connection, transaction, "SELECT * FROM dbo.tblNORM_AccountMap WITH (HOLDLOCK) WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 ORDER BY AccountMapId", releaseId);
         DataTable lines = PreviewQuery(connection, transaction, "SELECT * FROM dbo.tblNORM_StatementLine WITH (HOLDLOCK) WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 ORDER BY StatementLineId", releaseId);
+        string entity = NORMHelper.Str(release.Rows[0], "EntityCode");
+        currentYear = ReadConfiguredCurrentYear(entity, connection, transaction);
         StringBuilder snapshot = new StringBuilder();
+        snapshot.Append(currentYear).Append(';');
         foreach (DataTable table in new DataTable[] { release, permitted, mappings, lines })
         {
             snapshot.Append("TABLE:").Append(table.Columns.Count).Append(':').Append(table.Rows.Count).Append(';');
@@ -603,6 +640,15 @@ public static class NORMImportService
         string sourceHash, NORMParsedImport statementInput, IList<NORMImportSource> sources, string importedBy,
         string auditDetail, long totalBytes, decimal debit, decimal credit, decimal net)
     {
+        // D3 preserves the historical FY2025 transition contract.
+        // Governed source acceptance requires exact coverage.
+        int? coverageYear = null;
+        if (sourceType != "ROMAN+ERP")
+        {
+            coverageYear = ReadConfiguredCurrentYear(entityCode, connection, transaction);
+            foreach (NORMImportSource source in sources) { ValidateCoverage(source.Parsed, coverageYear.Value); }
+        }
+
         int importId = NORMHelper.InsertId(connection, transaction,
             "INSERT dbo.tblNORM_Import " +
             "(ConfigurationReleaseId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,SourceFileBytes," +
@@ -628,15 +674,25 @@ public static class NORMImportService
             contentParameter.OleDbType = OleDbType.LongVarBinary;
             NORMHelper.Exec(connection, transaction,
                 "INSERT dbo.tblNORM_ImportFile " +
-                "(ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent) " +
-                "VALUES (@import,@type,@file,@hash,@bytes,@periodStart,@periodEnd,@rows,@input,@content)",
+                "(ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,CoverageStart,CoverageEnd,IsFullYear,[RowCount],IsStatementInput,FileContent) " +
+                "VALUES (@import,@type,@file,@hash,@bytes,@periodStart,@periodEnd,@coverageStart,@coverageEnd,@isFullYear,@rows,@input,@content)",
                 NORMHelper.P("@import", importId), NORMHelper.P("@type", source.SourceType),
                 NORMHelper.P("@file", source.FileName), NORMHelper.P("@hash", source.FileHash),
                 NORMHelper.P("@bytes", source.Content.LongLength),
                 NORMHelper.P("@periodStart", source.Parsed.PeriodStart),
                 NORMHelper.P("@periodEnd", source.Parsed.PeriodEnd),
+                NORMHelper.P("@coverageStart", source.Parsed.CoverageStart),
+                NORMHelper.P("@coverageEnd", source.Parsed.CoverageEnd),
+                NORMHelper.P("@isFullYear", source.Parsed.IsFullYear),
                 NORMHelper.P("@rows", source.Parsed.Rows.Count),
                 NORMHelper.P("@input", source.IsStatementInput), contentParameter);
+            WriteAudit(connection, transaction, "IMPORT_COVERAGE_VALIDATION", "Import",
+                importId.ToString(CultureInfo.InvariantCulture),
+                "Source=" + source.SourceType + ";SHA256=" + source.FileHash +
+                ";FinancialYear=" + financialYear.ToString(CultureInfo.InvariantCulture) +
+                ";Coverage=" + CoverageLabel(source.Parsed) +
+                ";ConfiguredCurrentYear=" + (coverageYear.HasValue ? coverageYear.Value.ToString(CultureInfo.InvariantCulture) : "Historical transition") +
+                ";Result=" + (coverageYear.HasValue ? "Pass" : "Not evaluated"), importedBy);
         }
 
         for (int i = 0; i < statementInput.Rows.Count; i++)
@@ -800,8 +856,8 @@ public static class NORMImportService
 
                 NORMHelper.Exec(connection, transaction,
                     "INSERT dbo.tblNORM_ImportFile " +
-                    "(ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent) " +
-                    "SELECT @newImport,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,[RowCount],IsStatementInput,FileContent " +
+                    "(ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,CoverageStart,CoverageEnd,IsFullYear,[RowCount],IsStatementInput,FileContent) " +
+                    "SELECT @newImport,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,PeriodStart,PeriodEnd,CoverageStart,CoverageEnd,IsFullYear,[RowCount],IsStatementInput,FileContent " +
                     "FROM dbo.tblNORM_ImportFile WHERE ImportId = @parent",
                     NORMHelper.P("@newImport", importId), NORMHelper.P("@parent", parentImportId));
                 NORMHelper.Exec(connection, transaction,

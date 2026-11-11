@@ -36,6 +36,8 @@ public static class NORMHelper
     public static bool ExistingCompany;
     public static bool FailCalculation;
     public static bool PrepareAccess = true;
+    public static int? CurrentYear = 2026;
+    public static Func<int?> ReadYear;
     public static Func<string, bool> EntityAccess = delegate { return true; };
     public static bool CanPrepareEntity(string entity, OleDbConnection c = null, OleDbTransaction t = null)
     { return PrepareAccess && EntityAccess(entity); }
@@ -49,7 +51,7 @@ public static class NORMHelper
     private static int nextImportId;
     public static string FailAuditCode;
     public static int Runs, Opens;
-    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; EntityAccess = delegate { return true; }; FailAuditCode = null; Runs = Opens = 0; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
+    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; CurrentYear = 2026; ReadYear = null; EntityAccess = delegate { return true; }; FailAuditCode = null; Runs = Opens = 0; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
     public static string CurrentUserId() { return "isolated-test"; }
     public static bool HasPrepareAccess() { return PrepareAccess; }
     public static OleDbParameter P(string name, object value) { return new OleDbParameter { Name = name, Value = value ?? DBNull.Value }; }
@@ -79,6 +81,7 @@ public static class NORMHelper
     public static int InsertId(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p) { Exec(c, t, sql, p); return sql.Contains("INSERT dbo.tblNORM_Import ") ? nextImportId++ : 42; }
     public static DataTable Query(string sql, params OleDbParameter[] p)
     {
+        if (sql.Contains("FROM dbo.tblNORM_YearSetup")) { return YearRows(); }
         if (sql.Contains("AS ScopeRows")) { return ScopeRows(sql, p); }
         if (QueryResponse != null) { return QueryResponse(sql); }
         DataTable table = new DataTable();
@@ -99,9 +102,19 @@ public static class NORMHelper
     }
     public static DataTable Query(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p)
     {
+        if (sql.Contains("FROM dbo.tblNORM_YearSetup")) { return YearRows(); }
         if (sql.Contains("AS ScopeRows")) { return ScopeRows(sql, p); }
         if (QueryResponse != null) { return QueryResponse(sql); }
         throw new Exception("Unexpected query");
+    }
+
+    private static DataTable YearRows()
+    {
+        int? year = ReadYear == null ? CurrentYear : ReadYear();
+        DataTable table = new DataTable();
+        table.Columns.Add("CurrentFinancialYear", typeof(int));
+        if (year.HasValue) { table.Rows.Add(year.Value); }
+        return table;
     }
 
     private static DataTable ScopeRows(string sql, OleDbParameter[] p)

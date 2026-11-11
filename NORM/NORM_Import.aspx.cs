@@ -174,6 +174,10 @@ namespace CPlatform.NORM
                 { "Agency", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
                 { "Company", preview.Companies }, { "Ledger", preview.Ledgers }, { "Reporting stream", preview.ReportingStreams },
                 { "Periods", preview.PeriodStart.ToString("00") + "\u2013" + preview.PeriodEnd.ToString("00") },
+                { "Actual coverage", preview.CoverageStart.HasValue && preview.CoverageEnd.HasValue
+                    ? preview.CoverageStart.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " to " + preview.CoverageEnd.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                    : "Unknown" },
+                { "Coverage", preview.IsFullYear.HasValue ? (preview.IsFullYear.Value ? "Full year" : "Partial year") : "Unknown" },
                 { "Rows", preview.RowCount.ToString("N0") }, { "Unmapped accounts", preview.UnmappedAccounts.ToString("N0") },
                 { "Debit (AUD)", preview.TotalsAvailable ? preview.Debit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },
                 { "Credit (AUD)", preview.TotalsAvailable ? preview.Credit.ToString("0.00##########################", CultureInfo.InvariantCulture) : "Not available" },

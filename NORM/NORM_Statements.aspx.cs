@@ -1537,7 +1537,7 @@ namespace CPlatform.NORM
         {
             DataTable table = NORMHelper.Query(
                 "SELECT ImportFileId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes," +
-                "PeriodStart,PeriodEnd,[RowCount],IsStatementInput,CreatedUtc " +
+                "PeriodStart,PeriodEnd,CoverageStart,CoverageEnd,IsFullYear,[RowCount],IsStatementInput,CreatedUtc " +
                 "FROM dbo.tblNORM_ImportFile WHERE ImportId = @import ORDER BY PeriodStart,SourceType",
                 NORMHelper.P("@import", importId));
             List<object> values = new List<object>();
@@ -1553,6 +1553,11 @@ namespace CPlatform.NORM
                 item["bytes"] = NORMHelper.Long(source, "SourceFileBytes");
                 item["periodStart"] = source.IsNull("PeriodStart") ? (object)null : NORMHelper.Int(source, "PeriodStart");
                 item["periodEnd"] = source.IsNull("PeriodEnd") ? (object)null : NORMHelper.Int(source, "PeriodEnd");
+                item["coverageStart"] = source.IsNull("CoverageStart") ? null :
+                    ((DateTime)source["CoverageStart"]).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                item["coverageEnd"] = source.IsNull("CoverageEnd") ? null :
+                    ((DateTime)source["CoverageEnd"]).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                item["isFullYear"] = source.IsNull("IsFullYear") ? (object)null : Convert.ToBoolean(source["IsFullYear"]);
                 item["rows"] = NORMHelper.Int(source, "RowCount");
                 item["statementInput"] = Convert.ToBoolean(source["IsStatementInput"]);
                 item["createdUtc"] = Convert.ToString(source["CreatedUtc"]);
