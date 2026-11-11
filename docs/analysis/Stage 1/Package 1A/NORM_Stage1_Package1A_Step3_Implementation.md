@@ -85,3 +85,50 @@ Following separate authorisation, review/apply only the Step 3 migration, record
 5. Existing Defence ERP import/replacement, period eligibility, source evidence and NORM/module health remain operational. Live Preparer assignment/revocation/direct-request checks retain their Package 1D obligation.
 
 No local implementation blocker remains. Recommendation: approve controlled WARATAH verification when ready; reserve Step 3 acceptance until its required target-stack results are recorded. Stop here; no further increment has begun.
+
+## Deployed and focused UAT outcome — 11 November 2026
+
+Step 3 deployed successfully through PR #12 as `9f7d3298ea595c3fed1169e788c3e202e4530964`; [WARATAH run 42955950245](https://github.com/FChel/CPLATFORM/actions/runs/42955950245) succeeded. Backup set 13 passed checksum verification, all eight name snapshots were backfilled, and immediate revision/SQL/source/configuration/shared-file checks passed. See the completed cutover execution record and living UAT evidence.
+
+Executed Administrator name editing/restoration, historical pages/Excel/Word context, all five current/superseded/ReviewRequired original downloads, full/partial source inspections/cancellations and failed-upload data safety Passed. FY2026/original name and current Import 7 are correct, with no unintended accepted source/document change. Message readability **Failed**: existing JavaScript clears the no-file validation after 100 ms, consistent with the owner's unreadable flash. This same code is in the Step 2 base and is not a Step 3 regression. Full acceptance is held for owner disposition of that pre-existing FR-093 exception; no automatic fix/deployment is authorised by this result. Live Preparer cases retain their Package 1D deferral, and extended live tests are explicitly Not Tested in the UAT record. No Package 1B work began.
+
+## FR-093 upload-validation correction — prepared locally
+
+11 November 2026 · Branch `codex/norm-step3-upload-feedback`, based on latest `origin/uat` / deployed Step 3 `9f7d3298ea595c3fed1169e788c3e202e4530964`. **Ready for separately authorised deployment; not deployed.** The preceding live UAT failure remains the WARATAH result until this correction is published and retested.
+
+### Cause and smallest correction
+
+The no-file and invalid/missing PDF-page branches in `NORM/NORM_YearSetup.aspx` called `setCustomValidity`, displayed the native validation bubble with `reportValidity()`, then cleared the error after 100 ms. This explains the unreadable flash reported during Administrator UAT.
+
+Only those two production JavaScript lines changed. They now open the **existing upload-failure dialog** through its existing `showFailure` function, styling and Close button. The specific validation message remains visible until the user explicitly closes it. No new component, notification framework, markup or stylesheet was added. After Close, the user can correct the input and retry; the normal upload path clears the existing failed state. Successful upload/progress/response timing, network-error notification, ordinary Year Setup postbacks and server-side transaction logic are unchanged.
+
+Validation still returns before FormData construction or any XMLHttpRequest. Therefore the rejected client request cannot submit an unsaved year or post a file. The strengthened real-page server test additionally supplies unsaved 2025 while saved FY2026 and an existing accepted original are present: no-file rejection preserves the saved designation, original bytes/version and audit collection. No SQL schema, configuration, document or shared database operation was performed for this correction.
+
+### Focused tests and regressions
+
+New `tools/tests/Package1AStep3/UploadFeedbackTests.js` executes the actual production script with deterministic DOM, timer and network substitutes using Node's built-in modules, without dependencies or real network/SQL access. Tests cover both document types, no file, missing/invalid PDF page, message still visible after 10 seconds, explicit Close, corrected retry, zero posts on failure, unchanged successful response timing, existing network-error behaviour, non-upload actions and the older submitter fallback. `Run.ps1` invokes these tests after the existing Step 3 suites. The existing C# missing-file case and page harness now explicitly test unsaved-year/original/audit preservation.
+
+| Verification | Result | Passing checks |
+|---|---|---:|
+| Step 3 service/page/handler | Passed | 62 |
+| Step 3 real-engine context | Passed | 3 |
+| Upload-feedback production JavaScript | Passed | 12 |
+| Increment1A, unchanged genuine Defence fixture | Passed | 44 |
+| Increment1B service/engine/helper | Passed | 21 |
+| Increment1B2 identity/access/replacement/coverage | Passed | 63 |
+| FR016 service/engine | Passed | 43 |
+| **Total** | **Passed; zero failing checks** | **248** |
+| Production and full ASP.NET compilation | Passed | Existing unrelated eJET.aspx.cs:125 CS0162 warning only |
+| Actual WARATAH browser readability retest | Not Tested | Correction not deployed; separate authorisation required |
+
+Executed `tools/tests/Package1AStep3/Run.ps1`, Increment1A/1B/1B2 against the existing Defence workbook, and `tools/tests/FR016/Run.ps1`. The final full-site build used the unchanged application allowlist and a temporary build-only config outside the sandbox to allow EPPlus loading. Full-build artifacts: `C:\Users\Steve\AppData\Local\Temp\norm-fr016-bc1e575e8cb541338d24b33f2fb2bc0c`. JavaScript checks verify notification state/timing through substitutes; they do not claim actual browser rendering or new live SQL evidence.
+
+### Minimal deployment preparation
+
+The sole runtime change is `NORM/NORM_YearSetup.aspx`. Supporting paths are `tools/tests/Package1AStep3/UploadFeedbackTests.js`, `Run.ps1`, `PageHarness.cs`, `Tests.cs`, plus this living implementation record. Preserve/exclude unrelated working-tree changes and previous cutover/UAT evidence when preparing a later commit.
+
+Five-file code/test fingerprint: `278a01ed9bf58aa027d73553e5dffecf56920e2db07c48e2fa6337781c643d7d` (SHA-256 of sorted relative-path + space + lowercase file SHA-256 lines with LF endings, files normalised CRLF→LF). Raw YearSetup.aspx SHA-256: `becbb8e128549694383f8c83e401e79b2482a8ce0f8416b50659f0b81e619485`. No new immutable correction commit exists yet.
+
+After separate publishing authorisation: commit only the reviewed correction/test/document paths, pin/build/compile that revision using `New-WaratahPackage.ps1`, then use the existing validated PR into `uat` and verify the resulting Deploy WARATAH run. No migration, reseed, year change or SQL-baseline registration is required: SQL sources/schema are unchanged, and the expected package SQL digest remains `7c6468d6f56890846fcb8e1c53abba5a4ee0cd77e0cd3c7c6a566a9ca8b6ad51`; confirm the actual package manifest matches before deployment. The deployer and its normal brief pool interruption are unchanged. Application rollback is the previous deployed revision `9f7d3298ea595c3fed1169e788c3e202e4530964`; no database restore is needed.
+
+Minimum live retest after deployment: as WARATAH\Steve trigger the no-file error for each document type, wait longer than 10 seconds, read it and dismiss with Close. Repeat missing PDF-page validation using existing approved data, correct the input and verify normal operation. Confirm FY2026/original name, accepted documents/hashes and audit evidence are preserved. Record these in the existing living UAT evidence before recommending final acceptance. No deployment, commit/push/PR, shared-database access or Package 1B work occurred during this focused correction.

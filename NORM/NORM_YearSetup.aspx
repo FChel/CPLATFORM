@@ -106,9 +106,9 @@
             if(submitter!==priorButton&&submitter!==budgetButton){return;}
             event.preventDefault();
             var fileInput=submitter===priorButton?priorFile:budgetFile,label=submitter===priorButton?'Prior Year Financial Statements':'Portfolio Budget Statements';
-            if(!fileInput.files||!fileInput.files.length){fileInput.setCustomValidity('Choose the '+label+' document.');fileInput.reportValidity();window.setTimeout(function(){fileInput.setCustomValidity('');},100);return;}
+            if(!fileInput.files||!fileInput.files.length){dialog.hidden=false;document.body.classList.add('norm-upload-busy');showFailure('Choose the '+label+' document.');return;}
             var pageInput=submitter===priorButton?priorPage:budgetPage,isPdf=/\.pdf$/i.test(fileInput.files[0].name),pageValue=pageInput?pageInput.value.trim():'';
-            if(isPdf&&!/^[1-9][0-9]{0,3}$/.test(pageValue)){pageInput.setCustomValidity('Enter the PDF page where the financial-statement tables commence.');pageInput.reportValidity();window.setTimeout(function(){pageInput.setCustomValidity('');},100);return;}
+            if(isPdf&&!/^[1-9][0-9]{0,3}$/.test(pageValue)){dialog.hidden=false;document.body.classList.add('norm-upload-busy');showFailure('Enter the PDF page where the financial-statement tables commence.');return;}
 
             var data=new FormData(form);if(submitter.name){data.append(submitter.name,submitter.value||'Upload');}
             dialog.hidden=false;dialog.classList.remove('failed');closeButton.hidden=true;document.body.classList.add('norm-upload-busy');priorButton.disabled=true;budgetButton.disabled=true;
