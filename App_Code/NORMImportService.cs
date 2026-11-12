@@ -12,7 +12,57 @@ public static class NORMImportService
     public static NORMImportPreview Inspect(byte[] content, string fileName, int releaseId, string user)
     {
         NORMParsedImport parsed;
-        return InspectSource(content, fileName, releaseId, user, true, out parsed);
+        NORMImportPreview preview;
+        try
+        {
+            preview = InspectSource(content, fileName, releaseId, user, true, out parsed);
+        }
+        catch (InvalidDataException error)
+        {
+            if (content != null && (content.Length < 4 || content[0] != 0x50 || content[1] != 0x4b || content[2] != 3 || content[3] != 4))
+            { RecordInspectionRejection(content, fileName, releaseId, user, error.Message); }
+            throw;
+        }
+        if (!preview.CanAccept && (parsed.ProfileVersion == NORMTextTrialBalanceImporter.CsvProfile || parsed.ProfileVersion == NORMTextTrialBalanceImporter.FixedProfile))
+        { RecordInspectionRejection(content, fileName, releaseId, user, String.Join(" ", preview.Errors.ToArray()), preview); }
+        return preview;
+    }
+
+    private static void RecordInspectionRejection(byte[] content, string fileName, int releaseId, string user, string reason, NORMImportPreview preview = null)
+    {
+        // Authorisation failures never expose or write another agency's identity.
+        DataRow release = preview == null ? LoadApprovedRelease(releaseId) : null;
+        string entity = preview == null ? NORMHelper.Str(release, "EntityCode") : preview.Entity;
+        int financialYear = preview == null ? NORMHelper.Int(release, "FinancialYear") : preview.FinancialYear;
+        string availableScope = "";
+        if (content != null)
+        {
+            string prefix = Encoding.UTF8.GetString(content, 0, Math.Min(content.Length, 4096));
+            System.Text.RegularExpressions.Match company = System.Text.RegularExpressions.Regex.Match(prefix, "(?:Company : \",\"|Company:\\s+)([0-9]+)");
+            if (company.Success) { availableScope = ";SourceCompany=" + company.Groups[1].Value; }
+        }
+        if (preview != null)
+        {
+            availableScope += ";Profile=" + preview.ProfileVersion + ";Company=" + Uri.EscapeDataString(preview.Companies ?? "") +
+                ";Ledger=" + Uri.EscapeDataString(preview.Ledgers ?? "") + ";Stream=" + Uri.EscapeDataString(preview.ReportingStreams ?? "") +
+                ";Coverage=" + (preview.CoverageStart.HasValue ? preview.CoverageStart.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "Unknown") +
+                "/" + (preview.CoverageEnd.HasValue ? preview.CoverageEnd.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "Unknown");
+        }
+        string detail = "Outcome=Rejected;Release=" + releaseId + ";Agency=" + Uri.EscapeDataString(entity) + availableScope +
+            ";FY=" + financialYear + ";File=" + Uri.EscapeDataString(Path.GetFileName(fileName ?? "")) +
+            ";SHA256=" + (content == null ? "Unavailable" : NORMCrypto.Sha256(content)) + ";Reason=" + Uri.EscapeDataString(reason);
+        if (detail.Length > 2000) { detail = detail.Substring(0, 2000); }
+        try
+        {
+            using (OleDbConnection connection = NORMHelper.OpenConnection())
+            using (OleDbTransaction transaction = connection.BeginTransaction())
+            {
+                NORMHelper.RequireEntityAccess(entity, connection, transaction);
+                WriteAudit(connection, transaction, "IMPORT_REJECTED_SOURCE", "ImportAttempt", Guid.NewGuid().ToString("N"), detail, user);
+                transaction.Commit();
+            }
+        }
+        catch { throw new InvalidDataException("Source rejected. Rejection audit evidence could not be saved; contact support. " + reason); }
     }
 
     private static NORMImportPreview InspectSource(byte[] content, string fileName, int releaseId, string user,
@@ -29,22 +79,26 @@ public static class NORMImportService
         { companies.Add(NORMHelper.Str(population, "SourceCompanyCode")); }
         int year = NORMHelper.Int(release, "FinancialYear");
         bool workbook = bytes.Length >= 4 && bytes[0] == 0x50 && bytes[1] == 0x4b && bytes[2] == 3 && bytes[3] == 4;
-        if (!workbook)
-        { throw new InvalidDataException("Unsupported source layout. A source must identify its company and reporting population."); }
-
-        parsed = ErpTrialBalanceImporter.ParseForInspection(bytes, companies, year);
-        bool defence = parsed.Rows[0].SourceCompanyCode != null;
-        string layout = defence ? "Defence ERP" : "Legacy ERP";
+        parsed = workbook ? ErpTrialBalanceImporter.ParseForInspection(bytes, companies, year) :
+            NORMTextTrialBalanceImporter.Parse(bytes, year);
+        bool defence = workbook && parsed.Rows[0].SourceCompanyCode != null;
+        bool text = !workbook;
+        string layout = text ? (parsed.ProfileVersion == NORMTextTrialBalanceImporter.CsvProfile ? "ActewAGL FinStats CSV" : "Icon Water fixed-width text") : defence ? "Defence ERP" : "Legacy ERP";
+        if (workbook) { parsed.ProfileVersion = defence ? "DEFENCE-ERP/1" : "LEGACY-ERP/1"; }
+        // Existing SQL constrains the storage source category to ERP/ROMAN.
+        // ERP remains the TB source category; exact native format/version is
+        // retained separately in IMPORT_SOURCE_PROFILE audit, never called XLSX.
         const string type = "ERP";
         foreach (NORMTrialBalanceRow row in parsed.Rows)
         {
-            if (!defence)
+            if (!defence && !text)
             {
                 // This workbook column is labelled Company Code. It supplies no ledger.
                 row.SourceCompanyCode = row.SourceLedger;
                 row.SourceLedger = null;
             }
-            ResolvePopulation(row, permitted);
+            if (text) { ResolveTextPopulation(row, permitted); }
+            else { ResolvePopulation(row, permitted); }
             if (defence) { row.GlAccount = ErpTrialBalanceImporter.ExtractGl(row.GlAccount); }
         }
 
@@ -66,6 +120,7 @@ public static class NORMImportService
         { preview.Errors.Add("The source filename cannot be retained within the supported storage limit."); }
         preview.FileHash = NORMCrypto.Sha256(bytes);
         preview.ConfigurationFingerprint = configuration; preview.SourceType = type; preview.Layout = layout;
+        preview.ProfileVersion = parsed.ProfileVersion;
         preview.Entity = NORMHelper.Str(release, "EntityCode"); preview.FinancialYear = parsed.FinancialYear;
         preview.CoverageStart = parsed.CoverageStart; preview.CoverageEnd = parsed.CoverageEnd;
         preview.IsFullYear = parsed.IsFullYear; preview.ConfiguredFinancialYear = currentYear;
@@ -111,7 +166,7 @@ public static class NORMImportService
         preview.ReportingStreams = String.Join(", ", streams);
         preview.UnmappedAccounts = unmapped.Count; preview.Warnings.AddRange(parsed.Warnings);
         if (unmapped.Count > 0) { preview.Warnings.Add(unmapped.Count.ToString() + " unmapped accounts remain eligible for acceptance and the existing mapping workflow."); }
-        preview.IdentityFingerprint = NORMCrypto.Sha256(preview.Entity + "|" + year + "|" + parsed.PeriodStart + "|" + parsed.PeriodEnd + "|" + CoverageLabel(parsed) + "|" + identity);
+        preview.IdentityFingerprint = NORMCrypto.Sha256(parsed.ProfileVersion + "|" + preview.Entity + "|" + year + "|" + parsed.PeriodStart + "|" + parsed.PeriodEnd + "|" + CoverageLabel(parsed) + "|" + identity);
         if (loadCurrentSources)
         {
             foreach (NORMTrialBalanceRow row in parsed.Rows)
@@ -134,6 +189,23 @@ public static class NORMImportService
     }
 
     public static void ValidateBatch(IList<NORMImportPreview> previews)
+    {
+        try { ValidateBatchCore(previews); }
+        catch (Exception error)
+        {
+            if (previews != null && (error is InvalidDataException || error is InvalidOperationException))
+            {
+                foreach (NORMImportPreview p in previews)
+                {
+                    if (p != null && (p.ProfileVersion == NORMTextTrialBalanceImporter.CsvProfile || p.ProfileVersion == NORMTextTrialBalanceImporter.FixedProfile))
+                    { RecordInspectionRejection(p.Content, p.FileName, p.ReleaseId, p.Owner, error.Message, p); }
+                }
+            }
+            throw;
+        }
+    }
+
+    private static void ValidateBatchCore(IList<NORMImportPreview> previews)
     {
         if (previews == null || previews.Count == 0)
         { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
@@ -158,7 +230,37 @@ public static class NORMImportService
 
     public static List<NORMImportOutcome> ConfirmBatch(IList<NORMImportPreview> previews, string user, bool replaceExisting)
     {
-        ValidateBatch(previews);
+        // Routine unchecked acknowledgement and expiry are intentionally not audited.
+        bool auditFailure = previews != null && previews.Count > 0;
+        if (auditFailure)
+        {
+            foreach (NORMImportPreview p in previews)
+            {
+                if (p == null || p.Owner != user || p.ExpiresUtc <= DateTime.UtcNow || (p.HasReplacement && !replaceExisting))
+                { auditFailure = false; break; }
+            }
+        }
+        try { return ConfirmBatchCore(previews, user, replaceExisting); }
+        catch (Exception error)
+        {
+            if (auditFailure && !(error is UnauthorizedAccessException))
+            {
+                foreach (NORMImportPreview p in previews)
+                {
+                    if (p.ProfileVersion == NORMTextTrialBalanceImporter.CsvProfile || p.ProfileVersion == NORMTextTrialBalanceImporter.FixedProfile)
+                    {
+                        string reason = error is InvalidDataException || error is InvalidOperationException ? error.Message : "Acceptance failed; no source accepted.";
+                        RecordInspectionRejection(p.Content, p.FileName, p.ReleaseId, user, reason, p);
+                    }
+                }
+            }
+            throw;
+        }
+    }
+
+    private static List<NORMImportOutcome> ConfirmBatchCore(IList<NORMImportPreview> previews, string user, bool replaceExisting)
+    {
+        ValidateBatchCore(previews);
         NORMImportPreview first = previews[0];
         List<NORMImportSource> sources = new List<NORMImportSource>();
         List<NORMImportPreview> validated = new List<NORMImportPreview>();
@@ -177,7 +279,7 @@ public static class NORMImportService
             NORMParsedImport parsed;
             NORMImportPreview fresh = InspectSource(preview.Content, preview.FileName, preview.ReleaseId, user, false, out parsed);
             if (!fresh.CanAccept || fresh.ConfigurationFingerprint != preview.ConfigurationFingerprint ||
-                fresh.IdentityFingerprint != preview.IdentityFingerprint || fresh.Layout != preview.Layout)
+                fresh.IdentityFingerprint != preview.IdentityFingerprint || fresh.Layout != preview.Layout || fresh.ProfileVersion != preview.ProfileVersion)
             { throw new InvalidOperationException("The configuration, source identity or validation changed. Inspect again."); }
             validated.Add(fresh);
             sources.Add(BuildSource(fresh.Content, fresh.FileName, fresh.SourceType, parsed, true));
@@ -261,6 +363,23 @@ public static class NORMImportService
         if (resolvedStream == null)
         { throw new InvalidDataException("The detected company/ledger pair and reporting stream are not authorised."); }
         row.ReportingStream = resolvedStream;
+    }
+
+    private static void ResolveTextPopulation(NORMTrialBalanceRow row, DataTable permitted)
+    {
+        DataRow match = null;
+        foreach (DataRow population in permitted.Rows)
+        {
+            if (row.SourceCompanyCode != null && !String.Equals(row.SourceCompanyCode, NORMHelper.Str(population, "SourceCompanyCode"), StringComparison.OrdinalIgnoreCase)) { continue; }
+            if (row.SourceLedger != null && !String.Equals(row.SourceLedger, NORMHelper.Str(population, "SourceLedger"), StringComparison.OrdinalIgnoreCase)) { continue; }
+            if (row.ReportingStream != null && !String.Equals(row.ReportingStream, NORMHelper.Str(population, "ReportingStream"), StringComparison.OrdinalIgnoreCase)) { continue; }
+            if (match != null) { throw new InvalidDataException("The source company has ambiguous configured ledger/reporting stream populations."); }
+            match = population;
+        }
+        if (match == null) { throw new InvalidDataException("The source company is not authorised by the active agency configuration."); }
+        row.SourceCompanyCode = NORMHelper.Str(match, "SourceCompanyCode");
+        row.SourceLedger = NORMHelper.Str(match, "SourceLedger");
+        row.ReportingStream = NORMHelper.Str(match, "ReportingStream");
     }
 
     public static IList<NORMSourceScope> MissingRequiredPopulations(int releaseId)
@@ -693,6 +812,13 @@ public static class NORMImportService
                 ";Coverage=" + CoverageLabel(source.Parsed) +
                 ";ConfiguredCurrentYear=" + (coverageYear.HasValue ? coverageYear.Value.ToString(CultureInfo.InvariantCulture) : "Historical transition") +
                 ";Result=" + (coverageYear.HasValue ? "Pass" : "Not evaluated"), importedBy);
+            if (source.Parsed.ProfileVersion != null)
+            {
+                WriteAudit(connection, transaction, "IMPORT_SOURCE_PROFILE", "Import", importId.ToString(CultureInfo.InvariantCulture),
+                    "Profile=" + source.Parsed.ProfileVersion + ";SHA256=" + source.FileHash +
+                    ";Currency=AUD;Units=Dollars;Multiplier=1;BalanceSign=DebitPositive;CreditMovement=SignedNegative;Rows=" + source.Parsed.Rows.Count,
+                    importedBy);
+            }
         }
 
         for (int i = 0; i < statementInput.Rows.Count; i++)

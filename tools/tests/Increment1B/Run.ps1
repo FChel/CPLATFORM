@@ -18,7 +18,7 @@ foreach ($suite in @('Service','Engine','Display')) {
     $exe = Join-Path $output "$suite.exe"
     $options = @("/out:$exe") + @($common)
     if ($suite -eq 'Service') {
-        $options += @('/define:SERVICE',(Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'),
+        $options += @('/define:SERVICE',(Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'),
             (Join-Path $root 'tools/tests/FR016/TestSupport.cs'),(Join-Path $output 'NORMImportService.cs'),(Join-Path $PSScriptRoot 'Tests.cs'))
     } elseif ($suite -eq 'Engine') {
         $options += @((Join-Path $root 'tools/tests/FR016/TestSupport.cs'),(Join-Path $output 'StatementEngine.cs'),(Join-Path $PSScriptRoot 'EngineTests.cs'))

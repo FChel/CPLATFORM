@@ -1,0 +1,65 @@
+{
+  "baseline": "c3317d83246ceffc09ace1fa9a734c8e8829fd4b",
+  "candidateFingerprint": "c04b27b1743911f6d469bd387003c6d5e24dfae2c58a5fb7737abd878808a121",
+  "fingerprintRule": "UTF8 LF: baseline SHA, then sorted relative-path space raw-file-SHA256, trailing LF; 4 application + 7 test files",
+  "snapshot": "C:\\Development\\NORM\\.deployment\\Package1B_Readiness_20261112_103157",
+  "sqlSha256": "7c6468d6f56890846fcb8e1c53abba5a4ee0cd77e0cd3c7c6a566a9ca8b6ad51",
+  "deployablePackage": false,
+  "files": [
+    {
+      "path": "App_Code/NORMImportModels.cs",
+      "sha256": "10b3fc8abfe27c32bfe8495fd5f6359c1999f30a9ae02f9c454bbb0d0c507d4f",
+      "kind": "application"
+    },
+    {
+      "path": "App_Code/NORMImportService.cs",
+      "sha256": "2c3959a6e1fa5fb59414d82d2907b6de469cbd4689375496e801aed4083a825c",
+      "kind": "application"
+    },
+    {
+      "path": "App_Code/NORMTextTrialBalanceImporter.cs",
+      "sha256": "0cea60d53e1e44d844ef6a06c6612445361109433598e542d7b37199ae80b421",
+      "kind": "application"
+    },
+    {
+      "path": "NORM/NORM_Import.aspx.cs",
+      "sha256": "9946cc5d439811d1f47e29e756b05141caa6ac8efdb3ac065e332f2449816f42",
+      "kind": "application"
+    },
+    {
+      "path": "tools/tests/FR016/Run.ps1",
+      "sha256": "044598a0b29061779d6d4b187ca289e5afdb46d743347235ba3d44acf33ab61f",
+      "kind": "test"
+    },
+    {
+      "path": "tools/tests/FR016/TestSupport.cs",
+      "sha256": "063f3e486eec5e417e46fb4434e9da49e51a9aca51f54c3a750f95d407a0bf9c",
+      "kind": "test"
+    },
+    {
+      "path": "tools/tests/Increment1A/Run.ps1",
+      "sha256": "89f7b2defe6056f6842ecf7ebb3c039fc5c4dba08622fb09e511ab154715bb0f",
+      "kind": "test"
+    },
+    {
+      "path": "tools/tests/Increment1B/Run.ps1",
+      "sha256": "c5461f5ed7752ce4ea639f2301368d577ea4c8fa0879404ec12b0ff1cfe20c87",
+      "kind": "test"
+    },
+    {
+      "path": "tools/tests/Increment1B2/Run.ps1",
+      "sha256": "e440cda6672773ae6e43b2d7eccc579ca3b4c8dd3999fa4d88c284cb439dc1fd",
+      "kind": "test"
+    },
+    {
+      "path": "tools/tests/Package1B/Run.ps1",
+      "sha256": "940b544c261d4bb1ccc0933dbac62579a5c2af4bd894d0dffd89e524dc3c3143",
+      "kind": "test"
+    },
+    {
+      "path": "tools/tests/Package1B/Tests.cs",
+      "sha256": "8c7fb7eb8d39729ef1360f4f5839d2f030b5a5255e83b2a65fdb9fd3afb588ac",
+      "kind": "test"
+    }
+  ]
+}

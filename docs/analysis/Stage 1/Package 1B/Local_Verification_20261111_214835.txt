@@ -1,0 +1,58 @@
+**********************
+PowerShell transcript start
+Start time: 20261111214835
+Username: DEV-NUC\Steve
+RunAs User: DEV-NUC\Steve
+Configuration Name: 
+Machine: DEV-NUC (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\Program Files\WindowsApps\OpenAI.CodexPrimaryRuntime.v26-1104-2876-0_26.1104.2876.0_x64__3k8sg7r9htsxt\dependencies\native\powershell\pwsh.dll -Command try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}
+$stamp=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow,'AUS Eastern Standard Time').ToString('yyyyMMdd_HHmmss'); $log=Join-Path (Resolve-Path 'docs/analysis/Stage 1/Package 1B') ('Local_Verification_'+$stamp+'.txt'); Start-Transcript -LiteralPath $log -NoClobber | Out-Null; try { $sample=(Resolve-Path 'docs/Trial Balance Examples/Defence TB - ERP Format FY26.xlsx').Path; & ./tools/tests/Package1B/Run.ps1; & ./tools/tests/Increment1A/Run.ps1 -SamplePath $sample; & ./tools/tests/Increment1B/Run.ps1 -SamplePath $sample; & ./tools/tests/Increment1B2/Run.ps1 -SamplePath $sample; & ./tools/tests/FR016/Run.ps1; & ./tools/tests/Package1AStep3/Run.ps1; & ./tools/tests/Package1AStep3/RunViewState.ps1 } finally { Stop-Transcript | Out-Null; Write-Output $log }
+Process ID: 1980
+PSVersion: 7.6.9
+PSEdition: Core
+GitCommitId: 7.6.9
+OS: Microsoft Windows 10.0.26200
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.4
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+
+
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{56df9aa8-1eec-46e1-8dbf-1352a3fffd8a}\Temp\norm-package1b-e6a886029ae44945a167714e960db34f
+
+
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{56df9aa8-1eec-46e1-8dbf-1352a3fffd8a}\Temp\norm-increment1a-c366b9cf584845b4ae617fa1ecb9a459
+
+
+
+
+
+
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{56df9aa8-1eec-46e1-8dbf-1352a3fffd8a}\Temp\norm-increment1b-b364f7b6c644441ca5f262a99021ca40
+
+
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{56df9aa8-1eec-46e1-8dbf-1352a3fffd8a}\Temp\norm-increment1b2-5c9047174b0c4b3a8650f9d98d20d647
+
+
+
+
+
+PASS production import and statement-engine compilation (.NET Framework compiler, real OleDb/helper)
+
+PASS full ASP.NET site compilation (isolated working-tree copy, build-only config)
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{56df9aa8-1eec-46e1-8dbf-1352a3fffd8a}\Temp\norm-fr016-d353547e3c5547018b8cd99b3e69f2f3
+
+
+
+
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{56df9aa8-1eec-46e1-8dbf-1352a3fffd8a}\Temp\norm-step3-970729fb7f524235bce6452fc4d0d1cd
+
+
+
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{56df9aa8-1eec-46e1-8dbf-1352a3fffd8a}\Temp\norm-viewstate-1e6b1e6ffc0a4c948b0120ab19bcba09
+**********************
+PowerShell transcript end
+End time: 20261111214911
+**********************

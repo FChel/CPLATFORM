@@ -1,0 +1,22 @@
+{
+    "CommandId": "b76a4ef6-1def-42bd-a165-1cbbfea628e7",
+    "InstanceId": "i-0b35e9aea70f49701",
+    "Comment": "Approved NORM1B UAT_AAG/UAT_ICON data only; preserve DEPT; no schema changes",
+    "DocumentName": "AWS-RunPowerShellScript",
+    "DocumentVersion": "$DEFAULT",
+    "PluginName": "aws:runPowerShellScript",
+    "ResponseCode": 0,
+    "ExecutionStartDateTime": "2026-11-12T22:27:21.487Z",
+    "ExecutionElapsedTime": "PT13.664S",
+    "ExecutionEndDateTime": "2026-11-12T22:27:34.487Z",
+    "Status": "Success",
+    "StatusDetails": "Success",
+    "StandardOutputContent": "{\"ConfigurationResult\":[[{\"DeptBeforeSHA256\":\"5C06F203BA285206FDC7FE6157876E8E49CE86445A0F2F755E789E947B5ABCC2\",\"DeptAfterSHA256\":\"5C06F203BA285206FDC7FE6157876E8E49CE86445A0F2F755E789E947B5ABCC2\"}],[{\"ConfigurationReleaseId\":5,\"FinancialYear\":2020,\"EntityCode\":\"UAT_AAG\",\"VersionCode\":\"uat-package1b-20261113\",\"StatusCode\":\"Approved\",\"ContentHash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"ConfigurationReleaseId\":6,\"FinancialYear\":2016,\"EntityCode\":\"UAT_ICON\",\"VersionCode\":\"uat-package1b-20261113\",\"StatusCode\":\"Approved\",\"ContentHash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}]],\"Utc\":\"2026-11-12T22:27:33.3748578Z\"}\r\n",
+    "StandardOutputUrl": "",
+    "StandardErrorContent": "",
+    "StandardErrorUrl": "",
+    "CloudWatchOutputConfig": {
+        "CloudWatchLogGroupName": "",
+        "CloudWatchOutputEnabled": false
+    }
+}

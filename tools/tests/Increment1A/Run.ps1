@@ -12,7 +12,7 @@ $service = [IO.File]::ReadAllText((Join-Path $root 'App_Code/NORMImportService.c
 [IO.File]::WriteAllText((Join-Path $output 'NORMImportService.cs'), $service.Replace('using System.Data.OleDb;', 'using TestDb;'))
 $options = @('/nologo', '/warnaserror+', '/define:SERVICE', '/r:System.Data.dll', '/target:exe', "/out:$output/Tests.exe", "/r:$epplus",
     (Join-Path $root 'App_Code/NORMCrypto.cs'), (Join-Path $root 'App_Code/NORMImportModels.cs'),
-    (Join-Path $root 'App_Code/ErpTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'),
+    (Join-Path $root 'App_Code/ErpTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'),
     (Join-Path $root 'tools/tests/FR016/TestSupport.cs'), (Join-Path $output 'NORMImportService.cs'), (Join-Path $PSScriptRoot 'Tests.cs'))
 & $compiler @options
 if ($LASTEXITCODE -ne 0) { throw 'Increment 1A compilation failed' }

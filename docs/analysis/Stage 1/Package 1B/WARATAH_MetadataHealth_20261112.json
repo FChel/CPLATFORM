@@ -1,0 +1,22 @@
+{
+    "CommandId": "87bd90a8-1f9e-4c13-9bdb-5a259616065c",
+    "InstanceId": "i-0b35e9aea70f49701",
+    "Comment": "NORM1B SELECT audit defaults and existing HTTP health; no writes",
+    "DocumentName": "AWS-RunPowerShellScript",
+    "DocumentVersion": "$DEFAULT",
+    "PluginName": "aws:runPowerShellScript",
+    "ResponseCode": 0,
+    "ExecutionStartDateTime": "2026-11-12T10:42:13.385Z",
+    "ExecutionElapsedTime": "PT1.939S",
+    "ExecutionEndDateTime": "2026-11-12T10:42:14.385Z",
+    "Status": "Success",
+    "StatusDetails": "Success",
+    "StandardOutputContent": "{\"Utc\":\"2026-11-12T10:42:13.6708143Z\",\"Metadata\":[[{\"name\":\"AuditEventId\",\"max_length\":8,\"default_object_id\":0,\"definition\":null},{\"name\":\"EventCode\",\"max_length\":60,\"default_object_id\":0,\"definition\":null},{\"name\":\"EntityType\",\"max_length\":40,\"default_object_id\":0,\"definition\":null},{\"name\":\"EntityId\",\"max_length\":60,\"default_object_id\":0,\"definition\":null},{\"name\":\"DetailText\",\"max_length\":4000,\"default_object_id\":0,\"definition\":null},{\"name\":\"PerformedBy\",\"max_length\":320,\"default_object_id\":0,\"definition\":null},{\"name\":\"PerformedUtc\",\"max_length\":7,\"default_object_id\":1746105261,\"definition\":\"(sysutcdatetime())\"}],[],[],[{\"name\":\"CK_tblNORM_Import_Status\",\"definition\":\"([StatusCode]=\\u0027Failed\\u0027 OR [StatusCode]=\\u0027Calculated\\u0027 OR [StatusCode]=\\u0027Imported\\u0027 OR [StatusCode]=\\u0027Importing\\u0027)\"},{\"name\":\"CK_tblNORM_ImportFile_SourceType\",\"definition\":\"([SourceType]=\\u0027ROMAN\\u0027 OR [SourceType]=\\u0027ERP\\u0027)\"},{\"name\":\"CK_tblNORM_ImportFile_Period\",\"definition\":\"([PeriodStart] IS NULL AND [PeriodEnd] IS NULL OR [PeriodStart]\\u003e=(1) AND [PeriodStart]\\u003c=(16) AND ([PeriodEnd]\\u003e=[PeriodStart] AND [PeriodEnd]\\u003c=(16)))\"},{\"name\":\"CK_tblNORM_Import_SourceType\",\"definition\":\"([SourceType]=\\u0027TestBreak\\u0027 OR [SourceType]=\\u0027ROMAN+ERP\\u0027 OR [SourceType]=\\u0027ROMAN\\u0027 OR [SourceType]=\\u0027ERP\\u0027)\"},{\"name\":\"CK_tblNORM_ImportFile_ExactCoverage\",\"definition\":\"([CoverageStart] IS NULL AND [CoverageEnd] IS NULL AND [IsFullYear] IS NULL OR [CoverageStart] IS NOT NULL AND [CoverageEnd] IS NOT NULL AND [IsFullYear] IS NOT NULL AND [CoverageStart]\\u003c=[CoverageEnd])\"}],[{\"IdentityName\":\"NT AUTHORITY\\\\SYSTEM\"}]],\"MetadataRead\":\"Passed\",\"Health\":[\"PASS CFO-Toolkit.aspx\",\"PASS css/cfo-toolkit.css\",\"PASS NORM/NORM_Statements.aspx\"],\"HealthResult\":\"Passed\"}\r\n",
+    "StandardOutputUrl": "",
+    "StandardErrorContent": "",
+    "StandardErrorUrl": "",
+    "CloudWatchOutputConfig": {
+        "CloudWatchLogGroupName": "",
+        "CloudWatchOutputEnabled": false
+    }
+}
