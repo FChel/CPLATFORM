@@ -6,7 +6,8 @@ using System.Web;
 namespace CPlatform.NORM
 {
     /// <summary>
-    /// Serves an original, database-retained source file for a completed run.
+    /// Serves an accepted, database-retained source file linked to a run.
+    /// Calculation success is independent of source acceptance.
     /// Access is preparer-gated and every successful retrieval is audited.
     /// </summary>
     public sealed class NORMSourceFileHandler : IHttpHandler
@@ -37,11 +38,11 @@ namespace CPlatform.NORM
                 "INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId = f.ImportId " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
                 "WHERE r.CalculationRunId = @run AND f.ImportFileId = @file " +
-                "AND r.StatusCode = 'Complete' AND r.IsDeactivated = 0 AND i.IsDeactivated = 0",
+                "AND i.StatusCode IN ('Imported','Calculated') AND r.IsDeactivated = 0 AND i.IsDeactivated = 0",
                 NORMHelper.P("@run", runId), NORMHelper.P("@file", fileId));
             if (table.Rows.Count == 0)
             {
-                WriteError(context, 404, "The source evidence was not found for this completed run.");
+                WriteError(context, 404, "The accepted source evidence was not found for this run.");
                 return;
             }
 
@@ -58,11 +59,11 @@ namespace CPlatform.NORM
                 "INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId=f.ImportId " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
                 "WHERE r.CalculationRunId=@run AND f.ImportFileId=@file AND i.EntityCode=@entity " +
-                "AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0",
+                "AND i.StatusCode IN ('Imported','Calculated') AND r.IsDeactivated=0 AND i.IsDeactivated=0",
                 NORMHelper.P("@run", runId), NORMHelper.P("@file", fileId), NORMHelper.P("@entity", entity));
             if (content == null)
             {
-                WriteError(context, 404, "The source evidence was not found for this completed run.");
+                WriteError(context, 404, "The accepted source evidence was not found for this run.");
                 return;
             }
             string detail = "Run #" + runId.ToString() + "; " +
