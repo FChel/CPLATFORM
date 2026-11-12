@@ -170,6 +170,8 @@ namespace CPlatform.NORM
             html.Append("<dl class=\"norm-import-review\">");
             string[,] fields = {
                 { "Source file", preview.FileName }, { "Layout", preview.Layout },
+                { "Source profile", preview.ProfileVersion },
+                { "Currency / units", "AUD dollars (multiplier 1); ending balances debit-positive / credit-negative" },
                 { "Configuration", preview.ConfigurationVersion + " (release " + preview.ReleaseId.ToString() + ")" },
                 { "Agency", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
                 { "Company", preview.Companies }, { "Ledger", preview.Ledgers }, { "Reporting stream", preview.ReportingStreams },

@@ -1,0 +1,22 @@
+{
+    "CommandId": "e2cb84b8-7152-4721-b626-0aa52ee48f71",
+    "InstanceId": "i-0b35e9aea70f49701",
+    "Comment": "NORM1B final read-only metadata/health dependency check",
+    "DocumentName": "AWS-RunPowerShellScript",
+    "DocumentVersion": "$DEFAULT",
+    "PluginName": "aws:runPowerShellScript",
+    "ResponseCode": 0,
+    "ExecutionStartDateTime": "2026-11-12T10:41:09.353Z",
+    "ExecutionElapsedTime": "PT0.616S",
+    "ExecutionEndDateTime": "2026-11-12T10:41:09.353Z",
+    "Status": "Success",
+    "StatusDetails": "Success",
+    "StandardOutputContent": "{\"Utc\":\"2026-11-12T10:41:09.6464919Z\",\"ApplicationAuditPermissions\":{\"CanInsert\":1,\"CanViewDefinition\":0},\"MetadataRead\":\"Unavailable\",\"MetadataErrorType\":\"System.ArgumentException\",\"MetadataStage\":\"builder\",\"StandardHealthResult\":\"Failed\",\"HealthErrorType\":\"System.Management.Automation.ArgumentTransformationMetadataException\"}\r\n",
+    "StandardOutputUrl": "",
+    "StandardErrorContent": "",
+    "StandardErrorUrl": "",
+    "CloudWatchOutputConfig": {
+        "CloudWatchLogGroupName": "",
+        "CloudWatchOutputEnabled": false
+    }
+}

@@ -46,12 +46,14 @@ public static class NORMHelper
     public static List<string[]> PermittedPairs = new List<string[]>();
     public static List<string> Queries = new List<string>();
     public static Func<string, DataTable> QueryResponse;
+    public static Func<string, object> ScalarResponse;
+    public static Action<string> ExecResponse;
     public static Func<Call, int> CurrentSource;
     public static string FailImportFileName;
     private static int nextImportId;
     public static string FailAuditCode;
     public static int Runs, Opens;
-    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; CurrentYear = 2026; ReadYear = null; EntityAccess = delegate { return true; }; FailAuditCode = null; Runs = Opens = 0; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
+    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; CurrentYear = 2026; ReadYear = null; EntityAccess = delegate { return true; }; FailAuditCode = null; Runs = Opens = 0; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; ScalarResponse = null; ExecResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
     public static string CurrentUserId() { return "isolated-test"; }
     public static bool HasPrepareAccess() { return PrepareAccess; }
     public static OleDbParameter P(string name, object value) { return new OleDbParameter { Name = name, Value = value ?? DBNull.Value }; }
@@ -61,13 +63,13 @@ public static class NORMHelper
     public static int Int(DataRow r, string c) { return Convert.ToInt32(r[c]); }
     public static long Long(DataRow r, string c) { return Convert.ToInt64(r[c]); }
     public static decimal Dec(DataRow r, string c) { return Convert.ToDecimal(r[c]); }
-    public static object Scalar(string sql, params OleDbParameter[] p) { return Duplicate ? (object)7 : null; }
+    public static object Scalar(string sql, params OleDbParameter[] p) { return ScalarResponse != null ? ScalarResponse(sql) : Duplicate ? (object)7 : null; }
     public static object Scalar(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p)
     {
         if (sql.Contains("SELECT TOP 1 i.ImportId")) { return ExistingCompany ? (object)7 : null; }
         return 0;
     }
-    public static int Exec(string sql, params OleDbParameter[] p) { throw new Exception("Unexpected nontransactional write"); }
+    public static int Exec(string sql, params OleDbParameter[] p) { if (ExecResponse != null) { ExecResponse(sql); return 1; } throw new Exception("Unexpected nontransactional write"); }
     public static int Exec(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p)
     {
         if (FailAudit && sql.Contains("INSERT dbo.tblNORM_AuditEvent")) throw new Exception("private connection detail");

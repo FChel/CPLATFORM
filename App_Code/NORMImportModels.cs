@@ -19,6 +19,7 @@ public class NORMTrialBalanceRow
 
 public class NORMParsedImport
 {
+    public string ProfileVersion;
     public List<NORMTrialBalanceRow> Rows = new List<NORMTrialBalanceRow>();
     public List<string> Warnings = new List<string>();
     public int FinancialYear;
@@ -78,6 +79,7 @@ public sealed class NORMImportPreview
     public string FileHash { get; internal set; }
     public string SourceType { get; internal set; }
     public string Layout { get; internal set; }
+    public string ProfileVersion { get; internal set; }
     public string Entity { get; internal set; }
     public int FinancialYear { get; internal set; }
     public string Companies { get; internal set; }
