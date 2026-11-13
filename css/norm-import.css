@@ -76,3 +76,11 @@
     gap: 0.75rem;
     margin-top: 1rem;
 }
+
+.norm-import-review-actions .norm-button:disabled,
+.norm-import-review-actions .norm-button:disabled:hover {
+    background: #e2e5e7;
+    color: #59636c !important;
+    box-shadow: none;
+    cursor: not-allowed;
+}

@@ -302,9 +302,10 @@ public static class Tests
             });
             Test("legacy ERP auto recognition and confirmed acceptance", delegate { NORMImportPreview p = Inspect(Legacy(true)); Assert(p.Layout == "Legacy ERP", "Legacy layout lost"); NORMImportService.Confirm(p, "isolated-test"); Assert(AcceptedRows() == 2, "Legacy acceptance lost"); });
             Test("ROMAN without identifiable company rejected", delegate { Fails(delegate { Inspect(Roman()); }); });
-            Test("FY2025 legacy pair requirement remains explicit", delegate {
+            Test("ordinary full FY2025 is eligible while ROMAN remains excluded from governed inspection", delegate {
                 year = 2025; NORMImportPreview erp = Inspect(Legacy(true));
-                Assert(!erp.CanAccept, "FY2025 transition bypassed"); Fails(delegate { Inspect(Roman()); });
+                Assert(erp.CanAccept && erp.IsFullYear == true, "Ordinary full-year FY2025 was incorrectly treated as a transition");
+                Fails(delegate { Inspect(Roman()); });
             });
             Test("missing required populations are independent of optional acceptance", delegate {
                 NORMHelper.CurrentSource = delegate(NORMHelper.Call call) {
