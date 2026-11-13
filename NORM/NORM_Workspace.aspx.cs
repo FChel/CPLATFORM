@@ -79,59 +79,10 @@ namespace CPlatform.NORM
 
         private void BuildLatestActivity(int runId, int importId)
         {
-            object releaseValue = NORMHelper.Scalar("SELECT ConfigurationReleaseId FROM dbo.tblNORM_CalculationRun WHERE CalculationRunId=@run", NORMHelper.P("@run", runId));
-            if (releaseValue == null) { return; }
-            int releaseId = Convert.ToInt32(releaseValue);
-            object priorValue = NORMHelper.Scalar(
-                "SELECT TOP 1 i.ImportId FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId=i.ImportId " +
-                "WHERE r.ConfigurationReleaseId=@release AND i.ImportId<@import AND i.IsTestBreak=0 AND i.IsDeactivated=0 " +
-                "AND r.StatusCode='Complete' AND r.IsDeactivated=0 ORDER BY i.ImportId DESC",
-                NORMHelper.P("@release", releaseId), NORMHelper.P("@import", importId));
-            if (priorValue == null)
-            {
-                LatestActivityHtml = "<div class=\"norm-import-change-empty\"><strong>First controlled import</strong><span>The next TB load will show changed accounts, P&amp;L movement, balance-sheet movement and affected notes here.</span></div>";
-                return;
-            }
-            int priorImportId = Convert.ToInt32(priorValue);
-            Dictionary<string, decimal> current = LoadBalances(importId);
-            Dictionary<string, decimal> prior = LoadBalances(priorImportId);
-            DataTable maps = NORMHelper.Query("SELECT GlCode,AccountType,NoteSubLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0", NORMHelper.P("@release", releaseId));
-            Dictionary<string, string[]> mapping = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < maps.Rows.Count; i++) mapping[NORMHelper.Str(maps.Rows[i], "GlCode")] = new string[] { NORMHelper.Str(maps.Rows[i], "AccountType"), NORMHelper.Str(maps.Rows[i], "NoteSubLine") };
-            HashSet<string> accounts = new HashSet<string>(current.Keys, StringComparer.OrdinalIgnoreCase);
-            accounts.UnionWith(prior.Keys);
-            HashSet<string> notes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            int changed = 0;
-            decimal profitLoss = 0m;
-            decimal balanceSheet = 0m;
-            foreach (string gl in accounts)
-            {
-                decimal a = current.ContainsKey(gl) ? current[gl] : 0m;
-                decimal b = prior.ContainsKey(gl) ? prior[gl] : 0m;
-                decimal movement = a - b;
-                if (Math.Abs(movement) < 0.01m) { continue; }
-                changed++;
-                string[] map;
-                if (!mapping.TryGetValue(gl, out map)) { continue; }
-                if (map[0] == "Income" || map[0] == "Expense") profitLoss += movement;
-                else balanceSheet += Math.Abs(movement);
-                if (!String.IsNullOrWhiteSpace(map[1])) notes.Add(map[1]);
-            }
-            LatestActivityHtml = "<div class=\"norm-import-change-grid\">" +
-                ChangeCard(changed.ToString("N0"), "accounts changed", "Since import " + priorImportId.ToString()) +
-                ChangeCard(Money(profitLoss / 1000m), "net P&L movement", "Mapped income and expense accounts") +
-                ChangeCard(Money(balanceSheet / 1000m), "balance-sheet movement", "Absolute mapped movement") +
-                ChangeCard(notes.Count.ToString("N0"), "notes affected", "Mapped disclosure classes") + "</div>";
+            LatestActivityHtml = "<p>Review each accepted population's source versions, structural changes and signed balance movements.</p>" +
+                "<a class=\"norm-button\" href=\"NORM_SourceHistory.aspx?import=" + importId.ToString(CultureInfo.InvariantCulture) +
+                "\">Review this import's source history</a> <a href=\"NORM_SourceHistory.aspx\">Select another population, including sources without a calculation</a>";
         }
-
-        private Dictionary<string, decimal> LoadBalances(int importId)
-        {
-            DataTable table = NORMHelper.Query("SELECT GlAccount,SUM(AccumBalance) Balance FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0 GROUP BY GlAccount", NORMHelper.P("@import", importId));
-            Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < table.Rows.Count; i++) values[NORMHelper.Str(table.Rows[i], "GlAccount")] = NORMHelper.Dec(table.Rows[i], "Balance");
-            return values;
-        }
-
         private void BuildAuditTrail(int runId)
         {
             DataTable table = NORMHelper.Query("SELECT TOP 8 EventCode,DetailText,PerformedBy,PerformedUtc FROM dbo.tblNORM_AuditEvent " +
@@ -149,8 +100,6 @@ namespace CPlatform.NORM
             AuditTrailHtml = html.ToString();
         }
 
-        private string ChangeCard(string value, string label, string detail) { return "<article><strong>" + Enc(value) + "</strong><span>" + Enc(label) + "</span><small>" + Enc(detail) + "</small></article>"; }
-        private string Money(decimal value) { return (value < 0m ? "(" : "") + "$" + Math.Abs(value).ToString("N0") + "k" + (value < 0m ? ")" : ""); }
 
         private string BuildNextSteps(int runId, int failed, int warnings)
         {

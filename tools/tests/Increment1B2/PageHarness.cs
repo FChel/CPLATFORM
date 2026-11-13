@@ -17,6 +17,7 @@ namespace CPlatform.NORM
         protected Literal ErrorMessage = new Literal(), ResultMessage = new Literal(), PreviewMessage = new Literal(), ReplacementError = new Literal();
         protected Button ImportButton = new Button(), ConfirmButton = new Button();
         protected DropDownList ReleaseList = new DropDownList();
+        protected ListBox AdditionalReleaseList = new ListBox { SelectionMode = ListSelectionMode.Multiple };
         protected CheckBox ReplaceExisting = new CheckBox { Text = "I confirm replacement of the existing figures." };
         protected FileUpload TrialBalanceFile = new FileUpload();
 
@@ -34,6 +35,7 @@ namespace CPlatform.NORM
             ReleaseList.Items.Add(new ListItem("Release 1", "1"));
             ReleaseList.Items.Add(new ListItem("Release 2", "2"));
             ReleaseList.SelectedValue = preview.ReleaseId.ToString();
+            ViewState["PreviewReleaseSelection"] = ReleaseSelectionKey();
             ShowPreview(previews);
         }
         public void CheckReplacementForTest() { ReplaceExisting.Checked = true; }

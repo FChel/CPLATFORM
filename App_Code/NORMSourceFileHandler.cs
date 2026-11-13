@@ -6,7 +6,7 @@ using System.Web;
 namespace CPlatform.NORM
 {
     /// <summary>
-    /// Serves an accepted, database-retained source file linked to a run.
+    /// Serves an accepted, database-retained source file by import or legacy run.
     /// Calculation success is independent of source acceptance.
     /// Access is preparer-gated and every successful retrieval is audited.
     /// </summary>
@@ -23,26 +23,32 @@ namespace CPlatform.NORM
                 return;
             }
 
-            int runId;
+            bool byImport = context.Request.QueryString["import"] != null;
+            bool byRun = context.Request.QueryString["run"] != null;
+            int ownerId;
             int fileId;
-            if (!Int32.TryParse(context.Request.QueryString["run"], out runId) || runId <= 0 ||
+            if (byImport == byRun || !Int32.TryParse(context.Request.QueryString[byImport ? "import" : "run"], out ownerId) || ownerId <= 0 ||
                 !Int32.TryParse(context.Request.QueryString["file"], out fileId) || fileId <= 0)
             {
-                WriteError(context, 400, "A valid run and source file are required.");
+                WriteError(context, 400, "Specify one valid accepted import or run, and its source file.");
                 return;
             }
 
-            DataTable table = NORMHelper.Query(
+            string metadataSql = byImport ?
+                "SELECT TOP 1 f.ImportFileId,f.SourceType,f.SourceFileName,f.SourceFileHash,i.EntityCode " +
+                "FROM dbo.tblNORM_ImportFile f INNER JOIN dbo.tblNORM_Import i ON i.ImportId=f.ImportId " +
+                "WHERE i.ImportId=@import AND f.ImportFileId=@file AND i.StatusCode IN ('Imported','Calculated') AND i.IsDeactivated=0" :
                 "SELECT TOP 1 f.ImportFileId,f.SourceType,f.SourceFileName,f.SourceFileHash,i.EntityCode " +
                 "FROM dbo.tblNORM_ImportFile f " +
                 "INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId = f.ImportId " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
                 "WHERE r.CalculationRunId = @run AND f.ImportFileId = @file " +
-                "AND i.StatusCode IN ('Imported','Calculated') AND r.IsDeactivated = 0 AND i.IsDeactivated = 0",
-                NORMHelper.P("@run", runId), NORMHelper.P("@file", fileId));
+                "AND i.StatusCode IN ('Imported','Calculated') AND r.IsDeactivated = 0 AND i.IsDeactivated = 0";
+            DataTable table = NORMHelper.Query(metadataSql,
+                NORMHelper.P(byImport ? "@import" : "@run", ownerId), NORMHelper.P("@file", fileId));
             if (table.Rows.Count == 0)
             {
-                WriteError(context, 404, "The accepted source evidence was not found for this run.");
+                WriteError(context, 404, "The accepted source evidence was not found for this import or run.");
                 return;
             }
 
@@ -54,19 +60,28 @@ namespace CPlatform.NORM
                 WriteError(context, 403, "You do not have access to this source evidence.");
                 return;
             }
-            byte[] content = (byte[])NORMHelper.Scalar(
+            string contentSql = byImport ?
+                "SELECT f.FileContent FROM dbo.tblNORM_ImportFile f INNER JOIN dbo.tblNORM_Import i ON i.ImportId=f.ImportId " +
+                "WHERE i.ImportId=@import AND f.ImportFileId=@file AND i.EntityCode=@entity " +
+                "AND i.StatusCode IN ('Imported','Calculated') AND i.IsDeactivated=0" :
                 "SELECT f.FileContent FROM dbo.tblNORM_ImportFile f " +
                 "INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId=f.ImportId " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
                 "WHERE r.CalculationRunId=@run AND f.ImportFileId=@file AND i.EntityCode=@entity " +
-                "AND i.StatusCode IN ('Imported','Calculated') AND r.IsDeactivated=0 AND i.IsDeactivated=0",
-                NORMHelper.P("@run", runId), NORMHelper.P("@file", fileId), NORMHelper.P("@entity", entity));
+                "AND i.StatusCode IN ('Imported','Calculated') AND r.IsDeactivated=0 AND i.IsDeactivated=0";
+            byte[] content = (byte[])NORMHelper.Scalar(contentSql,
+                NORMHelper.P(byImport ? "@import" : "@run", ownerId), NORMHelper.P("@file", fileId), NORMHelper.P("@entity", entity));
             if (content == null)
             {
-                WriteError(context, 404, "The accepted source evidence was not found for this run.");
+                WriteError(context, 404, "The accepted source evidence was not found for this import or run.");
                 return;
             }
-            string detail = "Run #" + runId.ToString() + "; " +
+            if (!String.Equals(NORMCrypto.Sha256(content), NORMHelper.Str(row, "SourceFileHash"), StringComparison.OrdinalIgnoreCase))
+            {
+                WriteError(context, 409, "The retained source evidence failed its integrity check.");
+                return;
+            }
+            string detail = (byImport ? "Import #" : "Run #") + ownerId.ToString() + "; " +
                 NORMHelper.Str(row, "SourceType") + "; " + fileName + "; SHA-256 " +
                 NORMHelper.Str(row, "SourceFileHash");
             NORMHelper.Exec(

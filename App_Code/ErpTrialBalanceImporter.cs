@@ -14,6 +14,19 @@ public static class ErpTrialBalanceImporter
     public static NORMParsedImport ParseForInspection(byte[] content, IList<string> allowedCompanyCodes,
         int expectedFinancialYear)
     {
+        return ParseForInspectionCore(content, allowedCompanyCodes, expectedFinancialYear);
+    }
+
+    // Preparation only: source facts are discovered before release binding. The
+    // service must repeat normal, configuration-authorised inspection afterwards.
+    public static NORMParsedImport DiscoverForInspection(byte[] content)
+    {
+        return ParseForInspectionCore(content, null, null);
+    }
+
+    private static NORMParsedImport ParseForInspectionCore(byte[] content, IList<string> allowedCompanyCodes,
+        int? expectedFinancialYear)
+    {
         if (content == null || content.Length == 0) { throw new InvalidDataException("Choose a non-empty ERP workbook."); }
         if (content.Length < 4 || content[0] != 0x50 || content[1] != 0x4b || content[2] != 0x03 || content[3] != 0x04)
         { throw new InvalidDataException("Unsupported ERP content: expected an XLSX workbook."); }
@@ -58,8 +71,10 @@ public static class ErpTrialBalanceImporter
                 throw new InvalidDataException("The legacy ERP data must be on the first worksheet.");
             }
             legacyStream = ReadReportingStream(selected, header);
+            if (!expectedFinancialYear.HasValue)
+            { expectedFinancialYear = ValidateFinancialYear(selected, header, null); }
         }
-        NORMParsedImport legacy = Parse(content, null, expectedFinancialYear);
+        NORMParsedImport legacy = ParseLegacy(content, null, expectedFinancialYear.Value, true);
         foreach (NORMTrialBalanceRow row in legacy.Rows) { row.ReportingStream = legacyStream; }
         legacy.Warnings.Add("Legacy ERP inspection preserves the historical company-in-SourceLedger contract; actual ledger identity is not established.");
         return legacy;
@@ -95,7 +110,7 @@ public static class ErpTrialBalanceImporter
     }
 
     private static NORMParsedImport ParseDefence(ExcelWorksheet sheet, int header,
-        IList<string> allowedCompanyCodes, int expectedFinancialYear)
+        IList<string> allowedCompanyCodes, int? expectedFinancialYear)
     {
         NORMParsedImport parsed = new NORMParsedImport();
         int year;
@@ -104,7 +119,7 @@ public static class ErpTrialBalanceImporter
         object legacyYear = FindMetadataValue(sheet, header, "Fiscal Year");
         if (legacyYear != null && !Same(Text(legacyYear), year.ToString(CultureInfo.InvariantCulture)))
         { throw new InvalidDataException("The ERP workbook contains conflicting fiscal-year labels."); }
-        if (year != expectedFinancialYear)
+        if (expectedFinancialYear.HasValue && year != expectedFinancialYear.Value)
         { throw new InvalidDataException("The Defence ERP financial year does not match the expected financial year."); }
         ReadPeriodRange(sheet, header, year, parsed);
         ValidateDefenceUnits(sheet, header);
@@ -117,7 +132,8 @@ public static class ErpTrialBalanceImporter
         string stream = ReadReportingStream(sheet, header);
         if (ledger != null && ledger.Length > 20)
         { throw new InvalidDataException("The source ledger exceeds the supported identity length."); }
-        if (allowedCompanyCodes == null || allowedCompanyCodes.Count == 0 || !Contains(allowedCompanyCodes, company))
+        if (expectedFinancialYear.HasValue &&
+            (allowedCompanyCodes == null || allowedCompanyCodes.Count == 0 || !Contains(allowedCompanyCodes, company)))
         { throw new InvalidDataException("The Defence ERP company is not authorised for inspection."); }
 
         decimal[] detail = new decimal[4];
@@ -184,6 +200,7 @@ public static class ErpTrialBalanceImporter
             { throw new InvalidDataException("Defence ERP report controls disagree with extracted detail in column " + (index + 5).ToString() + "."); }
         }
         if (detail[3] != 0m) { throw new InvalidDataException("The Defence ERP trial balance must sum to exactly zero."); }
+        CountReportRows(sheet, parsed, 2, header);
         return parsed;
     }
 
@@ -228,6 +245,11 @@ public static class ErpTrialBalanceImporter
 
     public static NORMParsedImport Parse(byte[] content, IList<string> allowedLedgers, int expectedFinancialYear)
     {
+        return ParseLegacy(content, allowedLedgers, expectedFinancialYear, false);
+    }
+
+    private static NORMParsedImport ParseLegacy(byte[] content, IList<string> allowedLedgers, int expectedFinancialYear, bool strictInspection)
+    {
         NORMParsedImport parsed = new NORMParsedImport();
         using (MemoryStream stream = new MemoryStream(content, false))
         using (ExcelPackage package = new ExcelPackage(stream))
@@ -247,6 +269,14 @@ public static class ErpTrialBalanceImporter
                 {
                     throw new InvalidDataException("The Defence ERP layout is available for parsing inspection only through this route. Inspect the file and explicitly confirm acceptance.");
                 }
+                if (strictInspection && candidate != sheet && candidate.Dimension != null)
+                {
+                    for (int row = 1; row <= candidate.Dimension.End.Row; row++)
+                    {
+                        if (IsCompanyCode(Text(candidate.Cells[row, 1].Value)))
+                        { throw new InvalidDataException("Unrecognised financial detail on an additional legacy worksheet cannot be excluded from row reconciliation."); }
+                    }
+                }
             }
 
             int headerRow = FindHeaderRow(sheet);
@@ -256,12 +286,40 @@ public static class ErpTrialBalanceImporter
             }
             ValidateFinancialYear(sheet, headerRow, expectedFinancialYear);
             ReadPeriodRange(sheet, headerRow, expectedFinancialYear, parsed);
+            if (strictInspection)
+            {
+                for (int row = 1; row < headerRow; row++)
+                {
+                    bool financialDetail = IsCompanyCode(Text(sheet.Cells[row, 1].Value));
+                    if (!String.IsNullOrWhiteSpace(Text(sheet.Cells[row, 3].Value)))
+                    {
+                        decimal amount;
+                        for (int column = 5; column <= 8; column++)
+                        { financialDetail |= TryDecimal(sheet.Cells[row, column].Value, out amount); }
+                    }
+                    if (financialDetail)
+                    { throw new InvalidDataException("Financial detail before the legacy ERP header at row " + row + " cannot be excluded as metadata."); }
+                }
+            }
 
             for (int rowNo = headerRow + 1; rowNo <= sheet.Dimension.End.Row; rowNo++)
             {
                 string ledger = Text(sheet.Cells[rowNo, 1].Value);
-                if (!IsCompanyCode(ledger)) { continue; }
+                if (!IsCompanyCode(ledger))
+                {
+                    if (strictInspection && !BlankReportRow(sheet, rowNo))
+                    { throw new InvalidDataException("Unsupported nonblank legacy ERP record at row " + rowNo + ". No financial detail or undocumented subtotal/control may be skipped."); }
+                    continue;
+                }
                 if (allowedLedgers != null && allowedLedgers.Count > 0 && !Contains(allowedLedgers, ledger)) { continue; }
+                if (strictInspection)
+                {
+                    for (int column = 9; column <= sheet.Dimension.End.Column; column++)
+                    {
+                        if (!String.IsNullOrWhiteSpace(Text(sheet.Cells[rowNo, column].Value)))
+                        { throw new InvalidDataException("Unsupported legacy ERP detail field at row " + rowNo + ", column " + column + "."); }
+                    }
+                }
 
                 string gl = ExtractGl(Text(sheet.Cells[rowNo, 3].Value));
                 if (String.IsNullOrWhiteSpace(gl))
@@ -309,6 +367,7 @@ public static class ErpTrialBalanceImporter
                     ending.ToString("0.00", CultureInfo.InvariantCulture));
                 parsed.Rows.Add(item);
             }
+            CountReportRows(sheet, parsed, 0, headerRow);
         }
 
         if (parsed.Rows.Count == 0)
@@ -316,6 +375,30 @@ public static class ErpTrialBalanceImporter
             throw new InvalidDataException("No rows matched the configured source ledgers for this reporting entity.");
         }
         return parsed;
+    }
+
+    private static bool BlankReportRow(ExcelWorksheet sheet, int row)
+    {
+        for (int column = 1; column <= sheet.Dimension.End.Column; column++)
+        { if (!String.IsNullOrWhiteSpace(Text(sheet.Cells[row, column].Value))) { return false; } }
+        return true;
+    }
+
+    private static void CountReportRows(ExcelWorksheet sheet, NORMParsedImport parsed, int controlRows, int headerRow)
+    {
+        NORMImportFileContext counts = parsed.SourceFile;
+        counts.RecordUnit = "selected report worksheet rows";
+        counts.RecordCount = sheet.Dimension.End.Row;
+        counts.DetailRowCount = parsed.Rows.Count;
+        counts.ControlRowCount = controlRows;
+        for (int row = 1; row <= sheet.Dimension.End.Row; row++)
+        {
+            if (controlRows > 0 && row < headerRow && IsCompanyCode(Text(sheet.Cells[row, 1].Value)) &&
+                !String.IsNullOrWhiteSpace(Text(sheet.Cells[row, 3].Value)))
+            { throw new InvalidDataException("Financial detail before the recognised ERP report header cannot be excluded as metadata."); }
+            if (BlankReportRow(sheet, row)) { counts.BlankRowCount++; }
+            else if (row <= headerRow) { counts.MetadataRowCount++; }
+        }
     }
 
     private static void ReadPeriodRange(ExcelWorksheet sheet, int headerRow, int financialYear,
@@ -410,9 +493,10 @@ public static class ErpTrialBalanceImporter
         return -1;
     }
 
-    private static void ValidateFinancialYear(ExcelWorksheet sheet, int headerRow, int expectedFinancialYear)
+    private static int ValidateFinancialYear(ExcelWorksheet sheet, int headerRow, int? expectedFinancialYear)
     {
         bool found = false;
+        int sourceYear = 0;
         for (int row = 1; row < headerRow; row++)
         {
             if (!Same(Text(sheet.Cells[row, 1].Value), "Fiscal Year")) { continue; }
@@ -422,7 +506,10 @@ public static class ErpTrialBalanceImporter
             {
                 throw new InvalidDataException("The trial balance contains an invalid fiscal-year value.");
             }
-            if (detected != expectedFinancialYear)
+            if (found && sourceYear != 0 && sourceYear != detected)
+            { throw new InvalidDataException("The trial balance contains conflicting fiscal-year values."); }
+            sourceYear = detected;
+            if (expectedFinancialYear.HasValue && detected != expectedFinancialYear.Value)
             {
                 throw new InvalidDataException("The trial balance is for FY" + detected.ToString() +
                     " but the selected configuration is FY" + expectedFinancialYear.ToString() + ".");
@@ -432,6 +519,7 @@ public static class ErpTrialBalanceImporter
         {
             throw new InvalidDataException("The trial balance does not identify its fiscal year.");
         }
+        return sourceYear;
     }
 
     private static bool Same(string left, string right)

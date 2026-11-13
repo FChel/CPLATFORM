@@ -21,7 +21,12 @@ namespace CPlatform.NORM
 
         protected void Page_Load(object sender, EventArgs e)
         {
-            if (!IsPostBack) { ClearPreview(); BindReleases(); }
+            if (!IsPostBack)
+            {
+                ClearPreview(); BindReleases();
+                ListItem context = ReleaseList.Items.FindByValue(Request.QueryString["release"] ?? "");
+                if (context != null) { ReleaseList.SelectedValue = context.Value; }
+            }
             else
             {
                 List<NORMImportPreview> previews = Session[PendingKey] as List<NORMImportPreview>;
@@ -47,6 +52,7 @@ namespace CPlatform.NORM
                 if (bytes > NORMHelper.SettingInt("NORM.MaxUploadBytes", 104857600))
                 { throw new InvalidDataException("The combined files exceed the configured upload limit."); }
                 List<NORMImportPreview> previews = new List<NORMImportPreview>();
+                List<int> selectedReleases = SelectedAdditionalReleases();
                 foreach (HttpPostedFile file in TrialBalanceFile.PostedFiles)
                 {
                     byte[] content;
@@ -55,11 +61,12 @@ namespace CPlatform.NORM
                         file.InputStream.CopyTo(buffer);
                         content = buffer.ToArray();
                     }
-                    previews.Add(NORMImportService.Inspect(content, file.FileName, releaseId, NORMHelper.CurrentUserId()));
+                    previews.AddRange(NORMImportService.InspectFileForAgency(content, file.FileName, releaseId, selectedReleases, NORMHelper.CurrentUserId()));
                 }
                 NORMImportService.ValidateBatch(previews);
                 Session[PendingKey] = previews;
                 ViewState["PreviewToken"] = previews[0].Token;
+                ViewState["PreviewReleaseSelection"] = ReleaseSelectionKey();
                 ShowPreview(previews);
             }
             catch (Exception error) { ShowError(error.Message); }
@@ -75,8 +82,10 @@ namespace CPlatform.NORM
                 if (!NORMHelper.HasPrepareAccess()) { throw new UnauthorizedAccessException("Preparer access is required."); }
                 if (previews == null || !String.Equals(previews[0].Token, ViewState["PreviewToken"] as string, StringComparison.Ordinal))
                 { throw new InvalidOperationException("This preview expired, was cancelled or has already been used. Check existing imports before inspecting again."); }
-                if (TrialBalanceFile.HasFiles || ReleaseList.SelectedValue != previews[0].ReleaseId.ToString(CultureInfo.InvariantCulture))
+                if (TrialBalanceFile.HasFiles || ReleaseSelectionKey() != ViewState["PreviewReleaseSelection"] as string)
                 { throw new InvalidOperationException("The selected files or configuration changed. Inspect the batch again."); }
+                string blocked = NORMImportService.BatchConfirmationBlockReason(previews);
+                if (blocked != null) { throw new InvalidOperationException(blocked); }
                 string user = NORMHelper.CurrentUserId();
                 bool needsReplacement = false;
                 foreach (NORMImportPreview preview in previews)
@@ -98,9 +107,16 @@ namespace CPlatform.NORM
                 List<NORMImportOutcome> outcomes = NORMImportService.ConfirmBatch(previews, user, replace);
                 ResultPanel.Visible = true;
                 StringBuilder result = new StringBuilder();
-                foreach (NORMImportOutcome outcome in outcomes)
+                for (int i = 0; i < outcomes.Count; i++)
                 {
+                    NORMImportOutcome outcome = outcomes[i];
+                    NORMImportPreview accepted = previews[i];
                     result.Append("<p>Source accepted. Import reference: ").Append(outcome.ImportId.ToString(CultureInfo.InvariantCulture)).Append(".</p>");
+                    result.Append("<p>").Append(HttpUtility.HtmlEncode("FY" + accepted.FinancialYear + ", company " + accepted.Companies +
+                        ", ledger " + accepted.Ledgers + ", " + accepted.ReportingStreams + ", release " + accepted.ReleaseId +
+                        "; " + accepted.FileName)).Append("</p>");
+                    result.Append("<p><a href=\"NORM_SourceHistory.aspx?import=").Append(outcome.ImportId).Append("&amp;release=").Append(accepted.ReleaseId)
+                        .Append("&amp;viewStream=").Append(HttpUtility.UrlEncode(accepted.Population.ReportingStream)).Append("\">Source history and original files</a></p>");
                     if (outcome.CalculationRunId > 0)
                     {
                         result.Append("<p>Calculation completed. <a href=\"NORM_Statements.aspx?run=")
@@ -123,6 +139,7 @@ namespace CPlatform.NORM
         {
             Session.Remove(PendingKey);
             ViewState.Remove("PreviewToken");
+            ViewState.Remove("PreviewReleaseSelection");
             PreviewPanel.Visible = false;
             ReplaceExisting.Checked = false;
         }
@@ -140,11 +157,33 @@ namespace CPlatform.NORM
             int replacementFiles = 0;
             int replacementScopes = 0;
             StringBuilder html = new StringBuilder();
+            HashSet<string> files = new HashSet<string>(StringComparer.Ordinal);
+            bool batchInvalid = false;
+            foreach (NORMImportPreview member in previews) { batchInvalid |= !member.CanAccept; }
+            string blocked = NORMImportService.BatchConfirmationBlockReason(previews);
             foreach (NORMImportPreview preview in previews)
             {
+                NORMImportFileContext file = preview.SourceFile;
+                if (file != null && files.Add(file.Token))
+                {
+                    html.Append("<h3>").Append(HttpUtility.HtmlEncode(file.FileName)).Append("</h3><p>File row accounting: ")
+                        .Append(file.RecordCount).Append(" ").Append(HttpUtility.HtmlEncode(file.RecordUnit))
+                        .Append(" = ").Append(file.DetailRowCount).Append(" financial detail + ").Append(file.MetadataRowCount)
+                        .Append(" metadata/header/separator + ").Append(file.ControlRowCount).Append(" source control + ")
+                        .Append(file.BlankRowCount).Append(" blank. Populations: ").Append(file.PopulationCount)
+                        .Append(". Reconciliation: ").Append(file.RowsReconciled ? "Pass" : "Fail").Append(".</p>");
+                }
                 canAccept &= preview.CanAccept;
                 if (preview.HasReplacement) { replacementFiles++; }
                 replacementScopes += AppendSourcePreview(html, preview);
+                html.Append("<p>Accepted rows: 0 (inspection only). Invalid rows: ").Append(preview.InvalidRowCount)
+                    .Append(batchInvalid || blocked != null ? "; valid rows withheld: " : "; valid rows awaiting confirmation: ")
+                    .Append(preview.ValidatedRowCount).Append(".</p>");
+            }
+            if (blocked != null)
+            {
+                canAccept = false;
+                html.Append("<p role=\"alert\">").Append(HttpUtility.HtmlEncode(blocked)).Append("</p>");
             }
             ConfirmButton.Enabled = canAccept;
             bool replacement = replacementFiles > 0;
@@ -159,8 +198,8 @@ namespace CPlatform.NORM
                         ". The previous figures will be retained as historical evidence.</p>"
                     : "<p>Confirming this replacement will replace the existing figures with those from the newly uploaded file. The previous import will be retained as historical evidence.</p>");
             }
-            html.Append("<p>").Append(canAccept ? "Confirmation applies to the entire batch." :
-                "The batch cannot be accepted while any selected source fails validation.").Append("</p>");
+            html.Append("<p>").Append(canAccept ? "Confirmation applies to the entire batch." : blocked != null ?
+                "This preview is available for review only; confirmation is disabled." : "The batch cannot be accepted while any selected source fails validation.").Append("</p>");
             html.Append("<p><small>The preview expires after 15 minutes. Changes to the files, configuration or accepted sources require another inspection.</small></p>");
             PreviewMessage.Text = html.ToString();
         }
@@ -170,11 +209,13 @@ namespace CPlatform.NORM
             html.Append("<dl class=\"norm-import-review\">");
             string[,] fields = {
                 { "Source file", preview.FileName }, { "Layout", preview.Layout },
+                { "Original SHA-256", preview.FileHash },
                 { "Source profile", preview.ProfileVersion },
                 { "Currency / units", "AUD dollars (multiplier 1); ending balances debit-positive / credit-negative" },
                 { "Configuration", preview.ConfigurationVersion + " (release " + preview.ReleaseId.ToString() + ")" },
                 { "Agency", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
                 { "Company", preview.Companies }, { "Ledger", preview.Ledgers }, { "Reporting stream", preview.ReportingStreams },
+                { "Source status", preview.Population.ReportingStream == null ? "Unresolved" : preview.HasReplacement ? "Replacement of accepted population" : "New source population" },
                 { "Periods", preview.PeriodStart.ToString("00") + "\u2013" + preview.PeriodEnd.ToString("00") },
                 { "Actual coverage", preview.CoverageStart.HasValue && preview.CoverageEnd.HasValue
                     ? preview.CoverageStart.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " to " + preview.CoverageEnd.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
@@ -191,7 +232,8 @@ namespace CPlatform.NORM
                     .Append("</dt><dd>").Append(HttpUtility.HtmlEncode(fields[i,1])).Append("</dd></div>");
             }
             html.Append("</dl><p>").Append(preview.CanAccept ? "Source validation passed. This upload has not been accepted." : "Source validation failed. Acceptance is disabled.").Append("</p>");
-            html.Append("<ul><li>Content layout, year, period and permitted source: Pass</li>");
+            html.Append("<ul><li>Content layout recognised. Identity, coverage and population validation: ")
+                .Append(preview.Errors.Count == 0 ? "Pass" : "Fail; see errors below").Append("</li>");
             if (preview.Layout == "Defence ERP") { html.Append("<li>Detail reconciles to company and grand-total controls: Pass</li>"); }
             html.Append("<li>Exact-zero balance: ").Append(!preview.TotalsAvailable ? "Not run" : preview.Net == 0m ? "Pass" : "Fail").Append("</li>");
             html.Append("<li>Lossless decimal storage: ").Append(preview.PrecisionValid ? "Pass" : "Fail").Append("</li></ul>");
@@ -211,6 +253,29 @@ namespace CPlatform.NORM
             }
             return replacements;
         }
+        private List<int> SelectedAdditionalReleases()
+        {
+            List<int> ids = new List<int>();
+            foreach (ListItem item in AdditionalReleaseList.Items)
+            {
+                if (!item.Selected) { continue; }
+                int id;
+                if (!Int32.TryParse(item.Value, out id))
+                { throw new InvalidOperationException("Select an available approved configuration release."); }
+                ids.Add(id);
+            }
+            return ids;
+        }
+
+        private string ReleaseSelectionKey()
+        {
+            List<int> ids = SelectedAdditionalReleases();
+            ids.Sort();
+            StringBuilder key = new StringBuilder(ReleaseList.SelectedValue);
+            foreach (int id in ids) { key.Append('|').Append(id.ToString(CultureInfo.InvariantCulture)); }
+            return key.ToString();
+        }
+
         private void BindReleases()
         {
             DataTable releases = NORMHelper.Query(
@@ -218,6 +283,7 @@ namespace CPlatform.NORM
                 "FROM dbo.tblNORM_ConfigurationRelease WHERE StatusCode = 'Approved' AND IsDeactivated = 0 " +
                 "ORDER BY FinancialYear DESC,EntityCode,VersionCode DESC");
             ReleaseList.Items.Clear();
+            AdditionalReleaseList.Items.Clear();
             for (int i = 0; i < releases.Rows.Count; i++)
             {
                 DataRow row = releases.Rows[i];
@@ -226,11 +292,16 @@ namespace CPlatform.NORM
                     NORMHelper.Int(row, "ConfigurationReleaseId").ToString());
                 item.Attributes["data-financial-year"] = NORMHelper.Int(row, "FinancialYear").ToString();
                 ReleaseList.Items.Add(item);
+                AdditionalReleaseList.Items.Add(new ListItem(item.Text, item.Value));
             }
             if (ReleaseList.Items.Count == 0)
             {
                 ReleaseList.Items.Add(new ListItem("No approved configuration release is installed", ""));
                 ImportButton.Enabled = false;
+            }
+            else
+            {
+                ReleaseList.Items.Insert(0, new ListItem("Select an agency and approved configuration", ""));
             }
         }
 

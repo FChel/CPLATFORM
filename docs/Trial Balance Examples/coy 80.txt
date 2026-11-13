@@ -1,0 +1,566 @@
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      1  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+12111           Petty Cash Floats                           5,200.00             1,000.00             3,000.00             3,200.00
+12112           Intercompany Receivable/(Payabl                 0.00         5,174,524.21         5,117,626.99            56,897.22
+12114           Integrity Cash Suspense Account                 0.00       696,722,235.26       696,722,235.26                 0.00
+12122           Cash at Bank Receipts              12,693,626,109.01       631,385,764.34        21,220,137.85    13,303,791,735.50
+12123           Cash at Bank Payments             -12,683,073,722.20        16,200,887.85       630,453,349.12   -13,297,326,183.47
+12125           Direct Debit Clearing Account                   0.00           881,469.73           881,469.73                 0.00
+12311           Securities Purchased                   41,000,000.01       198,000,000.00       199,000,000.00        40,000,000.01
+12312           Held to Maturity Investments           17,000,000.00                 0.00        17,000,000.00                 0.00
+12514           Energy - Other Trade Debtors                    7.57                 0.00                 7.57                 0.00
+12519           Unapplied Receipts                         -3,514.36           313,843.19           310,338.83               -10.00
+12521           Water Sales Debtors                    13,493,517.48       244,994,413.98       241,344,677.67        17,143,253.79
+12522           Water - Unread Consumption Debt        17,085,068.00       199,202,942.80       188,933,822.80        27,354,188.00
+12531           Sewerage Sales Debtors                  9,619,703.87       111,031,267.07       108,695,032.06        11,955,938.88
+12611           Sundry Debtors                          1,432,189.89        42,127,385.41        41,247,539.11         2,312,036.19
+12612           Sundry debtors-intercompany           100,287,908.08       130,153,460.77       212,182,085.08        18,259,283.77
+12613           ATO  GST Receivable                     1,104,519.61         9,197,778.19         8,914,961.38         1,387,336.42
+12614           ATO - GST Refund                          789,649.00         6,696,303.00         7,485,952.00                 0.00
+12615           Seconded Employee Entitlements          8,102,325.14           180,840.61         1,710,942.00         6,572,223.75
+12712           Doubtful Debts - Water                   -322,754.00            16,005.99            23,667.49          -330,415.50
+12713           Doubtful Debts - Sewerage                -349,650.17                 0.00             8,299.96          -357,950.13
+12721           Doubtful Debts - Sundry Debtors           -25,833.75                 0.00                 0.00           -25,833.75
+12811           Accrued Revenue Receivable (CA)         2,918,039.77        18,849,248.33        18,670,939.53         3,096,348.57
+12812           Accrued Interest Receivable               155,517.64         1,341,508.00         1,326,321.31           170,704.33
+13011           Stores Stock (BB)                             420.58                 0.00               420.58                 0.00
+13012           Inventory Average Cost Variance            -7,013.93             5,932.90               189.42            -1,270.45
+13013           Inventory Central                       1,516,796.86         3,900,690.41         3,967,645.39         1,449,841.88
+13014           Inventory LMWQCC - Non Chemical           256,550.00         2,330,634.00         2,353,751.00           233,433.00
+13015           Inventory LMWQCC - Chemicals              459,021.16         4,268,256.14         4,335,379.30           391,898.00
+13111           System Asset Spares                     1,687,729.77           140,264.04                 0.00         1,827,993.81
+13311           Prepayments - Equipment Leasing                 0.00           143,513.57            81,493.60            62,019.97
+13312           Prepayments - Software                         -0.03           709,498.00           245,209.18           464,288.79
+13314           Prepayments - General                   4,003,732.82        13,710,527.70        13,240,856.31         4,473,404.21
+13415           Assets Held for Sale                    2,700,400.00                 0.00         2,700,400.00                 0.00
+15131           Loan to Actew Distribution                400,000.00                 0.00                 0.00           400,000.00
+15132           Invest. in ACTEW Retail Partner         1,000,000.00                 0.00                 0.00         1,000,000.00
+15191           Distributions from JV                -751,101,671.32                 0.00        39,000,000.00      -790,101,671.32
+15193           Interco Investment Loan Asset t     1,255,547,202.24       100,287,908.08                 0.00     1,355,835,110.32
+15811           Accrued Revenue Receivable (NCA         2,315,796.00                 0.00                 0.00         2,315,796.00
+15812           Prepayments (NCA)                       3,334,307.10         8,316,153.07                 0.00        11,650,460.17
+16231           WN - Reticulation Mains               262,001,764.96            67,269.96             1,481.44       262,067,553.48
+16232           WN - Gifted Reticulation Mains         39,826,846.21        20,855,195.48        13,850,918.62        46,831,123.07
+16233           WN - Water Meters                      29,223,739.22                 0.00                 0.00        29,223,739.22
+16234           WN - System Control                     1,686,718.40                 0.00                 0.00         1,686,718.40
+16235           WN - Pump Stations                     45,318,447.93            49,680.28             1,094.06        45,367,034.15
+16236           WN - Reservoirs                                 0.00           958,109.67                 0.00           958,109.67
+16237           WN - Distribution Mains                23,492,345.27         3,826,179.17               213.46        27,318,310.98
+16238           WN - Water Corporate                    5,362,560.69                 0.00                 0.00         5,362,560.69
+16241           WB - Dams                             532,498,328.04            23,388.06               515.09       532,521,201.01
+
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      2  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+16242           WB - Treatment Plants                 121,956,306.39         2,324,638.57            19,445.39       124,261,499.57
+16243           WB - Pump Stations                     82,785,309.51                 0.00                 0.00        82,785,309.51
+16244           WB - Reservoirs                        62,335,009.38         6,600,000.00         3,300,000.00        65,635,009.38
+16245           WB - Bulk Supply Mains                156,152,496.46         8,088,852.77            15,221.43       164,226,127.80
+16246           WB - Mini Hydro                         3,850,183.65            57,060.74            28,530.37         3,878,714.02
+16251           SN - Pump Stations                     10,191,776.44           337,049.89                 0.00        10,528,826.33
+16252           SN - Sewer Tunnels                     93,099,137.69                 0.00                 0.00        93,099,137.69
+16253           SN - Reticulation Mains               461,349,821.23        11,596,167.03                 0.03       472,945,988.23
+16254           SN - Gifted Reticulation Mains         65,131,153.52        23,255,107.62        17,767,347.91        70,618,913.23
+16255           SN - Other Sewerage                    12,147,232.31                 0.00                 0.00        12,147,232.31
+16256           SN - Effluent Reticulation              3,279,803.29                 0.00                 0.00         3,279,803.29
+16257           SN - Sewerage Corporate                 5,612,367.34                 0.00         5,612,367.34                 0.00
+16261           ST - Treatment Plants                 221,277,536.53         1,613,648.79           898,015.01       221,993,170.31
+16311           Land - System Assets                   12,010,656.31                 0.00                 0.00        12,010,656.31
+16312           Land - Non System Assets                5,771,672.39                 0.00                 0.00         5,771,672.39
+16321           Leasehold improvements                  2,118,627.41                 0.00                 0.00         2,118,627.41
+16323           Buildings - System Assets                 801,167.70                 0.00            28,089.50           773,078.20
+16324           Buildings - Non System Assets          25,741,262.59                 0.00             8,500.00        25,732,762.59
+16331           Computing Equipment                       179,941.56             7,841.00                 0.00           187,782.56
+16332           Clearing - Computing Equipment                  0.00            12,053.00            11,257.00               796.00
+16341           Furniture & Fittings                      608,268.83            13,685.44                 0.00           621,954.27
+16342           Clearing - Furniture & Fittings             5,140.00             8,545.44            13,685.44                 0.00
+16351           Office Equipment                          257,604.66            22,784.91             3,226.37           277,163.20
+16352           Clearing - Office Equipment                16,217.27           101,713.61            22,784.91            95,145.97
+16361           Plant, Machinery & Equipment            2,030,096.84           664,921.72           178,071.31         2,516,947.25
+16362           Clearing - Plant, Machinery & E           284,205.08           581,196.43           800,047.89            65,353.62
+16371           Telecommunications                        246,334.71             6,338.54                 0.00           252,673.25
+16372           Clearing - Telecommunications                 953.64            27,814.44            19,162.81             9,605.27
+16381           Finance Lease Assets                      811,640.45                 0.00                 0.00           811,640.45
+16411           Make Good Assets                          123,845.26                 0.00                 0.00           123,845.26
+17231           Acc Dep - WN Reticulation Mains       -40,426,362.68                 0.00         3,889,844.94       -44,316,207.62
+17232           Acc Dep - WN Gifted Reticulatio        -1,935,392.48            62,028.65           836,678.05        -2,710,041.88
+17233           Acc Dep - WN Water Meters             -15,272,041.43                 0.00         1,563,816.62       -16,835,858.05
+17234           Acc Dep - WN System Control              -949,525.61                 0.00            83,711.13        -1,033,236.74
+17235           Acc Dep - WN Pump Stations             -6,762,128.63                 0.00           905,856.05        -7,667,984.68
+17236           Acc Dep - WN Reservoirs                         0.00                 0.00             3,193.69            -3,193.69
+17237           Acc Dep - WN Distribution Mains        -1,389,557.23                 0.00           232,910.26        -1,622,467.49
+17238           Acc Dep - WN Water Corporate             -759,692.84                 0.00           134,308.21          -894,001.05
+17241           Acc Dep - WB Dams                     -19,219,090.91                 0.00         2,867,646.28       -22,086,737.19
+17242           Acc Dep - WB Treatment Plants         -17,292,892.17             1,558.74         2,291,532.58       -19,582,866.01
+17243           Acc Dep - WB Pump Stations            -10,683,644.07                 0.00         2,836,414.66       -13,520,058.73
+17244           Acc Dep - WB Reservoirs                -7,968,725.74                 0.00         2,021,848.64        -9,990,574.38
+17245           Acc Dep - WB Bulk Supply Mains        -15,402,907.56                47.86         1,935,674.13       -17,338,533.83
+17246           Acc Dep - WB Mini Hydro                  -942,997.21             2,389.21            97,665.23        -1,038,273.23
+17251           Acc Dep - SN Pump Stations             -4,948,235.87                 0.00           250,546.18        -5,198,782.05
+17252           Acc Dep - SN Sewer Tunnels             -7,874,867.86                 0.00           758,298.71        -8,633,166.57
+17253           Acc Dep - SN Reticulation Mains       -69,354,156.29                 0.00         6,702,854.32       -76,057,010.61
+17254           Acc Dep - SN Gifted Reticulatio        -3,426,520.10            57,861.42           885,703.71        -4,254,362.39
+
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      3  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+17255           Acc Dep - SN Other Sewerage            -3,144,775.53                 0.00           297,975.11        -3,442,750.64
+17256           Acc Dep - SN Effluent Reticulat          -326,153.77                 0.00            32,811.44          -358,965.21
+17257           Acc Dep - SN Sewerage Corporate          -803,822.76           902,829.44            99,006.68                 0.00
+17261           Acc Dep - ST Treatment Plants         -53,396,531.17            12,027.30         4,461,354.47       -57,845,858.34
+17321           Acc Dep - Leasehold Improvement          -706,491.58                 0.00           106,124.29          -812,615.87
+17323           Acc Dep - Buildings System Asse          -122,192.58             3,672.95             9,993.15          -128,512.78
+17324           Acc Dep - Buildings Non System         -7,994,019.97               378.05           793,516.33        -8,787,158.25
+17331           Acc Dep - Computing Equipment             -97,426.39                 0.00            27,607.79          -125,034.18
+17341           Acc Dep - Furniture & Fittings           -505,497.68                 0.00            26,411.57          -531,909.25
+17351           Acc Dep - Office Equipment               -199,443.02             1,305.49            21,048.57          -219,186.10
+17361           Acc Dep - Plant, Machinery & Eq          -928,780.11            10,607.25           372,958.05        -1,291,130.91
+17371           Acc Dep - Telecommunications             -115,772.33                 0.00            37,288.72          -153,061.05
+17381           Acc Dep - Finance Lease Assets            -78,552.99                 0.00            24,480.77          -103,033.76
+17411           Acc Amort - Make Good Assets              -43,416.63                 0.00             6,405.75           -49,822.38
+18231           CIP - Water                            61,416,743.39        36,612,961.61        33,689,256.16        64,340,448.84
+18232           CIP - Water Security Program           29,611,653.31         1,083,530.09         1,159,353.20        29,535,830.20
+18251           CIP - Sewerage                         46,028,991.41        31,677,194.94        25,421,555.34        52,284,631.01
+18321           CIP - Facilities                          888,545.03        16,508,659.08         9,189,925.20         8,207,278.91
+18361           CIP - Plant and Equipment               1,612,970.88         1,829,083.14           930,589.19         2,511,464.83
+18612           Water Licences                         20,921,859.00                 0.00                 0.00        20,921,859.00
+18614           Carbon Credits                                  0.00         2,035,605.76         2,035,605.76                 0.00
+18621           Computer Software                       1,202,970.21        11,224,734.68         5,612,367.34         6,815,337.55
+18622           Acc Amort - Computer Software            -718,028.32           902,829.44         5,132,169.98        -4,947,368.86
+18623           Computer Software - Clearing Ac                 0.00             1,040.50             1,040.50                 0.00
+19111           Deferred Tax Asset (DTA)               19,377,054.70        19,333,045.30        22,433,385.70        16,276,714.30
+22111           Indexed Annuity Bond 2020 (IAB        -21,159,999.67                 0.00                 0.00       -21,159,999.67
+22112           Short Term Commercial Paper           -60,341,075.46       131,722,507.84       126,177,465.62       -54,796,033.24
+22511           Trade Creditors                        -1,539,545.85       192,744,487.76       195,855,844.61        -4,650,902.70
+22512           Purchasing Receipts                        68,176.67       101,372,020.30       101,445,626.13            -5,429.16
+22513           PO - AP Accruals                       -2,496,837.13       101,745,287.18       100,770,049.98        -1,521,599.93
+22514           PO - AP Accruals (Pre R12)                      0.00               213.36               213.36                 0.00
+22524           Petty Cash Clearing                             0.00             1,500.00             1,500.00                 0.00
+22525           Credit Card Clearing                       38,715.09             7,429.93            46,145.02                 0.00
+22611           Accrued Expenses                      -17,224,650.15       240,934,214.23       247,308,023.33       -23,598,459.25
+22615           Accrued Expenses - Capex               -5,893,761.84        37,401,255.34        36,213,717.97        -4,706,224.47
+22711           Wages & Salaries Payable - clea        -2,907,056.79        64,713,100.97        63,668,774.11        -1,862,729.93
+22712           Wages & Salaries Prepayment Pay                 0.00         3,656,585.58         3,656,585.58                 0.00
+22713           PAYG-W - Clearing                               0.00        17,040,193.00        17,039,863.00               330.00
+22714           Car Leasing Lease Plan - cleari            43,985.31           256,941.92           390,952.95           -90,025.72
+22716           Recreation leave Payable - Non-        -5,458,100.34         4,585,804.14         4,079,795.97        -4,952,092.17
+22717           48/52 Flexible Work Scheme                -40,375.98            89,194.60            75,318.39           -26,499.77
+22811           Superannuation Payable                   -362,260.95         1,694,712.05         1,581,032.59          -248,581.49
+22812           Payroll Tax Payable                      -607,563.41        10,719,294.62        10,606,591.87          -494,860.66
+22813           Income Protection Payable                -100,236.03           485,461.46           478,359.38           -93,133.95
+22912           Refunds of Revenue - Water                  3,716.21           616,378.99           647,595.20           -27,500.00
+23011           Accrued Interest Payable               -5,272,419.29       115,368,357.55       122,960,395.12       -12,864,456.86
+23111           Goods & Services Tax Payable             -188,306.02         2,212,489.79         2,164,782.30          -140,598.53
+23121           Current Tax Payable                   -17,959,641.60       212,805,984.20       204,657,446.87        -9,811,104.27
+
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      4  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+23131           Dividends Payable                     -23,808,126.80        23,808,126.80                 0.00                 0.00
+23211           Fringe Benefits Tax                        88,902.87           159,768.00           256,639.83            -7,968.96
+23215           American Express Clearing Accou                 0.00           118,037.02           118,037.02                 0.00
+23217           MasterCard Clearing Account                23,697.69            90,709.49           110,919.21             3,487.97
+23219            Project Suspense Clearing Acco                 0.00        18,471,452.92        18,471,452.92                 0.00
+23511           Long Service Leave Payable - Se        -9,110,983.49         2,156,552.94         1,785,529.92        -8,739,960.47
+23512           Employee Entitlements - Seconde        -8,102,325.14         1,710,942.00           180,840.61        -6,572,223.75
+23515           Sick Leave Payable - Non-Second        -1,139,209.83           350,735.20           223,766.67        -1,012,241.30
+23516           Paid Parental Leave Clearing Ac            -6,980.76            41,144.76            38,106.00            -3,942.00
+23613           Redundancy Provision                   -1,891,967.37         5,550,998.38         3,780,430.65          -121,399.64
+23614           Workers Comp (Pre 89) (CL)                -99,852.09           106,373.69            46,281.12           -39,759.52
+23615           Provision for Make Good Restora                 0.00                 0.00         2,471,468.74        -2,471,468.74
+23616           Other Provisions (CL)                  -6,765,267.92         4,013,651.57         2,648,492.92        -5,400,109.27
+24011           Retention Monies                         -447,425.90           206,474.05            56,724.81          -297,676.66
+24012           Security Deposits                        -130,200.00            20,000.00            20,000.00          -130,200.00
+24111           Finance Lease Liability (CL)              -66,953.29            49,874.01            52,645.37           -69,724.65
+24213           Unearned Revenue - Government          -2,967,300.01         2,967,300.00                 0.00                -0.01
+24215           Unearned Revenue - Other Custom        -4,799,144.40        48,945,550.06        48,770,855.41        -4,624,449.75
+24312           Interco Loan Payable - Actew Co                 0.94                 0.00                 0.00                 0.94
+26112           Indexed Annuity Bond 2020 (IAB       -104,772,110.92        15,945,811.00                 0.00       -88,826,299.92
+26113           Indexed Annuity Bond 2048 (IAB       -416,789,966.90           579,439.00           862,799.00      -417,073,326.90
+26114           Capital Indexed Bond 2030 (CIB       -276,578,323.56        10,397,488.00        13,893,104.00      -280,073,939.56
+26115           Nominal Medium Term Note 2018 (      -298,546,542.22        19,599,329.57        19,971,837.39      -298,919,050.04
+26116           Nominal Medium Term Note 2020 (      -214,471,307.42         3,346,907.88         3,428,222.46      -214,552,622.00
+26117            MTN $100M 2024                       -98,560,445.81         2,104,168.30         2,226,014.23       -98,682,291.74
+26211           Finance Lease Liability (NCL)            -593,425.17            52,645.37                 0.00          -540,779.80
+26411           Unearned Revenue - Other Custom                 0.00         8,530,966.73         8,545,306.92           -14,340.19
+27111           Deferred Tax Liability (DTL)         -258,415,451.56         4,803,175.12         1,621,569.00      -255,233,845.44
+27311           Long Service Leave Payable (NCL        -1,380,297.51           393,096.89            55,549.56        -1,042,750.18
+27321           Workers Comp (Pre 89) (NCL)            -1,551,257.56                 0.00                 0.00        -1,551,257.56
+27331           Provision for Make Good Restora        -2,607,991.67         2,441,398.48         3,430,076.86        -3,596,670.05
+27333           Other Provisions (NCL)                -12,625,262.06         1,737,092.80         4,406,971.00       -15,295,140.26
+32111           Capital                                        -0.60                 0.00                 0.00                -0.60
+32114           Capital Reserve                      -758,871,723.39                 0.00                 0.00      -758,871,723.39
+32311           Retained Profits                      -83,944,460.89        19,817,788.18        23,752,134.19       -87,878,806.90
+32511           Revaluation Res - Water               -11,235,542.55                 0.00                 0.00       -11,235,542.55
+32512           Revaluation Res - Sewerage           -154,867,817.45           153,856.47                 0.00      -154,713,960.98
+32513           Revaluation Res - Land & Buildi       -11,947,093.77                 0.00                 0.00       -11,947,093.77
+32515           Revaluation Res - Plant & Equip                 0.00           307,712.94           307,712.94                 0.00
+32519           Revaluation Res - Intangible As        -3,616,206.30                 0.00           153,856.47        -3,770,062.77
+32612           General Insurance Reserve              -9,819,615.38                 0.00                 0.00        -9,819,615.38
+42241           Disconnect/Reconnect Charges                    0.00               309.00            17,011.00           -16,702.00
+42242           Regulated Charges                               0.00            22,822.66             9,872.36            12,950.30
+42411           Retail Water Sales - Fixed Char                 0.00           795,842.32        13,003,061.49       -12,207,219.17
+42412           Retail Water Sales - Usage                      0.00        68,444,511.84       118,002,668.92       -49,558,157.08
+42413           Retail Water Sales - Step 2 Usa                 0.00       105,289,664.18       174,881,606.44       -69,591,942.26
+42414           Bulk Water Sales - Queanbeyan                   0.00        17,106,522.80        26,261,736.38        -9,155,213.58
+42416           Standpipe Hire Income                           0.00            18,458.12           840,758.38          -822,300.26
+
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      5  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+42417           Sale of Water Licence                           0.00         3,158,904.60         4,878,623.30        -1,719,718.70
+42421           Sales of Sewerage Services                      0.00         5,056,339.38        87,814,210.42       -82,757,871.04
+42422           Non-Potable Fixed Charge                        0.00                 0.00         1,110,865.13        -1,110,865.13
+42424           Trade Waste                                     0.00         2,745,657.57         3,939,222.92        -1,193,565.35
+42431           Regulated Income                                0.00         1,742,114.00         2,608,623.03          -866,509.03
+42432           Contestable Income - Water & Se                 0.00           207,457.08           253,925.02           -46,467.94
+42433           Damage to Network Assets                        0.00             3,311.32            51,663.31           -48,351.99
+42434           Training Funds Recovery                         0.00                 0.00            20,565.00           -20,565.00
+43111           Subventions                                     0.00                 0.00         8,331,500.00        -8,331,500.00
+43311           Water Abstraction Fee                           0.00               774.00               230.45               543.55
+43312           Utilities Tax Recovery                          0.00               155.06             5,490.47            -5,335.41
+43412           Related Party Services Income -                 0.00           574,828.12           574,828.12                 0.00
+43424           Other Miscellaneous Revenue                     0.00            81,021.33           418,760.21          -337,738.88
+43425           Special/Check Meter Reading Fee                 0.00                37.00            11,611.00           -11,574.00
+43426           Dishonoured Payment Fees                        0.00                 0.00            14,742.35           -14,742.35
+43430           Rental Income from Corporate Pr                 0.00           149,174.48         1,455,876.74        -1,306,702.26
+43432           Insurance Recovery                              0.00                 0.00            26,729.25           -26,729.25
+43435           Community Service Obligations (                 0.00         3,746,230.68         3,746,230.68                 0.00
+43437           Community Service Obligations (                 0.00         1,838,139.33         3,499,243.58        -1,661,104.25
+43438           Community Service Obligations (                 0.00         4,146,180.07        10,544,587.86        -6,398,407.79
+43443           Staying Connected Discounts                     0.00             8,655.00                 0.00             8,655.00
+43446           Conveyancing Fees                               0.00           182,058.50           546,207.50          -364,149.00
+43447           Interest on Unpaid Account                      0.00           181,742.23           512,825.22          -331,082.99
+46111           Interest Revenue                                0.00         1,326,321.31         2,477,435.90        -1,151,114.59
+47111           Sale of Assets - Gain/(Loss)                    0.00             3,370.48           268,400.00          -265,029.52
+47112           Clearing - Sale of Assets                       0.00               750.00            18,067.67           -17,317.67
+48111           Free/Gifted Assets                              0.00        16,276,592.24        28,729,662.20       -12,453,069.96
+52161           Utilities Network Facilities Ch                 0.00        46,610,112.00        40,783,848.00         5,826,264.00
+52211           Water Abstraction Charge                        0.00        92,721,598.00        71,469,213.00        21,252,385.00
+62021           Salaries & Wages                                0.00        41,717,022.35        12,996,176.26        28,720,846.09
+62023           Director Salaries                               0.00           196,289.32                 0.00           196,289.32
+62024           Director Fees                                   0.00            16,079.26             6,591.67             9,487.59
+62041           Overtime                                        0.00         1,388,060.12           259,410.75         1,128,649.37
+62051           Allowances - Retention                          0.00           403,660.59            72,420.78           331,239.81
+62052           Allowances - Car                                0.00             1,625.51                 0.00             1,625.51
+62054           Allowances - Meal                               0.00            21,021.76                57.28            20,964.48
+62057           Allowances - Travel                             0.00               162.76                 0.00               162.76
+62058           Allowances - Other                              0.00           590,687.99           131,699.26           458,988.73
+62061           Performance Based Pay                           0.00           933,657.12         1,086,296.94          -152,639.82
+62062           Staff Incentive Scheme                          0.00         4,520,832.37         3,894,731.63           626,100.74
+62063           EBA Bonus                                       0.00         1,118,523.11         1,088,955.96            29,567.15
+62071           Sick Leave                                      0.00           375,094.23           311,569.60            63,524.63
+62072           Recreation Leave                                0.00         4,216,402.73         1,443,654.73         2,772,748.00
+62073           Long Service Leave                              0.00         3,381,348.60         2,229,580.06         1,151,768.54
+62081           Superannuation                                  0.00         7,087,935.69         1,714,640.21         5,373,295.48
+62082           Payroll Tax                                     0.00        10,239,740.85         7,175,052.28         3,064,688.57
+62083           Workers Compensation                            0.00         5,756,088.77         5,108,113.56           647,975.21
+62084           Income Protection Insurance                     0.00           478,340.70             3,078.56           475,262.14
+
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      6  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+62121           External Training / Development                 0.00           989,397.32           433,302.87           556,094.45
+62122           Internal Training                               0.00            36,795.40            10,420.02            26,375.38
+62125           Study Assistance                                0.00            25,641.02            11,165.86            14,475.16
+62221           FBT                                             0.00           125,802.72            37,882.98            87,919.74
+62222           Employee Contribution FBT                       0.00             2,452.79            26,999.28           -24,546.49
+62223           GST FBT 50% nonclaimable                        0.00             5,160.08                 0.00             5,160.08
+62231           Redundancy Payments                             0.00         3,731,522.65            11,302.41         3,720,220.24
+62232           Ex-gratia Payments                              0.00           579,967.73           104,000.00           475,967.73
+62241           Staff Welfare                                   0.00           223,680.74            15,714.46           207,966.28
+62243           Recruitment Costs                               0.00           148,980.40            22,262.69           126,717.71
+62244           Professional Member Fees                        0.00           211,608.30            95,091.84           116,516.46
+62245           Personal Issue Items                            0.00           166,474.51            17,001.63           149,472.88
+62246           Labour Hiree                                    0.00           694,040.89           324,603.27           369,437.62
+62249           Seconded Employees Clearing                     0.00        19,004,628.95        19,004,628.91                 0.04
+62321           Consultants                                     0.00         7,036,771.35         4,262,832.76         2,773,938.59
+62322           Contractors                                     0.00         1,008,401.27           743,727.96           264,673.31
+62441           Marketing & Promotions                          0.00           401,105.57           200,862.54           200,243.03
+62444           Advertising                                     0.00            13,525.03                 0.00            13,525.03
+62445           Corporate Business Functions                    0.00            40,139.86             2,575.27            37,564.59
+62446           Sponsorship                                     0.00           596,014.92           140,574.38           455,440.54
+62521           Travel - Domestic                               0.00           200,048.21            36,321.17           163,727.04
+62522           Travel - Overseas                               0.00                55.00                 0.00                55.00
+62621           Office Equipment                                0.00               931.63                 0.00               931.63
+62622           Furniture & Fittings                            0.00             6,954.31                 0.00             6,954.31
+62623           Computing Equipment                             0.00             2,177.29                 0.00             2,177.29
+62624           Telecommunications Equipment                    0.00            53,869.10                 0.00            53,869.10
+62629           Minor Assets (Below $1,000)                     0.00           109,486.21            18,277.26            91,208.95
+62631           Financial Audit Fees                            0.00         1,530,115.49         1,334,321.79           195,793.70
+62632           Systems Audit Fees                              0.00           125,583.44            65,618.22            59,965.22
+62633           Pricing Regulator                               0.00           709,307.89           642,959.31            66,348.58
+62634           Regulatory Licenses                             0.00         8,044,007.82         6,433,011.46         1,610,996.36
+62641           Computer Software - Purchases                   0.00             7,537.44                 0.00             7,537.44
+62642           Computer Software - Support                     0.00           282,622.42                 0.00           282,622.42
+62643           Computer Software - Licence Mai                 0.00           382,340.28           172,552.31           209,787.97
+62651           Telephone Expenses - Fixed Line                 0.00           555,457.67           324,887.41           230,570.26
+62653           Telephone Expenses - Data                       0.00                90.00                 0.00                90.00
+62671           Insurance - General                             0.00           435,539.61                 0.00           435,539.61
+62672           Insurance - Industrial Special                  0.00           770,859.90                 0.00           770,859.90
+62673           Insurance - Public Liability                    0.00           672,478.67           620,014.19            52,464.48
+62674           Insurance - Motor Vehicle                       0.00            61,605.86                 0.00            61,605.86
+62675           Comcare (Pre 1989)                              0.00            46,281.12                 0.00            46,281.12
+62681           Stores Issues                                   0.00         2,934,432.92         1,479,832.74         1,454,600.18
+62682           Obsolete Stock                                  0.00            88,041.68            44,020.84            44,020.84
+62683           Stocktake Adjustment                            0.00               223.54               278.48               -54.94
+62684           Stores Price Variation                          0.00                 0.34                 0.12                 0.22
+62685           Freight                                         0.00            22,225.81             1,091.36            21,134.45
+62701           Chemicals                                       0.00         8,913,640.51         5,567,512.31         3,346,128.20
+62702           Equipment Hire                                  0.00           351,089.88           107,825.13           243,264.75
+
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      7  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+62703           Fuel - Incinerators                             0.00         4,855,914.17         3,963,079.86           892,834.31
+62704           Dump Charges                                    0.00            88,321.80            11,224.96            77,096.84
+62705           Photographic Imaging                            0.00             2,920.00             1,352.00             1,568.00
+62711           Legal Expenses                                  0.00           810,791.02           470,919.44           339,871.58
+62712           Legal Expenses - Settlement Fee                 0.00         2,603,940.12         3,890,673.14        -1,286,733.02
+62721           R&M - Air Conditioning                          0.00           291,311.68           164,496.87           126,814.81
+62722           R&M - Building                                  0.00           355,427.42           164,463.39           190,964.03
+62723           R&M - Electrical & Lighting                     0.00            86,436.73            46,642.20            39,794.53
+62724           R&M - Grounds & Depot                           0.00           107,025.88            32,352.91            74,672.97
+62726           R&M - Motor Vehicles                            0.00           352,912.44            34,586.71           318,325.73
+62727           R&M - Plant & Equipment                         0.00         1,930,925.15           696,296.76         1,234,628.39
+62728           R&M - Plumbing & Drainage                       0.00            62,402.98            42,263.11            20,139.87
+62729           R&M - Security Equipment                        0.00           233,069.10           121,851.84           111,217.26
+62730           R&M - Telecommunications                        0.00                36.34                 0.00                36.34
+62731           R&M - Tools & Equipment                         0.00             7,252.70               920.39             6,332.31
+62732           R&M - Other                                     0.00               104.68                 0.00               104.68
+62741           Motor Vehicle - Lease Expenses                  0.00           623,114.50            26,775.59           596,338.91
+62742           Motor Vehicle - Fuel                            0.00           627,208.47           271,689.20           355,519.27
+62744           Fleet General Expenses                          0.00             3,417.80               448.72             2,969.08
+62745           Motor Vehicle - Hire                            0.00             7,373.13             2,237.60             5,135.53
+62752           Write Off of Capital In Progres                 0.00                11.53                 0.00                11.53
+62753           Impaired Asset Adjustment                       0.00           981,052.88           981,052.88                 0.00
+62761           Electricity                                     0.00         6,051,110.87         3,109,884.34         2,941,226.53
+62762           Gas                                             0.00            30,873.56             5,213.57            25,659.99
+62763           Water & Sewerage                                0.00           999,210.55           594,206.13           405,004.42
+62764           Rates & Levies                                  0.00           887,627.27           494,088.10           393,539.17
+62765           Office removals and storage                     0.00            49,671.00                 0.00            49,671.00
+62766           Recycling and Waste Collection                  0.00            71,703.43            39,329.90            32,373.53
+62767           Security                                        0.00         1,227,581.10           885,583.13           341,997.97
+62768           Cleaning and Sanitary                           0.00           419,377.13           286,771.26           132,605.87
+62771           Books, Publications & Subscript                 0.00            78,884.32            53,151.10            25,733.22
+62773           Postage & Courier Service                       0.00               468.89               151.58               317.31
+62774           Printing & Photocopying                         0.00           262,904.20           109,232.21           153,671.99
+62775           Stationery &  Office Supplies                   0.00           449,234.39           301,781.11           147,453.28
+62776           Other Computer Expenses                         0.00             3,312.00                 0.00             3,312.00
+62791           Donations                                       0.00             3,131.81                 0.00             3,131.81
+62792           Fire Systems                                    0.00           320,719.26           201,711.68           119,007.58
+62793           Royalties                                       0.00            57,131.43                 0.00            57,131.43
+62794           Miscellaneous Expenses                          0.00         6,415,301.58         5,654,946.50           760,355.08
+62841           Computer Hardware - Purchases                   0.00             2,006.00                 0.00             2,006.00
+62843           Computer Hardware - Licence Mai                 0.00             1,421.70                 0.00             1,421.70
+62931           Doubtful Debts                                  0.00           221,352.88                 0.00           221,352.88
+62932           Bad Debt Write Off                              0.00                 0.00                 0.03                -0.03
+62933           Debt Collection - Legal Expense                 0.00             2,298.76                 0.00             2,298.76
+62934           Debt Collection - Other Expense                 0.00                49.90                 0.00                49.90
+62952           ESCC Determinations                             0.00            19,858.90                 0.00            19,858.90
+62955           Bank & Finance Charges                          0.00           295,024.12            21,688.90           273,335.22
+63511           Management Services                             0.00            73,500.00                 0.00            73,500.00
+
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      8  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+63516           Contract Payments                               0.00        29,832,219.73        21,122,497.77         8,709,721.96
+63711           Lease Expenses - Computer Equip                 0.00           343,865.81           169,769.49           174,096.32
+63713           Lease Expenses - Plant                          0.00           821,915.16            18,891.00           803,024.16
+63714           Lease Expenses - Premises                       0.00         1,543,832.51           863,275.31           680,557.20
+63911           Interest Expense - Finance Leas                 0.00            25,950.09                 0.00            25,950.09
+63912           Interest Expense                                0.00            14,959.08                 0.00            14,959.08
+63913           Interest Expense - Capital Inde                 0.00        28,502,001.32        17,344,857.14        11,157,144.18
+63914           Interest Expense - Nominal Medi                 0.00        70,110,196.00        57,243,975.51        12,866,220.49
+63915           Interest Expense - Indexed Annu                 0.00        13,000,368.93         7,890,814.16         5,109,554.77
+63916           Interest Expense - Indexed Annu                 0.00        43,006,526.60        27,941,019.67        15,065,506.93
+63917           Interest Expense - Nominal Medi                 0.00        29,912,697.49        22,908,258.01         7,004,439.48
+63918           Interest Expense - Short Term C                 0.00         3,792,448.65         2,714,949.55         1,077,499.10
+63920           Interest Expense - MTN $100M 20                 0.00        13,445,435.35        10,292,933.45         3,152,501.90
+63951           Capitalised Borrowing Costs                     0.00         2,121,209.59         6,625,370.60        -4,504,161.01
+65231           Dep - WN Reticulation Mains                     0.00         3,889,844.94                 0.00         3,889,844.94
+65232           Dep - WN Gifted Reticulation Ma                 0.00         1,055,909.89           632,673.05           423,236.84
+65233           Dep - WN Water Meters                           0.00         1,563,816.62                 0.00         1,563,816.62
+65234           Dep - WN System Control                         0.00            83,711.13                 0.00            83,711.13
+65235           Dep - WN Pump Stations                          0.00           905,856.05                 0.00           905,856.05
+65236           Dep - WN Reservoirs                             0.00             3,193.69                 0.00             3,193.69
+65237           Dep - WN Distribution Mains                     0.00           232,910.26                 0.00           232,910.26
+65238           Dep - WN Water Corporate                        0.00           134,308.21                 0.00           134,308.21
+65241           Dep - WB Dams                                   0.00         2,867,646.28                 0.00         2,867,646.28
+65242           Dep - WB Treatment Plants                       0.00         2,284,679.41                 0.00         2,284,679.41
+65243           Dep - WB Pump Stations                          0.00         2,836,414.66                 0.00         2,836,414.66
+65244           Dep - WB Reservoirs                             0.00         2,021,848.64                 0.00         2,021,848.64
+65245           Dep - WB Bulk Supply Mains                      0.00         1,935,674.13                47.86         1,935,626.27
+65246           Dep - WB Mini Hydro                             0.00            93,370.11                 0.00            93,370.11
+65251           Dep - SN Pump Stations                          0.00           249,956.05                 0.00           249,956.05
+65252           Dep - SN Sewer Tunnels                          0.00           758,298.71                 0.00           758,298.71
+65253           Dep - SN Reticulation Mains                     0.00         6,702,854.32                 0.00         6,702,854.32
+65254           Dep - SN Reticulation Mains - G                 0.00           906,302.85           260,656.31           645,646.54
+65255           Dep - SN Other Sewerage                         0.00           297,975.11                 0.00           297,975.11
+65256           Dep - SN Effluent Reticulation                  0.00            32,811.44                 0.00            32,811.44
+65257           Dep - SN Sewerage Corporate                     0.00            99,006.68                 0.00            99,006.68
+65261           Dep - ST Treatment Plants                       0.00         4,448,894.47             3,440.03         4,445,454.44
+65321           Dep - Leasehold Improvements                    0.00           106,124.29                 0.00           106,124.29
+65323           Dep - Buildings System Assets                   0.00             9,993.15                 0.00             9,993.15
+65324           Dep - Buildings Non System Asse                 0.00           793,516.33                 0.00           793,516.33
+65331           Dep - Computing Equipment                       0.00            27,607.79                 0.00            27,607.79
+65341           Dep - Furniture & Fittings                      0.00            26,411.57                 0.00            26,411.57
+65351           Dep - Office Equipment                          0.00            21,048.57                 0.00            21,048.57
+65361           Dep - Plant, Machinery & Equipm                 0.00           371,473.66                 5.04           371,468.62
+65371           Dep - Telecommunications                        0.00            37,082.33                 0.00            37,082.33
+65381           Dep - Finance Lease Assets (Oth                 0.00            24,480.77                 0.00            24,480.77
+65911           Amort - Computer Software                       0.00         3,326,511.10                 0.00         3,326,511.10
+65912           Amort - Leasehold Improvements                  0.00             6,405.75                 0.00             6,405.75
+66111           Income Tax Expense (Current)                    0.00        87,349,032.00        73,056,169.23        14,292,862.77
+
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:37
+                                                          Period:  MAR-16                                   Page:      9  of       9
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  80 to 80
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  80 ACTEW Corporation
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+66112           Income Tax Expense (Deferred)                   0.00        24,054,953.70        24,136,219.56           -81,265.86
+82111           Plant Recovery                                  0.00                 0.00           160,342.36          -160,342.36
+82121           Plant Allocation                                0.00           160,342.36                 0.00           160,342.36
+82211           Payroll Cost Recovery                           0.00         1,076,687.12        39,563,777.54       -38,487,090.42
+82221           Payroll Cost Allocation                         0.00        33,663,689.94           784,415.12        32,879,274.82
+82331           Overtime Cost Recovery                          0.00                96.29         1,627,199.91        -1,627,103.62
+82341           Overtime Cost Allocation                        0.00         1,604,453.27                 0.00         1,604,453.27
+82411           CC & Div Overhead Recovery                      0.00           462,139.74         7,515,581.01        -7,053,441.27
+82421           CC & Div Overhead Allocation                    0.00         6,214,200.47           391,843.68         5,822,356.79
+82531           Corporate Overhead Recovery                     0.00           480,009.13        16,197,878.33       -15,717,869.20
+82541           Corporate Overhead Allocation                   0.00        13,963,922.90           371,364.03        13,592,558.87
+82571           Materials Handling Recovery                     0.00            94,678.87            94,678.87                 0.00
+83412           Related Party Services Expense                  0.00         5,202,297.85         5,105,388.51            96,909.34
+83431           Customer service CSCSA                          0.00         6,169,095.07         2,600,378.99         3,568,716.08
+83441           Community service CSCSA                         0.00         1,218,044.29           304,501.17           913,543.12
+83451           BAU service fee CSA                             0.00           681,184.00           221,914.00           459,270.00
+83461           CFM - Accommodation (int.Ch.)                   0.00         3,325,405.55         1,046,023.83         2,279,381.72
+83462           Executive (int.Ch.)                             0.00         1,296,417.99           416,919.99           879,498.00
+83463           L&S - Legal Fees (int.Ch.)                      0.00         1,154,670.74           374,544.71           780,126.03
+83464           Business Systems (int.Ch.)                      0.00         8,029,767.81         3,266,633.37         4,763,134.44
+83465           Human Resources (int.Ch.)                       0.00         1,919,448.57           619,224.60         1,300,223.97
+83466           Finance (int.Ch.)                               0.00         3,623,274.90         1,324,619.62         2,298,655.28
+83467           Accounts Payable (int. Ch.)                     0.00           331,895.84           106,872.62           225,023.22
+83468           Safety Division (int. Ch.)                      0.00           570,535.99           185,814.52           384,721.47
+83469           Logistics - Purchasing (int.Ch.                 0.00         1,018,316.85           323,501.07           694,815.78
+83473           Logistics - Storage and Warehou                 0.00           480,682.52           158,762.36           321,920.16
+83475           Business Development  (int.ch)                  0.00         1,346,609.84                 0.00         1,346,609.84
+99999           Suspense                                        0.00        10,888,551.22        10,888,551.22                 0.00
+                                                -------------------- -------------------- -------------------- --------------------
+                                                                0.00     5,128,014,912.26     5,128,014,912.26                 0.00

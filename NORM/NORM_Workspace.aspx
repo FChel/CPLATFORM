@@ -16,12 +16,12 @@
     <main class="norm-workspace">
         <section class="norm-workspace-hero">
             <div><span class="norm-kicker">Government financial reporting</span><h1>From source file to an accountable, publication-ready reporting set.</h1><p>Each run locks its source, configuration, statements, notes, validations and figure-level derivation together. Entity rules also drive annual report and Audit Committee modules.</p></div>
-            <div class="norm-workspace-actions"><a class="norm-button norm-button-dark" href="NORM_Import.aspx">Import trial balance</a><a class="norm-button" href="NORM_Reporting.aspx">Configure reporting set</a></div>
+            <div class="norm-workspace-actions"><a class="norm-button norm-button-dark" href="NORM_Import.aspx">Import trial balance</a><a class="norm-button" href="NORM_SourceHistory.aspx">Source history and originals</a><a class="norm-button" href="NORM_Reporting.aspx">Configure reporting set</a></div>
         </section>
         <section class="norm-summary-grid"><%= SummaryHtml %></section>
         <section class="norm-control-strip"><%= ControlStatusHtml %></section>
         <section class="norm-latest-import">
-            <header><div><span class="norm-kicker">Latest trial-balance activity</span><h2>What changed since the previous import</h2></div><a class="norm-button norm-button-dark" href="NORM_Import.aspx">Import a new trial balance</a></header>
+            <header><div><span class="norm-kicker">Latest trial-balance activity</span><h2>Accepted source history and changes</h2></div><a class="norm-button norm-button-dark" href="NORM_Import.aspx">Import a new trial balance</a></header>
             <%= LatestActivityHtml %>
         </section>
         <section class="norm-module-centre">

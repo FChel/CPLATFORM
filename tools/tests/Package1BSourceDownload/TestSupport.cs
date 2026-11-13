@@ -11,6 +11,9 @@ public static class NORMHelper
     public static byte[] Original;
     public static string Hash, ImportStatus, RunStatus, StoredEntity;
     public static bool Prepare, EntityAllowed, RunDeactivated, ImportDeactivated, MissingBytes, AuditFails;
+    public static bool NoRun, CorruptBytes;
+    public static int StoredImport;
+    public static Action BeforeAudit;
     public static Action AfterMetadata;
     public static int MetadataReads, BlobReads;
     public static List<string> Audits = new List<string>();
@@ -19,6 +22,7 @@ public static class NORMHelper
         ImportStatus="Imported"; RunStatus="Failed"; StoredEntity="UAT_AAG";
         Prepare=EntityAllowed=true; RunDeactivated=ImportDeactivated=MissingBytes=AuditFails=false;
         AfterMetadata=null; MetadataReads=BlobReads=0; Audits.Clear(); Audits.Add("existing audit preserved");
+        NoRun=CorruptBytes=false; StoredImport=9; BeforeAudit=null;
     }
     public static bool HasPrepareAccess() { return Prepare; }
     public static bool CanPrepareEntity(string entity) { return EntityAllowed && entity=="UAT_AAG"; }
@@ -30,8 +34,16 @@ public static class NORMHelper
     static bool Matches(string sql,TestParameter[] p,bool blob)
     {
         string q=Regex.Replace(sql,@"\s+","").ToLowerInvariant();
-        if(!q.Contains("r.calculationrunid=@run") || !q.Contains("f.importfileid=@file"))
+        bool byImport=q.Contains("i.importid=@import");
+        if((!byImport && !q.Contains("r.calculationrunid=@run")) || !q.Contains("f.importfileid=@file"))
             throw new Exception("Handler lost the parameterised run/file filters");
+        if(byImport)
+        {
+            if(!q.Contains("i.importid=f.importid") || q.Contains("tblnorm_calculationrun")) throw new Exception("Import route lost exact file join or gained run dependency");
+            if((int)Value(p,"@import")!=StoredImport || (int)Value(p,"@file")!=10) return false;
+        }
+        else
+        {
         // Each join/predicate is required by the fixture evaluator. Missing
         // clauses would expose the wrong fixture and fail negative HTTP cases.
         bool run=(int)Value(p,"@run")==9;
@@ -45,6 +57,9 @@ public static class NORMHelper
         if(q.Contains("r.isdeactivated=0") && RunDeactivated) return false;
         if(q.Contains("i.isdeactivated=0") && ImportDeactivated) return false;
         if(q.Contains("r.statuscode='complete'") && RunStatus!="Complete") return false;
+        if(NoRun || StoredImport!=9) return false;
+        }
+        if(q.Contains("i.isdeactivated=0") && ImportDeactivated) return false;
         if(q.Contains("i.statuscodein('imported','calculated')") && ImportStatus!="Imported" && ImportStatus!="Calculated") return false;
         if(blob)
         {
@@ -63,10 +78,11 @@ public static class NORMHelper
         return t;
     }
     public static object Scalar(string sql,params TestParameter[] p)
-    { BlobReads++; return Matches(sql,p,true) && !MissingBytes ? Original : null; }
+    { BlobReads++; if(!Matches(sql,p,true) || MissingBytes) return null; if(!CorruptBytes) return Original; byte[] copy=(byte[])Original.Clone(); copy[0]^=1; return copy; }
     public static int Exec(string sql,params TestParameter[] p)
     {
         if(!sql.Contains("'SOURCE_FILE_DOWNLOADED'")) throw new Exception("Unexpected write outside existing download audit");
+        if(BeforeAudit!=null) BeforeAudit();
         if(AuditFails) throw new InvalidOperationException("Injected audit failure");
         if((string)Value(p,"@id")!="10" || (string)Value(p,"@user")!="authorised-test-user") throw new Exception("Wrong audit identity/file");
         Audits.Add((string)Value(p,"@detail")); return 1;

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 
 /// <summary>Canonical row produced by each supported trial-balance parser.</summary>
+[System.Serializable]
 public class NORMTrialBalanceRow
 {
     public int SourceRowNo;
@@ -19,6 +20,7 @@ public class NORMTrialBalanceRow
 
 public class NORMParsedImport
 {
+    public NORMImportFileContext SourceFile = new NORMImportFileContext();
     public string ProfileVersion;
     public List<NORMTrialBalanceRow> Rows = new List<NORMTrialBalanceRow>();
     public List<string> Warnings = new List<string>();
@@ -36,6 +38,23 @@ public class NORMParsedImport
                 CoverageEnd.Value == new System.DateTime(FinancialYear, 6, 30);
         }
     }
+}
+
+[System.Serializable]
+public sealed class NORMImportFileContext
+{
+    internal string PopulationFingerprint = null;
+    public string Token { get; internal set; }
+    public string FileName { get; internal set; }
+    public string FileHash { get; internal set; }
+    public int PopulationCount { get; internal set; }
+    public string RecordUnit { get; internal set; }
+    public int RecordCount { get; internal set; }
+    public int DetailRowCount { get; internal set; }
+    public int MetadataRowCount { get; internal set; }
+    public int ControlRowCount { get; internal set; }
+    public int BlankRowCount { get; internal set; }
+    public bool RowsReconciled { get { return RecordCount == DetailRowCount + MetadataRowCount + ControlRowCount + BlankRowCount; } }
 }
 
 public class NORMImportOutcome
@@ -69,6 +88,8 @@ public sealed class NORMImportPreview
     internal byte[] Content = null;
     internal string ConfigurationFingerprint = null;
     internal string IdentityFingerprint = null;
+    internal string ConfirmationFingerprint = null;
+    internal string BatchFingerprint = null;
     internal bool Consumed = false;
     public string Token { get; internal set; }
     public string Owner { get; internal set; }
@@ -83,6 +104,15 @@ public sealed class NORMImportPreview
     public string Entity { get; internal set; }
     public int FinancialYear { get; internal set; }
     public string Companies { get; internal set; }
+    // One preview per identified population; several may share an original file.
+    public NORMSourceScope Population { get; internal set; }
+    public NORMImportFileContext SourceFile { get; internal set; }
+    internal readonly List<NORMTrialBalanceRow> PopulationRows = new List<NORMTrialBalanceRow>();
+    public IList<NORMTrialBalanceRow> SourceRows { get { return PopulationRows.AsReadOnly(); } }
+    internal readonly HashSet<int> InvalidSourceRows = new HashSet<int>();
+    public int InvalidRowCount { get { return InvalidSourceRows.Count; } }
+    public int ValidatedRowCount { get { return RowCount - InvalidRowCount; } }
+    public string ApprovedConfigurationFingerprint { get { return ConfigurationFingerprint; } }
     public string Ledgers { get; internal set; }
     public string ReportingStreams { get; internal set; }
     public int PeriodStart { get; internal set; }
