@@ -36,7 +36,12 @@ public static partial class Tests
         NORMImportService.ValidateBatch(populations);
     }
     static void NoWrites()
-    { NoAcceptance(); Assert(NORMHelper.Opens == 0 && NORMHelper.Committed.Count == 0, "Unsupported acceptance opened storage or wrote audit"); }
+    {
+        NoAcceptance();
+        Assert(NORMHelper.Committed.TrueForAll(delegate(NORMHelper.Call c) {
+            return c.Values.ContainsKey("@event") && (string)c["@event"] == "IMPORT_REJECTED_SOURCE";
+        }), "Unsupported acceptance wrote non-rejection evidence");
+    }
     static void RunStep2(string fixtures)
     {
         int before = passed;
@@ -184,8 +189,9 @@ public static partial class Tests
             Assert(page.ErrorForTest == "" && page.PreviewsForTest.Count == 2 && page.ConfirmationEnabledForTest && page.PreviewForTest.Contains("File row accounting: 8") && page.PreviewForTest.Contains("Company</dt><dd>1000") && page.PreviewForTest.Contains("Company</dt><dd>2000") && page.PreviewForTest.Contains("Accepted rows: 0"), "Population preview missing: " + page.ErrorForTest);
             NORMImportPreview subset = FilePopulations(bytes)[0];
             Fails(delegate { NORMImportService.Confirm(subset, "isolated-test"); }, "complete original file"); NoWrites();
+            int commitsBefore = NORMHelper.Commits;
             page.ClearUploadedFilesForTest(); page.ConfirmForTest();
-            Assert(page.ErrorForTest == "" && page.ResultForTest.Contains("Source accepted") && NORMHelper.Commits == 1, "Whole file page confirmation failed: " + page.ErrorForTest);
+            Assert(page.ErrorForTest == "" && page.ResultForTest.Contains("Source accepted") && NORMHelper.Commits == commitsBefore + 1, "Whole file page confirmation failed: " + page.ErrorForTest);
         });
         Test("Step2 original single-population acceptance stays on existing transaction", delegate {
             PartitionSetup(); List<NORMImportPreview> p = FilePopulations(ControlledLegacy(false, true)); AssertRows(p, 2);

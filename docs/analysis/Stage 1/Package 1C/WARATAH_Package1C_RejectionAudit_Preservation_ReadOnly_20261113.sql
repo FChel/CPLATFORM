@@ -1,0 +1,23 @@
+SET NOCOUNT ON;
+SELECT ConfigurationReleaseId,EntityCode,FinancialYear,VersionCode,StatusCode,IsDeactivated FROM dbo.tblNORM_ConfigurationRelease ORDER BY ConfigurationReleaseId;
+SELECT ConfigurationReleaseId,FinancialYear,EntityCode,SourceCompanyCode,SourceLedger,ReportingStream,IsRequired,IsDeactivated FROM dbo.tblNORM_EntityLedger ORDER BY EntityLedgerId;
+SELECT EntityCode,CurrentFinancialYear,IsCurrent,IsDeactivated FROM dbo.tblNORM_YearSetup ORDER BY YearSetupId;
+SELECT i.ImportId,i.ConfigurationReleaseId,i.EntityCode,i.FinancialYear,i.StatusCode,i.IsTestBreak,i.ParentImportId,i.IsDeactivated,i.SourceFileName,i.[RowCount] FROM dbo.tblNORM_Import i ORDER BY i.ImportId;
+SELECT t.ImportId,t.SourceCompanyCode,t.SourceLedger,t.ReportingStream,COUNT_BIG(*) AS DetailRows,SUM(t.AccumBalance) AS Net FROM dbo.tblNORM_TrialBalanceRow t WHERE t.IsDeactivated=0 GROUP BY t.ImportId,t.SourceCompanyCode,t.SourceLedger,t.ReportingStream;
+SELECT ImportFileId,ImportId,SourceFileHash,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',FileContent),2)) AS ActualHash,CoverageStart,CoverageEnd,IsFullYear FROM dbo.tblNORM_ImportFile ORDER BY ImportFileId;
+SELECT CalculationRunId,ImportId,StatusCode FROM dbo.tblNORM_CalculationRun ORDER BY CalculationRunId;
+SELECT COUNT_BIG(*) AS AuditRows,MAX(AuditEventId) AS AuditHighWater FROM dbo.tblNORM_AuditEvent;
+SELECT ConfigurationReleaseId,COUNT_BIG(*) AS MappingCount FROM dbo.tblNORM_AccountMap GROUP BY ConfigurationReleaseId;
+
+SELECT 'CalculationRun' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_CalculationRun ORDER BY CalculationRunId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'YearSetup' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_YearSetup ORDER BY YearSetupId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'AuditEvent' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_AuditEvent ORDER BY AuditEventId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'ImportFile' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_ImportFile ORDER BY ImportFileId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'ConfigurationRelease' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_ConfigurationRelease ORDER BY ConfigurationReleaseId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'Import' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_Import ORDER BY ImportId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'EntityLedger' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_EntityLedger ORDER BY EntityLedgerId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'AccountMap' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_AccountMap ORDER BY AccountMapId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'TrialBalanceRow' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_TrialBalanceRow ORDER BY TbRowId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT 'StatementLine' AS EvidenceTable,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),(SELECT * FROM dbo.tblNORM_StatementLine ORDER BY StatementLineId FOR JSON PATH,INCLUDE_NULL_VALUES))),2)) AS SHA256;
+SELECT OBJECT_SCHEMA_NAME(object_id) AS SchemaName,OBJECT_NAME(object_id) AS TableName,SUM(row_count) AS [RowCount] FROM sys.dm_db_partition_stats WHERE index_id IN(0,1) AND OBJECTPROPERTY(object_id,'IsUserTable')=1 GROUP BY object_id ORDER BY SchemaName,TableName;
+SELECT c.name AS ColumnName,dc.definition AS DefaultDefinition FROM sys.columns c LEFT JOIN sys.default_constraints dc ON c.default_object_id=dc.object_id WHERE c.object_id=OBJECT_ID('dbo.tblNORM_AuditEvent') AND c.name='PerformedUtc';

@@ -270,7 +270,7 @@ public static class Tests
                 NORMHelper.CurrentSource = null;
                 var invalid = Inspect(Legacy(false));
                 Fails(delegate { NORMImportService.ConfirmBatch(new[] { first, invalid }, "isolated-test", true); });
-                Assert(NORMHelper.Opens == 0, "Invalid batch opened a write transaction");
+                Assert(NORMHelper.Committed.TrueForAll(c => c.Values.ContainsKey("@event") && (string)c["@event"]=="IMPORT_REJECTED_SOURCE"), "Invalid batch wrote accepted source evidence");
             });
             Test("two files for the same scope are rejected", delegate {
                 Fails(delegate { NORMImportService.ValidateBatch(new[] { Inspect(original), Inspect(original) }); });
@@ -280,7 +280,7 @@ public static class Tests
                 var first = Inspect(original); var second = OtherLedger();
                 NORMHelper.FailImportFileName = second.FileName;
                 Fails(delegate { NORMImportService.ConfirmBatch(new[] { first, second }, "isolated-test", true); });
-                Assert(NORMHelper.Committed.Count == 0, "Failed batch retained partial evidence");
+                Assert(NORMHelper.Committed.TrueForAll(c => c.Values.ContainsKey("@event") && (string)c["@event"]=="IMPORT_REJECTED_SOURCE"), "Failed batch retained partial accepted evidence");
             });
             Test("another confirmation changing a prior import invalidates the replacement", delegate {
                 NORMHelper.CurrentSource = ExistingScopedSource;
@@ -293,7 +293,7 @@ public static class Tests
             });
             Test("service replay cannot create another import", delegate {
                 NORMImportPreview p = Inspect(original); NORMImportService.Confirm(p, "isolated-test"); int count = NORMHelper.Committed.Count;
-                try { NORMImportService.Confirm(p, "isolated-test"); } catch (InvalidOperationException) { Assert(NORMHelper.Committed.Count == count, "Replay wrote data"); return; }
+                try { NORMImportService.Confirm(p, "isolated-test"); } catch (InvalidOperationException) { Assert(NORMHelper.Committed.Count == count + 1 && (string)NORMHelper.Committed[count]["@event"]=="IMPORT_REJECTED_SOURCE", "Replay wrote accepted data or lost rejection audit"); return; }
                 throw new Exception("Replay accepted");
             });
             Test("calculation failure reports accepted source through page", delegate {
@@ -450,7 +450,7 @@ public static class Tests
                 int reads = 0;
                 NORMHelper.ReadYear = delegate { return ++reads == 1 ? 2026 : 2027; };
                 Fails(delegate { NORMImportService.Confirm(preview, "isolated-test"); });
-                Assert(reads == 2 && NORMHelper.Committed.Count == 0, "Acceptance failed to recheck year transactionally");
+                Assert(reads == 2 && NORMHelper.Committed.TrueForAll(c => c.Values.ContainsKey("@event") && (string)c["@event"]=="IMPORT_REJECTED_SOURCE"), "Acceptance failed to recheck year transactionally");
             });
             Test("exact metadata and coverage audit are persisted with retained bytes", delegate {
                 byte[] bytes = WithCoverage(new DateTime(2025,8,3), new DateTime(2025,12,19));
@@ -495,7 +495,7 @@ public static class Tests
                     Assert(error.Message == "private connection detail", "Unexpected injected failure");
                     failed = true;
                 }
-                Assert(failed && NORMHelper.Committed.Count == 0, "Coverage audit failure left partial acceptance");
+                Assert(failed && NORMHelper.Committed.Count == 1 && (string)NORMHelper.Committed[0]["@event"]=="IMPORT_REJECTED_SOURCE", "Coverage audit failure left partial acceptance or lost independent rejection");
                 NoAcceptance();
             });
             Test("invalid source date is rejected", delegate {
