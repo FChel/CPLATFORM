@@ -548,25 +548,109 @@ public static class NORMImportService
                 { auditFailure = false; break; }
             }
         }
-        try { return ConfirmBatchCore(previews, user, replaceExisting); }
+        string attempt = Guid.NewGuid().ToString("N");
+        bool accepted = false;
+        try { return ConfirmBatchCore(previews, user, replaceExisting, ref accepted); }
         catch (Exception error)
         {
-            if (auditFailure && !(error is UnauthorizedAccessException))
+            if (auditFailure && !accepted && !(error is UnauthorizedAccessException) && !(error is RoutineConfirmationException) &&
+                NORMHelper.HasPrepareAccess() && String.Equals(user, NORMHelper.CurrentUserId(), StringComparison.Ordinal))
             {
-                foreach (NORMImportPreview p in previews)
-                {
-                    if (p.ProfileVersion == NORMTextTrialBalanceImporter.CsvProfile || p.ProfileVersion == NORMTextTrialBalanceImporter.FixedProfile)
-                    {
-                        string reason = error is InvalidDataException || error is InvalidOperationException ? error.Message : "Acceptance failed; no source accepted.";
-                        RecordInspectionRejection(p.Content, p.FileName, p.ReleaseId, user, reason, p);
-                    }
-                }
+                RecordBatchAcceptanceRejection(previews, NORMHelper.CurrentUserId(), attempt, error);
             }
             throw;
         }
     }
 
-    private static List<NORMImportOutcome> ConfirmBatchCore(IList<NORMImportPreview> previews, string user, bool replaceExisting)
+    // A typed routine outcome avoids suppressing a real conflict when the clock
+    // crosses preview expiry while its transaction is unwinding.
+    private sealed class RoutineConfirmationException : InvalidOperationException
+    {
+        public RoutineConfirmationException(string message) : base(message) { }
+    }
+
+    private static string AuditField(string value, int limit)
+    {
+        string escaped = Uri.EscapeDataString(value ?? "(NULL)");
+        if (escaped.Length <= limit) { return escaped; }
+        int length = limit - 12;
+        // Do not split an escaped byte triplet.
+        while (length > 0 && (escaped[length - 1] == '%' || (length > 1 && escaped[length - 2] == '%'))) { length--; }
+        return escaped.Substring(0, length) + "[truncated]";
+    }
+
+    private static string RejectionScope(NORMImportPreview p)
+    {
+        NORMSourceScope scope = p.Population;
+        return "Agency=" + AuditField(p.Entity, 100) + ";FY=" + p.FinancialYear.ToString(CultureInfo.InvariantCulture) +
+            ";Company=" + AuditField(scope == null ? null : scope.Company, 80) +
+            ";Ledger=" + AuditField(scope == null ? null : scope.Ledger, 80) +
+            ";Stream=" + AuditField(scope == null ? null : scope.ReportingStream, 80) +
+            ";Release=" + p.ReleaseId.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string RejectionScopeEvidence(NORMImportPreview p)
+    {
+        try { VerifyRetainedPreview(p); return "Retained"; }
+        catch (InvalidOperationException) { return "ChangedOrUnavailable"; }
+        catch (NullReferenceException) { return "ChangedOrUnavailable"; }
+    }
+
+    private static void RecordBatchAcceptanceRejection(IList<NORMImportPreview> previews, string actor, string attempt, Exception error)
+    {
+        string reason = error is InvalidDataException || error is InvalidOperationException ? error.Message : "Acceptance failed; no source accepted.";
+        // One event per original, not repeated identical failure events for its
+        // populations. Distinct scopes are associated within that event.
+        Dictionary<string, List<NORMImportPreview>> files = new Dictionary<string, List<NORMImportPreview>>(StringComparer.Ordinal);
+        foreach (NORMImportPreview p in previews)
+        {
+            string key = p.SourceFile == null ? p.FileHash ?? "Unavailable" : p.SourceFile.Token;
+            List<NORMImportPreview> members;
+            if (!files.TryGetValue(key, out members)) { members = new List<NORMImportPreview>(); files.Add(key, members); }
+            members.Add(p);
+        }
+        try
+        {
+            using (OleDbConnection connection = NORMHelper.OpenConnection())
+            using (OleDbTransaction transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    foreach (List<NORMImportPreview> members in files.Values)
+                    {
+                        SortedSet<string> scopes = new SortedSet<string>(StringComparer.Ordinal);
+                        foreach (NORMImportPreview p in members)
+                        {
+                            NORMHelper.RequireEntityAccess(p.Entity, connection, transaction);
+                            scopes.Add(RejectionScope(p) + ";ScopeEvidence=" + RejectionScopeEvidence(p));
+                        }
+                        NORMImportPreview first = members[0];
+                        string detail = "Phase=Acceptance;Outcome=Rejected;Reason=" + AuditField(reason, 400) +
+                            ";Conflict=" + AuditField(Convert.ToString(error.Data["NORMConflict"], CultureInfo.InvariantCulture), 450) +
+                            ";Batch=" + AuditField(BatchEvidence(previews), 64) +
+                            ";Sources=" + previews.Count.ToString(CultureInfo.InvariantCulture) +
+                            ";ScopeCount=" + scopes.Count.ToString(CultureInfo.InvariantCulture) +
+                            ";SHA256=" + (first.Content == null ? "Unavailable" : NORMCrypto.Sha256(first.Content)) +
+                            ";Profile=" + AuditField(first.ProfileVersion, 80) +
+                            ";Coverage=" + (first.CoverageStart.HasValue ? first.CoverageStart.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "Unknown") +
+                            "/" + (first.CoverageEnd.HasValue ? first.CoverageEnd.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "Unknown");
+                        // Reserve the reason, conflict IDs and hash before optional
+                        // metadata. ScopeCount makes a bounded scope list explicit.
+                        string scopeText = String.Join("|", new List<string>(scopes).ToArray());
+                        int scopeLimit = Math.Min(900, 2000 - detail.Length - 120);
+                        detail += ";Scopes=" + AuditField(scopeText, scopeLimit);
+                        detail += ";File=" + AuditField(Path.GetFileName(first.FileName ?? ""), Math.Min(260, 2000 - detail.Length - 6));
+                        WriteAudit(connection, transaction, "IMPORT_REJECTED_SOURCE", "ImportAttempt", attempt, detail, actor);
+                    }
+                    transaction.Commit();
+                }
+                catch { transaction.Rollback(); throw; }
+            }
+        }
+        catch { throw new InvalidDataException("Source rejected. Rejection audit evidence could not be saved; contact support. " + reason); }
+    }
+
+    private static List<NORMImportOutcome> ConfirmBatchCore(IList<NORMImportPreview> previews, string user, bool replaceExisting, ref bool accepted)
     {
         if (previews == null || previews.Count == 0)
         { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
@@ -580,10 +664,12 @@ public static class NORMImportService
             if (preview == null) { throw new InvalidOperationException("An inspected population is missing. Inspect again."); }
             lock (preview)
             {
+                if (DateTime.UtcNow >= preview.ExpiresUtc)
+                { throw new RoutineConfirmationException("This preview is invalid, expired or already consumed. Inspect the files again."); }
                 if (!String.Equals(preview.Owner, user, StringComparison.Ordinal) || !preview.CanAccept)
                 { throw new InvalidOperationException("This preview is invalid, expired or already consumed. Inspect the files again."); }
                 if (preview.HasReplacement && !replaceExisting)
-                { throw new InvalidOperationException("Explicit replacement confirmation is required."); }
+                { throw new RoutineConfirmationException("Explicit replacement confirmation is required."); }
                 VerifyRetainedPreview(preview);
             }
         }
@@ -592,6 +678,8 @@ public static class NORMImportService
         {
             lock (preview)
             {
+                if (DateTime.UtcNow >= preview.ExpiresUtc)
+                { throw new RoutineConfirmationException("This preview is invalid, expired or already consumed. Inspect again."); }
                 if (!preview.CanAccept) { throw new InvalidOperationException("This preview is invalid, expired or already consumed. Inspect again."); }
                 preview.Consumed = true;
             }
@@ -636,8 +724,9 @@ public static class NORMImportService
                 foreach (int i in order)
                 {
                     NORMImportPreview original = previews[i];
-                    if (original.Owner != user || DateTime.UtcNow >= original.ExpiresUtc)
-                    { throw new InvalidOperationException("This preview is invalid or expired. Inspect again."); }
+                    if (original.Owner != user) { throw new UnauthorizedAccessException("This preview is invalid or expired. Inspect again."); }
+                    if (DateTime.UtcNow >= original.ExpiresUtc)
+                    { throw new RoutineConfirmationException("This preview is invalid or expired. Inspect again."); }
                     VerifyRetainedPreview(original);
                     if (checkedContent.Add(original.Content) && NORMCrypto.Sha256(original.Content) != original.FileHash)
                     { throw new InvalidDataException("The inspected source bytes changed. Inspect again."); }
@@ -645,7 +734,12 @@ public static class NORMImportService
                     NORMSourceScope scope = ExpectedPredecessor(original);
                     NORMSourceScope current = FindCurrentSource(original, scope.Company, scope.Ledger, scope.ReportingStream, connection, transaction);
                     if (current.ImportId != scope.ImportId)
-                    { throw new InvalidOperationException("The accepted source changed after inspection. Inspect the batch again."); }
+                    {
+                        InvalidOperationException conflict = new InvalidOperationException("The accepted source changed after inspection. Inspect the batch again.");
+                        conflict.Data["NORMConflict"] = "SOURCE_PREDECESSOR_CHANGED;ExpectedImport=" + scope.ImportId.ToString(CultureInfo.InvariantCulture) +
+                            ";ObservedImport=" + current.ImportId.ToString(CultureInfo.InvariantCulture) + ";" + RejectionScope(original);
+                        throw conflict;
+                    }
                 }
                 foreach (int i in order)
                 {
@@ -672,6 +766,7 @@ public static class NORMImportService
                     }
                 }
                 transaction.Commit();
+                accepted = true;
             }
             catch { transaction.Rollback(); throw; }
         }

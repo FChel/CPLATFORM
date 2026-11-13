@@ -23,6 +23,7 @@ public static partial class Tests
     static void RunStep3(string fixtures)
     {
         int before=passed;
+        RunRejectionAudit();
         T("mixed file/year/release/new/replacement populations commit once with own context",delegate {
             string originals=StoreFingerprint(true); List<NORMImportPreview> p=MixedBatch();
             List<NORMImportOutcome> results=NORMImportService.ConfirmBatch(p,"isolated-test",true);
@@ -115,7 +116,7 @@ public static partial class Tests
         T("subset confirmation reparses whole original and rejects omitted sibling",delegate {
             var p=MixedBatch(); reinspectionReads=0;
             RejectUnchanged(delegate { NORMImportService.ConfirmBatch(new[] { p[0] },"isolated-test",true); },"complete original file");
-            Assert(reinspectionReads==1 && NORMHelper.Opens==0,"Whole-file reinspection did not run before subset rejection");
+            Assert(reinspectionReads==1 && acceptanceCommits==0,"Whole-file reinspection did not run before subset rejection");
         });
         T("valid member cannot bypass invalid sibling by submitting extracted subset",delegate {
             byte[] bytes=Modify(ControlledLegacy(true,true),delegate(ExcelWorksheet s) { s.Cells[7,5].Value="100.005"; s.Cells[7,8].Value="100.005"; s.Cells[8,5].Value="-100.005"; s.Cells[8,8].Value="-100.005"; });
@@ -145,7 +146,7 @@ public static partial class Tests
         });
         T("withdrawn non-first release rejects during reinspection",delegate {
             var p=MixedBatch(); Find(2).Status="Draft";
-            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"approved configuration"); Assert(NORMHelper.Opens==0,"Invalid release reached acceptance transaction");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"approved configuration"); Assert(acceptanceCommits==0,"Invalid release reached acceptance commit");
         });
         T("changed non-first release population configuration rolls back locked transaction",delegate {
             var p=MixedBatch(); transactionQueryOverride=delegate(NORMHelper.Call call) {
@@ -156,7 +157,7 @@ public static partial class Tests
         });
         T("changed Year Setup before confirmation invalidates even full-year source",delegate {
             var p=MixedBatch(); NORMHelper.CurrentYear=2021;
-            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"changed"); Assert(NORMHelper.Opens==0,"Stale year accepted");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"changed"); Assert(acceptanceCommits==0,"Stale year accepted");
         });
         T("changed Year Setup inside transaction rejects and rolls back",delegate {
             var p=MixedBatch(); NORMHelper.ReadYearCall=delegate(NORMHelper.Call call) { return call.InTransaction ? (int?)2021 : 2020; };
@@ -192,7 +193,8 @@ public static partial class Tests
         });
         T("transaction commit failure preserves all accepted data",delegate {
             var p=MixedBatch(); NORMHelper.FailCommit=true;
-            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"private connection detail"); RolledBack();
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"Rejection audit evidence could not be saved");
+            Assert(acceptanceCommits==0 && NORMHelper.Rollbacks==2 && NORMHelper.Runs==0 && NORMHelper.Committed.Count==0,"Failed source/audit commits changed accepted data or evidence");
         });
         T("revoked entity authority before confirmation rejects",delegate {
             var p=MixedBatch(); NORMHelper.EntityAccess=delegate { return false; };
@@ -240,5 +242,100 @@ public static partial class Tests
             Assert(shared==2,"Shared-original populations lost correlation");
         });
         Console.WriteLine("Package 1C Step 3: "+(passed-before)+" Passed / 0 Failed; combined Step 1+2+3: "+passed);
+    }
+
+    static List<NORMHelper.Call> Rejections()
+    { return NORMHelper.Committed.FindAll(delegate(NORMHelper.Call c) { return c.Values.ContainsKey("@event") && (string)c["@event"]=="IMPORT_REJECTED_SOURCE"; }); }
+    static string AuditDetail(NORMHelper.Call call)
+    { return Uri.UnescapeDataString(Uri.UnescapeDataString((string)call["@detail"])); }
+    static void AssertIndependentAudit()
+    {
+        string events=String.Join(",",NORMHelper.TransactionEvents);
+        Assert(events.Contains("Rollback:1,Dispose:1,Begin:2,Commit:2,Dispose:2"),"Failure audit did not independently commit after source rollback/disposal: "+events);
+    }
+    static void RunRejectionAudit()
+    {
+        T("audit Legacy stale batch correlates populations without duplicate file events",delegate {
+            var stale=FilePopulations(ControlledLegacy(true,true)); NORMImportService.ValidateBatch(stale);
+            Seed(40,2020,"2000",null,"Administered");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(stale,"isolated-test",true); },"accepted source changed");
+            var audits=Rejections(); Assert(audits.Count==1,"Multi-population original duplicated rejection events");
+            var audit=audits[0]; string detail=AuditDetail(audit); Guid id;
+            Assert(Guid.TryParse((string)audit["@id"],out id) && (string)audit["@type"]=="ImportAttempt" && (string)audit["@user"]=="isolated-test","Wrong actor/attempt");
+            foreach(string required in new[]{"Phase=Acceptance;Outcome=Rejected","SOURCE_PREDECESSOR_CHANGED","ExpectedImport=0","ObservedImport=40","Batch=","ScopeCount=2","Company=1000","Company=2000","Ledger=(NULL)","Profile=LEGACY-ERP/1","SHA256="+NORMCrypto.Sha256(stale[0].Content),"Coverage=2019-07-01/2020-06-30"})
+            { Assert(detail.Contains(required),"Missing audit detail: "+required+" in "+detail); }
+            AssertIndependentAudit();
+        });
+        T("audit multi-file later-member conflict shares one attempt with own contexts",delegate {
+            var stale=MixedBatch(); Seed(40,2019,"3000",null,"Departmental");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(stale,"isolated-test",true); },"accepted source changed");
+            var audits=Rejections(); Assert(audits.Count==2 && (string)audits[0]["@id"]==(string)audits[1]["@id"],"Originals lost shared attempt or duplicate events");
+            Assert(AuditDetail(audits[0]).Contains("FY=2020") && AuditDetail(audits[1]).Contains("FY=2019") && AuditDetail(audits[1]).Contains("Release=2"),"Member context inherited"); AssertIndependentAudit();
+        });
+        T("audit Defence governed stale confirmation",delegate {
+            Find(1).Populations.Add(new[]{"1000","0L","Departmental"});
+            var stale=FilePopulations(Defence2020("1000","0L","Departmental")); Seed(40,2020,"1000","0L","Departmental");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(stale,"isolated-test",true); },"accepted source changed");
+            Assert(Rejections().Count==1 && AuditDetail(Rejections()[0]).Contains("DEFENCE-ERP/1"),"Defence rejection missing"); AssertIndependentAudit();
+        });
+        foreach(bool icon in new[]{false,true})
+        {
+            bool fixedWidth=icon;
+            T("audit "+(icon?"Icon Water":"ActewAGL CSV")+" stale confirmation",delegate {
+                int year=fixedWidth?2016:2020; string company=fixedWidth?"86":"150";
+                Add(4,year,company,null,"Departmental"); NORMHelper.CurrentYear=year;
+                byte[] bytes=fixedWidth?System.IO.File.ReadAllBytes(System.IO.Path.Combine(root,"docs/Trial Balance Examples/coy 86.txt")):aag2020;
+                var stale=NORMImportService.InspectFileForAgency(bytes,"original.native",4,new int[0],"isolated-test"); Seed(40,year,company,null,"Departmental");
+                RejectUnchanged(delegate { NORMImportService.ConfirmBatch(stale,"isolated-test",true); },"accepted source changed");
+                Assert(Rejections().Count==1 && AuditDetail(Rejections()[0]).Contains(fixedWidth?"ICON-WATER-FIXED/1":"ACTEWAGL-FINSTATS/1"),"Native rejection missing"); AssertIndependentAudit();
+            });
+        }
+        T("audit late row failure rolls back sources then persists rejection",delegate {
+            var p=MixedBatch(); int rows=0;
+            NORMHelper.OnExecute=delegate(NORMHelper.Call c) { if(c.Sql.Contains("INSERT dbo.tblNORM_TrialBalanceRow") && ++rows==3) { throw new InvalidOperationException("Controlled late row rejection"); } };
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"late row rejection");
+            Assert(rows==3 && Rejections().Count==2 && ImportCalls().Count==0,"Late failure lost audit or accepted partial rows"); AssertIndependentAudit();
+        });
+        T("audit failure rolls back all independent rejection events",delegate {
+            var p=MixedBatch(); Seed(40,2019,"3000",null,"Departmental"); int audits=0;
+            NORMHelper.OnExecute=delegate(NORMHelper.Call c) { if(c.Values.ContainsKey("@event") && (string)c["@event"]=="IMPORT_REJECTED_SOURCE" && ++audits==2) { throw new Exception("private audit detail"); } };
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"Rejection audit evidence could not be saved");
+            Assert(audits==2 && Rejections().Count==0 && NORMHelper.Rollbacks==2 && acceptanceCommits==0,"Partial audit/source state committed");
+        });
+        T("audit expiry during locked confirmation remains routine",delegate {
+            var p=MixedBatch(); transactionQueryOverride=delegate(NORMHelper.Call c) { p[0].ExpiresUtc=DateTime.UtcNow.AddSeconds(-1); return null; };
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"expired");
+            Assert(Rejections().Count==0 && NORMHelper.Transactions==1,"Routine expiry emitted audit");
+        });
+        T("audit true conflict remains recorded if expiry occurs during rollback",delegate {
+            var p=MixedBatch(); Seed(40,2019,"3000",null,"Departmental");
+            NORMHelper.CurrentSource=delegate(NORMHelper.Call c) { int current=StoreCurrent(c); if(c.InTransaction && (string)c["@company"]=="3000") { p[0].ExpiresUtc=DateTime.UtcNow.AddSeconds(-1); } return current; };
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"accepted source changed");
+            Assert(Rejections().Count==2,"Expiry suppressed actual conflict");
+        });
+        T("audit expired entry unchecked acknowledgement and cancellation remain quiet",delegate {
+            var p=MixedBatch(); RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",false); },"replacement confirmation");
+            p[0].ExpiresUtc=DateTime.UtcNow.AddSeconds(-1); RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"expired");
+            NORM_Import page=new NORM_Import(); var fresh=FilePopulations(ControlledLegacy(true,true)); page.StageForTest(fresh[0],true,fresh[1]); page.CancelForTest();
+            Assert(Rejections().Count==0 && NORMHelper.Transactions==0,"Routine outcome audited");
+        });
+        T("audit long escaped filename preserves reason scope and hash within schema limit",delegate {
+            string name=new string('\u00e9',250)+";=%.xlsx";
+            var p=NORMImportService.InspectFileForAgency(ControlledLegacy(true,true),name,1,new int[0],"isolated-test");
+            Seed(40,2020,"2000",null,"Administered");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"accepted source changed");
+            string raw=(string)Rejections()[0]["@detail"],detail=AuditDetail(Rejections()[0]);
+            Assert(raw.Length<=2000 && raw.Contains("[truncated]") && detail.Contains("Company=1000") && detail.Contains("Company=2000") && detail.Contains("SOURCE_PREDECESSOR_CHANGED") && detail.Contains("SHA256="+p[0].FileHash),"Bounded metadata lost required evidence");
+        });
+        T("audit independent commit failure retains no partial evidence or sources",delegate {
+            var p=MixedBatch(); Seed(40,2019,"3000",null,"Departmental");
+            NORMHelper.OnCommit=delegate(System.Collections.Generic.IList<NORMHelper.Call> calls) { throw new Exception("private commit detail"); };
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"Rejection audit evidence could not be saved");
+            Assert(NORMHelper.Committed.Count==0 && NORMHelper.Rollbacks==2 && acceptanceCommits==0,"Failed audit commit changed source/evidence");
+        });
+        T("audit successful acceptance calculation failure and replacement unchanged",delegate {
+            NORMHelper.FailCalculation=true; NORMImportService.ConfirmBatch(MixedBatch(),"isolated-test",true);
+            Assert(acceptanceCommits==1 && Rejections().Count==0 && acceptedAudits.Exists(delegate(NORMHelper.Call c){return (string)c["@event"]=="IMPORT_SOURCE_REPLACED";}),"Committed source misreported as rejected");
+        });
     }
 }

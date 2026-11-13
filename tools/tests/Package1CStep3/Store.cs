@@ -59,6 +59,7 @@ public static partial class Tests
     }
     static void StoreSetup()
     {
+        NORMHelper.TransactionEvents.Clear();
         PartitionSetup(); Find(1).Populations[1][2]="Administered"; Find(2).Populations[0][0]="3000";
         store.Clear(); acceptedAudits.Clear(); releaseLocks.Clear(); scopeLocks.Clear(); acceptanceCommits=reinspectionReads=downloads=0; transactionQueryOverride=null;
         Seed(9,2020,"1000",null,"Departmental"); Seed(10,2020,"1000",null,"Departmental");

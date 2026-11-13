@@ -41,7 +41,7 @@ public static partial class Tests
             Assert(!page.ConfirmationEnabledForTest && page.CorrectionButtonHtml().Contains("disabled=\"disabled\"") && page.PreviewForTest.Contains("The batch cannot be accepted"),"Missing disabled semantics/explanation");
             page.ConfirmForTest();Assert(page.ErrorForTest.Contains("invalid"),"Forced page accepted invalid batch");
             RejectUnchanged(delegate { NORMImportService.ConfirmBatch(p,"isolated-test",true); },"invalid");
-            Assert(NORMHelper.Opens==0 && NORMHelper.Transactions==0 && NORMHelper.Committed.Count==0,"Invalid confirmation reached storage");
+            Assert(acceptanceCommits==0 && NORMHelper.Committed.TrueForAll(delegate(NORMHelper.Call c){return c.Values.ContainsKey("@event") && (string)c["@event"]=="IMPORT_REJECTED_SOURCE";}),"Invalid confirmation wrote accepted data");
         });
         CTest("actual four-file five-population batch inspects and commits atomically preserving originals",delegate {
             var p=CorrectionInspect("01_CONTROLLED_A_FY2026_multi-company.xlsx");p.AddRange(CorrectionInspect("02_CONTROLLED_FY2025_company1000.xlsx"));

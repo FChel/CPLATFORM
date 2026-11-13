@@ -12,15 +12,17 @@ namespace TestDb
     public sealed class OleDbConnection : IDisposable
     {
         public OleDbTransaction BeginTransaction() { NORMHelper.Transactions++; return new OleDbTransaction(); }
-        public OleDbTransaction BeginTransaction(IsolationLevel level) { NORMHelper.Transactions++; return new OleDbTransaction(); }
+        public OleDbTransaction BeginTransaction(IsolationLevel level) { return BeginTransaction(); }
         public void Dispose() { }
     }
     public sealed class OleDbTransaction : IDisposable
     {
+        private readonly int id = NORMHelper.Transactions;
+        public OleDbTransaction() { NORMHelper.TransactionEvents.Add("Begin:" + id); }
         internal List<NORMHelper.Call> Pending = new List<NORMHelper.Call>();
-        public void Commit() { if (NORMHelper.FailCommit) throw new Exception("private connection detail"); if (NORMHelper.OnCommit != null) { NORMHelper.OnCommit(Pending.AsReadOnly()); } NORMHelper.Committed.AddRange(Pending); NORMHelper.Commits++; Pending.Clear(); }
-        public void Rollback() { NORMHelper.Rollbacks++; Pending.Clear(); }
-        public void Dispose() { }
+        public void Commit() { if (NORMHelper.FailCommit) throw new Exception("private connection detail"); if (NORMHelper.OnCommit != null) { NORMHelper.OnCommit(Pending.AsReadOnly()); } NORMHelper.Committed.AddRange(Pending); NORMHelper.Commits++; Pending.Clear(); NORMHelper.TransactionEvents.Add("Commit:" + id); }
+        public void Rollback() { NORMHelper.Rollbacks++; Pending.Clear(); NORMHelper.TransactionEvents.Add("Rollback:" + id); }
+        public void Dispose() { Pending.Clear(); NORMHelper.TransactionEvents.Add("Dispose:" + id); }
     }
 }
 
@@ -35,6 +37,7 @@ public static class NORMHelper
         public object this[string name] { get { return Values[name]; } }
     }
     public static List<Call> Committed = new List<Call>();
+    public static List<string> TransactionEvents = new List<string>();
     public static bool FailAudit, FailCommit, Duplicate;
     public static bool ExistingCompany;
     public static bool FailCalculation;
