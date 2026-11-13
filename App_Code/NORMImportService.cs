@@ -9,6 +9,93 @@ using System.Text;
 /// <summary>Creates immutable, transactional trial-balance imports.</summary>
 public static class NORMImportService
 {
+    /// <summary>Prepare one file within the agency established by an approved
+    /// configuration. Explicit selections override ambiguity, never authorisation.</summary>
+    public static NORMImportPreview InspectForAgency(byte[] content, string fileName, int agencyReleaseId,
+        IList<int> selectedReleaseIds, string user)
+    {
+        return Inspect(content, fileName, ResolveAgencyRelease(content, fileName, agencyReleaseId, selectedReleaseIds, user), user);
+    }
+
+    public static List<NORMImportPreview> InspectFileForAgency(byte[] content, string fileName, int agencyReleaseId,
+        IList<int> selectedReleaseIds, string user)
+    {
+        int releaseId = ResolveAgencyRelease(content, fileName, agencyReleaseId, selectedReleaseIds, user);
+        NORMParsedImport parsed;
+        List<NORMImportPreview> previews;
+        bool text = content.Length < 4 || content[0] != 0x50 || content[1] != 0x4b || content[2] != 3 || content[3] != 4;
+        try { previews = InspectPopulations(content, fileName, releaseId, user, true, true, out parsed); }
+        catch (InvalidDataException error)
+        {
+            if (text) { RecordInspectionRejection(content, fileName, releaseId, user, error.Message); }
+            throw;
+        }
+        if (text)
+        {
+            foreach (NORMImportPreview preview in previews)
+            { if (!preview.CanAccept) { RecordInspectionRejection(content, fileName, releaseId, user, String.Join(" ", preview.Errors.ToArray()), preview); } }
+        }
+        return previews;
+    }
+
+    private static int ResolveAgencyRelease(byte[] content, string fileName, int agencyReleaseId,
+        IList<int> selectedReleaseIds, string user)
+    {
+        ValidateContent(content, "trial balance");
+        DataRow anchor = LoadApprovedRelease(agencyReleaseId);
+        string entity = NORMHelper.Str(anchor, "EntityCode");
+        Dictionary<int, int> selections = new Dictionary<int, int>();
+        selections.Add(NORMHelper.Int(anchor, "FinancialYear"), agencyReleaseId);
+        if (selectedReleaseIds != null)
+        {
+            foreach (int selectedId in selectedReleaseIds)
+            {
+                if (selectedId == agencyReleaseId) { continue; }
+                DataRow selected = LoadApprovedRelease(selectedId);
+                if (!String.Equals(entity, NORMHelper.Str(selected, "EntityCode"), StringComparison.OrdinalIgnoreCase))
+                { throw new InvalidDataException("All selected configuration releases must belong to the same agency."); }
+                int selectedYear = NORMHelper.Int(selected, "FinancialYear");
+                int existing;
+                if (selections.TryGetValue(selectedYear, out existing) && existing != selectedId)
+                { throw new InvalidDataException("Select only one approved configuration release per financial year. Change the primary selection for its year."); }
+                selections[selectedYear] = selectedId;
+            }
+        }
+
+        bool workbook = content.Length >= 4 && content[0] == 0x50 && content[1] == 0x4b && content[2] == 3 && content[3] == 4;
+        NORMParsedImport discovered;
+        try
+        {
+            discovered = workbook ? ErpTrialBalanceImporter.DiscoverForInspection(content) :
+                NORMTextTrialBalanceImporter.DiscoverForInspection(content);
+        }
+        catch (InvalidDataException error)
+        {
+            if (!workbook) { RecordInspectionRejection(content, fileName, agencyReleaseId, user, error.Message); }
+            throw;
+        }
+        int releaseId;
+        if (!selections.TryGetValue(discovered.FinancialYear, out releaseId))
+        {
+            DataTable candidates = NORMHelper.Query(
+                "SELECT ConfigurationReleaseId,FinancialYear,EntityCode,VersionCode FROM dbo.tblNORM_ConfigurationRelease " +
+                "WHERE EntityCode=@entity AND FinancialYear=@fy AND StatusCode='Approved' AND IsDeactivated=0 ORDER BY ConfigurationReleaseId",
+                NORMHelper.P("@entity", entity), NORMHelper.P("@fy", discovered.FinancialYear));
+            if (candidates.Rows.Count == 0)
+            { throw new InvalidDataException("No active approved configuration release is available for " + entity + " FY" + discovered.FinancialYear + "."); }
+            if (candidates.Rows.Count != 1)
+            { throw new InvalidDataException("More than one approved configuration release is available for " + entity + " FY" + discovered.FinancialYear + ". Select its applicable release in Additional approved configurations and inspect again."); }
+            releaseId = NORMHelper.Int(candidates.Rows[0], "ConfigurationReleaseId");
+        }
+        // Repeat the normal approved-release and source/population checks. The
+        // discovery parse never authorises a population or enables acceptance.
+        DataRow bound = LoadApprovedRelease(releaseId);
+        if (!String.Equals(entity, NORMHelper.Str(bound, "EntityCode"), StringComparison.OrdinalIgnoreCase) ||
+            NORMHelper.Int(bound, "FinancialYear") != discovered.FinancialYear)
+        { throw new InvalidDataException("The selected release does not match the source agency and financial year. Inspect again."); }
+        return releaseId;
+    }
+
     public static NORMImportPreview Inspect(byte[] content, string fileName, int releaseId, string user)
     {
         NORMParsedImport parsed;
@@ -68,6 +155,15 @@ public static class NORMImportService
     private static NORMImportPreview InspectSource(byte[] content, string fileName, int releaseId, string user,
         bool loadCurrentSources, out NORMParsedImport parsed)
     {
+        List<NORMImportPreview> populations = InspectPopulations(content, fileName, releaseId, user, loadCurrentSources, false, out parsed);
+        if (populations.Count != 1)
+        { throw new InvalidDataException("This source file contains multiple populations. Use file inspection to review every population; acceptance is not yet enabled."); }
+        return populations[0];
+    }
+
+    private static List<NORMImportPreview> InspectPopulations(byte[] content, string fileName, int releaseId, string user,
+        bool loadCurrentSources, bool retainValidationErrors, out NORMParsedImport parsed)
+    {
         ValidateContent(content, "trial balance");
         byte[] bytes = (byte[])content.Clone();
         DataRow release = LoadApprovedRelease(releaseId);
@@ -88,7 +184,7 @@ public static class NORMImportService
         // Existing SQL constrains the storage source category to ERP/ROMAN.
         // ERP remains the TB source category; exact native format/version is
         // retained separately in IMPORT_SOURCE_PROFILE audit, never called XLSX.
-        const string type = "ERP";
+        Dictionary<int, string> resolutionErrors = new Dictionary<int, string>();
         foreach (NORMTrialBalanceRow row in parsed.Rows)
         {
             if (!defence && !text)
@@ -97,35 +193,96 @@ public static class NORMImportService
                 row.SourceCompanyCode = row.SourceLedger;
                 row.SourceLedger = null;
             }
-            if (text) { ResolveTextPopulation(row, permitted); }
-            else { ResolvePopulation(row, permitted); }
+            try
+            {
+                if (text) { ResolveTextPopulation(row, permitted); }
+                else { ResolvePopulation(row, permitted); }
+            }
+            catch (InvalidDataException error)
+            {
+                if (!retainValidationErrors) { throw; }
+                resolutionErrors[row.SourceRowNo] = error.Message;
+            }
             if (defence) { row.GlAccount = ErpTrialBalanceImporter.ExtractGl(row.GlAccount); }
         }
 
-        // Existing confirmation persists one population per file. Mixed-population
-        // parsing and acceptance require the later batch contract.
-        string sourceKey = ScopeKey(parsed.Rows[0]);
+        // Only existing row evidence is partitioned. Native profiles still return
+        // their single documented population; no hypothetical report blocks.
+        Dictionary<string, List<NORMTrialBalanceRow>> grouped = new Dictionary<string, List<NORMTrialBalanceRow>>(StringComparer.OrdinalIgnoreCase);
+        List<List<NORMTrialBalanceRow>> groups = new List<List<NORMTrialBalanceRow>>();
         foreach (NORMTrialBalanceRow row in parsed.Rows)
         {
-            if (!String.Equals(ScopeKey(row), sourceKey, StringComparison.OrdinalIgnoreCase))
-            { throw new InvalidDataException("This source file contains multiple populations. Supply one population per file for this import workflow."); }
+            string key = ScopeKey(row);
+            List<NORMTrialBalanceRow> rows;
+            if (!grouped.TryGetValue(key, out rows)) { rows = new List<NORMTrialBalanceRow>(); grouped.Add(key, rows); groups.Add(rows); }
+            rows.Add(row);
         }
+        NORMImportFileContext file = parsed.SourceFile;
+        file.Token = Guid.NewGuid().ToString("N"); file.FileName = Path.GetFileName(fileName); file.FileHash = NORMCrypto.Sha256(bytes);
+        file.PopulationCount = groups.Count;
+        if (!file.RowsReconciled || file.DetailRowCount != parsed.Rows.Count)
+        { throw new InvalidDataException("Source detail and excluded record counts do not reconcile. No population can be accepted."); }
+        List<NORMImportPreview> results = new List<NORMImportPreview>();
+        foreach (List<NORMTrialBalanceRow> rows in groups)
+        {
+            NORMParsedImport population = new NORMParsedImport {
+                Rows = rows, ProfileVersion = parsed.ProfileVersion, FinancialYear = parsed.FinancialYear,
+                PeriodStart = parsed.PeriodStart, PeriodEnd = parsed.PeriodEnd, CoverageStart = parsed.CoverageStart,
+                CoverageEnd = parsed.CoverageEnd, SourceFile = file
+            };
+            population.Warnings.AddRange(parsed.Warnings);
+            NORMImportPreview preview = BuildPopulationPreview(bytes, releaseId, user, loadCurrentSources, retainValidationErrors,
+                population, release, configuration, mappings, currentYear, layout);
+            foreach (NORMTrialBalanceRow row in rows)
+            {
+                string error;
+                if (resolutionErrors.TryGetValue(row.SourceRowNo, out error))
+                {
+                    if (!preview.Errors.Contains(error)) { preview.Errors.Add(error); }
+                    preview.InvalidSourceRows.Add(row.SourceRowNo);
+                }
+            }
+            results.Add(preview);
+        }
+        file.PopulationFingerprint = FilePopulationFingerprint(results);
+        foreach (NORMImportPreview preview in results)
+        { preview.ConfirmationFingerprint = PopulationEvidence(preview, true); }
+        return results;
+    }
 
+    private static NORMImportPreview BuildPopulationPreview(byte[] bytes, int releaseId, string user,
+        bool loadCurrentSources, bool retainValidationErrors, NORMParsedImport parsed, DataRow release,
+        string configuration, DataTable mappings, int currentYear, string layout)
+    {
+        int year = NORMHelper.Int(release, "FinancialYear");
         NORMImportPreview preview = new NORMImportPreview();
         preview.Content = bytes; preview.Token = Guid.NewGuid().ToString("N"); preview.Owner = user;
         preview.ExpiresUtc = DateTime.UtcNow.AddMinutes(15); preview.ReleaseId = releaseId;
         preview.ConfigurationVersion = NORMHelper.Str(release, "VersionCode");
-        preview.FileName = Path.GetFileName(fileName);
+        preview.SourceFile = parsed.SourceFile;
+        preview.FileName = parsed.SourceFile.FileName;
         if (String.IsNullOrEmpty(preview.FileName) || preview.FileName.Length > 260)
         { preview.Errors.Add("The source filename cannot be retained within the supported storage limit."); }
         preview.FileHash = NORMCrypto.Sha256(bytes);
-        preview.ConfigurationFingerprint = configuration; preview.SourceType = type; preview.Layout = layout;
+        preview.Population = new NORMSourceScope {
+            Entity = NORMHelper.Str(release, "EntityCode"), FinancialYear = parsed.FinancialYear,
+            Company = parsed.Rows[0].SourceCompanyCode, Ledger = parsed.Rows[0].SourceLedger,
+            ReportingStream = parsed.Rows[0].ReportingStream, SourceFileName = preview.FileName
+        };
+        preview.ConfigurationFingerprint = configuration; preview.SourceType = "ERP"; preview.Layout = layout;
         preview.ProfileVersion = parsed.ProfileVersion;
         preview.Entity = NORMHelper.Str(release, "EntityCode"); preview.FinancialYear = parsed.FinancialYear;
         preview.CoverageStart = parsed.CoverageStart; preview.CoverageEnd = parsed.CoverageEnd;
         preview.IsFullYear = parsed.IsFullYear; preview.ConfiguredFinancialYear = currentYear;
-        ValidateCoverage(parsed, currentYear);
+        try { ValidateCoverage(parsed, currentYear); }
+        catch (InvalidDataException error)
+        {
+            if (!retainValidationErrors) { throw; }
+            preview.Errors.Add(error.Message);
+            foreach (NORMTrialBalanceRow row in parsed.Rows) { preview.InvalidSourceRows.Add(row.SourceRowNo); }
+        }
         preview.PeriodStart = parsed.PeriodStart; preview.PeriodEnd = parsed.PeriodEnd; preview.RowCount = parsed.Rows.Count;
+        preview.PopulationRows.AddRange(parsed.Rows);
         preview.TotalsAvailable = true;
         if (year == 2025) { preview.Errors.Add("FY2025 requires the existing controlled ROMAN 01-10 / ERP 11-12 pair. Single-file acceptance is unavailable for this year."); }
         HashSet<string> companyValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -140,6 +297,7 @@ public static class NORMImportService
         StringBuilder identity = new StringBuilder();
         HashSet<string> streams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool precision = true;
+        Dictionary<string, int> accounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         try
         {
             foreach (NORMTrialBalanceRow row in parsed.Rows)
@@ -149,15 +307,33 @@ public static class NORMImportService
                 streams.Add(row.ReportingStream);
                 identity.Append(row.SourceRowNo).Append('|').Append(row.SourceCompanyCode).Append('|').Append(row.SourceLedger).Append('|').Append(row.ReportingStream).Append('|').Append(row.RowHash).Append('\n');
                 if (row.AccumBalance >= 0m) { preview.Debit += row.AccumBalance; } else { preview.Credit -= row.AccumBalance; }
-                precision &= FitsStoredAmount(row.AccumBalance) && (!row.OpeningBalance.HasValue || FitsStoredAmount(row.OpeningBalance.Value)) &&
+                bool rowPrecision = FitsStoredAmount(row.AccumBalance) && (!row.OpeningBalance.HasValue || FitsStoredAmount(row.OpeningBalance.Value)) &&
                     (!row.DebitMovement.HasValue || FitsStoredAmount(row.DebitMovement.Value)) && (!row.CreditMovement.HasValue || FitsStoredAmount(row.CreditMovement.Value));
+                precision &= rowPrecision;
+                if (!rowPrecision) { preview.InvalidSourceRows.Add(row.SourceRowNo); }
+                int previousRow;
+                if (accounts.TryGetValue(row.GlAccount, out previousRow))
+                {
+                    preview.InvalidSourceRows.Add(previousRow); preview.InvalidSourceRows.Add(row.SourceRowNo);
+                    string duplicate = "Duplicate source account " + row.GlAccount + " within this population.";
+                    if (!preview.Errors.Contains(duplicate)) { preview.Errors.Add(duplicate); }
+                }
+                else { accounts.Add(row.GlAccount, row.SourceRowNo); }
                 if (!mapped.Contains(row.GlAccount)) { unmapped.Add(row.GlAccount); }
             }
             preview.Net = preview.Debit - preview.Credit;
             precision &= FitsStoredAmount(preview.Debit) && FitsStoredAmount(preview.Credit) && FitsStoredAmount(preview.Net);
-            if (preview.Net != 0m) { preview.Errors.Add("Debits and credits must differ by exactly zero AUD. Actual: " + ExactAmount(preview.Net) + "."); }
+            if (preview.Net != 0m)
+            {
+                preview.Errors.Add("Debits and credits must differ by exactly zero AUD. Actual: " + ExactAmount(preview.Net) + ".");
+                foreach (NORMTrialBalanceRow row in parsed.Rows) { preview.InvalidSourceRows.Add(row.SourceRowNo); }
+            }
         }
-        catch (OverflowException) { precision = false; preview.TotalsAvailable = false; preview.Errors.Add("Amount totals exceed the supported decimal range."); }
+        catch (OverflowException)
+        {
+            precision = false; preview.TotalsAvailable = false; preview.Errors.Add("Amount totals exceed the supported decimal range.");
+            foreach (NORMTrialBalanceRow row in parsed.Rows) { preview.InvalidSourceRows.Add(row.SourceRowNo); }
+        }
         preview.PrecisionValid = precision;
         if (!precision) { preview.Errors.Add("Amounts must fit existing storage without precision loss."); }
         List<string> orderedCompanies = new List<string>(companyValues), orderedLedgers = new List<string>(ledgerValues);
@@ -174,7 +350,7 @@ public static class NORMImportService
                 string company = row.SourceCompanyCode;
                 string ledger = row.SourceLedger;
                 string key = ScopeKey(row);
-                if (!preview.Scopes.ContainsKey(key))
+                if (row.ReportingStream != null && !preview.Scopes.ContainsKey(key))
                 {
                     preview.Scopes.Add(key, FindCurrentSource(preview, company, ledger, row.ReportingStream, null, null));
                 }
@@ -190,7 +366,12 @@ public static class NORMImportService
 
     public static void ValidateBatch(IList<NORMImportPreview> previews)
     {
-        try { ValidateBatchCore(previews); }
+        try
+        {
+            ValidatePreparationBatch(previews);
+            string batch = BatchEvidence(previews);
+            foreach (NORMImportPreview preview in previews) { preview.BatchFingerprint = batch; }
+        }
         catch (Exception error)
         {
             if (previews != null && (error is InvalidDataException || error is InvalidOperationException))
@@ -205,27 +386,151 @@ public static class NORMImportService
         }
     }
 
-    private static void ValidateBatchCore(IList<NORMImportPreview> previews)
+    private static string IdentityPart(string value)
     {
-        if (previews == null || previews.Count == 0)
-        { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
-        NORMImportPreview first = previews[0];
-        long bytes = 0;
-        HashSet<string> scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return value == null ? "-1:" : value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value;
+    }
+
+    private static string SourceIdentity(NORMSourceScope scope)
+    {
+        return IdentityPart(scope.Entity) + IdentityPart(scope.FinancialYear.ToString(CultureInfo.InvariantCulture)) +
+            IdentityPart(scope.Company) + IdentityPart(scope.Ledger) + IdentityPart(scope.ReportingStream);
+    }
+
+    private static string PopulationEvidence(NORMImportPreview preview, bool includePredecessor)
+    {
+        NORMImportFileContext file = preview.SourceFile;
+        StringBuilder text = new StringBuilder();
+        foreach (string value in new[] { SourceIdentity(preview.Population), preview.Entity, preview.FinancialYear.ToString(CultureInfo.InvariantCulture),
+            preview.ReleaseId.ToString(CultureInfo.InvariantCulture), preview.ConfigurationVersion, preview.ConfigurationFingerprint,
+            preview.IdentityFingerprint, preview.FileName, preview.FileHash, preview.SourceType, preview.Layout, preview.ProfileVersion,
+            preview.Companies, preview.Ledgers, preview.ReportingStreams, preview.Population.SourceFileName,
+            preview.PeriodStart.ToString(CultureInfo.InvariantCulture), preview.PeriodEnd.ToString(CultureInfo.InvariantCulture),
+            preview.CoverageStart.HasValue ? preview.CoverageStart.Value.ToString("O", CultureInfo.InvariantCulture) : null,
+            preview.CoverageEnd.HasValue ? preview.CoverageEnd.Value.ToString("O", CultureInfo.InvariantCulture) : null,
+            preview.IsFullYear.ToString(), preview.ConfiguredFinancialYear.ToString(CultureInfo.InvariantCulture),
+            preview.RowCount.ToString(CultureInfo.InvariantCulture), preview.UnmappedAccounts.ToString(CultureInfo.InvariantCulture),
+            ExactAmount(preview.Debit), ExactAmount(preview.Credit), ExactAmount(preview.Net), preview.TotalsAvailable.ToString(), preview.PrecisionValid.ToString(),
+            file.FileName, file.FileHash, file.PopulationCount.ToString(CultureInfo.InvariantCulture), file.RecordUnit,
+            file.RecordCount.ToString(CultureInfo.InvariantCulture), file.DetailRowCount.ToString(CultureInfo.InvariantCulture),
+            file.MetadataRowCount.ToString(CultureInfo.InvariantCulture), file.ControlRowCount.ToString(CultureInfo.InvariantCulture), file.BlankRowCount.ToString(CultureInfo.InvariantCulture) })
+        { text.Append(IdentityPart(value)); }
+        foreach (NORMTrialBalanceRow row in preview.SourceRows)
+        {
+            foreach (string value in new[] { row.SourceRowNo.ToString(CultureInfo.InvariantCulture), row.SourceCompanyCode, row.SourceLedger,
+                row.ReportingStream, row.GlAccount, row.GlText, row.OpeningBalance.HasValue ? ExactAmount(row.OpeningBalance.Value) : null,
+                row.DebitMovement.HasValue ? ExactAmount(row.DebitMovement.Value) : null, row.CreditMovement.HasValue ? ExactAmount(row.CreditMovement.Value) : null,
+                ExactAmount(row.AccumBalance), row.RowHash, row.IsSynthetic.ToString() })
+            { text.Append(IdentityPart(value)); }
+        }
+        text.Append("ERRORS"); foreach (string error in preview.Errors) { text.Append(IdentityPart(error)); }
+        text.Append("WARNINGS"); foreach (string warning in preview.Warnings) { text.Append(IdentityPart(warning)); }
+        if (includePredecessor)
+        {
+            text.Append(IdentityPart(preview.Token)).Append(IdentityPart(preview.Owner)).Append(IdentityPart(preview.ExpiresUtc.ToString("O", CultureInfo.InvariantCulture)))
+                .Append(IdentityPart(file.Token)).Append(IdentityPart(file.PopulationFingerprint));
+            List<string> scopes = new List<string>();
+            foreach (NORMSourceScope scope in preview.SourceScopes)
+            { scopes.Add(SourceIdentity(scope) + IdentityPart(scope.ImportId.ToString(CultureInfo.InvariantCulture)) + IdentityPart(scope.SourceFileName) + IdentityPart(scope.ImportedUtc.ToString("O", CultureInfo.InvariantCulture))); }
+            scopes.Sort(StringComparer.Ordinal);
+            foreach (string scope in scopes) { text.Append(IdentityPart(scope)); }
+        }
+        return NORMCrypto.Sha256(text.ToString());
+    }
+
+    private static string FilePopulationFingerprint(IList<NORMImportPreview> populations)
+    {
+        List<string> members = new List<string>();
+        foreach (NORMImportPreview population in populations) { members.Add(PopulationEvidence(population, false)); }
+        members.Sort(StringComparer.Ordinal);
+        return NORMCrypto.Sha256(String.Join("|", members.ToArray()));
+    }
+
+    private static string BatchEvidence(IList<NORMImportPreview> previews)
+    {
+        List<string> members = new List<string>();
+        foreach (NORMImportPreview preview in previews)
+        { members.Add(IdentityPart(preview.Token) + IdentityPart(preview.ConfirmationFingerprint)); }
+        members.Sort(StringComparer.Ordinal);
+        return NORMCrypto.Sha256(String.Join("|", members.ToArray()));
+    }
+
+    private static void VerifyBatchMembership(IList<NORMImportPreview> previews)
+    {
+        string batch = BatchEvidence(previews);
         foreach (NORMImportPreview preview in previews)
         {
-            if (preview == null || preview.ReleaseId != first.ReleaseId ||
-                preview.ConfigurationFingerprint != first.ConfigurationFingerprint)
-            { throw new InvalidOperationException("The batch must use one approved configuration. Inspect again."); }
-            bytes += preview.Content.LongLength;
-            foreach (string scope in preview.Scopes.Keys)
+            if (preview.BatchFingerprint != null && preview.BatchFingerprint != batch)
+            { throw new InvalidOperationException("The staged batch population set changed. Inspect the complete batch again."); }
+        }
+    }
+
+    private static void ValidatePreparationBatch(IList<NORMImportPreview> previews)
+    {
+        if (previews == null || previews.Count == 0 || previews[0] == null)
+        { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
+        string entity = previews[0].Entity;
+        long bytes = 0;
+        HashSet<string> files = new HashSet<string>(StringComparer.Ordinal);
+        Dictionary<string, int> fileRows = new Dictionary<string, int>();
+        Dictionary<string, int> filePopulations = new Dictionary<string, int>();
+        Dictionary<string, HashSet<int>> sourceRows = new Dictionary<string, HashSet<int>>();
+        HashSet<string> identities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<int, string> snapshots = new Dictionary<int, string>();
+        foreach (NORMImportPreview preview in previews)
+        {
+            if (preview == null || preview.Content == null || preview.Population == null)
+            { throw new InvalidOperationException("A source population has no resolved context. Inspect again."); }
+            if (!String.Equals(preview.Entity, entity, StringComparison.OrdinalIgnoreCase))
+            { throw new InvalidDataException("An upload batch must belong to one agency. Cross-agency batches are not supported."); }
+            string snapshot;
+            if (snapshots.TryGetValue(preview.ReleaseId, out snapshot) && snapshot != preview.ConfigurationFingerprint)
+            { throw new InvalidOperationException("The approved configuration changed between files. Inspect the batch again."); }
+            snapshots[preview.ReleaseId] = preview.ConfigurationFingerprint;
+            NORMImportFileContext file = preview.SourceFile;
+            if (file == null || !file.RowsReconciled || String.IsNullOrEmpty(file.Token))
+            { throw new InvalidDataException("Source record accounting is unavailable. Inspect again."); }
+            if (preview.RowCount != preview.SourceRows.Count)
+            { throw new InvalidDataException("Population detail row count does not match its source rows. Inspect again."); }
+            if (files.Add(file.Token))
             {
-                if (!scopes.Add(scope))
-                { throw new InvalidDataException("More than one file supplies the same company, ledger and reporting stream. Select one authoritative file per source scope."); }
+                bytes += preview.Content.LongLength;
+                fileRows.Add(file.Token, 0); filePopulations.Add(file.Token, 0); sourceRows.Add(file.Token, new HashSet<int>());
             }
+            fileRows[file.Token] += preview.RowCount;
+            filePopulations[file.Token]++;
+            foreach (NORMTrialBalanceRow row in preview.SourceRows)
+            {
+                if (!sourceRows[file.Token].Add(row.SourceRowNo))
+                { throw new InvalidDataException("A source detail row was assigned more than once. Inspect again."); }
+            }
+            NORMSourceScope scope = preview.Population;
+            string key = SourceIdentity(scope);
+            if (!identities.Add(key))
+            { throw new InvalidDataException("More than one file supplies the same agency, financial year, company, ledger and reporting stream. Select one authoritative file per source scope."); }
+        }
+        foreach (NORMImportPreview preview in previews)
+        {
+            NORMImportFileContext file = preview.SourceFile;
+            if (fileRows[file.Token] != file.DetailRowCount || sourceRows[file.Token].Count != file.DetailRowCount ||
+                filePopulations[file.Token] != file.PopulationCount)
+            { throw new InvalidDataException("Not every source detail row and population is accounted for. Inspect the complete file again."); }
         }
         if (bytes > NORMHelper.SettingInt("NORM.MaxUploadBytes", 104857600))
         { throw new InvalidDataException("The combined files exceed the configured upload limit."); }
+    }
+
+    public static string BatchConfirmationBlockReason(IList<NORMImportPreview> previews)
+    {
+        try { ValidatePreparationBatch(previews); }
+        catch (InvalidDataException error) { return error.Message; }
+        catch (InvalidOperationException error) { return error.Message; }
+        return null;
+    }
+
+    private static void ValidateBatchCore(IList<NORMImportPreview> previews)
+    {
+        ValidatePreparationBatch(previews);
     }
 
     public static List<NORMImportOutcome> ConfirmBatch(IList<NORMImportPreview> previews, string user, bool replaceExisting)
@@ -260,68 +565,106 @@ public static class NORMImportService
 
     private static List<NORMImportOutcome> ConfirmBatchCore(IList<NORMImportPreview> previews, string user, bool replaceExisting)
     {
-        ValidateBatchCore(previews);
-        NORMImportPreview first = previews[0];
-        List<NORMImportSource> sources = new List<NORMImportSource>();
-        List<NORMImportPreview> validated = new List<NORMImportPreview>();
+        if (previews == null || previews.Count == 0)
+        { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
+        previews = new List<NORMImportPreview>(previews);
+        if (!NORMHelper.HasPrepareAccess() || !String.Equals(user, NORMHelper.CurrentUserId(), StringComparison.Ordinal))
+        { throw new UnauthorizedAccessException("The authenticated user does not have authority to confirm this batch."); }
+        // Check all acknowledgements before consuming any member, so an unchecked
+        // replacement can be corrected without partially consuming the batch.
         foreach (NORMImportPreview preview in previews)
         {
+            if (preview == null) { throw new InvalidOperationException("An inspected population is missing. Inspect again."); }
             lock (preview)
             {
                 if (!String.Equals(preview.Owner, user, StringComparison.Ordinal) || !preview.CanAccept)
                 { throw new InvalidOperationException("This preview is invalid, expired or already consumed. Inspect the files again."); }
                 if (preview.HasReplacement && !replaceExisting)
                 { throw new InvalidOperationException("Explicit replacement confirmation is required."); }
+                VerifyRetainedPreview(preview);
+            }
+        }
+        VerifyBatchMembership(previews);
+        foreach (NORMImportPreview preview in previews)
+        {
+            lock (preview)
+            {
+                if (!preview.CanAccept) { throw new InvalidOperationException("This preview is invalid, expired or already consumed. Inspect again."); }
                 preview.Consumed = true;
             }
-            if (NORMCrypto.Sha256(preview.Content) != preview.FileHash)
-            { throw new InvalidDataException("The inspected source bytes changed. Inspect again."); }
-            NORMParsedImport parsed;
-            NORMImportPreview fresh = InspectSource(preview.Content, preview.FileName, preview.ReleaseId, user, false, out parsed);
-            if (!fresh.CanAccept || fresh.ConfigurationFingerprint != preview.ConfigurationFingerprint ||
-                fresh.IdentityFingerprint != preview.IdentityFingerprint || fresh.Layout != preview.Layout || fresh.ProfileVersion != preview.ProfileVersion)
-            { throw new InvalidOperationException("The configuration, source identity or validation changed. Inspect again."); }
-            validated.Add(fresh);
-            sources.Add(BuildSource(fresh.Content, fresh.FileName, fresh.SourceType, parsed, true));
         }
+        // Reparse each entire original once, including populations omitted by a
+        // caller. Fresh evidence, not caller-owned rows, supplies persistence.
+        List<NORMImportPreview> validated = ReinspectBatchFiles(previews, user);
+        ValidateBatchCore(previews);
+        List<NORMImportSource> sources = new List<NORMImportSource>();
+        foreach (NORMImportPreview preview in validated)
+        { sources.Add(BuildSource(preview.Content, preview.FileName, preview.SourceType, ParsedPopulation(preview), true)); }
 
-        List<int> importIds = new List<int>();
+        List<int> order = new List<int>();
+        for (int i = 0; i < previews.Count; i++) { order.Add(i); }
+        order.Sort(delegate(int a, int b) { return StringComparer.OrdinalIgnoreCase.Compare(SourceIdentity(previews[a].Population), SourceIdentity(previews[b].Population)); });
+        SortedDictionary<int, string> releases = new SortedDictionary<int, string>();
+        foreach (NORMImportPreview preview in previews) { releases[preview.ReleaseId] = preview.ConfigurationFingerprint; }
+        int[] importIds = new int[previews.Count];
+        string entity = previews[0].Entity;
+        string batchReference = Guid.NewGuid().ToString("N");
+
         using (OleDbConnection connection = NORMHelper.OpenConnection())
         using (OleDbTransaction transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
         {
             try
             {
-                DataTable permitted, mappings;
-                int currentYear;
-                NORMHelper.RequireEntityAccess(first.Entity, connection, transaction);
-                if (PreviewConfiguration(first.ReleaseId, connection, transaction, out permitted, out mappings, out currentYear) != first.ConfigurationFingerprint)
-                { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
-                foreach (NORMImportPreview preview in previews)
+                if (!String.Equals(user, NORMHelper.CurrentUserId(), StringComparison.Ordinal))
+                { throw new UnauthorizedAccessException("The authenticated batch owner changed. Inspect again."); }
+                NORMHelper.RequireEntityAccess(entity, connection, transaction);
+                Dictionary<int, int> currentYears = new Dictionary<int, int>();
+                foreach (KeyValuePair<int, string> release in releases)
                 {
-                    foreach (NORMSourceScope scope in preview.Scopes.Values)
-                    {
-                        NORMSourceScope current = FindCurrentSource(preview, scope.Company, scope.Ledger, scope.ReportingStream, connection, transaction);
-                        if (current.ImportId != scope.ImportId)
-                        { throw new InvalidOperationException("The accepted source changed after inspection. Inspect the batch again."); }
-                    }
+                    DataTable permitted, mappings;
+                    int currentYear;
+                    if (PreviewConfiguration(release.Key, connection, transaction, out permitted, out mappings, out currentYear) != release.Value)
+                    { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
+                    currentYears.Add(release.Key, currentYear);
                 }
-
-                for (int i = 0; i < sources.Count; i++)
+                ValidateBatchCore(previews);
+                VerifyBatchMembership(previews);
+                HashSet<byte[]> checkedContent = new HashSet<byte[]>();
+                foreach (int i in order)
+                {
+                    NORMImportPreview original = previews[i];
+                    if (original.Owner != user || DateTime.UtcNow >= original.ExpiresUtc)
+                    { throw new InvalidOperationException("This preview is invalid or expired. Inspect again."); }
+                    VerifyRetainedPreview(original);
+                    if (checkedContent.Add(original.Content) && NORMCrypto.Sha256(original.Content) != original.FileHash)
+                    { throw new InvalidDataException("The inspected source bytes changed. Inspect again."); }
+                    ValidateCoverage(sources[i].Parsed, currentYears[original.ReleaseId]);
+                    NORMSourceScope scope = ExpectedPredecessor(original);
+                    NORMSourceScope current = FindCurrentSource(original, scope.Company, scope.Ledger, scope.ReportingStream, connection, transaction);
+                    if (current.ImportId != scope.ImportId)
+                    { throw new InvalidOperationException("The accepted source changed after inspection. Inspect the batch again."); }
+                }
+                foreach (int i in order)
                 {
                     NORMImportSource source = sources[i];
                     NORMImportPreview preview = validated[i];
-                    int importId = PersistImport(connection, transaction, first.ReleaseId, first.FinancialYear, first.Entity,
+                    NORMImportFileContext file = preview.SourceFile;
+                    int importId = PersistImport(connection, transaction, preview.ReleaseId, preview.FinancialYear, preview.Entity,
                         source.SourceType, source.FileName, source.FileHash, source.Parsed, new[] { source }, user,
                         "Confirmed " + preview.Layout + "; company=" + preview.Companies + ";ledger=" + preview.Ledgers +
-                        ";stream=" + preview.ReportingStreams + ";coverage=" + CoverageLabel(source.Parsed) + ";periods=" + PeriodLabel(source.Parsed) + ";unmapped=" + preview.UnmappedAccounts + ";units=AUD.",
+                        ";stream=" + preview.ReportingStreams + ";coverage=" + CoverageLabel(source.Parsed) + ";periods=" + PeriodLabel(source.Parsed) + ";unmapped=" + preview.UnmappedAccounts + ";units=AUD." +
+                        ";entity=" + preview.Entity + ";financialYear=" + preview.FinancialYear + ";release=" + preview.ReleaseId +
+                        ";batch=" + batchReference + ";fileReference=" + previews[i].SourceFile.Token + ";filePopulations=" + file.PopulationCount +
+                        ";fileRecords=" + file.RecordCount + ";fileDetail=" + file.DetailRowCount + ";metadata=" + file.MetadataRowCount +
+                        ";controls=" + file.ControlRowCount + ";blank=" + file.BlankRowCount + ";populationAccepted=" + preview.RowCount + ";populationInvalid=0",
                         source.Content.LongLength, preview.Debit, preview.Credit, preview.Net);
-                    importIds.Add(importId);
+                    importIds[i] = importId;
                     foreach (NORMSourceScope scope in previews[i].Scopes.Values)
                     {
                         if (scope.ImportId == 0) { continue; }
                         WriteAudit(connection, transaction, "IMPORT_SOURCE_REPLACED", "Import", importId.ToString(CultureInfo.InvariantCulture),
-                            "Prior import=" + scope.ImportId.ToString(CultureInfo.InvariantCulture) + "; entity=" + first.Entity +
-                            "; financial year=" + first.FinancialYear + "; company=" + (scope.Company ?? "(legacy)") +
+                            "Prior import=" + scope.ImportId.ToString(CultureInfo.InvariantCulture) + "; entity=" + preview.Entity +
+                            "; financial year=" + preview.FinancialYear + "; company=" + (scope.Company ?? "(legacy)") +
                             "; ledger=" + (scope.Ledger ?? "(absent)") + "; stream=" + scope.ReportingStream, user);
                     }
                 }
@@ -337,6 +680,70 @@ public static class NORMImportService
             outcomes.Add(Calculate(importIds[i], preview.RowCount, preview.Debit, preview.Credit, preview.Net, user));
         }
         return outcomes;
+    }
+
+    private static void VerifyRetainedPreview(NORMImportPreview preview)
+    {
+        if (preview.SourceFile == null || preview.Population == null || preview.Content == null ||
+            preview.ConfirmationFingerprint != PopulationEvidence(preview, true))
+        { throw new InvalidOperationException("The retained source identity, rows or confirmation context changed. Inspect again."); }
+    }
+
+    private static NORMSourceScope ExpectedPredecessor(NORMImportPreview preview)
+    {
+        if (preview.Scopes.Count == 1)
+        {
+            foreach (NORMSourceScope scope in preview.SourceScopes)
+            { if (SourceIdentity(scope) == SourceIdentity(preview.Population)) { return scope; } }
+        }
+        throw new InvalidOperationException("The source predecessor context is incomplete. Inspect again.");
+    }
+
+    private static List<NORMImportPreview> ReinspectBatchFiles(IList<NORMImportPreview> previews, string user)
+    {
+        Dictionary<string, List<NORMImportPreview>> files = new Dictionary<string, List<NORMImportPreview>>(StringComparer.Ordinal);
+        foreach (NORMImportPreview preview in previews)
+        {
+            List<NORMImportPreview> members;
+            if (!files.TryGetValue(preview.SourceFile.Token, out members))
+            { members = new List<NORMImportPreview>(); files.Add(preview.SourceFile.Token, members); }
+            members.Add(preview);
+        }
+        Dictionary<NORMImportPreview, NORMImportPreview> matches = new Dictionary<NORMImportPreview, NORMImportPreview>();
+        foreach (List<NORMImportPreview> members in files.Values)
+        {
+            NORMImportPreview first = members[0];
+            if (NORMCrypto.Sha256(first.Content) != first.FileHash)
+            { throw new InvalidDataException("The inspected source bytes changed. Inspect again."); }
+            NORMParsedImport parsed;
+            List<NORMImportPreview> fresh = InspectPopulations(first.Content, first.FileName, first.ReleaseId, user, false, false, out parsed);
+            if (fresh.Count != members.Count || FilePopulationFingerprint(fresh) != first.SourceFile.PopulationFingerprint)
+            { throw new InvalidOperationException("The complete original file population set or validation changed. Inspect every population again."); }
+            foreach (NORMImportPreview member in fresh)
+            { if (!member.CanAccept) { throw new InvalidOperationException("A source population is invalid. No population from the batch can be accepted."); } }
+            Dictionary<string, NORMImportPreview> byIdentity = new Dictionary<string, NORMImportPreview>(StringComparer.OrdinalIgnoreCase);
+            foreach (NORMImportPreview member in fresh) { byIdentity.Add(SourceIdentity(member.Population), member); }
+            foreach (NORMImportPreview member in members)
+            {
+                NORMImportPreview match;
+                if (member.ReleaseId != first.ReleaseId || member.FileHash != first.FileHash ||
+                    (!Object.ReferenceEquals(member.Content, first.Content) && NORMCrypto.Sha256(member.Content) != first.FileHash) ||
+                    !byIdentity.TryGetValue(SourceIdentity(member.Population), out match) || PopulationEvidence(member, false) != PopulationEvidence(match, false) ||
+                    matches.ContainsKey(member))
+                { throw new InvalidOperationException("The configuration, source identity or validation changed. Inspect again."); }
+                matches.Add(member, match);
+            }
+        }
+        List<NORMImportPreview> validated = new List<NORMImportPreview>();
+        foreach (NORMImportPreview preview in previews) { validated.Add(matches[preview]); }
+        return validated;
+    }
+
+    private static NORMParsedImport ParsedPopulation(NORMImportPreview preview)
+    {
+        return new NORMParsedImport { Rows = new List<NORMTrialBalanceRow>(preview.SourceRows), ProfileVersion = preview.ProfileVersion,
+            FinancialYear = preview.FinancialYear, PeriodStart = preview.PeriodStart, PeriodEnd = preview.PeriodEnd,
+            CoverageStart = preview.CoverageStart, CoverageEnd = preview.CoverageEnd, SourceFile = preview.SourceFile };
     }
 
     private static string ScopeKey(NORMTrialBalanceRow row)

@@ -1,0 +1,36 @@
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:49
+                                                          Period:  MAR-16                                   Page:      1  of       1
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  86 to 86
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  86 ACTEW Retail
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+12112           Intercompany Receivable/(Payabl                 0.00             7,500.00            20,062.00           -12,562.00
+12612           Sundry debtors-intercompany             6,736,996.14                 0.00                 0.00         6,736,996.14
+15151           Investment in Retail Partner          335,102,068.02        27,424,212.24         4,739,186.25       357,787,094.01
+15191           Distributions from JV                -300,126,165.18                 0.00         9,000,000.00      -309,126,165.18
+15192           Equity held in JV profits               5,078,208.41                 0.00                 0.00         5,078,208.41
+19111           Deferred Tax Asset (DTA)                3,034,792.22         2,254,707.96           942,189.00         4,347,311.18
+22611           Accrued Expenses                          -12,587.00           109,974.50           116,982.75           -19,595.25
+23131           Dividends Payable                     -22,261,418.46        22,261,418.46                 0.00                 0.00
+24312           Interco Loan Payable - Actew Co       -26,549,141.11        52,024,325.00        73,414,517.47       -47,939,333.58
+27111           Deferred Tax Liability (DTL)               -2,746.95             4,281.00             2,747.00            -1,212.95
+32111           Capital                                        -5.00                 0.00                 0.00                -5.00
+32114           Capital Reserve                        -1,000,000.00                 0.00                 0.00        -1,000,000.00
+32311           Retained Profits                               -1.09                 0.00                 0.00                -1.09
+43492           Share of Profits                                0.00         4,739,186.25        27,424,212.24       -22,685,025.99
+62631           Financial Audit Fees                            0.00           129,544.75           109,974.50            19,570.25
+62794           Miscellaneous Expenses                          0.00                 0.00                 0.13                -0.13
+66111           Income Tax Expense (Current)                    0.00        51,153,099.01        43,024,325.00         8,128,774.01
+66112           Income Tax Expense (Deferred)                   0.00           944,935.95         2,258,988.78        -1,314,052.83
+                                                -------------------- -------------------- -------------------- --------------------
+                                                                0.00       161,053,185.12       161,053,185.12                 0.00

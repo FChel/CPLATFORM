@@ -12,7 +12,7 @@
 <form id="form1" runat="server">
     <header class="norm-topbar">
         <a class="norm-brand" href="NORM_Workspace.aspx"><span class="norm-brand-mark">N</span><span><strong>NORM</strong><small>Preparer workspace</small></span></a>
-        <nav class="norm-top-actions"><a href="../Default.aspx">FinHub</a><a href="NORM_Workspace.aspx">Workspace</a><a href="NORM_Statements.aspx">Statements</a><a href="NORM_Help.aspx">Help</a><span class="norm-chip norm-env"><%= Server.HtmlEncode(CurrentEnvironment) %></span></nav>
+        <nav class="norm-top-actions"><a href="../Default.aspx">FinHub</a><a href="NORM_Workspace.aspx">Workspace</a><a href="NORM_SourceHistory.aspx?release=<%= Server.UrlEncode(ReleaseList.SelectedValue) %>&amp;viewStream=<%= Server.UrlEncode(Request.QueryString["viewStream"] ?? "") %>">Source history</a><a href="NORM_Statements.aspx">Statements</a><a href="NORM_Help.aspx">Help</a><span class="norm-chip norm-env"><%= Server.HtmlEncode(CurrentEnvironment) %></span></nav>
     </header>
     <main class="norm-form-shell">
         <section class="norm-form-intro">
@@ -26,12 +26,15 @@
                 <strong>Source not accepted</strong><asp:Literal ID="ErrorMessage" runat="server" />
             </asp:Panel>
             <asp:Panel ID="ResultPanel" runat="server" EnableViewState="false" Visible="false" CssClass="norm-alert"><asp:Literal ID="ResultMessage" runat="server" /></asp:Panel>
-            <label for="ReleaseList">Approved configuration</label>
+            <label for="ReleaseList">Agency and approved configuration</label>
             <asp:DropDownList ID="ReleaseList" runat="server" CssClass="norm-input" />
+            <label for="AdditionalReleaseList">Additional approved configurations (optional)</label>
+            <asp:ListBox ID="AdditionalReleaseList" runat="server" SelectionMode="Multiple" Rows="4" CssClass="norm-input" />
+            <p>Select one applicable release per additional financial year when needed. All selections must belong to the same agency. A year with one approved release resolves automatically; a year with several requires an explicit selection. Confirmation accepts every validated population in the batch together.</p>
             <div id="BatchImport">
                 <label for="TrialBalanceFile">Authoritative trial balance files</label>
-                <div class="norm-file-box"><asp:FileUpload ID="TrialBalanceFile" runat="server" AllowMultiple="true" CssClass="norm-file-input" /><small>Select one or more files for the approved configuration. NORM identifies each layout and reporting period from its contents. Combined maximum 100 MB, subject to the site upload limit.</small></div>
-                <p class="norm-transition-method">Existing sources for the same company and ledger require explicit replacement confirmation.</p>
+                <div class="norm-file-box"><asp:FileUpload ID="TrialBalanceFile" runat="server" AllowMultiple="true" CssClass="norm-file-input" /><small>Select one or more files for the selected agency. NORM identifies each layout and financial year from its contents and shows its applicable configuration and coverage. Combined maximum 100 MB, subject to the site upload limit.</small></div>
+                <p class="norm-transition-method">Existing sources for the same agency, year, company, ledger and reporting stream require explicit replacement confirmation.</p>
             </div>
             <div class="norm-form-actions"><asp:Button ID="ImportButton" runat="server" Text="Inspect files" CssClass="norm-button" OnClick="ImportButton_Click" /></div>
             <asp:Panel ID="PreviewPanel" runat="server" EnableViewState="false" Visible="false">

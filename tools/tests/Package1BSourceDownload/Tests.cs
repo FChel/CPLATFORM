@@ -23,10 +23,11 @@ public static class Tests
         context.User=new GenericPrincipal(new GenericIdentity(authenticated ? "authorised-test-user" : "",authenticated ? "test" : ""),new string[0]);
         new NORMSourceFileHandler().ProcessRequest(context); context.Response.Flush(); return context;
     }
-    static void Good()
+    static void Good() { GoodFor("run=9&file=10"); }
+    static void GoodFor(string query)
     {
         Request request; string run=NORMHelper.RunStatus,import=NORMHelper.ImportStatus;
-        HttpContext context=Invoke("run=9&file=10",true,out request);
+        HttpContext context=Invoke(query,true,out request);
         Assert(context.Response.StatusCode==200,"Accepted source download denied");
         Assert(Hash(request.Body.ToArray())==NORMHelper.Hash && request.Body.Length==27669,"Original bytes changed");
         Assert(NORMHelper.Audits.Count==2 && NORMHelper.Audits[0]=="existing audit preserved" && NORMHelper.Audits[1].Contains(NORMHelper.Hash),"Download audit not appended correctly");
@@ -74,6 +75,28 @@ public static class Tests
                 NORMHelper.AuditFails=true;Request request=new Request("run=9&file=10");HttpContext c=new HttpContext(request);c.User=new GenericPrincipal(new GenericIdentity("authorised-test-user","test"),new string[0]);bool failed=false;
                 try {new NORMSourceFileHandler().ProcessRequest(c);}catch(InvalidOperationException){failed=true;}
                 Assert(failed && request.Body.Length==0 && NORMHelper.Audits.Count==1,"Audit failure leaked bytes or modified history");
+            });
+            Test("accepted import/file original works with no calculation record",delegate { NORMHelper.NoRun=true;NORMHelper.RunStatus="No run";GoodFor("import=9&file=10"); });
+            Test("import route ignores failed pending complete or inactive calculation",delegate { NORMHelper.RunDeactivated=true;NORMHelper.RunStatus="Running";GoodFor("import=9&file=10"); });
+            Test("incorrect accepted import/file pair denied",delegate { Denied("import=99&file=10",404,true); });
+            Test("foreign file cannot be substituted on import route",delegate { Denied("import=9&file=11",404,true); });
+            Test("contradictory import and run selectors denied",delegate { Denied("import=9&run=9&file=10",400,true); });
+            Test("missing owner selector denied",delegate { Denied("file=10",400,true); });
+            Test("malformed import denied before storage",delegate { Denied("import=invalid&file=10",400,true);Assert(NORMHelper.MetadataReads==0,"Invalid import queried storage"); });
+            Test("unaccepted import denied on run-independent route",delegate { NORMHelper.ImportStatus="Importing";Denied("import=9&file=10",404,true); });
+            Test("inactive import denied without run",delegate { NORMHelper.ImportDeactivated=true;Denied("import=9&file=10",404,true); });
+            Test("unauthenticated import request denied before storage",delegate { Denied("import=9&file=10",403,false);Assert(NORMHelper.MetadataReads==0,"Anonymous query"); });
+            Test("unauthorised import entity denied before bytes even with forged entity",delegate { NORMHelper.EntityAllowed=false;Denied("import=9&file=10&entity=UAT_AAG",403,true);Assert(NORMHelper.BlobReads==0,"Unauthorised byte query"); });
+            Test("import acceptance rechecked at byte fetch",delegate { NORMHelper.AfterMetadata=delegate {NORMHelper.ImportStatus="Failed";};Denied("import=9&file=10",404,true); });
+            Test("import entity rechecked at byte fetch",delegate { NORMHelper.AfterMetadata=delegate {NORMHelper.StoredEntity="OTHER";};Denied("import=9&file=10",404,true); });
+            Test("file ownership rechecked at byte fetch",delegate { NORMHelper.AfterMetadata=delegate {NORMHelper.StoredImport=99;};Denied("import=9&file=10",404,true); });
+            Test("corrupt retained bytes denied without success audit",delegate { NORMHelper.CorruptBytes=true;Denied("import=9&file=10",409,true); });
+            Test("legacy run route also verifies retained SHA-256",delegate { NORMHelper.CorruptBytes=true;Denied("run=9&file=10",409,true); });
+            Test("import-only audit runs before streaming and fails closed",delegate {
+                Request request=new Request("import=9&file=10"); HttpContext c=new HttpContext(request); c.User=new GenericPrincipal(new GenericIdentity("authorised-test-user","test"),new string[0]);
+                NORMHelper.BeforeAudit=delegate { Assert(request.Body.Length==0,"Bytes streamed before audit"); }; NORMHelper.AuditFails=true;bool failed=false;
+                try { new NORMSourceFileHandler().ProcessRequest(c); } catch(InvalidOperationException) {failed=true;}
+                Assert(failed && request.Body.Length==0 && NORMHelper.Audits.Count==1,"Audit failure exposed bytes");
             });
             Console.WriteLine("TOTAL PASS "+passed+" (production handler/HTTP; isolated storage and identity fixtures)");return 0;
         }

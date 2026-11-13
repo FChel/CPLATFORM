@@ -1,0 +1,8 @@
+# Retained genuine test originals must survive Git archive/checkout byte-for-byte.
+"docs/Trial Balance Examples/Defence TB - ERP Format FY26.xlsx" -text
+"docs/Trial Balance Examples/AAG_TrialBalanceFinStats150.csv" -text
+"docs/Trial Balance Examples/AAG_TrialBalanceFinStats150_201819.csv" -text
+"docs/Trial Balance Examples/AAG_TrialBalanceFinStats150_201718.csv" -text
+"docs/Trial Balance Examples/coy 80.txt" -text
+"docs/Trial Balance Examples/coy 86.txt" -text
+"docs/Trial Balance Examples/coy 87.txt" -text

@@ -13,7 +13,7 @@ if($Baseline){
 }
 $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 & $compiler /nologo /warnaserror+ /target:exe "/out:$output/Tests.exe" /r:System.Data.dll /r:System.Web.dll `
-    $source (Join-Path $PSScriptRoot 'TestSupport.cs') (Join-Path $PSScriptRoot 'Tests.cs')
+    $source (Join-Path $root 'App_Code/NORMCrypto.cs') (Join-Path $PSScriptRoot 'TestSupport.cs') (Join-Path $PSScriptRoot 'Tests.cs')
 if($LASTEXITCODE -ne 0){throw 'Source-download test compilation failed'}
 & (Join-Path $output 'Tests.exe') $root ([string]$Baseline.IsPresent)
 if($LASTEXITCODE -ne 0){throw 'Source-download tests failed'}

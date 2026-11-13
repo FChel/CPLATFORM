@@ -1,0 +1,35 @@
+
+
+
+Icon Water Limited Ledger                         Trial Balance - Total Currency                     Report Date:  04-MAY-2016 10:49
+                                                          Period:  MAR-16                                   Page:      1  of       1
+
+                     Currency:  AUD
+                 Balance Type:  Year to Date
+                Company Range:  87 to 87
+
+                       Ledger:  Icon Water Limited Ledger
+                      Company:  87 ACTEW Distribution
+
+
+Account         Description                        Beginning Balance               Debits              Credits       Ending Balance
+--------------- ------------------------------- -------------------- -------------------- -------------------- --------------------
+12112           Intercompany Receivable/(Payabl                 0.00         3,541,733.64         3,554,295.64           -12,562.00
+15152           Investment in Distribution Part     1,326,298,287.12        63,087,284.50        11,104,535.78     1,378,281,035.84
+15191           Distributions from JV                -450,975,506.14                 0.00        30,000,000.00      -480,975,506.14
+15192           Equity held in JV profits              19,885,499.92                 0.00                 0.00        19,885,499.92
+19111           Deferred Tax Asset (DTA)                9,780,101.66        13,712,975.34        15,026,511.76         8,466,565.24
+22611           Accrued Expenses                          -12,587.00         3,614,034.14         3,621,042.39           -19,595.25
+23131           Dividends Payable                     -49,025,914.62        49,025,914.62                 0.00                 0.00
+24312           Interco Loan Payable - Actew Co      -512,323,788.29       104,512,079.00       133,668,503.38      -541,480,212.67
+27111           Deferred Tax Liability (DTL)         -134,523,092.80         3,779,507.80         6,874,949.70      -137,618,534.70
+32111           Capital                                  -400,000.00                 0.00                 0.00          -400,000.00
+32311           Retained Profits                                0.15                 0.00                 0.00                 0.15
+32514           Revaluation Res - ActewAGL Dist      -208,703,000.00                 0.00                 0.00      -208,703,000.00
+43492           Share of Profits                                0.00        11,104,535.78        63,087,284.50       -51,982,748.72
+62631           Financial Audit Fees                            0.00           129,544.75           109,974.50            19,570.25
+62794           Miscellaneous Expenses                          0.00                 2.46                 0.00                 2.46
+66111           Income Tax Expense (Current)                    0.00        84,642,588.76        74,512,079.00        10,130,509.76
+66112           Income Tax Expense (Deferred)                   0.00        21,901,459.00        17,492,483.14         4,408,975.86
+                                                -------------------- -------------------- -------------------- --------------------
+                                                                0.00       359,051,659.79       359,051,659.79                 0.00

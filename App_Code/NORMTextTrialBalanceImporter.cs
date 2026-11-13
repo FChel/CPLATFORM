@@ -15,6 +15,17 @@ public static class NORMTextTrialBalanceImporter
 
     public static NORMParsedImport Parse(byte[] bytes, int expectedYear)
     {
+        return ParseCore(bytes, expectedYear);
+    }
+
+    // Source recognition/validation only; not a configuration-authorised import.
+    public static NORMParsedImport DiscoverForInspection(byte[] bytes)
+    {
+        return ParseCore(bytes, null);
+    }
+
+    private static NORMParsedImport ParseCore(byte[] bytes, int? expectedYear)
+    {
         string text;
         try { text = new UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF'); }
         catch (DecoderFallbackException) { throw new InvalidDataException("Unsupported text encoding: expected UTF-8 or ASCII."); }
@@ -89,7 +100,7 @@ public static class NORMTextTrialBalanceImporter
         return records;
     }
 
-    private static NORMParsedImport Csv(string text, int expectedYear)
+    private static NORMParsedImport Csv(string text, int? expectedYear)
     {
         List<List<string>> records = Records(text);
         if (records.Count < 8) { throw new InvalidDataException("Incomplete ActewAGL CSV."); }
@@ -105,7 +116,7 @@ public static class NORMTextTrialBalanceImporter
         int year = start + 1;
         if (cy.Groups[2].Value != (year % 100).ToString("00", Inv) ||
             py.Groups[1].Value != (start - 1).ToString(Inv) || py.Groups[2].Value != (start % 100).ToString("00", Inv) ||
-            year != expectedYear || records[2][1] != "Jun" || records[4][1] != "Jun")
+            (expectedYear.HasValue && year != expectedYear.Value) || records[2][1] != "Jun" || records[4][1] != "Jun")
         { throw new InvalidDataException("ActewAGL year/month metadata conflicts with the selected financial year or supported June annual layout."); }
         if (records[5].Count != 1 || !String.IsNullOrWhiteSpace(records[5][0])) { throw new InvalidDataException("Invalid ActewAGL preamble spacer."); }
         List<string> header = records[6];
@@ -128,15 +139,20 @@ public static class NORMTextTrialBalanceImporter
             Add(parsed, i + 1, company.Groups[1].Value, row[account], row[description], null, null, null, balance);
         }
         Finish(parsed);
+        parsed.SourceFile.RecordUnit = "logical CSV records (quoted newlines stay in their record)";
+        parsed.SourceFile.RecordCount = records.Count;
+        parsed.SourceFile.DetailRowCount = parsed.Rows.Count;
+        parsed.SourceFile.MetadataRowCount = 6;
+        parsed.SourceFile.BlankRowCount = records.Count - 6 - parsed.Rows.Count;
         parsed.Warnings.Add("Current-year column only; prior-year column retained in original. Controls are calculated; no report control totals supplied.");
         return parsed;
     }
 
-    private static NORMParsedImport Fixed(string text, int expectedYear)
+    private static NORMParsedImport Fixed(string text, int? expectedYear)
     {
         NORMParsedImport parsed = new NORMParsedImport { ProfileVersion = FixedProfile, FinancialYear = 2016,
             PeriodStart = 1, PeriodEnd = 9, CoverageStart = new DateTime(2015, 7, 1), CoverageEnd = new DateTime(2016, 3, 31) };
-        if (expectedYear != 2016) { throw new InvalidDataException("Icon Water MAR-16 report requires an FY2016 configuration."); }
+        if (expectedYear.HasValue && expectedYear.Value != 2016) { throw new InvalidDataException("Icon Water MAR-16 report requires an FY2016 configuration."); }
         string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         string company = null, companyName = null, ledger = null;
         int page = 0, pageCount = 0, stage = 0; bool footer = false;
@@ -220,7 +236,14 @@ public static class NORMTextTrialBalanceImporter
         // The printed ledger name cannot fit the existing 20-character identity.
         // Company uniquely resolves its canonical optional ledger/stream in configuration.
         parsed.Warnings.Add("Source ledger: Icon Water Limited Ledger; canonical ledger/stream resolved by approved company configuration. Source credits are positive; stored movements use signed credits.");
-        Finish(parsed); return parsed;
+        Finish(parsed);
+        parsed.SourceFile.RecordUnit = "fixed-width report lines (including terminal blank line)";
+        parsed.SourceFile.RecordCount = lines.Length;
+        parsed.SourceFile.DetailRowCount = parsed.Rows.Count;
+        parsed.SourceFile.ControlRowCount = 1;
+        foreach (string line in lines) { if (String.IsNullOrWhiteSpace(line)) { parsed.SourceFile.BlankRowCount++; } }
+        parsed.SourceFile.MetadataRowCount = lines.Length - parsed.Rows.Count - 1 - parsed.SourceFile.BlankRowCount;
+        return parsed;
     }
 
     private static void Add(NORMParsedImport p, int record, string company, string account, string description,
