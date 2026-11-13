@@ -284,7 +284,10 @@ public static class NORMImportService
         preview.PeriodStart = parsed.PeriodStart; preview.PeriodEnd = parsed.PeriodEnd; preview.RowCount = parsed.Rows.Count;
         preview.PopulationRows.AddRange(parsed.Rows);
         preview.TotalsAvailable = true;
-        if (year == 2025) { preview.Errors.Add("FY2025 requires the existing controlled ROMAN 01-10 / ERP 11-12 pair. Single-file acceptance is unavailable for this year."); }
+        // D3 excludes new historical ROMAN/ERP transition acceptance, not ordinary
+        // standalone FY2025 sources. This governed path uses supported profiles
+        // and the normal authorised population/full-year coverage checks above;
+        // it does not invoke the legacy transition-pair workflow.
         HashSet<string> companyValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         HashSet<string> ledgerValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         HashSet<string> mapped = new HashSet<string>(StringComparer.OrdinalIgnoreCase), unmapped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

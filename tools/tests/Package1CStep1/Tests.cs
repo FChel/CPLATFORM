@@ -311,6 +311,9 @@ public static partial class Tests
 #if STEP4
             RunStep4(fixtures);
 #endif
+#if CORRECTION
+            RunUatCorrection();
+#endif
             return 0;
         }
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }

@@ -12,7 +12,7 @@
 <form id="form1" runat="server">
     <header class="norm-topbar">
         <a class="norm-brand" href="NORM_Workspace.aspx"><span class="norm-brand-mark">N</span><span><strong>NORM</strong><small>Preparer workspace</small></span></a>
-        <nav class="norm-top-actions"><a href="../Default.aspx">FinHub</a><a href="NORM_Workspace.aspx">Workspace</a><a href="NORM_SourceHistory.aspx?release=<%= Server.UrlEncode(ReleaseList.SelectedValue) %>&amp;viewStream=<%= Server.UrlEncode(Request.QueryString["viewStream"] ?? "") %>">Source history</a><a href="NORM_Statements.aspx">Statements</a><a href="NORM_Help.aspx">Help</a><span class="norm-chip norm-env"><%= Server.HtmlEncode(CurrentEnvironment) %></span></nav>
+        <nav class="norm-top-actions"><a href="../Default.aspx">FinHub</a><a href="NORM_Workspace.aspx">Workspace</a><a id="SourceHistoryLink" href="NORM_SourceHistory.aspx?release=<%= Server.UrlEncode(ReleaseList.SelectedValue) %>&amp;viewStream=<%= Server.UrlEncode(Request.QueryString["viewStream"] ?? "") %>">Source history</a><a href="NORM_Statements.aspx">Statements</a><a href="NORM_Help.aspx">Help</a><span class="norm-chip norm-env"><%= Server.HtmlEncode(CurrentEnvironment) %></span></nav>
     </header>
     <main class="norm-form-shell">
         <section class="norm-form-intro">
@@ -50,5 +50,19 @@
         </section>
     </main>
 </form>
+<script>
+    (function () {
+        var release = document.getElementById('<%= ReleaseList.ClientID %>');
+        var history = document.getElementById('SourceHistoryLink');
+        function updateHistoryContext() {
+            var url = new URL(history.href, window.location.href);
+            url.searchParams.set('release', release.value);
+            history.href = url.toString();
+        }
+        release.addEventListener('change', updateHistoryContext);
+        history.addEventListener('click', updateHistoryContext);
+        updateHistoryContext();
+    }());
+</script>
 </body>
 </html>
