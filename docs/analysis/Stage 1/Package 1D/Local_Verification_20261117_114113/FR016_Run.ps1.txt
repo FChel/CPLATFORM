@@ -1,0 +1,53 @@
+PASS ERP balanced signed ending balances
+PASS multiple debit and credit rows
+PASS lossless trailing decimal zeroes
+PASS zero-valued rows accepted
+PASS maximum lossless SQL amount accepted
+PASS reject difference 0.01
+PASS reject difference -0.01
+PASS reject difference 0.99
+PASS reject difference 1
+PASS reject difference -1
+PASS reject difference 0.001
+PASS reject difference -0.001
+PASS balanced sub-cent amounts reject storage loss
+PASS opening precision checked despite balanced endings
+PASS DebitMovement precision rejects before reporting
+PASS CreditMovement precision rejects before reporting
+PASS minimum non-zero decimal difference rejected
+PASS amount outside SQL range rejected
+PASS totals outside SQL range rejected
+PASS decimal aggregate overflow rejects with truthful evidence
+PASS missing ERP ending balance
+PASS malformed workbook
+PASS ROMAN trailing minus parses but numeric-only coverage cannot be accepted
+PASS ROMAN imbalance rejected
+PASS ROMAN missing amount
+PASS accepted duplicate behaviour preserved
+PASS repeated rejections have separate attempt identities
+PASS bounded Unicode filename audit is recoverable without chunks
+PASS rejection audit failure stays rejected with safe message
+PASS rejection commit failure stays rejected
+PASS successful IMPORT_BALANCE_VALIDATION failure rolls back accepted writes
+PASS successful IMPORT_STORAGE_VALIDATION failure rolls back accepted writes
+PASS late rejection audit failure rolls back earlier evidence
+PASS successful transaction commit failure creates no calculation
+TOTAL PASS 34
+PASS StatementEngine exact total 0
+PASS StatementEngine exact total 0.01
+PASS StatementEngine exact total -0.01
+PASS StatementEngine exact total 0.99
+PASS StatementEngine exact total 1
+PASS StatementEngine exact total -1
+PASS StatementEngine exact total 0.001
+PASS StatementEngine exact total -0.001
+PASS StatementEngine exact total 0.0000000000000000000000000001
+TOTAL PASS 9
+PASS production import and statement-engine compilation (.NET Framework compiler, real OleDb/helper)
+Microsoft (R) ASP.NET Compilation Tool version 4.8.9221.0
+Utility to precompile an ASP.NET application
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+c:\Users\Steve\AppData\Local\Packages\OpenAI.Codex_2p2nqsd0c76g0\AC\#!sandbox.{54119144-5ba4-4416-80a8-46eab78e2372}\Temp\norm-fr016-bbfe13916a8249848bb160146cec077d\site\eJET\eJET.aspx.cs(125): warning CS0162: Unreachable code detected
+PASS full ASP.NET site compilation (isolated working-tree copy, build-only config)
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{54119144-5ba4-4416-80a8-46eab78e2372}\Temp\norm-fr016-bbfe13916a8249848bb160146cec077d

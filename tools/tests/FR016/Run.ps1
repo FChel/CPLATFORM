@@ -12,8 +12,8 @@ foreach ($name in @('NORMImportService', 'StatementEngine')) {
     $code = [IO.File]::ReadAllText((Join-Path $root "App_Code/$name.cs"))
     [IO.File]::WriteAllText((Join-Path $output "$name.cs"), $code.Replace('using System.Data.OleDb;', 'using TestDb;'))
 }
-$common = @('/nologo', '/warnaserror+', '/r:System.Data.dll', "/r:$epplus",
-    (Join-Path $root 'App_Code/NORMCrypto.cs'), (Join-Path $root 'App_Code/NORMImportModels.cs'),
+$common = @('/nologo', '/warnaserror+', '/r:System.Web.dll', '/r:System.Data.dll', "/r:$epplus",
+    (Join-Path $root 'App_Code/NORMErrorHandling.cs'), (Join-Path $root 'App_Code/NORMCrypto.cs'), (Join-Path $root 'App_Code/NORMImportModels.cs'),
     (Join-Path $root 'App_Code/ErpTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'),
     (Join-Path $PSScriptRoot 'TestSupport.cs'), (Join-Path $PSScriptRoot 'Tests.cs'))
 foreach ($suite in @('Service', 'Engine')) {
@@ -29,7 +29,7 @@ foreach ($suite in @('Service', 'Engine')) {
 # Compile the unmodified production files against the real helper and OleDb APIs.
 $production = @('/nologo', '/warnaserror+', '/target:library', ('/out:' + (Join-Path $output 'Production.dll')),
     '/r:System.Data.dll', '/r:System.Web.dll', '/r:System.Configuration.dll', "/r:$epplus")
-foreach ($name in @('NORMHelper', 'NORMCrypto', 'NORMImportModels', 'ErpTrialBalanceImporter', 'RomanTrialBalanceImporter','NORMTextTrialBalanceImporter', 'NORMImportService', 'StatementEngine')) {
+foreach ($name in @('NORMErrorHandling', 'NORMHelper', 'NORMCrypto', 'NORMImportModels', 'ErpTrialBalanceImporter', 'RomanTrialBalanceImporter','NORMTextTrialBalanceImporter', 'NORMImportService', 'StatementEngine')) {
     $production += Join-Path $root "App_Code/$name.cs"
 }
 & $compiler @production

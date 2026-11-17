@@ -188,7 +188,7 @@ public static partial class Tests
             page.InspectUploadsForTest(1, new int[0], new[] { bytes }, new[] { "CONTROLLED-multi-company.xlsx" });
             Assert(page.ErrorForTest == "" && page.PreviewsForTest.Count == 2 && page.ConfirmationEnabledForTest && page.PreviewForTest.Contains("File row accounting: 8") && page.PreviewForTest.Contains("Company</dt><dd>1000") && page.PreviewForTest.Contains("Company</dt><dd>2000") && page.PreviewForTest.Contains("Accepted rows: 0"), "Population preview missing: " + page.ErrorForTest);
             NORMImportPreview subset = FilePopulations(bytes)[0];
-            Fails(delegate { NORMImportService.Confirm(subset, "isolated-test"); }, "complete original file"); NoWrites();
+            Fails(delegate { NORMImportService.Confirm(subset, "isolated-test"); }, "complete file"); NoWrites();
             int commitsBefore = NORMHelper.Commits;
             page.ClearUploadedFilesForTest(); page.ConfirmForTest();
             Assert(page.ErrorForTest == "" && page.ResultForTest.Contains("Source accepted") && NORMHelper.Commits == commitsBefore + 1, "Whole file page confirmation failed: " + page.ErrorForTest);

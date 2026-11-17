@@ -15,7 +15,7 @@ $options += @((Join-Path $output 'NORMImportService.cs'), (Join-Path $root 'tool
     (Join-Path $root 'NORM/NORM_Import.aspx.cs'), (Join-Path $root 'tools/tests/Increment1B2/PageHarness.cs'),
     (Join-Path $root 'tools/tests/Package1CStep1/PageHarness.cs'), (Join-Path $root 'tools/tests/Package1CStep1/Tests.cs'),
     (Join-Path $PSScriptRoot 'Tests.cs'))
-& $compiler @options
+& $compiler @options (Join-Path $root 'App_Code/NORMErrorHandling.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Package 1C Step 2 compilation failed' }
 & (Join-Path $output 'Tests.exe') $root
 if ($LASTEXITCODE -ne 0) { throw 'Package 1C Step 2 tests failed' }

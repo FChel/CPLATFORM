@@ -66,6 +66,13 @@ namespace CPlatform.NORM
 
         public void ProcessRequest(HttpContext context)
         {
+            try { ProcessCore(context); }
+            catch (System.Threading.ThreadAbortException) { throw; }
+            catch (Exception error) { NORMErrorHandling.HandlerFailure(context, error, "FinancialStatementsExcel"); }
+        }
+
+        private void ProcessCore(HttpContext context)
+        {
             if (context.User == null || context.User.Identity == null || !context.User.Identity.IsAuthenticated)
             {
                 WriteError(context, 401, "Sign in to export the financial statements.");

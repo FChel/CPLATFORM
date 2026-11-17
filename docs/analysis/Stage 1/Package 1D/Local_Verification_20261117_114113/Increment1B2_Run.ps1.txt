@@ -1,0 +1,65 @@
+PASS Defence preview: 984 rows, identity, exact totals, unmapped warning, zero writes
+PASS confirmation accepts retained bytes, company/ledger and source hash
+PASS cancel handler removes pending bytes and prevents confirmation
+PASS page confirms using server preview and HTML-encodes source values
+PASS changed dropdown configuration rejected by page
+PASS stale tab token rejected by page
+PASS forged browser preview fields are ignored
+PASS preparer access rechecked on confirmation
+PASS unbalanced legacy preview cannot confirm
+PASS unsupported content cannot preview
+PASS owner mismatch rejected
+PASS expired preview rejected
+PASS caller buffer cannot change staged bytes
+PASS changed staged bytes rejected
+PASS changed staged identity rejected
+PASS fractional cents cannot be confirmed
+PASS changed approved configuration rejected
+PASS changed mapping without updated release hash rejected
+PASS withdrawn approval rejected
+PASS changed permitted ledger rejected
+PASS configuration rechecked inside acceptance transaction
+PASS replacement rejected after preview
+PASS existing source warning and cancellation preserve prior source
+PASS multi-file replacement lists each ledger and uses plural wording
+PASS unchecked replacement retains preview and allows retry without upload
+PASS expired replacement requires inspection even with checkbox unchecked
+PASS checked replacement retains source and writes linked audit
+PASS replacement and new ledger commit as a single multi-file batch
+PASS invalid file leaves the entire replacement batch unchanged
+PASS two files for the same scope are rejected
+PASS failure writing second file rolls back first file and replacement audit
+PASS another confirmation changing a prior import invalidates the replacement
+PASS service replay cannot create another import
+PASS calculation failure reports accepted source through page
+PASS legacy ERP auto recognition and confirmed acceptance
+PASS ROMAN without identifiable company rejected
+PASS ordinary full FY2025 is eligible while ROMAN remains excluded from governed inspection
+PASS missing required populations are independent of optional acceptance
+PASS absent ledger persists as null and uses IS NULL lookup
+PASS ambiguous configured streams require distinguishing evidence
+PASS same company and ledger can identify both streams in one existing batch
+PASS entity assignment is required for direct release access
+PASS assignment revoked after inspection prevents confirmation
+PASS confirmation checks access again inside the write transaction
+PASS unassigned users cannot read a source file via forged run/file IDs
+PASS forged import IDs cannot create a cross-entity test break
+PASS new approved release keeps the prior source current
+PASS exact full-year boundaries survive preview
+PASS configured current year accepts partial coverage
+PASS same partial source rejected when another year is designated
+PASS non-current full year accepted independently of calendar date
+PASS periods 01-12 are insufficient for full-year coverage
+PASS reversed boundaries within the same month are rejected
+PASS reversed boundaries across months are rejected
+PASS coverage outside the identified financial year is rejected
+PASS missing year designation cannot fall back to release or calendar
+PASS year change between inspection and confirmation rejects even a full source
+PASS year designation is locked and rechecked inside acceptance transaction
+PASS exact metadata and coverage audit are persisted with retained bytes
+PASS replacement changes coverage without changing scope or appending history
+PASS coverage write failure rolls back acceptance
+PASS invalid source date is rejected
+PASS numeric-only historical evidence retains unknown exact coverage
+TOTAL PASS 63 (real page handlers/session objects; substituted database/identity hosting)
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{2c0de00a-6b65-42ce-b06c-5386c8a41fc9}\Temp\norm-increment1b2-dc038489eb6e48c8baebb099947a9832

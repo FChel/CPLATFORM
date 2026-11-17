@@ -269,10 +269,8 @@ namespace CPlatform.NORM
         private void ShowMessage(string html) { MessagePanel.Visible = true; MessageText.Text = html; }
         private void ShowError(Exception error)
         {
-            if (error is UnauthorizedAccessException) { Response.StatusCode = 403; Response.TrySkipIisCustomErrors = true; }
-            string message = error is UnauthorizedAccessException ? "You do not have access to this entity's Year Setup." :
-                (error is InvalidDataException || error is InvalidOperationException || error is ArgumentException) ? error.Message :
-                "Year Setup could not complete this operation. Reload and try again, or contact the administrator.";
+            string message = NORMErrorHandling.UserMessage(error, HttpContext.Current, "YearSetup");
+            if (error is UnauthorizedAccessException) { message = "You do not have access to this entity's Year Setup."; }
             ErrorPanel.Visible = true; ErrorText.Text = "<span>" + Enc(message) + "</span>";
         }
         private void ClearMessages() { MessagePanel.Visible = false; ErrorPanel.Visible = false; }

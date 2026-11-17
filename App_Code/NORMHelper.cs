@@ -185,7 +185,32 @@ public static class NORMHelper
     public static void RequireEntityAccess(string entity, OleDbConnection connection = null, OleDbTransaction transaction = null)
     {
         if (!CanPrepareEntity(entity, connection, transaction))
-        { throw new UnauthorizedAccessException("You do not have access to this NORM entity."); }
+        { throw new EntityAccessDeniedException(entity); }
+    }
+
+    public sealed class EntityAccessDeniedException : UnauthorizedAccessException
+    {
+        internal readonly string Entity;
+        internal EntityAccessDeniedException(string entity) : base("You do not have access to this NORM entity.") { Entity = entity; }
+    }
+
+    public static bool IsRegisteredPreparer()
+    {
+        if (!HasAuthenticatedIdentity()) { return false; }
+        return Convert.ToInt32(Scalar("SELECT COUNT(*) FROM dbo.tblNORM_AdminUser WHERE LOWER(UserId)=LOWER(@user) AND RoleCode='Preparer' AND IsDeactivated=0", P("@user", CurrentUserId()))) == 1;
+    }
+
+    // Read-only classification, never permission to prepare an entity.
+    internal static bool IsRevokedPreparerEntity(string entity, OleDbConnection connection = null, OleDbTransaction transaction = null)
+    {
+        if (!HasAuthenticatedIdentity() || String.IsNullOrWhiteSpace(entity)) { return false; }
+        string hint = transaction == null ? "" : " WITH (HOLDLOCK)";
+        string sql = "SELECT COUNT(*) FROM dbo.tblNORM_AdminUser u" + hint +
+            " WHERE LOWER(u.UserId)=LOWER(@user) AND u.RoleCode='Preparer' AND u.IsDeactivated=0" +
+            " AND EXISTS(SELECT 1 FROM dbo.tblNORM_ReportingEntity e" + hint + " WHERE e.EntityCode=@entity AND e.IsDeactivated=0)" +
+            " AND NOT EXISTS(SELECT 1 FROM dbo.tblNORM_UserEntity a" + hint + " WHERE a.AdminUserId=u.AdminUserId AND a.EntityCode=@entity)";
+        OleDbParameter[] parameters = { P("@user", CurrentUserId()), P("@entity", entity) };
+        return Convert.ToInt32(connection == null ? Scalar(sql, parameters) : Scalar(connection, transaction, sql, parameters)) == 1;
     }
 
     public static bool CanAccessCompletedRun(int runId)

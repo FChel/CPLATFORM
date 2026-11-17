@@ -17,7 +17,7 @@ foreach ($dll in (Get-ChildItem (Join-Path $root 'bin') -Filter '*.dll')) {
 $options += @((Join-Path $root 'App_Code/NORMCrypto.cs'),(Join-Path $output 'NORMStartOfYearSetup.cs'),
     (Join-Path $root 'App_Code/NORMYearSetupDocumentHandler.cs'),(Join-Path $root 'NORM/NORM_YearSetup.aspx.cs'),
     (Join-Path $PSScriptRoot 'TestSupport.cs'),(Join-Path $PSScriptRoot 'PageHarness.cs'),(Join-Path $PSScriptRoot 'Tests.cs'))
-& $compiler @options
+& $compiler @options (Join-Path $root 'App_Code/NORMErrorHandling.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Step 3 compilation failed' }
 & (Join-Path $output 'Tests.exe') $root
 if ($LASTEXITCODE -ne 0) { throw 'Step 3 tests failed' }

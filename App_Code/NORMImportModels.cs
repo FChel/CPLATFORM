@@ -91,6 +91,9 @@ public sealed class NORMImportPreview
     internal string ConfirmationFingerprint = null;
     internal string BatchFingerprint = null;
     internal bool Consumed = false;
+    // Opaque service-private objects: never accepted from form/ViewState input.
+    internal object AuditIssuance = null;
+    internal object AuditBatch = null;
     public string Token { get; internal set; }
     public string Owner { get; internal set; }
     public System.DateTime ExpiresUtc { get; internal set; }

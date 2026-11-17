@@ -983,7 +983,7 @@ public static class NORMStartOfYearSetup
         catch (InvalidDataException) { throw; }
         catch (Exception error)
         {
-            throw new InvalidDataException("NORM could not read the PDF from page " + startPage.ToString(CultureInfo.InvariantCulture) + ": " + error.Message, error);
+            throw new InvalidDataException("NORM could not read the PDF. Check the file and selected start page, then try again.", error);
         }
         return rows;
     }

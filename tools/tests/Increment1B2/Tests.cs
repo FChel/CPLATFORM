@@ -293,7 +293,7 @@ public static class Tests
             });
             Test("service replay cannot create another import", delegate {
                 NORMImportPreview p = Inspect(original); NORMImportService.Confirm(p, "isolated-test"); int count = NORMHelper.Committed.Count;
-                try { NORMImportService.Confirm(p, "isolated-test"); } catch (InvalidOperationException) { Assert(NORMHelper.Committed.Count == count + 1 && (string)NORMHelper.Committed[count]["@event"]=="IMPORT_REJECTED_SOURCE", "Replay wrote accepted data or lost rejection audit"); return; }
+                try { NORMImportService.Confirm(p, "isolated-test"); } catch (InvalidOperationException) { Assert(NORMHelper.Committed.Count == count, "Consumed replay wrote accepted data or minted rejection evidence"); return; }
                 throw new Exception("Replay accepted");
             });
             Test("calculation failure reports accepted source through page", delegate {
@@ -352,9 +352,9 @@ public static class Tests
             Test("confirmation checks access again inside the write transaction", delegate {
                 NORMImportPreview preview = Inspect(original);
                 int checks = 0;
-                NORMHelper.EntityAccess = delegate { return ++checks == 1; };
+                NORMHelper.TransactionEntityAccess = delegate { checks++; return false; };
                 Fails(delegate { NORMImportService.Confirm(preview, "isolated-test"); });
-                Assert(checks == 2 && NORMHelper.Opens == 1, "Missing transactional recheck");
+                Assert(checks == 1 && NORMHelper.Opens == 1 && NORMHelper.Rollbacks == 1, "Missing transactional recheck or rollback");
             });
             Test("unassigned users cannot read a source file via forged run/file IDs", delegate {
                 NORMHelper.EntityAccess = delegate(string entity) { return entity == "OTHER"; };

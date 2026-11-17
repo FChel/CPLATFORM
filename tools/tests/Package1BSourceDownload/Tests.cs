@@ -74,7 +74,7 @@ public static class Tests
             Test("audit failure returns no original bytes and preserves history",delegate {
                 NORMHelper.AuditFails=true;Request request=new Request("run=9&file=10");HttpContext c=new HttpContext(request);c.User=new GenericPrincipal(new GenericIdentity("authorised-test-user","test"),new string[0]);bool failed=false;
                 try {new NORMSourceFileHandler().ProcessRequest(c);}catch(InvalidOperationException){failed=true;}
-                Assert(failed && request.Body.Length==0 && NORMHelper.Audits.Count==1,"Audit failure leaked bytes or modified history");
+                c.Response.Flush(); Assert(!failed && c.Response.StatusCode==500 && Hash(request.Body.ToArray())!=NORMHelper.Hash && System.Text.Encoding.UTF8.GetString(request.Body.ToArray()).Contains(NORMErrorHandling.GenericMessage) && !System.Text.Encoding.UTF8.GetString(request.Body.ToArray()).Contains("Injected audit failure") && NORMHelper.Audits.Count==1,"Audit failure leaked bytes/details or modified history");
             });
             Test("accepted import/file original works with no calculation record",delegate { NORMHelper.NoRun=true;NORMHelper.RunStatus="No run";GoodFor("import=9&file=10"); });
             Test("import route ignores failed pending complete or inactive calculation",delegate { NORMHelper.RunDeactivated=true;NORMHelper.RunStatus="Running";GoodFor("import=9&file=10"); });
@@ -96,7 +96,7 @@ public static class Tests
                 Request request=new Request("import=9&file=10"); HttpContext c=new HttpContext(request); c.User=new GenericPrincipal(new GenericIdentity("authorised-test-user","test"),new string[0]);
                 NORMHelper.BeforeAudit=delegate { Assert(request.Body.Length==0,"Bytes streamed before audit"); }; NORMHelper.AuditFails=true;bool failed=false;
                 try { new NORMSourceFileHandler().ProcessRequest(c); } catch(InvalidOperationException) {failed=true;}
-                Assert(failed && request.Body.Length==0 && NORMHelper.Audits.Count==1,"Audit failure exposed bytes");
+                c.Response.Flush(); Assert(!failed && c.Response.StatusCode==500 && Hash(request.Body.ToArray())!=NORMHelper.Hash && System.Text.Encoding.UTF8.GetString(request.Body.ToArray()).Contains(NORMErrorHandling.GenericMessage) && NORMHelper.Audits.Count==1,"Audit failure exposed bytes or failed to return a safe failure");
             });
             Console.WriteLine("TOTAL PASS "+passed+" (production handler/HTTP; isolated storage and identity fixtures)");return 0;
         }

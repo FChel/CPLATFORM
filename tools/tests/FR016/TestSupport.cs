@@ -57,7 +57,24 @@ public static class NORMHelper
     public static bool CanPrepareEntity(string entity, OleDbConnection c = null, OleDbTransaction t = null)
     { return PrepareAccess && (t != null && TransactionEntityAccess != null ? TransactionEntityAccess(entity) : EntityAccess(entity)); }
     public static void RequireEntityAccess(string entity, OleDbConnection c = null, OleDbTransaction t = null)
-    { if (!CanPrepareEntity(entity, c, t)) { throw new UnauthorizedAccessException("Entity access denied."); } }
+    { if (!CanPrepareEntity(entity, c, t)) { throw new EntityAccessDeniedException(entity); } }
+    public sealed class EntityAccessDeniedException : UnauthorizedAccessException
+    {
+        internal readonly string Entity;
+        internal EntityAccessDeniedException(string entity) : base("Entity access denied.") { Entity=entity; }
+    }
+    public static bool RegisteredPreparer=true, EntityActive=true;
+    public static bool IsRegisteredPreparer() { return PrepareAccess && RegisteredPreparer; }
+    public static bool IsRevokedPreparerEntity(string entity, OleDbConnection c=null, OleDbTransaction t=null)
+    { return IsRegisteredPreparer() && EntityActive && !CanPrepareEntity(entity,c,t); }
+    private static void ResetRequest()
+    {
+        RegisteredPreparer=EntityActive=true;
+        var context=new System.Web.HttpContext(new System.Web.HttpRequest("","http://localhost/NORM/NORM_Import.aspx",""),new System.Web.HttpResponse(new System.IO.StringWriter()));
+        context.User=new System.Security.Principal.GenericPrincipal(new System.Security.Principal.GenericIdentity("isolated-test","test"),new string[0]);
+        System.Web.SessionState.SessionStateUtility.AddHttpSessionStateToContext(context,new System.Web.SessionState.HttpSessionStateContainer("isolated-session",new System.Web.SessionState.SessionStateItemCollection(),new System.Web.HttpStaticObjectsCollection(),30,true,System.Web.HttpCookieMode.UseCookies,System.Web.SessionState.SessionStateMode.InProc,false));
+        System.Web.HttpContext.Current=context;
+    }
     public static List<string[]> PermittedPairs = new List<string[]>();
     public static List<string> Queries = new List<string>();
     public static Func<string, DataTable> QueryResponse;
@@ -69,7 +86,7 @@ public static class NORMHelper
     private static int nextImportId;
     public static string FailAuditCode;
     public static int Runs, Opens;
-    public static void Reset() { Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; CurrentYear = 2026; ReadYear = null; EntityAccess = delegate { return true; }; FailAuditCode = null; Runs = Opens = Transactions = Commits = Rollbacks = 0; ReadYearCall = null; TransactionEntityAccess = null; OnExecute = null; OnCommit = null; OnCalculate = null; ScalarCallResponse = null; NonTransactionalExec = null; MaxUploadBytes = null; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; QueryCallResponse = null; ScalarResponse = null; ExecResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
+    public static void Reset() { ResetRequest(); Committed.Clear(); FailAudit = FailCommit = Duplicate = ExistingCompany = FailCalculation = false; PrepareAccess = true; CurrentYear = 2026; ReadYear = null; EntityAccess = delegate { return true; }; FailAuditCode = null; Runs = Opens = Transactions = Commits = Rollbacks = 0; ReadYearCall = null; TransactionEntityAccess = null; OnExecute = null; OnCommit = null; OnCalculate = null; ScalarCallResponse = null; NonTransactionalExec = null; MaxUploadBytes = null; PermittedPairs.Clear(); PermittedPairs.Add(new string[] { "1000", "0L" }); Queries.Clear(); QueryResponse = null; QueryCallResponse = null; ScalarResponse = null; ExecResponse = null; CurrentSource = null; FailImportFileName = null; nextImportId = 42; }
     public static string CurrentUserId() { return "isolated-test"; }
     public static bool HasPrepareAccess() { return PrepareAccess; }
     public static OleDbParameter P(string name, object value) { return new OleDbParameter { Name = name, Value = value ?? DBNull.Value }; }

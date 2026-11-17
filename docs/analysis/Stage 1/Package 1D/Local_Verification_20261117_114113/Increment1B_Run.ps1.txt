@@ -1,0 +1,18 @@
+PASS original: 984 separate company/ledger rows, exact amounts, hashes and retained bytes
+PASS wrong actual ledger rejected
+PASS wrong company rejected
+PASS no permitted pairs rejected
+PASS same ledger allowed for another company
+PASS replacement not silently appended
+PASS explicit USD rejected
+PASS explicit thousands rejected
+PASS explicit AUD accepted
+PASS exact-zero required
+PASS balanced fractional cents reach unchanged FR016 storage rejection
+PASS late audit failure rolls back source rows
+PASS legacy browser/service route stays blocked
+PASS FY2025 transition keeps historical source codes and null company
+TOTAL PASS 14 (database substitutes only)
+PASS real Calculate: 984 lineage rows, 983 unmapped, existing warning/count retained (database substitutes)
+PASS six real-helper retrieval/display/SAP/legacy assertions (in-memory rows, no connection)
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{7a685700-7820-41b2-88e2-20b95ce1b40f}\Temp\norm-increment1b-dd07ea6221f8419991f3f8e3c6645368

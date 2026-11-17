@@ -246,7 +246,11 @@ public static class NORMImportService
         }
         file.PopulationFingerprint = FilePopulationFingerprint(results);
         foreach (NORMImportPreview preview in results)
-        { preview.ConfirmationFingerprint = PopulationEvidence(preview, true); }
+        {
+            preview.ConfirmationFingerprint = PopulationEvidence(preview, true);
+            if (user == NORMHelper.CurrentUserId() && NORMHelper.HasPrepareAccess() && RequestSession() != null)
+            { preview.AuditIssuance = new IssuedPreview(preview, RequestSession(), NORMHelper.IsRegisteredPreparer()); }
+        }
         return results;
     }
 
@@ -374,6 +378,13 @@ public static class NORMImportService
             ValidatePreparationBatch(previews);
             string batch = BatchEvidence(previews);
             foreach (NORMImportPreview preview in previews) { preview.BatchFingerprint = batch; }
+            foreach (NORMImportPreview preview in previews)
+            {
+                RequireIssuedPreview(preview);
+                NORMHelper.RequireEntityAccess(preview.Entity);
+            }
+            IssuedBatch issuedBatch = new IssuedBatch(previews, batch);
+            foreach (NORMImportPreview preview in previews) { preview.AuditBatch = issuedBatch; }
         }
         catch (Exception error)
         {
@@ -538,13 +549,30 @@ public static class NORMImportService
 
     public static List<NORMImportOutcome> ConfirmBatch(IList<NORMImportPreview> previews, string user, bool replaceExisting)
     {
+        if (!NORMHelper.HasPrepareAccess() || user != NORMHelper.CurrentUserId())
+        { throw new UnauthorizedAccessException("The authenticated user does not have authority to confirm this batch."); }
+        if (previews != null)
+        {
+            foreach (NORMImportPreview p in previews)
+            {
+                if (p == null) { continue; }
+                if (p.Consumed || p.ExpiresUtc <= DateTime.UtcNow)
+                { throw new RoutineConfirmationException("This preview is invalid, expired or already consumed. Inspect the files again."); }
+                RequireIssuedPreview(p);
+            }
+        }
+        // Direct service callers must also bind a complete batch while authorised.
+        if (previews != null && previews.Count > 0 && previews[0] != null && previews[0].AuditBatch == null)
+        { ValidateBatch(previews); }
+        RequireIssuedBatch(previews);
+        RevokedAttempt revokedAttempt = CaptureRevokedAttempt(previews, user, replaceExisting);
         // Routine unchecked acknowledgement and expiry are intentionally not audited.
         bool auditFailure = previews != null && previews.Count > 0;
         if (auditFailure)
         {
             foreach (NORMImportPreview p in previews)
             {
-                if (p == null || p.Owner != user || p.ExpiresUtc <= DateTime.UtcNow || (p.HasReplacement && !replaceExisting))
+                if (p == null || p.Consumed || p.Owner != user || p.ExpiresUtc <= DateTime.UtcNow || (p.HasReplacement && !replaceExisting))
                 { auditFailure = false; break; }
             }
         }
@@ -553,6 +581,10 @@ public static class NORMImportService
         try { return ConfirmBatchCore(previews, user, replaceExisting, ref accepted); }
         catch (Exception error)
         {
+            NORMHelper.EntityAccessDeniedException denied = error as NORMHelper.EntityAccessDeniedException;
+            if (!accepted && denied != null && revokedAttempt != null && denied.Entity == revokedAttempt.Entity &&
+                NORMHelper.IsRevokedPreparerEntity(revokedAttempt.Entity))
+            { RecordRevokedAttempt(revokedAttempt, attempt); }
             if (auditFailure && !accepted && !(error is UnauthorizedAccessException) && !(error is RoutineConfirmationException) &&
                 NORMHelper.HasPrepareAccess() && String.Equals(user, NORMHelper.CurrentUserId(), StringComparison.Ordinal))
             {
@@ -560,6 +592,127 @@ public static class NORMImportService
             }
             throw;
         }
+    }
+
+    private static string RequestSession()
+    {
+        System.Web.HttpContext context = System.Web.HttpContext.Current;
+        return context == null || context.User == null || context.User.Identity == null || !context.User.Identity.IsAuthenticated || context.User.Identity.Name != NORMHelper.CurrentUserId() || context.Session == null
+            ? null : context.Session.SessionID;
+    }
+
+    [Serializable]
+    private sealed class IssuedPreview
+    {
+        internal readonly NORMImportPreview Preview;
+        internal readonly string Fingerprint, Session, Owner;
+        internal readonly bool Preparer;
+        internal IssuedPreview(NORMImportPreview p, string session, bool preparer)
+        { Preview = p; Fingerprint = p.ConfirmationFingerprint; Session = session; Owner = p.Owner; Preparer = preparer; }
+    }
+
+    [Serializable]
+    private sealed class IssuedBatch
+    {
+        internal readonly NORMImportPreview[] Members;
+        internal readonly string Fingerprint;
+        internal IssuedBatch(IList<NORMImportPreview> members, string fingerprint)
+        { Members = new List<NORMImportPreview>(members).ToArray(); Fingerprint = fingerprint; }
+    }
+
+    private static void RequireIssuedPreview(NORMImportPreview preview)
+    {
+        IssuedPreview issued = preview.AuditIssuance as IssuedPreview;
+        if (issued == null || !Object.ReferenceEquals(issued.Preview, preview) || RequestSession() == null ||
+            issued.Session != RequestSession() || issued.Owner != NORMHelper.CurrentUserId() || issued.Owner != preview.Owner ||
+            issued.Fingerprint != preview.ConfirmationFingerprint)
+        { throw new InvalidOperationException("This preview is invalid or expired. Inspect the files again."); }
+        VerifyRetainedPreview(preview);
+    }
+
+    private static void RequireIssuedBatch(IList<NORMImportPreview> previews)
+    {
+        if (previews == null || previews.Count == 0 || previews[0] == null)
+        { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
+        IssuedBatch batch = previews[0].AuditBatch as IssuedBatch;
+        if (batch == null || batch.Members.Length != previews.Count || batch.Fingerprint != BatchEvidence(previews))
+        { throw new InvalidOperationException("The staged batch population set changed. Inspect the complete batch again."); }
+        for (int i=0; i<previews.Count; i++)
+        {
+            if (previews[i] == null || Array.IndexOf(batch.Members,previews[i]) < 0 || !Object.ReferenceEquals(previews[i].AuditBatch,batch) || previews[i].BatchFingerprint != batch.Fingerprint)
+            { throw new InvalidOperationException("The staged batch population set changed. Inspect the complete batch again."); }
+        }
+    }
+
+    private sealed class RevokedAttempt
+    {
+        internal readonly string Actor, Entity;
+        internal readonly string[] Details;
+        internal readonly string Session;
+        internal RevokedAttempt(string actor, string entity, string session, string[] details)
+        { Actor = actor; Entity = entity; Session = session; Details = details; }
+    }
+
+    private static RevokedAttempt CaptureRevokedAttempt(IList<NORMImportPreview> previews, string user, bool replace)
+    {
+        try
+        {
+            if (previews == null || previews.Count == 0 || user != NORMHelper.CurrentUserId() || !NORMHelper.IsRegisteredPreparer()) { return null; }
+            IssuedBatch batch = previews[0].AuditBatch as IssuedBatch;
+            if (batch == null || batch.Members.Length != previews.Count || batch.Fingerprint != BatchEvidence(previews)) { return null; }
+            ValidatePreparationBatch(previews); VerifyBatchMembership(previews);
+            Dictionary<string, List<NORMImportPreview>> files = new Dictionary<string, List<NORMImportPreview>>();
+            for (int i = 0; i < previews.Count; i++)
+            {
+                NORMImportPreview p = previews[i];
+                lock (p)
+                {
+                    RequireIssuedPreview(p);
+                    IssuedPreview issued = (IssuedPreview)p.AuditIssuance;
+                    if (Array.IndexOf(batch.Members,p) < 0 || !Object.ReferenceEquals(p.AuditBatch, batch) ||
+                        p.BatchFingerprint != batch.Fingerprint || !issued.Preparer || !p.CanAccept || (p.HasReplacement && !replace) ||
+                        NORMCrypto.Sha256(p.Content) != p.FileHash) { return null; }
+                    List<NORMImportPreview> members;
+                    if (!files.TryGetValue(p.SourceFile.Token, out members)) { members = new List<NORMImportPreview>(); files.Add(p.SourceFile.Token, members); }
+                    members.Add(p);
+                }
+            }
+            List<string> details = new List<string>();
+            foreach (List<NORMImportPreview> members in files.Values)
+            {
+                NORMImportPreview first = members[0]; List<string> scopes = new List<string>();
+                foreach (NORMImportPreview p in members) { scopes.Add(RejectionScope(p) + ";ScopeEvidence=Retained"); }
+                scopes.Sort(StringComparer.Ordinal);
+                details.Add("Phase=Acceptance;Outcome=Rejected;Reason=ENTITY_ASSIGNMENT_REVOKED;Batch=" + AuditField(batch.Fingerprint,64) +
+                    ";Sources=" + previews.Count + ";ScopeCount=" + scopes.Count + ";SHA256=" + first.FileHash +
+                    ";Profile=" + AuditField(first.ProfileVersion,80) + ";Coverage=" + CoverageLabel(ParsedPopulation(first)) +
+                    ";Scopes=" + AuditField(String.Join("|",scopes.ToArray()),900) + ";File=" + AuditField(Path.GetFileName(first.FileName),260));
+            }
+            return new RevokedAttempt(user, previews[0].Entity, RequestSession(), details.ToArray());
+        }
+        catch (Exception) { return null; } // No audit privilege is granted by an invalid envelope.
+    }
+
+    private static void RecordRevokedAttempt(RevokedAttempt evidence, string attempt)
+    {
+        try
+        {
+            if (evidence.Actor != NORMHelper.CurrentUserId() || evidence.Session == null || evidence.Session != RequestSession())
+            { throw new UnauthorizedAccessException(); }
+            using (OleDbConnection connection = NORMHelper.OpenConnection())
+            using (OleDbTransaction transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    if (!NORMHelper.IsRevokedPreparerEntity(evidence.Entity,connection,transaction)) { throw new UnauthorizedAccessException(); }
+                    foreach (string detail in evidence.Details)
+                    { WriteAudit(connection,transaction,"IMPORT_REJECTED_SOURCE","ImportAttempt",attempt,detail,evidence.Actor); }
+                    transaction.Commit();
+                }
+                catch { transaction.Rollback(); throw; }
+            }
+        }
+        catch { throw new InvalidDataException("Source not accepted. Rejection audit evidence could not be saved; contact support."); }
     }
 
     // A typed routine outcome avoids suppressing a real conflict when the clock
@@ -671,6 +824,7 @@ public static class NORMImportService
                 if (preview.HasReplacement && !replaceExisting)
                 { throw new RoutineConfirmationException("Explicit replacement confirmation is required."); }
                 VerifyRetainedPreview(preview);
+                RequireIssuedPreview(preview);
             }
         }
         VerifyBatchMembership(previews);

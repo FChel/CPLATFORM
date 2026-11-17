@@ -1,0 +1,81 @@
+PASS saved current year is the only default
+PASS missing designation never uses fallback
+PASS duplicate current designation fails closed
+PASS initial explicit activation requires approval and creates saved setup
+PASS activation and audit preserve historical setup
+PASS unapproved year rejected without writes
+PASS unconfigured entity rejected
+PASS stale designation id rejected
+PASS same-year ABA timestamp change rejected
+PASS designation revocation rechecked at write
+PASS designation audit failure rolls back
+PASS invalid year rejected
+PASS assigned preparer entities filtered
+PASS Administrator all configured entities
+PASS unassigned and revoked direct setup/list denied
+PASS forged setup identifier rejected
+PASS name edit audited with previous/new/operator
+PASS invalid name rejected: 0
+PASS invalid name rejected: 3
+PASS invalid name rejected: 201
+PASS invalid name rejected: 8
+PASS stale name edit rejected
+PASS name permission rechecked at write
+PASS name audit failure leaves name intact
+PASS PriorYearFinancialStatements upload/hash/download ReviewRequired
+PASS PriorYearFinancialStatements superseded and historical originals
+PASS PortfolioBudgetStatements upload/hash/download ReviewRequired
+PASS PortfolioBudgetStatements superseded and historical originals
+PASS PriorYearFinancialStatements existing XLSX extraction remains functional
+PASS PortfolioBudgetStatements existing XLSX extraction remains functional
+PASS unsupported extension rejected
+PASS controlled upload replacement retains predecessor
+PASS historical setup upload does not activate year
+PASS upload unapproved exact year rejected
+PASS empty upload cannot change designation
+PASS malformed workbook leaves no partial acceptance
+PASS invalid PDF page rejected
+PASS invalid document type rejected
+PASS upload setup from unauthorised entity rejected
+PASS upload permission revoked after read
+PASS stale document upload rejected
+PASS stale setup upload rejected
+PASS upload audit failure restores prior original
+PASS upload commit failure leaves no acceptance
+PASS forged download identifier rejected
+PASS download stored entity governs access
+PASS download assignment revocation enforced
+PASS hash mismatch prevents download
+PASS download audit failure fails closed
+PASS page activation uses stale state token
+PASS page missing file preserves saved year, accepted original and audit
+PASS page explicit historical selection and encoded name
+PASS page forged setup cannot edit another entity
+PASS page unassigned user sees no entities
+PASS page name edit works and rechecks revocation
+PASS page revocation clears cached protected display
+PASS handler rejects malformed identifier
+PASS handler rejects forged identifier
+PASS handler unauthorised stored entity is forbidden
+PASS handler unauthenticated request forbidden
+PASS historical comparative/budget readers use recorded year
+PASS all historical header consumers read recorded name/year
+TOTAL PASS 62
+PASS real engine persists reporting name with run creation
+PASS reporting-name edit creates distinct context and retains old snapshot
+PASS saved current-year changes do not change recorded run context
+TOTAL PASS 3 (real engine, substituted database; empty amount fixture)
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{50f4da87-b4e5-4ae4-be65-f52d419d5cf8}\Temp\norm-step3-8449e06012ab427ca7cdb57537ae83bb
+PASS prior no-file error remains readable without posting unsaved year
+PASS prior missing PDF page remains readable without posting
+PASS prior invalid PDF pages remain readable without posting
+PASS prior existing Close dismisses validation and corrected upload proceeds
+PASS budget no-file error remains readable without posting unsaved year
+PASS budget missing PDF page remains readable without posting
+PASS budget invalid PDF pages remain readable without posting
+PASS budget existing Close dismisses validation and corrected upload proceeds
+PASS valid workbook retains optional-page upload and successful response behaviour
+PASS existing network-failure notification remains readable and dismissible
+PASS non-upload actions retain normal postback behaviour
+PASS older submitter fallback still displays a persistent validation error
+TOTAL PASS 12 (production JavaScript; substituted DOM/clock/network, no SQL access)

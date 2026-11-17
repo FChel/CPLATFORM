@@ -43,6 +43,9 @@ public static class NORMHelper
         Audit=new List<string>(); Commands=new List<string>();
     }
     public static string CurrentUserId() { return "isolated\\preparer"; }
+    public static string Environment { get {return "ISOLATED";} }
+    public static string CurrentUserDisplayName() { return CurrentUserId(); }
+    public static bool HasAdminAccess() { return Authenticated && Admin; }
     public static bool HasPrepareAccess() { return Authenticated; }
     public static bool CanPrepareEntity(string e, OleDbConnection c=null, OleDbTransaction t=null)
     { return Authenticated && !NoConfiguredEntity && (Admin || Assigned && e=="DEPT") && !(t!=null && RevokedAtWrite); }
@@ -120,6 +123,7 @@ public static class NORMHelper
         int id=Setups.Count+1; int y=Convert.ToInt32(V(p,"@year")); string e=Convert.ToString(V(p,"@entity"));
         t.Pending.Add(delegate { Setups.Add(new SetupRow {Id=id,Year=y,Entity=e,Updated=Stamp.AddSeconds(1)}); Current=id; }); return id;
     }
+    public static int Exec(string sql,params OleDbParameter[] p) { throw new InvalidOperationException("Diagnostic storage unavailable in this substitute."); }
     public static int Exec(OleDbConnection c,OleDbTransaction t,string sql,params OleDbParameter[] p)
     {
         Commands.Add(sql);

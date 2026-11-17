@@ -155,7 +155,7 @@ namespace CPlatform.NORM
                     .Append(" rows · ").Append(Enc(NORMHelper.Str(row, "VersionCode"))).Append("</small>");
                 if (!complete && !String.IsNullOrWhiteSpace(NORMHelper.Str(row, "FailureDetail")))
                 {
-                    html.Append("<small class=\"norm-run-error\">").Append(Enc(NORMHelper.Str(row, "FailureDetail"))).Append("</small>");
+                    html.Append("<small class=\"norm-run-error\">").Append(Enc(NORMErrorHandling.StoredCalculationFailure(NORMHelper.Str(row, "FailureDetail")))).Append("</small>");
                 }
                 html.Append("</span><span class=\"norm-run-result\">")
                     .Append(!complete ? Enc(runStatus) : (failed > 0 ? failed.ToString() + " failed" : (warnings > 0 ? warnings.ToString() + " warnings" : "All pass")))

@@ -68,6 +68,7 @@ public static class ViewStateTests
     {
         var fields=new Dictionary<string,string>();
         foreach(Match tag in Regex.Matches(response.Html,"<input\\b[^>]*>",RegexOptions.IgnoreCase)) {
+            if(Regex.IsMatch(tag.Value,"type=\"(?:submit|button|file)\"",RegexOptions.IgnoreCase)){continue;}
             Match name=Regex.Match(tag.Value,"name=\"([^\"]+)\"",RegexOptions.IgnoreCase);
             Match value=Regex.Match(tag.Value,"value=\"([^\"]*)\"",RegexOptions.IgnoreCase);
             if(name.Success&&value.Success) fields[HttpUtility.HtmlDecode(name.Groups[1].Value)]=HttpUtility.HtmlDecode(value.Groups[1].Value);
@@ -89,7 +90,7 @@ public static class ViewStateTests
         return select.Success&&Regex.Matches(select.Groups[1].Value,"<option\\b[^>]*>",RegexOptions.IgnoreCase).Cast<Match>().Any(m=>m.Value.Contains("selected=\"selected\"")&&m.Value.Contains("value=\""+value+"\""));
     }
     static bool StateRejected(CapturedResponse r)
-    {return r.Status==500&&(r.Html.IndexOf("viewstate",StringComparison.OrdinalIgnoreCase)>=0||r.Html.IndexOf("MAC failed",StringComparison.OrdinalIgnoreCase)>=0);}
+    {return r.Status==500&&(r.Html.IndexOf("viewstate",StringComparison.OrdinalIgnoreCase)>=0||r.Html.IndexOf("MAC failed",StringComparison.OrdinalIgnoreCase)>=0||r.Html.Contains("NORM could not complete this operation"));}
     static void Pass(string text) {passed++;Console.WriteLine("PASS "+text);}
     public static int Main(string[] args)
     {
@@ -106,7 +107,7 @@ public static class ViewStateTests
             string cookie=Cookie(get);Check(get.Status==200&&!String.IsNullOrEmpty(cookie),"Corrected initial GET did not establish session cookie");
             Pass("corrected Year Setup GET establishes the existing session before signing ViewState");
             var post=fixedApp.Request("POST",Form(get,"1"),cookie,"isolated-preparer");
-            Check(post.Status==200&&Selected(post.Html,"1")&&post.Html.Contains("Defence 2025"),"Corrected FY2025 postback failed: "+post.Status);
+            Check(post.Status==200&&Selected(post.Html,"1")&&post.Html.Contains("Defence 2025"),"Corrected FY2025 postback failed: "+post.Status+" "+Regex.Replace(post.Html,"<[^>]+>"," "));
             Pass("FY2025 document-year selection succeeds with real signed ViewState and event validation");
             var again=fixedApp.Request("POST",Form(post,"2"),cookie,"isolated-preparer");Check(again.Status==200&&Selected(again.Html,"2"),"Subsequent FY2026 selection failed");
             Pass("subsequent Year Setup postback succeeds with the same session");
@@ -118,6 +119,11 @@ public static class ViewStateTests
             tampered=tampered.Remove(state.Groups[1].Index,1).Insert(state.Groups[1].Index,state.Groups[1].Value[0]=='A'?"B":"A");
             Check(StateRejected(fixedApp.Request("POST",tampered,cookie,"isolated-preparer")),"Tampered state accepted");
             Pass("ViewState MAC rejects tampered state");
+            var fresh=fixedApp.Request("GET",null,cookie,"isolated-preparer");
+            string forged=Form(fresh,"2").Replace("EntitySelection=DEPT","EntitySelection=OTHER").Replace("__EVENTTARGET=SetupSelection","__EVENTTARGET=EntitySelection");
+            var rejected=fixedApp.Request("POST",forged,cookie,"isolated-preparer");
+            Check(rejected.Status==500 && rejected.Html.Contains("NORM could not complete this operation") && !rejected.Html.Contains("Invalid postback") && !rejected.Html.Contains("Event validation is enabled") && !rejected.Html.Contains("Other entity"),"Event-validation safe boundary failed: "+rejected.Status);
+            Pass("1D actual production base page preserves event-validation rejection without framework details or foreign entity content");
             Console.WriteLine("TOTAL PASS "+passed+" (real ASP.NET pipeline/session/MAC; isolated identities and database substitutes)");return 0;
         }catch(Exception error){Console.WriteLine("FAIL "+error);return 1;}
     }

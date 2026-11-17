@@ -18,7 +18,7 @@ namespace CPlatform.NORM
             try { document = NORMStartOfYearSetup.DownloadDocument(id, NORMHelper.CurrentUserId()); }
             catch (UnauthorizedAccessException) { Error(context, 403, "You do not have access to this source document."); return; }
             catch (FileNotFoundException) { Error(context, 404, "The retained original was not found."); return; }
-            catch (Exception) { Error(context, 500, "The original could not be retrieved. Contact the administrator."); return; }
+            catch (Exception error) { NORMErrorHandling.UserMessage(error, context, "YearSetupDocument"); Error(context, 500, "The original could not be retrieved. Contact the administrator."); return; }
             string fileName = Path.GetFileName((document.FileName ?? "").Replace("\r", "").Replace("\n", "")).Replace("\"", "");
             if (String.IsNullOrWhiteSpace(fileName)) fileName = "NORM-YearSetup-source.bin";
             context.Response.Clear();

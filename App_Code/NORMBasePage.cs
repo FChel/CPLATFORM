@@ -55,13 +55,18 @@ namespace CPlatform.NORM
         protected override void OnError(EventArgs e)
         {
             Exception error = Server.GetLastError();
-            if (error != null) { error = error.GetBaseException(); }
             if (error is System.Threading.ThreadAbortException) { return; }
 
             string title = error is OleDbException ? "The database request failed" : "NORM could not complete the request";
-            string detail = RequiresPrepareAccess && error != null
-                ? error.Message
-                : "Try again. If the problem continues, contact the financial reporting support team.";
+            string detail = NORMErrorHandling.UserMessage(error, Context, "Request");
+            int failureStatus = Response.StatusCode;
+            if (Response.HeadersWritten)
+            {
+                Response.SuppressContent = true;
+                Server.ClearError();
+                Context.ApplicationInstance.CompleteRequest();
+                return;
+            }
 
             StringBuilder html = new StringBuilder();
             html.Append("<!doctype html><html lang=\"en-AU\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
@@ -74,8 +79,7 @@ namespace CPlatform.NORM
             html.Append("\">Return to statements</a></main></body></html>");
 
             Response.Clear();
-            HttpException httpError = error as HttpException;
-            Response.StatusCode = httpError == null ? 500 : httpError.GetHttpCode();
+            Response.StatusCode = failureStatus;
             Response.TrySkipIisCustomErrors = true;
             Response.ContentType = "text/html; charset=utf-8";
             Response.Write(html.ToString());

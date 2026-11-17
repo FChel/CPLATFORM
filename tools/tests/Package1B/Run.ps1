@@ -12,7 +12,7 @@ $code = [IO.File]::ReadAllText((Join-Path $root 'App_Code/NORMImportService.cs')
 $options = @('/nologo','/warnaserror+','/define:SERVICE','/target:exe',"/out:$output/Tests.exe",'/r:System.Data.dll','/r:System.Web.dll',"/r:$epplus")
 foreach ($name in @('NORMCrypto','NORMImportModels','ErpTrialBalanceImporter','RomanTrialBalanceImporter','NORMTextTrialBalanceImporter','NORMSourceFileHandler')) { $options += Join-Path $root "App_Code/$name.cs" }
 $options += @((Join-Path $output 'NORMImportService.cs'), (Join-Path $root 'tools/tests/FR016/TestSupport.cs'), (Join-Path $PSScriptRoot 'Tests.cs'))
-& $compiler @options
+& $compiler @options (Join-Path $root 'App_Code/NORMErrorHandling.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Package 1B compilation failed' }
 & (Join-Path $output 'Tests.exe') $root
 if ($LASTEXITCODE -ne 0) { throw 'Package 1B tests failed' }
