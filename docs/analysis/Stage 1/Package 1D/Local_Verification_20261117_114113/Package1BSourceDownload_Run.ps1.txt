@@ -1,0 +1,39 @@
+PASS accepted Imported source and failed run serve exact genuine bytes; statuses/history unchanged
+PASS existing Calculated source and Complete run still download
+PASS accepted source with Running calculation remains retrievable
+PASS accepted Imported source with Complete run remains retrievable
+PASS unaccepted Importing source denied even with Complete run
+PASS failed import denied even with Complete run
+PASS foreign file belonging to another import denied
+PASS mismatched run/file denied
+PASS inactive run denied
+PASS inactive import denied
+PASS unauthenticated request denied without querying storage
+PASS missing prepare access denied without querying storage
+PASS stored entity access enforced; forged query entity ignored
+PASS malformed identifiers denied
+PASS nonpositive identifiers denied
+PASS missing retained bytes denied
+PASS acceptance rechecked at byte fetch
+PASS run deactivation rechecked at byte fetch
+PASS entity binding rechecked at byte fetch
+PASS audit failure returns no original bytes and preserves history
+PASS accepted import/file original works with no calculation record
+PASS import route ignores failed pending complete or inactive calculation
+PASS incorrect accepted import/file pair denied
+PASS foreign file cannot be substituted on import route
+PASS contradictory import and run selectors denied
+PASS missing owner selector denied
+PASS malformed import denied before storage
+PASS unaccepted import denied on run-independent route
+PASS inactive import denied without run
+PASS unauthenticated import request denied before storage
+PASS unauthorised import entity denied before bytes even with forged entity
+PASS import acceptance rechecked at byte fetch
+PASS import entity rechecked at byte fetch
+PASS file ownership rechecked at byte fetch
+PASS corrupt retained bytes denied without success audit
+PASS legacy run route also verifies retained SHA-256
+PASS import-only audit runs before streaming and fails closed
+TOTAL PASS 37 (production handler/HTTP; isolated storage and identity fixtures)
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{2535ea9b-1b3f-41e1-8555-452e762ba13f}\Temp\norm-source-download-ff76da521eba45e2999c125bbee3ea1e

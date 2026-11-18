@@ -19,6 +19,13 @@ public class NORM_WordExport : IHttpHandler
 
     public void ProcessRequest(HttpContext context)
     {
+        try { ProcessCore(context); }
+        catch (System.Threading.ThreadAbortException) { throw; }
+        catch (Exception error) { NORMErrorHandling.HandlerFailure(context, error, "WordExport"); }
+    }
+
+    private void ProcessCore(HttpContext context)
+    {
         int runId;
         if (!Int32.TryParse(context.Request.QueryString["run"], out runId) || runId <= 0)
         {

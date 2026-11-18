@@ -30,8 +30,7 @@ namespace CPlatform.NORM
             }
             catch (Exception error)
             {
-                context.Response.Clear(); context.Response.StatusCode = 500; context.Response.TrySkipIisCustomErrors = true;
-                context.Response.ContentType = "text/plain; charset=utf-8"; context.Response.Write(error.GetBaseException().Message);
+                NORMErrorHandling.HandlerFailure(context, error, "MappingWorkbook");
             }
         }
     }

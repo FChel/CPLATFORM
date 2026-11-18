@@ -1,0 +1,10 @@
+PASS original production OnInit reproduces missing-cookie fresh-page MAC failure in real ASP.NET
+PASS corrected Year Setup GET establishes the existing session before signing ViewState
+PASS FY2025 document-year selection succeeds with real signed ViewState and event validation
+PASS subsequent Year Setup postback succeeds with the same session
+PASS lost session still rejects stale signed state
+PASS different authenticated identity cannot replay the signed state
+PASS ViewState MAC rejects tampered state
+PASS 1D actual production base page preserves event-validation rejection without framework details or foreign entity content
+TOTAL PASS 8 (real ASP.NET pipeline/session/MAC; isolated identities and database substitutes)
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{0d5e45d7-18bf-4f3f-b1af-f6d4093cd31d}\Temp\norm-viewstate-ae649b2a64f944bd92f2de938354fa31

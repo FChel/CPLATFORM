@@ -69,7 +69,7 @@ namespace CPlatform.NORM
                 ViewState["PreviewReleaseSelection"] = ReleaseSelectionKey();
                 ShowPreview(previews);
             }
-            catch (Exception error) { ShowError(error.Message); }
+            catch (Exception error) { ShowError(NORMErrorHandling.UserMessage(error, HttpContext.Current, "ImportInspection")); }
         }
 
         protected void ConfirmButton_Click(object sender, EventArgs e)
@@ -127,7 +127,7 @@ namespace CPlatform.NORM
                 }
                 ResultMessage.Text = result.ToString();
             }
-            catch (Exception error) { ClearPreview(); ShowError(error.Message); }
+            catch (Exception error) { ClearPreview(); ShowError(NORMErrorHandling.UserMessage(error, HttpContext.Current, "ImportConfirmation")); }
         }
 
         protected void CancelButton_Click(object sender, EventArgs e)

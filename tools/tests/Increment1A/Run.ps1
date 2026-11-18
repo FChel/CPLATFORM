@@ -14,7 +14,7 @@ $options = @('/nologo', '/warnaserror+', '/define:SERVICE', '/r:System.Data.dll'
     (Join-Path $root 'App_Code/NORMCrypto.cs'), (Join-Path $root 'App_Code/NORMImportModels.cs'),
     (Join-Path $root 'App_Code/ErpTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'),
     (Join-Path $root 'tools/tests/FR016/TestSupport.cs'), (Join-Path $output 'NORMImportService.cs'), (Join-Path $PSScriptRoot 'Tests.cs'))
-& $compiler @options
+& $compiler @options (Join-Path $root 'App_Code/NORMErrorHandling.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Increment 1A compilation failed' }
 & (Join-Path $output 'Tests.exe') $SamplePath
 if ($LASTEXITCODE -ne 0) { throw 'Increment 1A parsing tests failed' }

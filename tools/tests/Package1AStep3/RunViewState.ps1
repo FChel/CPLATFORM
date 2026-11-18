@@ -20,12 +20,13 @@ foreach($variant in @('original','corrected')){
     [IO.File]::WriteAllText("$app/NORM_YearSetup.aspx.cs",$code)
     $service=[IO.File]::ReadAllText("$root/App_Code/NORMStartOfYearSetup.cs").Replace('using System.Data.OleDb;','using TestDb;')
     [IO.File]::WriteAllText("$app/App_Code/NORMStartOfYearSetup.cs",$service)
+    Copy-Item -LiteralPath "$root/App_Code/NORMErrorHandling.cs" -Destination "$app/App_Code"
     Copy-Item -LiteralPath "$root/App_Code/NORMCrypto.cs" -Destination "$app/App_Code"
     $support=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'TestSupport.cs'))
     $support=$support.Replace("public static class NORMHelper`r`n{","public static class NORMHelper`r`n{`r`n    static NORMHelper() { Reset(); }").Replace("public static class NORMHelper`n{","public static class NORMHelper`n{`n    static NORMHelper() { Reset(); }")
     $support=[regex]::Replace($support,'public static string CurrentUserId\(\) \{ return .*?; \}','public static string CurrentUserId() { return System.Web.HttpContext.Current.Request.Headers["X-Isolated-User"] ?? "isolated-preparer"; }')
     [IO.File]::WriteAllText("$app/App_Code/TestSupport.cs",$support)
-    [IO.File]::WriteAllText("$app/App_Code/BasePage.cs",'namespace CPlatform.NORM { public class NORMBasePage : System.Web.UI.Page { public string CurrentEnvironment { get {return "ISOLATED";} } public string CurrentUser { get {return NORMHelper.CurrentUserId();} } } }')
+    Copy-Item -LiteralPath "$root/App_Code/NORMBasePage.cs" -Destination "$app/App_Code/BasePage.cs"
     [IO.File]::WriteAllText("$app/web.config",'<configuration><system.web><compilation debug="false" targetFramework="4.8"/><httpRuntime targetFramework="4.8"/><customErrors mode="Off"/><pages enableViewStateMac="true" enableEventValidation="true"/><sessionState mode="InProc" cookieless="UseCookies" timeout="30"/></system.web></configuration>')
 }
 if($ReproductionOnly){& $exe "$output/original"}else{& $exe "$output/original" "$output/corrected"}

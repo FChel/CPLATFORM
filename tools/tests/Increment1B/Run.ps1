@@ -26,7 +26,7 @@ foreach ($suite in @('Service','Engine','Display')) {
         $options += @('/r:System.Web.dll','/r:System.Configuration.dll',(Join-Path $root 'App_Code/NORMHelper.cs'),(Join-Path $PSScriptRoot 'DisplayTests.cs'))
         [IO.File]::WriteAllText("$exe.config", '<configuration><appSettings><add key="NORM.SapBaseUrl" value="https://sap.example.invalid"/></appSettings></configuration>')
     }
-    & $compiler @options
+    & $compiler @options (Join-Path $root 'App_Code/NORMErrorHandling.cs')
     if ($LASTEXITCODE -ne 0) { throw "$suite compilation failed" }
     & $exe $SamplePath
     if ($LASTEXITCODE -ne 0) { throw "$suite tests failed" }

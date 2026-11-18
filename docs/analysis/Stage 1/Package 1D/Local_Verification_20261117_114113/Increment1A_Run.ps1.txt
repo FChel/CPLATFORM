@@ -1,0 +1,48 @@
+RESULT rows=984 year=2026 periods=1-12
+RESULT opening=0.00 debitMovement=4466384209424.24 creditMovement=-4466384209424.24 ending=0.00 positiveEnding=268992152391.65 negativeEnding=268992152391.65
+PASS original Defence workbook
+PASS legacy format retains existing contract
+PASS legacy persistence entry explicitly blocks Defence
+PASS service safeguard prevents writes and calculation (existing FR016 substitutes)
+PASS nonworkbook content rejected clearly
+PASS empty content rejected clearly
+PASS no filename or extension needed
+PASS partial-year period remains partial
+PASS expected year mismatch
+PASS unauthorised company rejected instead of silently filtered
+PASS missing permission population fails closed
+PASS changed report identifier rejected
+PASS changed provider rejected
+PASS wrong movement header rejected
+PASS missing year rejected
+PASS conflicting years rejected
+PASS conflicting legacy year rejected
+PASS missing dates rejected
+PASS out-of-year dates rejected
+PASS absent ledger is retained as null
+PASS different source ledger rejected
+PASS missing description rejected
+PASS missing account rejected
+PASS missing amount rejected
+PASS malformed numeric data rejected
+PASS unexpected company row rejected
+PASS duplicate account rejected
+PASS missing subtotal rejected
+PASS missing grand total rejected
+PASS independent control mismatch row 1012 column 5
+PASS independent control mismatch row 1012 column 6
+PASS independent control mismatch row 1012 column 7
+PASS independent control mismatch row 1012 column 8
+PASS independent control mismatch row 1013 column 5
+PASS independent control mismatch row 1013 column 6
+PASS independent control mismatch row 1013 column 7
+PASS independent control mismatch row 1013 column 8
+PASS unreconciled movements rejected
+PASS ambiguous duplicated data sheet rejected
+PASS Defence data detected beyond first worksheet and legacy entry still blocked
+PASS malformed Defence markers cannot fall back to legacy sheet
+PASS unrelated workbook rejected
+PASS fractional cents are preserved without rounding
+PASS nonzero TB rejected even when report controls agree
+TOTAL PASS 44
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{b64526b5-91ed-4eac-9bd4-023f906ecfb9}\Temp\norm-increment1a-1cd40b240fd84f028da8e9d860fe39ae

@@ -24,6 +24,8 @@ public static partial class Tests
     {
         int before=passed;
         RunRejectionAudit();
+        RunRevocationSecurity();
+        RunSafeErrors();
         T("mixed file/year/release/new/replacement populations commit once with own context",delegate {
             string originals=StoreFingerprint(true); List<NORMImportPreview> p=MixedBatch();
             List<NORMImportOutcome> results=NORMImportService.ConfirmBatch(p,"isolated-test",true);
@@ -115,13 +117,13 @@ public static partial class Tests
         });
         T("subset confirmation reparses whole original and rejects omitted sibling",delegate {
             var p=MixedBatch(); reinspectionReads=0;
-            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(new[] { p[0] },"isolated-test",true); },"complete original file");
-            Assert(reinspectionReads==1 && acceptanceCommits==0,"Whole-file reinspection did not run before subset rejection");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(new[] { p[0] },"isolated-test",true); },"complete file");
+            Assert(reinspectionReads==0 && acceptanceCommits==0,"Subset was not rejected at the complete-file issuance boundary");
         });
         T("valid member cannot bypass invalid sibling by submitting extracted subset",delegate {
             byte[] bytes=Modify(ControlledLegacy(true,true),delegate(ExcelWorksheet s) { s.Cells[7,5].Value="100.005"; s.Cells[7,8].Value="100.005"; s.Cells[8,5].Value="-100.005"; s.Cells[8,8].Value="-100.005"; });
             var p=FilePopulations(bytes); Assert(p[0].CanAccept && !p[1].CanAccept,"Fixture did not isolate invalid sibling"); reinspectionReads=0;
-            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(new[] { p[0] },"isolated-test",true); },"complete original file"); Assert(reinspectionReads==1,"Complete original not revalidated");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(new[] { p[0] },"isolated-test",true); },"complete file"); Assert(reinspectionReads==0,"Invalid sibling subset passed the complete-file issuance boundary");
         });
         T("forged file population count cannot authorise extracted subset",delegate {
             var p=MixedBatch(); p[0].SourceFile.PopulationCount=1;
@@ -129,7 +131,7 @@ public static partial class Tests
         });
         T("substituted population from another inspection does not complete an original file",delegate {
             var a=FilePopulations(ControlledLegacy(true,true)); var b=FilePopulations(ControlledLegacy(true,true));
-            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(new[] { a[0], b[1] },"isolated-test",true); },"complete original file");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(new[] { a[0], b[1] },"isolated-test",true); },"complete file");
         });
         T("omitting an entire staged file rejects the altered batch membership",delegate {
             var p=MixedBatch(); NORMImportService.ValidateBatch(p);
@@ -338,4 +340,115 @@ public static partial class Tests
             Assert(acceptanceCommits==1 && Rejections().Count==0 && acceptedAudits.Exists(delegate(NORMHelper.Call c){return (string)c["@event"]=="IMPORT_SOURCE_REPLACED";}),"Committed source misreported as rejected");
         });
     }
-}
+    static List<NORMImportPreview> RevocationPreview()
+    {
+        var p=FilePopulations(ControlledLegacy(true,true));
+        NORMImportService.ValidateBatch(p); return p;
+    }
+    static void DenyRevocation(List<NORMImportPreview> p)
+    { NORMHelper.EntityAccess=delegate {return false;}; RejectUnchanged(delegate {NORMImportService.ConfirmBatch(p,"isolated-test",true);},"Entity access denied"); }
+    static void NoPrivilegedAudit(Action action)
+    {
+        bool rejected=false; try { action(); } catch(Exception) { rejected=true; }
+        Assert(rejected && Rejections().Count==0 && ImportCalls().Count==0 && acceptanceCommits==0 && NORMHelper.Runs==0,"Untrusted attempt created source/audit evidence");
+    }
+    static void RunRevocationSecurity()
+    {
+        T("1D issued two-population revocation writes one attributable independent rejection",delegate {
+            var p=RevocationPreview(); string before=StoreFingerprint(false),hash=p[0].FileHash;
+            DenyRevocation(p); var events=Rejections(); Guid attempt;
+            Assert(events.Count==1 && Guid.TryParse((string)events[0]["@id"],out attempt) && (string)events[0]["@user"]=="isolated-test","Wrong attempt/actor/count");
+            string d=AuditDetail(events[0]); foreach(string part in new[]{"ENTITY_ASSIGNMENT_REVOKED","Phase=Acceptance","Outcome=Rejected","ScopeCount=2","Company=1000","Company=2000","SHA256="+hash,"Batch="}){Assert(d.Contains(part),"Missing revoked evidence: "+part);}
+            Assert(StoreFingerprint(false)==before && NORMHelper.Commits==1 && NORMHelper.Transactions==1,"Source change or audit did not commit independently");
+            int count=events.Count; NoPrivilegedReplay(p,count);
+        });
+        T("1D revocation at locked transaction entry rolls back before independent audit",delegate {
+            var p=RevocationPreview(); NORMHelper.TransactionEntityAccess=delegate {NORMHelper.EntityAccess=delegate {return false;};return false;};
+            RejectUnchanged(delegate {NORMImportService.ConfirmBatch(p,"isolated-test",true);},"Entity access denied");
+            Assert(Rejections().Count==1 && NORMHelper.Rollbacks==1 && NORMHelper.Transactions==2 && NORMHelper.Commits==1,"Wrong source rollback/audit transaction"); AssertIndependentAudit();
+        });
+        T("1D expired preview has no revoked-authority audit",delegate {var p=RevocationPreview();p[0].ExpiresUtc=DateTime.UtcNow.AddMinutes(-1);NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D consumed preview has no revoked-authority audit",delegate {var p=RevocationPreview();p[0].Consumed=true;NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D unchecked replacement has no revoked-authority audit",delegate {var p=RevocationPreview();NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",false);});});
+        T("1D old preview without issued evidence fails closed",delegate {var p=RevocationPreview();p[0].AuditIssuance=null;NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D copied issuance object cannot authenticate another preview",delegate {var p=RevocationPreview();p[0].AuditIssuance=p[1].AuditIssuance;NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D caller fabricated issuance object is rejected",delegate {var p=RevocationPreview();p[0].AuditIssuance=new object();NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D foreign-session preview cannot generate audit",delegate {
+            var p=RevocationPreview();var ctx=System.Web.HttpContext.Current;
+            System.Web.SessionState.SessionStateUtility.RemoveHttpSessionStateFromContext(ctx);
+            System.Web.SessionState.SessionStateUtility.AddHttpSessionStateToContext(ctx,new System.Web.SessionState.HttpSessionStateContainer("foreign-session",new System.Web.SessionState.SessionStateItemCollection(),new System.Web.HttpStaticObjectsCollection(),30,true,System.Web.HttpCookieMode.UseCookies,System.Web.SessionState.SessionStateMode.InProc,false));
+            NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});
+        });
+        T("1D foreign actor cannot generate audit",delegate {var p=RevocationPreview();System.Web.HttpContext.Current.User=new System.Security.Principal.GenericPrincipal(new System.Security.Principal.GenericIdentity("other","test"),new string[0]);NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D unauthenticated context cannot generate audit",delegate {var p=RevocationPreview();System.Web.HttpContext.Current.User=null;NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D inactive application user cannot generate audit",delegate {var p=RevocationPreview();NORMHelper.PrepareAccess=false;NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D administrator or changed role is not a revoked preparer grant",delegate {var p=RevocationPreview();NORMHelper.RegisteredPreparer=false;NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D inactive entity is not classified as assignment revocation",delegate {var p=RevocationPreview();NORMHelper.EntityActive=false;NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D arbitrary permission exception is not audit eligible",delegate {var p=RevocationPreview();NORMHelper.EntityAccess=delegate{throw new UnauthorizedAccessException("Unrelated action");};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D unrelated typed entity denial cannot generate audit",delegate {var p=RevocationPreview();NORMHelper.EntityAccess=delegate{throw new NORMHelper.EntityAccessDeniedException("OTHER");};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D mutated source bytes cannot generate privileged audit",delegate {var p=RevocationPreview();p[0].Content[0]=0;NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D missing batch member cannot generate privileged audit",delegate {var p=RevocationPreview();p.RemoveAt(1);NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D modified release cannot generate privileged audit",delegate {var p=RevocationPreview();p[0].ReleaseId=999;NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D modified owner cannot generate privileged audit",delegate {var p=RevocationPreview();p[0].Owner="other";NORMHelper.EntityAccess=delegate{return false;};NoPrivilegedAudit(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);});});
+        T("1D revoked audit insert failure rolls back audit and preserves all sources",delegate {var p=RevocationPreview();NORMHelper.EntityAccess=delegate{return false;};NORMHelper.FailAudit=true;RejectUnchanged(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);},"Rejection audit evidence could not be saved");Assert(Rejections().Count==0 && NORMHelper.Commits==0 && NORMHelper.Rollbacks==1,"Partial audit or source commit");});
+        T("1D revoked audit commit failure rolls back audit and preserves all sources",delegate {var p=RevocationPreview();NORMHelper.EntityAccess=delegate{return false;};NORMHelper.FailCommit=true;RejectUnchanged(delegate{NORMImportService.ConfirmBatch(p,"isolated-test",true);},"Rejection audit evidence could not be saved");Assert(Rejections().Count==0 && NORMHelper.Commits==0 && NORMHelper.Rollbacks==1,"False successful audit commit");});
+    }
+    static void NoPrivilegedReplay(List<NORMImportPreview> p,int count)
+    {
+        bool rejected=false;try {NORMImportService.ConfirmBatch(p,"isolated-test",true);}catch(Exception){rejected=true;}
+        Assert(rejected && Rejections().Count==count && ImportCalls().Count==0 && NORMHelper.Runs==0,"Replay minted another audit or source");
+    }    static void RunSafeErrors()
+    {
+        T("1D safe reviewed business message remains actionable",delegate {
+            string message="Choose non-empty trial balance files.";
+            Assert(NORMErrorHandling.UserMessage(new System.IO.InvalidDataException(message),System.Web.HttpContext.Current,"ImportInspection")==message && System.Web.HttpContext.Current.Response.StatusCode==400,"Reviewed validation changed");
+        });
+        T("1D technical exception families and wrapped parser failures are non-disclosing",delegate {
+            Exception sql=(Exception)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(System.Data.OleDb.OleDbException));
+            foreach(Exception e in new Exception[]{sql,new System.IO.IOException("Password=secret; C:\\private\\source"),new InvalidOperationException("SQL SELECT secret FROM private"),new System.Web.HttpException("Invalid postback or callback argument. Event validation is enabled..."),new System.IO.InvalidDataException("PDF parser password=secret",new InvalidOperationException("private connection")),new System.Reflection.TargetInvocationException(new Exception("private inner"))}) {
+                string result=NORMErrorHandling.UserMessage(e,System.Web.HttpContext.Current,"YearSetup");
+                Assert(result==NORMErrorHandling.GenericMessage && System.Web.HttpContext.Current.Response.StatusCode==500,"Technical exception escaped or became success: "+e.GetType().Name);
+            }
+        });
+        T("1D private diagnostic correlates actual actor without exception payload and deduplicates",delegate {
+            int writes=0;string reference=null,detail=null;
+            NORMHelper.ScalarCallResponse=delegate(NORMHelper.Call call){return call.Sql.Contains("tblNORM_AdminUser") ? (object)1 : null;};
+            NORMHelper.NonTransactionalExec=delegate(NORMHelper.Call call){writes++;Assert(call.Sql.Contains("'NORM_REQUEST_FAILED','NORMRequest'") && (string)call["@user"]=="isolated-test","Diagnostic is not private fixed-shape actual actor");reference=(string)call["@id"];detail=(string)call["@detail"];};
+            string result=NORMErrorHandling.UserMessage(new Exception("Password=secret;token=cookie;C:\\private"),System.Web.HttpContext.Current,"ImportInspection");
+            Assert(writes==1 && result.Contains(reference) && !result.Contains("secret") && detail.Contains("System.Exception") && !detail.Contains("secret") && !detail.Contains("cookie") && !detail.Contains("private"),"Diagnostic correlation/payload failure");
+            NORMErrorHandling.UserMessage(new Exception("another private failure"),System.Web.HttpContext.Current,"Request");Assert(writes==1,"Duplicate per-request diagnostic");
+        });
+        T("1D diagnostic persistence failure stays generic failed and is not retried",delegate {
+            int writes=0;NORMHelper.ScalarCallResponse=delegate{return (object)1;};NORMHelper.NonTransactionalExec=delegate{writes++;throw new Exception("connection secret");};
+            string m=NORMErrorHandling.UserMessage(new Exception("private parser"),System.Web.HttpContext.Current,"Request");
+            Assert(m==NORMErrorHandling.GenericMessage && System.Web.HttpContext.Current.Response.StatusCode==500,"Diagnostic failure masked original or leaked");
+            NORMErrorHandling.UserMessage(new Exception("again"),System.Web.HttpContext.Current,"Request");Assert(writes==1,"Failed diagnostic retried recursively");
+        });
+        T("1D unregistered or unauthenticated user has no diagnostic writing capability",delegate {
+            int writes=0;NORMHelper.ScalarCallResponse=delegate{return (object)0;};NORMHelper.NonTransactionalExec=delegate{writes++;};
+            Assert(NORMErrorHandling.UserMessage(new Exception("secret"),System.Web.HttpContext.Current,"Request")==NORMErrorHandling.GenericMessage && writes==0,"Unregistered diagnostic write");
+            System.Web.HttpContext.Current.User=null;NORMHelper.ScalarCallResponse=delegate{return (object)1;};
+            Assert(NORMErrorHandling.UserMessage(new Exception("secret"),System.Web.HttpContext.Current,"Request")==NORMErrorHandling.GenericMessage && writes==0,"Unauthenticated diagnostic write");
+        });
+        T("1D stored calculation diagnostics stay private while business guidance survives",delegate {
+            Assert(NORMErrorHandling.StoredCalculationFailure("SQL server connection Password=secret").Contains("Calculation failed") && !NORMErrorHandling.StoredCalculationFailure("SQL server connection Password=secret").Contains("secret"),"Stored technical error leaked");
+            Assert(NORMErrorHandling.StoredCalculationFailure("The selected configuration release contains no account mappings.").Contains("no account mappings"),"Known mapping guidance lost");
+        });
+        T("1D injected HTML cannot become reviewed business text",delegate {
+            string m=NORMErrorHandling.UserMessage(new InvalidOperationException("Choose non-empty trial balance files.<script>alert(1)</script>"),System.Web.HttpContext.Current,"ImportInspection");Assert(m==NORMErrorHandling.GenericMessage && !m.Contains("script"),"Open-ended safe-message match");
+        });
+        T("1D reviewed mapping aggregate keeps actionable guidance without suffix disclosure",delegate {
+            string m=NORMErrorHandling.UserMessage(new InvalidOperationException("The mapping workbook was not applied: private token=secret"),System.Web.HttpContext.Current,"Mapping");
+            Assert(m.Contains("Check its headers") && !m.Contains("secret") && System.Web.HttpContext.Current.Response.StatusCode==400,"Mapping aggregate guidance leaked or was lost");
+        });
+        T("1D fixed PDF extraction guidance survives a private inner failure",delegate {
+            string fixedText="NORM could not read the PDF. Check the file and selected start page, then try again.";
+            string m=NORMErrorHandling.UserMessage(new System.IO.InvalidDataException(fixedText,new Exception("SQL Password=secret")),System.Web.HttpContext.Current,"YearSetup");
+            Assert(m==fixedText && !m.Contains("secret"),"Fixed PDF guidance exposed wrapped cause");
+        });
+        T("1D technical diagnostic event remains outside normal audit widgets",delegate {
+            string workspace=System.IO.File.ReadAllText(System.IO.Path.Combine(root,"NORM/NORM_Workspace.aspx.cs"));
+            string history=System.IO.File.ReadAllText(System.IO.Path.Combine(root,"App_Code/NORMSourceHistory.cs"));
+            Assert(!workspace.Contains("NORM_REQUEST_FAILED") && !workspace.Contains("NORMRequest") && !history.Contains("NORM_REQUEST_FAILED") && !history.Contains("NORMRequest"),"Private diagnostic selected for ordinary display");
+        });
+    }}

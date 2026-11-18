@@ -21,6 +21,13 @@ namespace CPlatform.NORM
 
         public void ProcessRequest(HttpContext context)
         {
+            try { ProcessCore(context); }
+            catch (System.Threading.ThreadAbortException) { throw; }
+            catch (Exception error) { NORMErrorHandling.HandlerFailure(context, error, "ReviewPack"); }
+        }
+
+        private void ProcessCore(HttpContext context)
+        {
             if (context.User == null || context.User.Identity == null || !context.User.Identity.IsAuthenticated)
             {
                 context.Response.StatusCode = 401;

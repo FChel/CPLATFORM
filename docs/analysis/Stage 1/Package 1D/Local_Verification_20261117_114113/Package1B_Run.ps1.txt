@@ -1,0 +1,40 @@
+PASS Genuine CSV AAG_TrialBalanceFinStats150_201718.csv inspect/confirm/original/profile
+PASS Genuine CSV AAG_TrialBalanceFinStats150_201819.csv inspect/confirm/original/profile
+PASS Genuine CSV AAG_TrialBalanceFinStats150.csv inspect/confirm/original/profile
+PASS Genuine Icon coy 86.txt all rows/controls/confirmation
+PASS Genuine Icon coy 87.txt all rows/controls/confirmation
+PASS Genuine Icon coy 80.txt all rows/controls/confirmation
+PASS Missing ledger/stream uniquely configured
+PASS Ambiguous population rejects with audit
+PASS Company conflict rejects with audit
+PASS CSV year mismatch rejects
+PASS CSV header year mismatch rejects
+PASS CSV malformed prior amount rejects despite CY-only
+PASS CSV nonzero exact balance rejects
+PASS CSV balanced fractional cents cannot confirm
+PASS CSV duplicate account rejects
+PASS CSV unclosed quote rejects
+PASS CSV BOM and quoted description edge syntax
+PASS CSV named map accepts column reordering
+PASS CSV decimal precision is never rounded
+PASS CSV unexpected record rejects
+PASS Unsupported content rejects with audit
+PASS Invalid UTF8 rejects
+PASS Icon non-AUD rejects
+PASS Icon absent currency defaults to approved AUD
+PASS Icon changed period rejects
+PASS Icon row movement mismatch rejects
+PASS Icon footer mismatch rejects
+PASS Icon missing footer rejects
+PASS Icon inconsistent page rejects
+PASS Icon unknown line rejects
+PASS Icon partial completed year rejects
+PASS Text rejection audit failure remains rejected
+PASS Text profile provenance write failure rolls back acceptance
+PASS Text unchecked replacement adds no audit
+PASS Text duplicate-scope inspection batch records D5 evidence
+PASS Text profile version tampering rejects confirmation
+PASS Text same-scope replacement acknowledgement and predecessor audit
+PASS Text original retrieval uses actual handler and retained bytes
+TOTAL PASS 38 (genuine positives; isolated database/identity substitutes)
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{d0eb6fba-a64a-4136-a768-a73e31fbbba2}\Temp\norm-package1b-f02aae59317a40c2a2b6c4e135f2c971

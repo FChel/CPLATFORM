@@ -13,8 +13,8 @@ namespace CPlatform.NORM
         protected void Page_Load(object sender,EventArgs e)
         {
             try { LoadHistory(); }
-            catch(UnauthorizedAccessException error) { Fail(403,error.Message); }
-            catch(InvalidOperationException error) { Fail(400,error.Message); }
+            catch(UnauthorizedAccessException error) { Fail(403,NORMErrorHandling.UserMessage(error,HttpContext.Current,"SourceHistory")); }
+            catch(InvalidOperationException error) { string message=NORMErrorHandling.UserMessage(error,HttpContext.Current,"SourceHistory"); Fail(Response.StatusCode,message); }
         }
         private void Fail(int status,string message)
         {

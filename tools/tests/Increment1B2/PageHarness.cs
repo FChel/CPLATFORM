@@ -26,6 +26,7 @@ namespace CPlatform.NORM
             HttpContext context = new HttpContext(new HttpRequest("", "http://localhost/NORM/NORM_Import.aspx", ""), new HttpResponse(new StringWriter()));
             SessionStateUtility.AddHttpSessionStateToContext(context, new HttpSessionStateContainer("isolated-session", new SessionStateItemCollection(),
                 new HttpStaticObjectsCollection(), 20, true, HttpCookieMode.UseCookies, SessionStateMode.InProc, false));
+            context.User = new System.Security.Principal.GenericPrincipal(new System.Security.Principal.GenericIdentity("isolated-test","test"),new string[0]);
             HttpContext.Current = context;
             typeof(Page).GetField("_context", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(this, context);
             var previews = new System.Collections.Generic.List<NORMImportPreview> { preview };

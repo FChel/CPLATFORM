@@ -1,0 +1,249 @@
+{
+  "CreatedUtc": "2026-11-17T11:49:24.8039573Z",
+  "Branch": "codex/norm-package1d-security",
+  "BaselineCommit": "3184226c2d3a0334cb8ff2e18750ce8e0e38d488",
+  "CanonicalSourceDigest": "71af9c1f878a7f68aeb119aad08b479f3c449d52f8aabeeec4e512390ba3950d",
+  "Files": [
+    {
+      "Path": "App_Code/NORMBasePage.cs",
+      "CanonicalUtf8LfSHA256": "92ffa4b4da72102dbdc9701720307bc60abc5d0da747c3bde8d249f8e05b0f8a",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMErrorHandling.cs",
+      "CanonicalUtf8LfSHA256": "e820a61a83179b8ebd8375dfb64918b1d045c4f4a27ba6318cc09c12ac815aa6",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMFinancialStatementsExcel.cs",
+      "CanonicalUtf8LfSHA256": "2bd6820f7a0f92106e5a5f3ff3decb9f89c27d93ca9e2002ddd40316eafeeddb",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMHelper.cs",
+      "CanonicalUtf8LfSHA256": "ff194ea5b286f7bb1ab2f95d7fd1f2d175f13cd31ddb1700c5b0d0f2723ff5d4",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMImportModels.cs",
+      "CanonicalUtf8LfSHA256": "1b628769c81c33de652c4778b071a25bb45184b1d4670d2c25bec984b04d4cf1",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMImportService.cs",
+      "CanonicalUtf8LfSHA256": "d00cea2f3fa7a4ff30c6b4ef3eaa3e7c96f91ce2f985559093c9fba69a76a2f7",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMMappingExport.cs",
+      "CanonicalUtf8LfSHA256": "667a4b2ea816ad3942f769e127d7e7cfedcc6c2492c8ab149cfbef42de342b2f",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMMappingWorkbookHandler.cs",
+      "CanonicalUtf8LfSHA256": "5bab9b3c4aa3a8e36aca3f9852c12a3d00e205f8b71522c7b02c18f0228da8c1",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMReviewPack.cs",
+      "CanonicalUtf8LfSHA256": "6e33b0e690900053dc5b08bf2669090cab06f63ea441b73adb395ea634847acf",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMSourceFileHandler.cs",
+      "CanonicalUtf8LfSHA256": "2ee4aa839909c57b922b81fe31ac71d48695fe00fd9e17b8dcc0313cee22d2a9",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMStartOfYearSetup.cs",
+      "CanonicalUtf8LfSHA256": "bdee4a3c5562f053b6952dbc2081454d96546b58110b221d5fb8fdd1381d3fc3",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMWordExport.cs",
+      "CanonicalUtf8LfSHA256": "e3af95cb106a62b1966a78a8aca8f7e74ea1e698d509fc1d65541c6cf433c7f6",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "App_Code/NORMYearSetupDocumentHandler.cs",
+      "CanonicalUtf8LfSHA256": "a3c021f0c043f9635211e8afcb1d3e1107720d903ab4cbe03871bf8e913c7e68",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "NORM/NORM_Import.aspx.cs",
+      "CanonicalUtf8LfSHA256": "23cd30e29ed7a030a5cd42a818e4970067cff505166927a91ee8bde60f305466",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "NORM/NORM_Mapping.aspx.cs",
+      "CanonicalUtf8LfSHA256": "dfd83e3b132a2cb8cebf081a93fce5820bc51a059a8766561777fc08185e6baa",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "NORM/NORM_SourceHistory.aspx.cs",
+      "CanonicalUtf8LfSHA256": "e5984236a4dd605f2aa33d01c683c83bc20a0efb5f32050df854645d4f0070b2",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "NORM/NORM_Workspace.aspx.cs",
+      "CanonicalUtf8LfSHA256": "ff70b170e3cefeafa21b92f258b44f926a248505240b1e1f452c494ee2618212",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "NORM/NORM_YearSetup.aspx.cs",
+      "CanonicalUtf8LfSHA256": "ad2b658c288689f69d95c28cfeaabbf4940bb3d3327e815f04877913eca53fe0",
+      "Kind": "Runtime"
+    },
+    {
+      "Path": "tools/tests/FR016/Run.ps1",
+      "CanonicalUtf8LfSHA256": "d70661831bdb12f0ffa1409719ce92fe72f8f1aede010b2aaaaa3dae70ece9d6",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/FR016/TestSupport.cs",
+      "CanonicalUtf8LfSHA256": "1992f451b87244660c039c8f50ea7c16f821fc103d3de63d633e2b1e8cb0a3b6",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Increment1A/Run.ps1",
+      "CanonicalUtf8LfSHA256": "de0a2b1340a8de6f4b2107793f81af108cccb2ad2d5a7971dfe648f859075849",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Increment1B/Run.ps1",
+      "CanonicalUtf8LfSHA256": "c5bedc4a245b53b966ede56695b5f988cce96395edcac4af43011b17ea8cbf04",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Increment1B2/PageHarness.cs",
+      "CanonicalUtf8LfSHA256": "d6b80389259d9a0ed44cece042d1e49152f7daadad8aec0d778293026392eff0",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Increment1B2/Run.ps1",
+      "CanonicalUtf8LfSHA256": "ced51b983a4bfae1dba140c60b8d078f79da47e0bf1ce33c87ba124e91dc0c9d",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Increment1B2/Tests.cs",
+      "CanonicalUtf8LfSHA256": "9269427e2ef5caa32e7325d79ff9b6da320a3151e704d728c8ca4acccc7fa3c1",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1AStep3/Run.ps1",
+      "CanonicalUtf8LfSHA256": "c29cc51d4ac952ed128f4f8f24bcaee36a33908d6d29c3c435a2171182ab06e3",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1AStep3/RunViewState.ps1",
+      "CanonicalUtf8LfSHA256": "929c806e649a1c5884001e9eb2eaafb753a4caf1637e7eeb60e3fa093c83fb8d",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1AStep3/TestSupport.cs",
+      "CanonicalUtf8LfSHA256": "2e380ada9834149f082cde542595c2bea18321b66f088a81b6e944004b2acd75",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1AStep3/ViewStateTests.cs",
+      "CanonicalUtf8LfSHA256": "b0c8ac7404733a043571a6ab189e4accf77251eb4e884733b185e1f3b99475b3",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1B/Run.ps1",
+      "CanonicalUtf8LfSHA256": "9e28a5d053a2f33a0c8bb07ed895333e5ce4fec37150963c4199ff6f9c13024e",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1BSourceDownload/Run.ps1",
+      "CanonicalUtf8LfSHA256": "2fa8d75af133debc0d622704d5693067b2e85b35e0abe3ac19bd597eb4bc0f22",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1BSourceDownload/Tests.cs",
+      "CanonicalUtf8LfSHA256": "ccc18a3c1deca9f3f6a93dba90f1f09e8941a91239e4eed3c7278ae3f4bf711b",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1CStep1/PageHarness.cs",
+      "CanonicalUtf8LfSHA256": "6405f5d536025e1ce214ce890865125a6b694fe3d2d4b7288f1d88c0a09338ca",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1CStep1/Run.ps1",
+      "CanonicalUtf8LfSHA256": "b5c8eaf431655c7de0dcbfe145f067e479af18f4fd7a2a31b3f090495f7fa0fc",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1CStep2/Run.ps1",
+      "CanonicalUtf8LfSHA256": "6fc9974b23b677d2ae7a78635ba4558e1ca6ba70f43a20ee1d050c87b9258994",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1CStep2/Tests.cs",
+      "CanonicalUtf8LfSHA256": "d36160c95888af618568d0e0182dac1a4f0f5a96b1b7d354a7bede8f4996c485",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1CStep3/Run.ps1",
+      "CanonicalUtf8LfSHA256": "ffe924695ec265cdb5ad9ca24b002d6f378c31f875bd53310efd7f0b5ffb47f6",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1CStep3/Tests.cs",
+      "CanonicalUtf8LfSHA256": "b1eb19a807e53f4f7fd9d41446ddd210c25e0b7583227f170695915f3545e18e",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1CStep4/Run.ps1",
+      "CanonicalUtf8LfSHA256": "1125bf21a6774991288e70f842deaab4d607683021b77f931690139e07c25571",
+      "Kind": "Test"
+    },
+    {
+      "Path": "tools/tests/Package1CUatCorrection/Run.ps1",
+      "CanonicalUtf8LfSHA256": "7d88697d12f8b43737a1c7b9c406fec85f76a58d771a1b1bf134c9fb5bf9f288",
+      "Kind": "Test"
+    }
+  ],
+  "Suites": [
+    {
+      "Name": "Package1CUatCorrection",
+      "Checks": 194
+    },
+    {
+      "Name": "Increment1B2",
+      "Checks": 63
+    },
+    {
+      "Name": "Package1BSourceDownload",
+      "Checks": 37
+    },
+    {
+      "Name": "Package1B",
+      "Checks": 38
+    },
+    {
+      "Name": "Increment1A",
+      "Checks": 44
+    },
+    {
+      "Name": "Increment1B",
+      "Checks": 21
+    },
+    {
+      "Name": "FR016",
+      "Checks": 43
+    },
+    {
+      "Name": "Package1AStep3",
+      "Checks": 77
+    },
+    {
+      "Name": "Package1AStep3 ViewState",
+      "Checks": 8
+    }
+  ],
+  "ReportedChecks": 525,
+  "Compilation": "Full ASP.NET working-tree candidate compilation passed; existing eJET line125 CS0162 warning",
+  "NoLiveAccess": true
+}

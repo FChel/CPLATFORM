@@ -33,7 +33,7 @@ namespace CPlatform.NORM
                         ? requestedRelease
                         : NORMMappingManagement.GetOrCreateWorkingDraft(NORMHelper.CurrentUserId());
                 }
-                catch (Exception error) { Show("Mapping workbook is not available", error.GetBaseException().Message, false); }
+                catch (Exception error) { Show("Mapping workbook is not available", NORMErrorHandling.UserMessage(error, System.Web.HttpContext.Current, "Mapping"), false); }
             }
             BindSelectedRelease();
         }
@@ -68,7 +68,7 @@ namespace CPlatform.NORM
                 Response.Redirect("NORM_Statements.aspx?run=" + outcome.CalculationRunId.ToString(CultureInfo.InvariantCulture), true);
             }
             catch (System.Threading.ThreadAbortException) { throw; }
-            catch (Exception error) { Show("Recalculation could not be completed", error.GetBaseException().Message, false); BindSelectedRelease(); }
+            catch (Exception error) { Show("Recalculation could not be completed", NORMErrorHandling.UserMessage(error, System.Web.HttpContext.Current, "Mapping"), false); BindSelectedRelease(); }
         }
 
         private void BindSelectedRelease()
@@ -118,7 +118,7 @@ namespace CPlatform.NORM
         {
             try { action(); if (!MessagePanel.Visible) Show(title, success, true); }
             catch (System.Threading.ThreadAbortException) { throw; }
-            catch (Exception error) { Show("Action could not be completed", error.GetBaseException().Message, false); BindSelectedRelease(); }
+            catch (Exception error) { Show("Action could not be completed", NORMErrorHandling.UserMessage(error, System.Web.HttpContext.Current, "Mapping"), false); BindSelectedRelease(); }
         }
         private void Show(string title, string text, bool success) { MessagePanel.Visible = true; MessagePanel.CssClass = "norm-alert " + (success ? "norm-alert-success" : "norm-alert-error"); MessageTitle.Text = Enc(title); MessageText.Text = "<span>" + Enc(text) + "</span>"; }
         private int RequireReleaseId(string message) { if (CurrentReleaseId <= 0) throw new InvalidOperationException(message); return CurrentReleaseId; }

@@ -1,0 +1,200 @@
+PASS existing single-year preparation and confirmation unchanged
+PASS primary release requires explicit choice rather than newest default
+PASS two genuine years bind independently in one controlled agency
+PASS ambiguous approved releases never choose newest
+PASS explicit older approved release resolves ambiguity
+PASS primary selection also resolves same-year release ambiguity
+PASS unresolved year release rejects clearly
+PASS inactive candidates cannot auto-bind
+PASS draft candidates cannot auto-bind
+PASS explicit inactive release rejects
+PASS explicit unapproved release rejects
+PASS explicit unavailable release rejects
+PASS wrong-year explicit inspection cannot authorise a source
+PASS wrong-year candidates never satisfy detected year
+PASS two explicit releases for one year reject
+PASS cross-agency explicit release rejects even with access to both
+PASS other-agency release cannot auto-bind
+PASS source company remains subject to permitted configuration
+PASS ambiguous configured population is not guessed
+PASS duplicate identity rejected across different releases
+PASS batch-level cross-agency contexts rejected
+PASS changed same-release configuration still invalidates staged batch
+PASS mixed-release confirmation uses one transaction and own contexts
+PASS multiple companies ledgers streams and NULL versus 0L remain separate
+PASS mixed-year page upload preserves contexts when first file differs from primary
+PASS page release list resolves ambiguity through explicit selection
+PASS one automatically bound year can still use unchanged acceptance
+PASS changed additional selection invalidates confirmation
+PASS genuine Defence discovery preserves all native facts
+PASS genuine CSV discovery preserves counts balance and coverage
+PASS genuine Icon discovery preserves signs controls and partial coverage
+PASS non-current partial year remains ineligible after binding
+PASS legacy source-year discovery preserves inspection identity
+PASS Step 1 continues to reject multi-population files
+PASS nonzero discovered legacy source still disables acceptance
+Package 1C Step 1: 35 Passed / 0 Failed
+PASS Step2 controlled multi-company file partitions with independent contexts and counts
+PASS Step2 same GL across populations is permitted
+PASS Step2 company evidence can bind two uniquely configured streams without GL inference
+PASS Step2 duplicate account within population fails only affected account rows
+PASS Step2 opposite nonzero populations cannot cancel
+PASS Step2 balanced precision failure invalidates batch without hiding valid population
+PASS Step2 unauthorised company retained as invalid rows rather than filtered
+PASS Step2 ambiguous stream is invalid and never guessed
+PASS Step2 ambiguous release is rejected without newest choice
+PASS Step2 non-current partial member invalidates a batch
+PASS Step2 out-of-year source boundaries reject entire file
+PASS Step2 metadata year contradiction rejects entire file
+PASS Step2 blank records are counted separately and original row numbers retained
+PASS Step2 unrecognised financial detail is rejected not skipped
+PASS Step2 undocumented subtotal or control is not manufactured
+PASS Step2 financial detail before header cannot masquerade as metadata
+PASS Step2 pre-header amounts without company cannot silently become metadata
+PASS Step2 unsupported extra legacy detail columns reject
+PASS Step2 financial rows on an extra legacy worksheet cannot be skipped
+PASS Step2 native records outside recognised detail cannot pass row accounting
+PASS Step2 native financial detail before header cannot be counted as metadata
+PASS Step2 source row cannot belong to two populations
+PASS Step2 omitted population fails file reconciliation
+PASS Step2 population count cannot disagree with its own source rows
+PASS Step2 duplicate five-part identity across selected files rejects
+PASS Step2 NULL and 0L remain distinct with evidenced ledger in separate file
+PASS Step2 complete multi-population page confirmation enabled and subset service call rejected
+PASS Step2 original single-population acceptance stays on existing transaction
+PASS Step2 invalid member rejects same-release batch independently of feature safety guards
+PASS Step2 invalid coverage member blocks a same-release valid source before writes
+PASS Step2 mixed-release batch now accepts through Step3 transaction
+PASS Step2 genuine native profiles keep one population and reconcile documented records
+Package 1C Step 2: 32 Passed / 0 Failed; combined Step 1+2: 67
+PASS Step3 audit Legacy stale batch correlates populations without duplicate file events
+PASS Step3 audit multi-file later-member conflict shares one attempt with own contexts
+PASS Step3 audit Defence governed stale confirmation
+PASS Step3 audit ActewAGL CSV stale confirmation
+PASS Step3 audit Icon Water stale confirmation
+PASS Step3 audit late row failure rolls back sources then persists rejection
+PASS Step3 audit failure rolls back all independent rejection events
+PASS Step3 audit expiry during locked confirmation remains routine
+PASS Step3 audit true conflict remains recorded if expiry occurs during rollback
+PASS Step3 audit expired entry unchecked acknowledgement and cancellation remain quiet
+PASS Step3 audit long escaped filename preserves reason scope and hash within schema limit
+PASS Step3 audit independent commit failure retains no partial evidence or sources
+PASS Step3 audit successful acceptance calculation failure and replacement unchanged
+PASS Step3 1D issued two-population revocation writes one attributable independent rejection
+PASS Step3 1D revocation at locked transaction entry rolls back before independent audit
+PASS Step3 1D expired preview has no revoked-authority audit
+PASS Step3 1D consumed preview has no revoked-authority audit
+PASS Step3 1D unchecked replacement has no revoked-authority audit
+PASS Step3 1D old preview without issued evidence fails closed
+PASS Step3 1D copied issuance object cannot authenticate another preview
+PASS Step3 1D caller fabricated issuance object is rejected
+PASS Step3 1D foreign-session preview cannot generate audit
+PASS Step3 1D foreign actor cannot generate audit
+PASS Step3 1D unauthenticated context cannot generate audit
+PASS Step3 1D inactive application user cannot generate audit
+PASS Step3 1D administrator or changed role is not a revoked preparer grant
+PASS Step3 1D inactive entity is not classified as assignment revocation
+PASS Step3 1D arbitrary permission exception is not audit eligible
+PASS Step3 1D unrelated typed entity denial cannot generate audit
+PASS Step3 1D mutated source bytes cannot generate privileged audit
+PASS Step3 1D missing batch member cannot generate privileged audit
+PASS Step3 1D modified release cannot generate privileged audit
+PASS Step3 1D modified owner cannot generate privileged audit
+PASS Step3 1D revoked audit insert failure rolls back audit and preserves all sources
+PASS Step3 1D revoked audit commit failure rolls back audit and preserves all sources
+PASS Step3 1D safe reviewed business message remains actionable
+PASS Step3 1D technical exception families and wrapped parser failures are non-disclosing
+PASS Step3 1D private diagnostic correlates actual actor without exception payload and deduplicates
+PASS Step3 1D diagnostic persistence failure stays generic failed and is not retried
+PASS Step3 1D unregistered or unauthenticated user has no diagnostic writing capability
+PASS Step3 1D stored calculation diagnostics stay private while business guidance survives
+PASS Step3 1D injected HTML cannot become reviewed business text
+PASS Step3 1D reviewed mapping aggregate keeps actionable guidance without suffix disclosure
+PASS Step3 1D fixed PDF extraction guidance survives a private inner failure
+PASS Step3 1D technical diagnostic event remains outside normal audit widgets
+PASS Step3 mixed file/year/release/new/replacement populations commit once with own context
+PASS Step3 shared original is retained unchanged for every population and downloadable
+PASS Step3 upload size counts shared file once while existing-compatible storage retains both originals
+PASS Step3 Departmental Administered NULL 0L and additional ledger retain separate scopes
+PASS Step3 new approved release replaces same source identity across releases
+PASS Step3 current-year partial replacement supersedes coverage without period append
+PASS Step3 missing required population and unmapped accounts do not block valid acceptance
+PASS Step3 missing replacement acknowledgement consumes no members and permits explicit retry
+PASS Step3 successful confirmation cannot be replayed
+PASS Step3 changed original bytes reject entire batch
+PASS Step3 changed population amounts cannot hide behind unchanged RowHash
+PASS Step3 changed five-part identity rejects
+PASS Step3 changed member year or release rejects rather than inheriting first context
+PASS Step3 changed record exclusions cannot forge complete row reconciliation
+PASS Step3 source bytes changed after reinspection are rechecked inside transaction
+PASS Step3 retained rows changed after reinspection are rejected inside transaction
+PASS Step3 subset confirmation reparses whole original and rejects omitted sibling
+PASS Step3 valid member cannot bypass invalid sibling by submitting extracted subset
+PASS Step3 forged file population count cannot authorise extracted subset
+PASS Step3 substituted population from another inspection does not complete an original file
+PASS Step3 omitting an entire staged file rejects the altered batch membership
+PASS Step3 same identity in different releases remains a duplicate batch
+PASS Step3 expired non-first preview rejects without writes
+PASS Step3 withdrawn non-first release rejects during reinspection
+PASS Step3 changed non-first release population configuration rolls back locked transaction
+PASS Step3 changed Year Setup before confirmation invalidates even full-year source
+PASS Step3 changed Year Setup inside transaction rejects and rolls back
+PASS Step3 missing designated year inside transaction cannot fall back to release
+PASS Step3 changed non-first predecessor rejects all locked sources
+PASS Step3 real stale sequence preserves sources accepted by another preview
+PASS Step3 second original-file persistence failure rolls back previous population
+PASS Step3 later source-row failure rolls back complete batch
+PASS Step3 later replacement audit failure rolls back new and replacement sources
+PASS Step3 later validation audit failure rolls back originals rows and acceptance audits
+PASS Step3 transaction commit failure preserves all accepted data
+PASS Step3 revoked entity authority before confirmation rejects
+PASS Step3 revoked entity authority inside transaction rejects
+PASS Step3 batch ownership and actual authenticated actor must both match
+PASS Step3 multipart page confirms whole mixed batch only after separate replacement acknowledgement
+PASS Step3 calculation failure after commit retains all accepted and downloadable originals
+PASS Step3 release and scope locking order is stable under reversed preview order
+PASS Step3 source acceptance audits identify shared original reference and partition counts
+Package 1C Step 3: 87 Passed / 0 Failed; combined Step 1+2+3: 154
+PASS Step4 A B C history uses B as C predecessor across releases and unrelated imports
+PASS Step4 history of an older selected version compares B with A rather than current C
+PASS Step4 calculation status and missing run do not determine history
+PASS Step4 retired configuration release remains part of accepted history
+PASS Step4 retired release source remains viewable without silently choosing another completeness release
+PASS Step4 different company year ledger stream or agency cannot enter source chain
+PASS Step4 NULL and actual 0L have independent current populations and histories
+PASS Step4 derived test inactive and unaccepted imports are excluded
+PASS Step4 added and removed zero accounts remain visible structurally
+PASS Step4 description-only changes are separate from financial movement
+PASS Step4 signed financial movements and totals use source signs without classifications
+PASS Step4 profile release coverage and period evidence changes are reproducible
+PASS Step4 first accepted original has no manufactured zero predecessor
+PASS Step4 historical duplicate accounts fail clearly rather than GL aggregation or last row wins
+PASS Step4 account rows in an older multi-population import are filtered to exact scope
+PASS Step4 forged source version from a different population cannot be compared
+PASS Step4 unknown historical identity is not assigned a guessed stream or ledger
+PASS Step4 authorisation blocks history comparison and source selectors
+PASS Step4 missing preparer access denies source history before storage
+PASS Step4 current and superseded originals are retrievable with no run records
+PASS Step4 genuine CSV remains exactly retrievable when calculation fails before any run exists
+PASS Step4 mixed accepted batch keeps each population's own history and original
+PASS Step4 page renders selected history structure finance metadata and no-run download links
+PASS Step4 agency year stream and completeness release survive historical navigation and return
+PASS Step4 wrong company ledger or stream in history URL is rejected
+PASS Step4 contradictory NULL and real ledger selectors are rejected
+PASS Step4 different agency or year completeness context cannot silently replace source context
+PASS Step4 missing populations are displayed separately without changing accepted status
+PASS Step4 no source or context selection never defaults to latest approved release
+PASS Step4 old retained unknown coverage and profile stay unknown
+PASS Step4 workspace uses source-history navigation instead of release GL mapped comparison
+PASS Step4 unauthorised page renders no source history or original metadata
+Package 1C Step 4: 32 Passed / 0 Failed; combined Step 1-4: 186
+PASS Correction actual FY2025 file02 automatically binds release7 with complete retained facts
+PASS Correction actual negative mixed-year batch has only expected two invalid rows and six withheld
+PASS Correction actual four-file five-population batch inspects and commits atomically preserving originals
+PASS Correction non-current FY2025 partial source remains rejected
+PASS Correction ROMAN and historical period-pair are not introduced into governed acceptance
+PASS Correction standalone FY2025 eligibility has no test-agency exception
+PASS Correction ambiguous and missing historical approval still fail closed
+PASS Correction history context remains server-authorised without newest fallback
+UAT correction: 8 Passed / 0 Failed; combined Step1-4 and correction: 194
+Isolated artifacts: C:\Users\Steve\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{68c15bc3-4b88-49c6-a540-e092e78ede64}\Temp\norm-package1c-uat-correction-d823d248ec96417c97781d060bec5c6d
