@@ -399,6 +399,16 @@ public static partial class Tests
         Assert(rejected && Rejections().Count==count && ImportCalls().Count==0 && NORMHelper.Runs==0,"Replay minted another audit or source");
     }    static void RunSafeErrors()
     {
+        T("1D stale-source conflict stays actionable without unexpected diagnostics",delegate {
+            const string message="The accepted source changed after inspection. Inspect the batch again.";
+            int writes=0;
+            NORMHelper.ScalarCallResponse=delegate(NORMHelper.Call call){return call.Sql.Contains("tblNORM_AdminUser") ? (object)1 : null;};
+            NORMHelper.NonTransactionalExec=delegate(NORMHelper.Call call){writes++;};
+            string result=NORMErrorHandling.UserMessage(new InvalidOperationException(message),System.Web.HttpContext.Current,"ImportConfirmation");
+            Assert(result==message && System.Web.HttpContext.Current.Response.StatusCode==400 && writes==0,"Stale business conflict became generic or generated a technical diagnostic");
+            result=NORMErrorHandling.UserMessage(new InvalidOperationException(message+" SQL Password=secret"),System.Web.HttpContext.Current,"ImportConfirmation");
+            Assert(result.StartsWith(NORMErrorHandling.GenericMessage,StringComparison.Ordinal) && !result.Contains("secret") && System.Web.HttpContext.Current.Response.StatusCode==500 && writes==1,"Catalogue match broadened to a technical suffix");
+        });
         T("1D safe reviewed business message remains actionable",delegate {
             string message="Choose non-empty trial balance files.";
             Assert(NORMErrorHandling.UserMessage(new System.IO.InvalidDataException(message),System.Web.HttpContext.Current,"ImportInspection")==message && System.Web.HttpContext.Current.Response.StatusCode==400,"Reviewed validation changed");
