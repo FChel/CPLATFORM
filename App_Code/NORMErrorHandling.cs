@@ -15,6 +15,7 @@ public static class NORMErrorHandling
     private static readonly HashSet<string> BusinessMessages = new HashSet<string>(StringComparer.Ordinal)
     {
         "The selected configuration release contains no account mappings.",
+        "The accepted source changed after inspection. Inspect the batch again.",
         "The staged batch population set changed. Inspect the complete batch again.",
         "Choose a supported stream filter.",
         "Select the complete company, optional ledger and stream identity.",
