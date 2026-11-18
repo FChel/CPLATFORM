@@ -23,9 +23,10 @@ namespace CPlatform.NORM
         {
             if (!IsPostBack)
             {
-                ClearPreview(); BindReleases();
-                ListItem context = ReleaseList.Items.FindByValue(Request.QueryString["release"] ?? "");
-                if (context != null) { ReleaseList.SelectedValue = context.Value; }
+                ClearPreview(); BindAgencies();
+                ListItem context = AgencyList.Items.FindByValue(Request.QueryString["agency"] ?? "");
+                if (context != null) { AgencyList.SelectedValue = context.Value; }
+                ShowAgencyContext();
             }
             else
             {
@@ -43,16 +44,14 @@ namespace CPlatform.NORM
             try
             {
                 if (!NORMHelper.HasPrepareAccess()) { throw new UnauthorizedAccessException("Preparer access is required."); }
-                int releaseId;
-                if (!Int32.TryParse(ReleaseList.SelectedValue, out releaseId))
-                { throw new InvalidOperationException("Select an approved configuration release."); }
+                string agency = AgencyList.SelectedValue;
+                NORMHelper.RequireEntityAccess(agency);
                 long bytes = 0;
                 foreach (HttpPostedFile file in TrialBalanceFile.PostedFiles) { bytes += file.ContentLength; }
                 if (bytes == 0) { throw new InvalidDataException("Choose non-empty trial balance files."); }
                 if (bytes > NORMHelper.SettingInt("NORM.MaxUploadBytes", 104857600))
                 { throw new InvalidDataException("The combined files exceed the configured upload limit."); }
                 List<NORMImportPreview> previews = new List<NORMImportPreview>();
-                List<int> selectedReleases = SelectedAdditionalReleases();
                 foreach (HttpPostedFile file in TrialBalanceFile.PostedFiles)
                 {
                     byte[] content;
@@ -61,12 +60,12 @@ namespace CPlatform.NORM
                         file.InputStream.CopyTo(buffer);
                         content = buffer.ToArray();
                     }
-                    previews.AddRange(NORMImportService.InspectFileForAgency(content, file.FileName, releaseId, selectedReleases, NORMHelper.CurrentUserId()));
+                    previews.AddRange(NORMImportService.InspectFileForAnnualContext(content, file.FileName, agency, NORMHelper.CurrentUserId()));
                 }
                 NORMImportService.ValidateBatch(previews);
                 Session[PendingKey] = previews;
                 ViewState["PreviewToken"] = previews[0].Token;
-                ViewState["PreviewReleaseSelection"] = ReleaseSelectionKey();
+                ViewState["PreviewAgency"] = agency;
                 ShowPreview(previews);
             }
             catch (Exception error) { ShowError(NORMErrorHandling.UserMessage(error, HttpContext.Current, "ImportInspection")); }
@@ -82,8 +81,8 @@ namespace CPlatform.NORM
                 if (!NORMHelper.HasPrepareAccess()) { throw new UnauthorizedAccessException("Preparer access is required."); }
                 if (previews == null || !String.Equals(previews[0].Token, ViewState["PreviewToken"] as string, StringComparison.Ordinal))
                 { throw new InvalidOperationException("This preview expired, was cancelled or has already been used. Check existing imports before inspecting again."); }
-                if (TrialBalanceFile.HasFiles || ReleaseSelectionKey() != ViewState["PreviewReleaseSelection"] as string)
-                { throw new InvalidOperationException("The selected files or configuration changed. Inspect the batch again."); }
+                if (TrialBalanceFile.HasFiles || AgencyList.SelectedValue != ViewState["PreviewAgency"] as string)
+                { throw new InvalidOperationException("The selected files or agency changed. Inspect the batch again."); }
                 string blocked = NORMImportService.BatchConfirmationBlockReason(previews);
                 if (blocked != null) { throw new InvalidOperationException(blocked); }
                 string user = NORMHelper.CurrentUserId();
@@ -104,7 +103,7 @@ namespace CPlatform.NORM
                 // ASP.NET's exclusive session lock serialises requests for this session.
                 // Consume before acceptance: replay, refresh and double clicks cannot reuse it.
                 ClearPreview();
-                List<NORMImportOutcome> outcomes = NORMImportService.ConfirmBatch(previews, user, replace);
+                List<NORMImportOutcome> outcomes = NORMImportService.ConfirmBatch(previews, user, replace, true);
                 ResultPanel.Visible = true;
                 StringBuilder result = new StringBuilder();
                 for (int i = 0; i < outcomes.Count; i++)
@@ -113,7 +112,7 @@ namespace CPlatform.NORM
                     NORMImportPreview accepted = previews[i];
                     result.Append("<p>Source accepted. Import reference: ").Append(outcome.ImportId.ToString(CultureInfo.InvariantCulture)).Append(".</p>");
                     result.Append("<p>").Append(HttpUtility.HtmlEncode("FY" + accepted.FinancialYear + ", company " + accepted.Companies +
-                        ", ledger " + accepted.Ledgers + ", " + accepted.ReportingStreams + ", release " + accepted.ReleaseId +
+                        ", ledger " + accepted.Ledgers + ", " + accepted.ReportingStreams + ", " + accepted.ConfigurationVersion +
                         "; " + accepted.FileName)).Append("</p>");
                     result.Append("<p><a href=\"NORM_SourceHistory.aspx?import=").Append(outcome.ImportId).Append("&amp;release=").Append(accepted.ReleaseId)
                         .Append("&amp;viewStream=").Append(HttpUtility.UrlEncode(accepted.Population.ReportingStream)).Append("\">Source history and original files</a></p>");
@@ -123,9 +122,11 @@ namespace CPlatform.NORM
                             .Append(outcome.CalculationRunId.ToString(CultureInfo.InvariantCulture))
                             .Append("\">Review statements, validation results and unmapped accounts</a>.</p>");
                     }
-                    else { result.Append("<p>").Append(HttpUtility.HtmlEncode(outcome.CalculationError)).Append("</p>"); }
+                    else if (!String.IsNullOrEmpty(outcome.CalculationError))
+                    { result.Append("<p>").Append(HttpUtility.HtmlEncode(outcome.CalculationError)).Append("</p>"); }
                 }
                 ResultMessage.Text = result.ToString();
+                if (previews[0].UsesAnnualSourceApproval) { ShowAgencyContext(); }
             }
             catch (Exception error) { ClearPreview(); ShowError(NORMErrorHandling.UserMessage(error, HttpContext.Current, "ImportConfirmation")); }
         }
@@ -139,7 +140,7 @@ namespace CPlatform.NORM
         {
             Session.Remove(PendingKey);
             ViewState.Remove("PreviewToken");
-            ViewState.Remove("PreviewReleaseSelection");
+            ViewState.Remove("PreviewAgency");
             PreviewPanel.Visible = false;
             ReplaceExisting.Checked = false;
         }
@@ -154,7 +155,7 @@ namespace CPlatform.NORM
         {
             PreviewPanel.Visible = true;
             bool canAccept = true;
-            int replacementFiles = 0;
+            HashSet<string> replacementFiles = new HashSet<string>(StringComparer.Ordinal);
             int replacementScopes = 0;
             StringBuilder html = new StringBuilder();
             HashSet<string> files = new HashSet<string>(StringComparer.Ordinal);
@@ -174,7 +175,7 @@ namespace CPlatform.NORM
                         .Append(". Reconciliation: ").Append(file.RowsReconciled ? "Pass" : "Fail").Append(".</p>");
                 }
                 canAccept &= preview.CanAccept;
-                if (preview.HasReplacement) { replacementFiles++; }
+                if (preview.HasReplacement) { replacementFiles.Add(file == null ? preview.Token : file.Token); }
                 replacementScopes += AppendSourcePreview(html, preview);
                 html.Append("<p>Accepted rows: 0 (inspection only). Invalid rows: ").Append(preview.InvalidRowCount)
                     .Append(batchInvalid || blocked != null ? "; valid rows withheld: " : "; valid rows awaiting confirmation: ")
@@ -186,8 +187,8 @@ namespace CPlatform.NORM
                 html.Append("<p role=\"alert\">").Append(HttpUtility.HtmlEncode(blocked)).Append("</p>");
             }
             ConfirmButton.Enabled = canAccept;
-            bool replacement = replacementFiles > 0;
-            bool multipleFiles = replacementFiles > 1;
+            bool replacement = replacementFiles.Count > 0;
+            bool multipleFiles = replacementFiles.Count > 1;
             ReplaceExisting.Visible = replacement && canAccept;
             ConfirmButton.Text = replacement ? "Confirm replacement" : "Confirm batch acceptance";
             if (replacement)
@@ -211,8 +212,10 @@ namespace CPlatform.NORM
                 { "Source file", preview.FileName }, { "Layout", preview.Layout },
                 { "Original SHA-256", preview.FileHash },
                 { "Source profile", preview.ProfileVersion },
-                { "Currency / units", "AUD dollars (multiplier 1); ending balances debit-positive / credit-negative" },
-                { "Configuration", preview.ConfigurationVersion + " (release " + preview.ReleaseId.ToString() + ")" },
+                { "Currency / units", preview.ProfileVersion == NihracsTrialBalanceImporter.Profile
+                    ? "AUD dollars (multiplier 1), positive source debit and credit sides"
+                    : "AUD dollars (multiplier 1); ending balances debit-positive / credit-negative" },
+                { "Configuration", preview.ConfigurationVersion + (preview.ReleaseId > 0 ? " (release " + preview.ReleaseId + ")" : "") },
                 { "Agency", preview.Entity }, { "Financial year", preview.FinancialYear.ToString() },
                 { "Company", preview.Companies }, { "Ledger", preview.Ledgers }, { "Reporting stream", preview.ReportingStreams },
                 { "Source status", preview.Population.ReportingStream == null ? "Unresolved" : preview.HasReplacement ? "Replacement of accepted population" : "New source population" },
@@ -253,57 +256,50 @@ namespace CPlatform.NORM
             }
             return replacements;
         }
-        private List<int> SelectedAdditionalReleases()
+        protected void AgencyList_Changed(object sender, EventArgs e)
         {
-            List<int> ids = new List<int>();
-            foreach (ListItem item in AdditionalReleaseList.Items)
-            {
-                if (!item.Selected) { continue; }
-                int id;
-                if (!Int32.TryParse(item.Value, out id))
-                { throw new InvalidOperationException("Select an available approved configuration release."); }
-                ids.Add(id);
-            }
-            return ids;
+            ClearPreview();
+            ShowAgencyContext();
         }
 
-        private string ReleaseSelectionKey()
+        private void BindAgencies()
         {
-            List<int> ids = SelectedAdditionalReleases();
-            ids.Sort();
-            StringBuilder key = new StringBuilder(ReleaseList.SelectedValue);
-            foreach (int id in ids) { key.Append('|').Append(id.ToString(CultureInfo.InvariantCulture)); }
-            return key.ToString();
+            IList<string> agencies = NORMImportService.ImportAgencies();
+            AgencyList.Items.Clear();
+            AgencySelector.Visible = agencies.Count > 1;
+            if (agencies.Count > 1) { AgencyList.Items.Add(new ListItem("Select an agency", "")); }
+            foreach (string agency in agencies) { AgencyList.Items.Add(new ListItem(agency, agency)); }
+            ImportButton.Enabled = agencies.Count > 0;
         }
 
-        private void BindReleases()
+        private void ShowAgencyContext()
         {
-            DataTable releases = NORMHelper.Query(
-                "SELECT ConfigurationReleaseId,FinancialYear,EntityCode,CAST(FinancialYear AS VARCHAR(4)) + ' ' + EntityCode + ' ' + VersionCode + ' - ' + ReleaseLabel AS DisplayLabel " +
-                "FROM dbo.tblNORM_ConfigurationRelease WHERE StatusCode = 'Approved' AND IsDeactivated = 0 " +
-                "ORDER BY FinancialYear DESC,EntityCode,VersionCode DESC");
-            ReleaseList.Items.Clear();
-            AdditionalReleaseList.Items.Clear();
-            for (int i = 0; i < releases.Rows.Count; i++)
+            AgencyContext.Text = "";
+            if (String.IsNullOrEmpty(AgencyList.SelectedValue)) { return; }
+            try
             {
-                DataRow row = releases.Rows[i];
-                if (!NORMHelper.CanPrepareEntity(NORMHelper.Str(row, "EntityCode"))) { continue; }
-                ListItem item = new ListItem(NORMHelper.Str(row, "DisplayLabel"),
-                    NORMHelper.Int(row, "ConfigurationReleaseId").ToString());
-                item.Attributes["data-financial-year"] = NORMHelper.Int(row, "FinancialYear").ToString();
-                ReleaseList.Items.Add(item);
-                AdditionalReleaseList.Items.Add(new ListItem(item.Text, item.Value));
+                string agency = AgencyList.SelectedValue;
+                int year = NORMImportService.ConfiguredCurrentYear(agency).Value;
+                string name = Convert.ToString(NORMHelper.Scalar(
+                    "SELECT EntityName FROM dbo.tblNORM_ReportingEntity WHERE EntityCode=@entity AND FinancialYear=@fy AND IsDeactivated=0",
+                    NORMHelper.P("@entity", agency), NORMHelper.P("@fy", year)));
+                StringBuilder context = new StringBuilder("<p>").Append(HttpUtility.HtmlEncode(String.IsNullOrEmpty(name) ? agency : name))
+                    .Append(" · Reporting FY").Append(year).Append("</p>");
+                IList<NORMSourceScope> missing = NORMImportService.MissingAnnualRequiredPopulations(agency);
+                if (missing.Count > 0)
+                {
+                    context.Append("<p>Missing required sources</p><ul>");
+                    foreach (NORMSourceScope scope in missing)
+                    {
+                        context.Append("<li>FY").Append(scope.FinancialYear).Append(" / ")
+                            .Append(HttpUtility.HtmlEncode(scope.Company + " / " + (scope.Ledger ?? "No ledger") + " / " + scope.ReportingStream))
+                            .Append("</li>");
+                    }
+                    context.Append("</ul>");
+                }
+                AgencyContext.Text = context.ToString();
             }
-            if (ReleaseList.Items.Count == 0)
-            {
-                ReleaseList.Items.Add(new ListItem("No approved configuration release is installed", ""));
-                ImportButton.Enabled = false;
-            }
-            else
-            {
-                ReleaseList.Items.Insert(0, new ListItem("Select an agency and approved configuration", ""));
-            }
+            catch (Exception error) { ShowError(NORMErrorHandling.UserMessage(error, HttpContext.Current, "ImportInspection")); }
         }
-
     }
 }

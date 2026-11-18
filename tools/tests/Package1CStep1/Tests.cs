@@ -31,6 +31,18 @@ public static partial class Tests
     static DataTable Query(NORMHelper.Call call)
     {
         string sql = call.Sql;
+        if (sql.Contains("FROM dbo.tblNORM_ReportingEntity"))
+        {
+            if (sql.Contains("DISTINCT EntityCode"))
+            {
+                DataTable entities = Table("EntityCode");
+                HashSet<string> seen = new HashSet<string>();
+                foreach (Release release in releases)
+                { if (seen.Add(release.Entity)) { entities.Rows.Add(release.Entity); } }
+                return entities;
+            }
+            return Table("EntityCode,EntityName,FinancialYear,PriorYearsRequired,SourceApprovalSnapshot,SourceApprovalHash");
+        }
         if (sql.Contains("FROM dbo.tblNORM_ConfigurationRelease"))
         {
             Assert(sql.Contains("StatusCode = 'Approved'") || sql.Contains("StatusCode='Approved'"), "Release approval filter lost");
@@ -142,7 +154,7 @@ public static partial class Tests
                 Assert(NORMHelper.Committed.FindAll(delegate(NORMHelper.Call c) { return c.Sql.Contains("INSERT dbo.tblNORM_TrialBalanceRow"); }).Count == 409, "Single-year persistence changed");
             });
             Test("primary release requires explicit choice rather than newest default", delegate {
-                Assert(new NORM_Import().DefaultReleaseSelectionForTest() == "", "Primary release silently defaulted");
+                Assert(new NORM_Import().DefaultReleaseSelectionForTest() == "CONTROLLED", "Single authorised agency did not default");
             });
             Test("two genuine years bind independently in one controlled agency", delegate {
                 NORMImportPreview a = Inspect(aag2019), b = Inspect(aag2020);
@@ -242,15 +254,15 @@ public static partial class Tests
                 page.InspectUploadsForTest(1, new int[0], new[] { aag2019, aag2020 }, new[] { "genuine2019.csv", "genuine2020.csv" });
                 Assert(page.ErrorForTest == "" && page.PendingForTest, "Real page inspection failed: " + page.ErrorForTest);
                 Context(page.PreviewsForTest[0], 2019, 2, "150", null, "Departmental"); Context(page.PreviewsForTest[1], 2020, 1, "150", null, "Departmental");
-                Assert(page.PreviewForTest.Contains("controlled-v2 (release 2)") && page.PreviewForTest.Contains("controlled-v1 (release 1)") && page.PreviewForTest.Contains("2018-07-01 to 2019-06-30") && page.PreviewForTest.Contains("2019-07-01 to 2020-06-30"), "Preview inherited first context");
+                Assert(page.PreviewForTest.Contains("controlled-v2") && page.PreviewForTest.Contains("controlled-v1") && page.PreviewForTest.Contains("2018-07-01 to 2019-06-30") && page.PreviewForTest.Contains("2019-07-01 to 2020-06-30"), "Preview inherited first context");
                 Assert(page.ConfirmationEnabledForTest, "Validated mixed confirmation disabled");
                 page.ClearUploadedFilesForTest(); page.ConfirmForTest();
                 Assert(page.ErrorForTest == "" && page.ResultForTest.Contains("Source accepted") && NORMHelper.Commits == 1, "Mixed page confirmation failed: " + page.ErrorForTest);
             });
-            Test("page release list resolves ambiguity through explicit selection", delegate {
+            Test("ordinary import rejects ambiguous legacy releases", delegate {
                 Add(9, 2019, "150", null, "Departmental"); NORM_Import page = new NORM_Import();
                 page.InspectUploadsForTest(1, new[] { 2 }, new[] { aag2019, aag2020 }, new[] { "2019.csv", "2020.csv" });
-                Assert(page.ErrorForTest == "" && page.PreviewsForTest[0].ReleaseId == 2 && page.ConfirmationEnabledForTest, "Explicit page selection failed: " + page.ErrorForTest);
+                Assert(page.ErrorForTest.Contains("More than one approved") && !page.PendingForTest, "Ambiguous release did not fail closed: " + page.ErrorForTest);
             });
             Test("one automatically bound year can still use unchanged acceptance", delegate {
                 NORM_Import page = new NORM_Import(); page.InspectUploadsForTest(1, new int[0], new[] { aag2019 }, new[] { "genuine2019.csv" });
@@ -263,7 +275,7 @@ public static partial class Tests
             Test("changed additional selection invalidates confirmation", delegate {
                 NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(aag2020), true);
                 page.ChangeAdditionalForTest(2); page.ConfirmForTest();
-                Assert(page.ErrorForTest.Contains("configuration changed") && NORMHelper.Opens == 0, "Changed selection accepted");
+                Assert(page.ErrorForTest.Contains("agency changed") && NORMHelper.Opens == 0, "Changed selection accepted");
             });
             Test("genuine Defence discovery preserves all native facts", delegate {
                 Add(5, 2026, "1000", "0L", "Departmental"); NORMHelper.CurrentYear = 2026;
@@ -310,6 +322,9 @@ public static partial class Tests
 #endif
 #if STEP4
             RunStep4(fixtures);
+#if NIHRACS
+            if (args.Length > 1) { RunNihracs(args[1]); }
+#endif
 #endif
 #if CORRECTION
             RunUatCorrection();

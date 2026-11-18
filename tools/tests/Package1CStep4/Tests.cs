@@ -127,7 +127,7 @@ public static partial class Tests
         HTest("agency year stream and completeness release survive historical navigation and return",delegate {
             Chain(); NORM_SourceHistoryPage page=new NORM_SourceHistoryPage(); page.RenderForTest("import=20&release=4&viewStream=Departmental&company=1000&ledgerNull=1&stream=Departmental");
             Assert(page.ErrorForTest=="" && page.HistoryForTest.Contains("release=4&amp;viewStream=Departmental") && page.HistoryForTest.Contains("ledgerNull=1") && page.ReturnForTest=="NORM_Import.aspx?release=4&viewStream=Departmental" && page.ContextForTest.Contains("CONTROLLED / FY2020 / Departmental"),"Preparation context lost");
-            Assert(new NORM_Import().PrepareContextForTest("release=4&viewStream=Departmental")=="4","Return did not restore approved release selection");
+            Assert(new NORM_Import().PrepareContextForTest("release=4&viewStream=Departmental")=="CONTROLLED","Legacy release parameter affected single-agency context");
         });
         HTest("wrong company ledger or stream in history URL is rejected",delegate {
             Chain(); foreach(string selector in new[] { "company=2000&ledgerNull=1&stream=Departmental","company=1000&ledger=0L&stream=Departmental","company=1000&ledgerNull=1&stream=Administered" }) {

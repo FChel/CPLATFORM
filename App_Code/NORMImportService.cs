@@ -20,6 +20,32 @@ public static class NORMImportService
     public static List<NORMImportPreview> InspectFileForAgency(byte[] content, string fileName, int agencyReleaseId,
         IList<int> selectedReleaseIds, string user)
     {
+        ValidateContent(content, "trial balance");
+        if (String.Equals(NORMHelper.Str(LoadApprovedRelease(agencyReleaseId), "EntityCode"),
+            NihracsTrialBalanceImporter.Agency, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                List<NORMParsedImport> annual = NihracsTrialBalanceImporter.TryParse(content);
+                if (annual == null) { throw new InvalidDataException("Unsupported NIHRACS trial balance layout."); }
+                string entity;
+                Dictionary<int, int> selections = AgencySelections(agencyReleaseId, selectedReleaseIds, out entity);
+                foreach (NORMParsedImport population in annual)
+                { selections[population.FinancialYear] = BindRelease(entity, population.FinancialYear, selections); }
+                List<NORMImportPreview> inspected = InspectNihracs(content, fileName, user, annual, selections, true);
+                foreach (NORMImportPreview preview in inspected)
+                {
+                    if (!preview.CanAccept)
+                    { RecordInspectionRejection(content, fileName, preview.ReleaseId, user, String.Join(" ", preview.Errors.ToArray()), preview); }
+                }
+                return inspected;
+            }
+            catch (InvalidDataException error)
+            {
+                RecordInspectionRejection(content, fileName, agencyReleaseId, user, error.Message);
+                throw;
+            }
+        }
         int releaseId = ResolveAgencyRelease(content, fileName, agencyReleaseId, selectedReleaseIds, user);
         NORMParsedImport parsed;
         List<NORMImportPreview> previews;
@@ -38,12 +64,84 @@ public static class NORMImportService
         return previews;
     }
 
+    public static IList<string> ImportAgencies()
+    {
+        List<string> agencies = new List<string>();
+        DataTable entities = NORMHelper.Query("SELECT DISTINCT EntityCode FROM dbo.tblNORM_ReportingEntity WHERE IsDeactivated=0 ORDER BY EntityCode");
+        foreach (DataRow entity in entities.Rows)
+        {
+            string code = NORMHelper.Str(entity, "EntityCode");
+            if (NORMHelper.CanPrepareEntity(code)) { agencies.Add(code); }
+        }
+        return agencies;
+    }
+
+    public static List<NORMImportPreview> InspectFileForAnnualContext(byte[] content, string fileName, string entity, string user)
+    {
+        ValidateContent(content, "trial balance");
+        int year = ConfiguredCurrentYear(entity).Value;
+        NORMAnnualSourceConfiguration annual = NORMAnnualSourceConfiguration.Load(entity, year);
+        if (annual == null)
+        {
+            if (String.Equals(entity, NihracsTrialBalanceImporter.Agency, StringComparison.OrdinalIgnoreCase))
+            { throw new InvalidOperationException("NIHRACS requires approved annual source configuration."); }
+            int release = BindRelease(entity, year, new Dictionary<int, int>());
+            return InspectFileForAgency(content, fileName, release, null, user);
+        }
+        try
+        {
+            List<NORMImportPreview> previews = InspectAnnualFile(content, fileName, user, annual, true);
+            foreach (NORMImportPreview preview in previews)
+            {
+                if (!preview.CanAccept)
+                { RecordInspectionRejection(content, fileName, 0, user, String.Join(" ", preview.Errors.ToArray()), preview); }
+            }
+            return previews;
+        }
+        catch (InvalidDataException error)
+        {
+            RecordInspectionRejection(content, fileName, 0, user, error.Message, null, entity);
+            throw;
+        }
+    }
+
+    private static List<NORMImportPreview> InspectAnnualFile(byte[] content, string fileName, string user,
+        NORMAnnualSourceConfiguration annual, bool loadCurrentSources)
+    {
+        if (String.Equals(NORMHelper.Str(annual.Entity, "EntityCode"), NihracsTrialBalanceImporter.Agency, StringComparison.OrdinalIgnoreCase))
+        {
+            return InspectNihracs(content, fileName, user, NihracsTrialBalanceImporter.TryParse(content),
+                null, loadCurrentSources, annual);
+        }
+        NORMParsedImport ignored;
+        return InspectPopulations(content, fileName, 0, user, loadCurrentSources, true, out ignored, annual);
+    }
+
     private static int ResolveAgencyRelease(byte[] content, string fileName, int agencyReleaseId,
         IList<int> selectedReleaseIds, string user)
     {
         ValidateContent(content, "trial balance");
+        string entity;
+        Dictionary<int, int> selections = AgencySelections(agencyReleaseId, selectedReleaseIds, out entity);
+        bool workbook = content.Length >= 4 && content[0] == 0x50 && content[1] == 0x4b && content[2] == 3 && content[3] == 4;
+        NORMParsedImport discovered;
+        try
+        {
+            discovered = workbook ? ErpTrialBalanceImporter.DiscoverForInspection(content) :
+                NORMTextTrialBalanceImporter.DiscoverForInspection(content);
+        }
+        catch (InvalidDataException error)
+        {
+            if (!workbook) { RecordInspectionRejection(content, fileName, agencyReleaseId, user, error.Message); }
+            throw;
+        }
+        return BindRelease(entity, discovered.FinancialYear, selections);
+    }
+
+    private static Dictionary<int, int> AgencySelections(int agencyReleaseId, IList<int> selectedReleaseIds, out string entity)
+    {
         DataRow anchor = LoadApprovedRelease(agencyReleaseId);
-        string entity = NORMHelper.Str(anchor, "EntityCode");
+        entity = NORMHelper.Str(anchor, "EntityCode");
         Dictionary<int, int> selections = new Dictionary<int, int>();
         selections.Add(NORMHelper.Int(anchor, "FinancialYear"), agencyReleaseId);
         if (selectedReleaseIds != null)
@@ -62,36 +160,29 @@ public static class NORMImportService
             }
         }
 
-        bool workbook = content.Length >= 4 && content[0] == 0x50 && content[1] == 0x4b && content[2] == 3 && content[3] == 4;
-        NORMParsedImport discovered;
-        try
-        {
-            discovered = workbook ? ErpTrialBalanceImporter.DiscoverForInspection(content) :
-                NORMTextTrialBalanceImporter.DiscoverForInspection(content);
-        }
-        catch (InvalidDataException error)
-        {
-            if (!workbook) { RecordInspectionRejection(content, fileName, agencyReleaseId, user, error.Message); }
-            throw;
-        }
+        return selections;
+    }
+
+    private static int BindRelease(string entity, int year, IDictionary<int, int> selections)
+    {
         int releaseId;
-        if (!selections.TryGetValue(discovered.FinancialYear, out releaseId))
+        if (!selections.TryGetValue(year, out releaseId))
         {
             DataTable candidates = NORMHelper.Query(
                 "SELECT ConfigurationReleaseId,FinancialYear,EntityCode,VersionCode FROM dbo.tblNORM_ConfigurationRelease " +
                 "WHERE EntityCode=@entity AND FinancialYear=@fy AND StatusCode='Approved' AND IsDeactivated=0 ORDER BY ConfigurationReleaseId",
-                NORMHelper.P("@entity", entity), NORMHelper.P("@fy", discovered.FinancialYear));
+                NORMHelper.P("@entity", entity), NORMHelper.P("@fy", year));
             if (candidates.Rows.Count == 0)
-            { throw new InvalidDataException("No active approved configuration release is available for " + entity + " FY" + discovered.FinancialYear + "."); }
+            { throw new InvalidDataException("No active approved configuration release is available for " + entity + " FY" + year + "."); }
             if (candidates.Rows.Count != 1)
-            { throw new InvalidDataException("More than one approved configuration release is available for " + entity + " FY" + discovered.FinancialYear + ". Select its applicable release in Additional approved configurations and inspect again."); }
+            { throw new InvalidDataException("More than one approved configuration release is available for " + entity + " FY" + year + ". Select its applicable release in Additional approved configurations and inspect again."); }
             releaseId = NORMHelper.Int(candidates.Rows[0], "ConfigurationReleaseId");
         }
         // Repeat the normal approved-release and source/population checks. The
         // discovery parse never authorises a population or enables acceptance.
         DataRow bound = LoadApprovedRelease(releaseId);
         if (!String.Equals(entity, NORMHelper.Str(bound, "EntityCode"), StringComparison.OrdinalIgnoreCase) ||
-            NORMHelper.Int(bound, "FinancialYear") != discovered.FinancialYear)
+            NORMHelper.Int(bound, "FinancialYear") != year)
         { throw new InvalidDataException("The selected release does not match the source agency and financial year. Inspect again."); }
         return releaseId;
     }
@@ -115,12 +206,12 @@ public static class NORMImportService
         return preview;
     }
 
-    private static void RecordInspectionRejection(byte[] content, string fileName, int releaseId, string user, string reason, NORMImportPreview preview = null)
+    private static void RecordInspectionRejection(byte[] content, string fileName, int releaseId, string user, string reason, NORMImportPreview preview = null, string annualEntity = null)
     {
         // Authorisation failures never expose or write another agency's identity.
-        DataRow release = preview == null ? LoadApprovedRelease(releaseId) : null;
-        string entity = preview == null ? NORMHelper.Str(release, "EntityCode") : preview.Entity;
-        int financialYear = preview == null ? NORMHelper.Int(release, "FinancialYear") : preview.FinancialYear;
+        DataRow release = preview == null && annualEntity == null ? LoadApprovedRelease(releaseId) : null;
+        string entity = preview == null ? annualEntity ?? NORMHelper.Str(release, "EntityCode") : preview.Entity;
+        int financialYear = preview == null ? (release == null ? ConfiguredCurrentYear(entity).Value : NORMHelper.Int(release, "FinancialYear")) : preview.FinancialYear;
         string availableScope = "";
         if (content != null)
         {
@@ -162,19 +253,31 @@ public static class NORMImportService
     }
 
     private static List<NORMImportPreview> InspectPopulations(byte[] content, string fileName, int releaseId, string user,
-        bool loadCurrentSources, bool retainValidationErrors, out NORMParsedImport parsed)
+        bool loadCurrentSources, bool retainValidationErrors, out NORMParsedImport parsed, NORMAnnualSourceConfiguration annual = null)
     {
         ValidateContent(content, "trial balance");
         byte[] bytes = (byte[])content.Clone();
-        DataRow release = LoadApprovedRelease(releaseId);
+        DataRow release = annual == null ? LoadApprovedRelease(releaseId) : annual.Entity;
         DataTable permitted, mappings;
         int currentYear;
-        string configuration = PreviewConfiguration(releaseId, null, null, out permitted, out mappings, out currentYear);
+        string configuration;
+        if (annual == null)
+        { configuration = PreviewConfiguration(releaseId, null, null, out permitted, out mappings, out currentYear); }
+        else
+        {
+            configuration = annual.Fingerprint; permitted = annual.Populations;
+            mappings = new DataTable(); currentYear = annual.Year;
+        }
         List<string> companies = new List<string>();
         foreach (DataRow population in permitted.Rows)
         { companies.Add(NORMHelper.Str(population, "SourceCompanyCode")); }
         int year = NORMHelper.Int(release, "FinancialYear");
         bool workbook = bytes.Length >= 4 && bytes[0] == 0x50 && bytes[1] == 0x4b && bytes[2] == 3 && bytes[3] == 4;
+        if (annual != null)
+        {
+            year = workbook ? ErpTrialBalanceImporter.DiscoverForInspection(bytes).FinancialYear :
+                NORMTextTrialBalanceImporter.DiscoverForInspection(bytes).FinancialYear;
+        }
         parsed = workbook ? ErpTrialBalanceImporter.ParseForInspection(bytes, companies, year) :
             NORMTextTrialBalanceImporter.Parse(bytes, year);
         bool defence = workbook && parsed.Rows[0].SourceCompanyCode != null;
@@ -232,7 +335,7 @@ public static class NORMImportService
             };
             population.Warnings.AddRange(parsed.Warnings);
             NORMImportPreview preview = BuildPopulationPreview(bytes, releaseId, user, loadCurrentSources, retainValidationErrors,
-                population, release, configuration, mappings, currentYear, layout);
+                population, release, configuration, mappings, currentYear, layout, annual);
             foreach (NORMTrialBalanceRow row in rows)
             {
                 string error;
@@ -244,6 +347,62 @@ public static class NORMImportService
             }
             results.Add(preview);
         }
+        SealInspection(file, results, user);
+        return results;
+    }
+
+    private static List<NORMImportPreview> InspectNihracs(byte[] content, string fileName, string user,
+        IList<NORMParsedImport> annual, IDictionary<int, int> selections, bool loadCurrentSources,
+        NORMAnnualSourceConfiguration sourceConfiguration = null)
+    {
+        if (annual == null) { throw new InvalidDataException("The NIHRACS workbook signature changed."); }
+        byte[] bytes = (byte[])content.Clone();
+        NORMImportFileContext file = new NORMImportFileContext {
+            Token = Guid.NewGuid().ToString("N"), FileName = Path.GetFileName(fileName),
+            FileHash = NORMCrypto.Sha256(bytes), PopulationCount = annual.Count, RecordUnit = "Worksheet rows"
+        };
+        foreach (NORMParsedImport parsed in annual)
+        {
+            NORMImportFileContext sheet = parsed.SourceFile;
+            if (!sheet.RowsReconciled) { throw new InvalidDataException("NIHRACS worksheet rows do not reconcile."); }
+            file.RecordCount += sheet.RecordCount;
+            file.DetailRowCount += sheet.DetailRowCount;
+            file.MetadataRowCount += sheet.MetadataRowCount;
+            file.ControlRowCount += sheet.ControlRowCount;
+            file.BlankRowCount += sheet.BlankRowCount;
+        }
+        List<NORMImportPreview> results = new List<NORMImportPreview>();
+        foreach (NORMParsedImport parsed in annual)
+        {
+            if (sourceConfiguration != null)
+            {
+                ResolvePopulation(parsed.Rows[0], sourceConfiguration.Populations);
+                parsed.SourceFile = file;
+                results.Add(BuildPopulationPreview(bytes, 0, user, loadCurrentSources, true, parsed, sourceConfiguration.Entity,
+                    sourceConfiguration.Fingerprint, new DataTable(), sourceConfiguration.Year, "NIHRACS consolidated XLSX", sourceConfiguration));
+                continue;
+            }
+            int releaseId;
+            if (!selections.TryGetValue(parsed.FinancialYear, out releaseId))
+            { throw new InvalidDataException("Every NIHRACS year requires an approved release."); }
+            DataRow release = LoadApprovedRelease(releaseId);
+            if (!String.Equals(NORMHelper.Str(release, "EntityCode"), NihracsTrialBalanceImporter.Agency, StringComparison.OrdinalIgnoreCase) ||
+                NORMHelper.Int(release, "FinancialYear") != parsed.FinancialYear)
+            { throw new InvalidDataException("The release does not match the NIHRACS worksheet year."); }
+            DataTable permitted, mappings;
+            int currentYear;
+            string configuration = PreviewConfiguration(releaseId, null, null, out permitted, out mappings, out currentYear);
+            ResolvePopulation(parsed.Rows[0], permitted);
+            parsed.SourceFile = file;
+            results.Add(BuildPopulationPreview(bytes, releaseId, user, loadCurrentSources, true, parsed,
+                release, configuration, mappings, currentYear, "NIHRACS consolidated XLSX"));
+        }
+        SealInspection(file, results, user);
+        return results;
+    }
+
+    private static void SealInspection(NORMImportFileContext file, IList<NORMImportPreview> results, string user)
+    {
         file.PopulationFingerprint = FilePopulationFingerprint(results);
         foreach (NORMImportPreview preview in results)
         {
@@ -251,18 +410,26 @@ public static class NORMImportService
             if (user == NORMHelper.CurrentUserId() && NORMHelper.HasPrepareAccess() && RequestSession() != null)
             { preview.AuditIssuance = new IssuedPreview(preview, RequestSession(), NORMHelper.IsRegisteredPreparer()); }
         }
-        return results;
     }
 
     private static NORMImportPreview BuildPopulationPreview(byte[] bytes, int releaseId, string user,
         bool loadCurrentSources, bool retainValidationErrors, NORMParsedImport parsed, DataRow release,
-        string configuration, DataTable mappings, int currentYear, string layout)
+        string configuration, DataTable mappings, int currentYear, string layout, NORMAnnualSourceConfiguration annual = null)
     {
-        int year = NORMHelper.Int(release, "FinancialYear");
+        int year = parsed.FinancialYear;
         NORMImportPreview preview = new NORMImportPreview();
         preview.Content = bytes; preview.Token = Guid.NewGuid().ToString("N"); preview.Owner = user;
         preview.ExpiresUtc = DateTime.UtcNow.AddMinutes(15); preview.ReleaseId = releaseId;
-        preview.ConfigurationVersion = NORMHelper.Str(release, "VersionCode");
+        preview.ConfigurationVersion = annual == null ? NORMHelper.Str(release, "VersionCode") : "Annual FY" + annual.Year;
+        if (annual != null)
+        {
+            preview.AnnualApprovalSnapshot = annual.Snapshot;
+            if (year > annual.Year)
+            {
+                preview.Errors.Add("The source year exceeds the annual reporting year.");
+                foreach (NORMTrialBalanceRow row in parsed.Rows) { preview.InvalidSourceRows.Add(row.SourceRowNo); }
+            }
+        }
         preview.SourceFile = parsed.SourceFile;
         preview.FileName = parsed.SourceFile.FileName;
         if (String.IsNullOrEmpty(preview.FileName) || preview.FileName.Length > 260)
@@ -305,6 +472,7 @@ public static class NORMImportService
         HashSet<string> streams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool precision = true;
         Dictionary<string, int> accounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        bool nihracs = parsed.ProfileVersion == NihracsTrialBalanceImporter.Profile;
         try
         {
             foreach (NORMTrialBalanceRow row in parsed.Rows)
@@ -313,19 +481,25 @@ public static class NORMImportService
                 ledgerValues.Add(row.SourceLedger ?? "Not applicable");
                 streams.Add(row.ReportingStream);
                 identity.Append(row.SourceRowNo).Append('|').Append(row.SourceCompanyCode).Append('|').Append(row.SourceLedger).Append('|').Append(row.ReportingStream).Append('|').Append(row.RowHash).Append('\n');
-                if (row.AccumBalance >= 0m) { preview.Debit += row.AccumBalance; } else { preview.Credit -= row.AccumBalance; }
+                if (nihracs) { preview.Debit += row.SourceDebit.Value; preview.Credit += row.SourceCredit.Value; }
+                else if (row.AccumBalance >= 0m) { preview.Debit += row.AccumBalance; } else { preview.Credit -= row.AccumBalance; }
                 bool rowPrecision = FitsStoredAmount(row.AccumBalance) && (!row.OpeningBalance.HasValue || FitsStoredAmount(row.OpeningBalance.Value)) &&
                     (!row.DebitMovement.HasValue || FitsStoredAmount(row.DebitMovement.Value)) && (!row.CreditMovement.HasValue || FitsStoredAmount(row.CreditMovement.Value));
+                if (nihracs) { rowPrecision &= FitsStoredAmount(row.SourceDebit.Value) && FitsStoredAmount(row.SourceCredit.Value); }
                 precision &= rowPrecision;
                 if (!rowPrecision) { preview.InvalidSourceRows.Add(row.SourceRowNo); }
                 int previousRow;
-                if (accounts.TryGetValue(row.GlAccount, out previousRow))
+                string key = nihracs ? IdentityPart(row.GlAccount) + IdentityPart(row.SourceCostCentre) : row.GlAccount;
+                if (accounts.TryGetValue(key, out previousRow))
                 {
                     preview.InvalidSourceRows.Add(previousRow); preview.InvalidSourceRows.Add(row.SourceRowNo);
-                    string duplicate = "Duplicate source account " + row.GlAccount + " within this population.";
+                    string duplicate = nihracs
+                        ? "Duplicate GL " + row.GlAccount + ", centre " + (row.SourceCostCentre ?? "(blank)") +
+                            " in worksheet " + year + ", rows " + previousRow + " and " + row.SourceRowNo + "."
+                        : "Duplicate source account " + row.GlAccount + " within this population.";
                     if (!preview.Errors.Contains(duplicate)) { preview.Errors.Add(duplicate); }
                 }
-                else { accounts.Add(row.GlAccount, row.SourceRowNo); }
+                else { accounts.Add(key, row.SourceRowNo); }
                 if (!mapped.Contains(row.GlAccount)) { unmapped.Add(row.GlAccount); }
             }
             preview.Net = preview.Debit - preview.Credit;
@@ -392,7 +566,7 @@ public static class NORMImportService
             {
                 foreach (NORMImportPreview p in previews)
                 {
-                    if (p != null && (p.ProfileVersion == NORMTextTrialBalanceImporter.CsvProfile || p.ProfileVersion == NORMTextTrialBalanceImporter.FixedProfile))
+                    if (p != null && (p.AnnualApprovalSnapshot != null || p.ProfileVersion == NORMTextTrialBalanceImporter.CsvProfile || p.ProfileVersion == NORMTextTrialBalanceImporter.FixedProfile))
                     { RecordInspectionRejection(p.Content, p.FileName, p.ReleaseId, p.Owner, error.Message, p); }
                 }
             }
@@ -417,6 +591,7 @@ public static class NORMImportService
         StringBuilder text = new StringBuilder();
         foreach (string value in new[] { SourceIdentity(preview.Population), preview.Entity, preview.FinancialYear.ToString(CultureInfo.InvariantCulture),
             preview.ReleaseId.ToString(CultureInfo.InvariantCulture), preview.ConfigurationVersion, preview.ConfigurationFingerprint,
+            preview.AnnualApprovalSnapshot,
             preview.IdentityFingerprint, preview.FileName, preview.FileHash, preview.SourceType, preview.Layout, preview.ProfileVersion,
             preview.Companies, preview.Ledgers, preview.ReportingStreams, preview.Population.SourceFileName,
             preview.PeriodStart.ToString(CultureInfo.InvariantCulture), preview.PeriodEnd.ToString(CultureInfo.InvariantCulture),
@@ -434,7 +609,9 @@ public static class NORMImportService
             foreach (string value in new[] { row.SourceRowNo.ToString(CultureInfo.InvariantCulture), row.SourceCompanyCode, row.SourceLedger,
                 row.ReportingStream, row.GlAccount, row.GlText, row.OpeningBalance.HasValue ? ExactAmount(row.OpeningBalance.Value) : null,
                 row.DebitMovement.HasValue ? ExactAmount(row.DebitMovement.Value) : null, row.CreditMovement.HasValue ? ExactAmount(row.CreditMovement.Value) : null,
-                ExactAmount(row.AccumBalance), row.RowHash, row.IsSynthetic.ToString() })
+                ExactAmount(row.AccumBalance), row.RowHash, row.IsSynthetic.ToString(),
+                row.SourceCostCentre, row.SourceDebit.HasValue ? ExactAmount(row.SourceDebit.Value) : null,
+                row.SourceCredit.HasValue ? ExactAmount(row.SourceCredit.Value) : null })
             { text.Append(IdentityPart(value)); }
         }
         text.Append("ERRORS"); foreach (string error in preview.Errors) { text.Append(IdentityPart(error)); }
@@ -484,11 +661,12 @@ public static class NORMImportService
         if (previews == null || previews.Count == 0 || previews[0] == null)
         { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
         string entity = previews[0].Entity;
+        bool annualAuthority = previews[0].AnnualApprovalSnapshot != null;
         long bytes = 0;
         HashSet<string> files = new HashSet<string>(StringComparer.Ordinal);
         Dictionary<string, int> fileRows = new Dictionary<string, int>();
         Dictionary<string, int> filePopulations = new Dictionary<string, int>();
-        Dictionary<string, HashSet<int>> sourceRows = new Dictionary<string, HashSet<int>>();
+        Dictionary<string, HashSet<string>> sourceRows = new Dictionary<string, HashSet<string>>();
         HashSet<string> identities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         Dictionary<int, string> snapshots = new Dictionary<int, string>();
         foreach (NORMImportPreview preview in previews)
@@ -497,6 +675,8 @@ public static class NORMImportService
             { throw new InvalidOperationException("A source population has no resolved context. Inspect again."); }
             if (!String.Equals(preview.Entity, entity, StringComparison.OrdinalIgnoreCase))
             { throw new InvalidDataException("An upload batch must belong to one agency. Cross-agency batches are not supported."); }
+            if ((preview.AnnualApprovalSnapshot != null) != annualAuthority)
+            { throw new InvalidDataException("The annual source authority changed between files. Inspect the batch again."); }
             string snapshot;
             if (snapshots.TryGetValue(preview.ReleaseId, out snapshot) && snapshot != preview.ConfigurationFingerprint)
             { throw new InvalidOperationException("The approved configuration changed between files. Inspect the batch again."); }
@@ -509,13 +689,16 @@ public static class NORMImportService
             if (files.Add(file.Token))
             {
                 bytes += preview.Content.LongLength;
-                fileRows.Add(file.Token, 0); filePopulations.Add(file.Token, 0); sourceRows.Add(file.Token, new HashSet<int>());
+                fileRows.Add(file.Token, 0); filePopulations.Add(file.Token, 0); sourceRows.Add(file.Token, new HashSet<string>(StringComparer.Ordinal));
             }
             fileRows[file.Token] += preview.RowCount;
             filePopulations[file.Token]++;
             foreach (NORMTrialBalanceRow row in preview.SourceRows)
             {
-                if (!sourceRows[file.Token].Add(row.SourceRowNo))
+                string rowReference = row.SourceRowNo.ToString(CultureInfo.InvariantCulture);
+                if (preview.ProfileVersion == NihracsTrialBalanceImporter.Profile)
+                { rowReference = preview.FinancialYear.ToString(CultureInfo.InvariantCulture) + ":" + rowReference; }
+                if (!sourceRows[file.Token].Add(rowReference))
                 { throw new InvalidDataException("A source detail row was assigned more than once. Inspect again."); }
             }
             NORMSourceScope scope = preview.Population;
@@ -547,7 +730,7 @@ public static class NORMImportService
         ValidatePreparationBatch(previews);
     }
 
-    public static List<NORMImportOutcome> ConfirmBatch(IList<NORMImportPreview> previews, string user, bool replaceExisting)
+    public static List<NORMImportOutcome> ConfirmBatch(IList<NORMImportPreview> previews, string user, bool replaceExisting, bool ordinaryImport = false)
     {
         if (!NORMHelper.HasPrepareAccess() || user != NORMHelper.CurrentUserId())
         { throw new UnauthorizedAccessException("The authenticated user does not have authority to confirm this batch."); }
@@ -578,7 +761,7 @@ public static class NORMImportService
         }
         string attempt = Guid.NewGuid().ToString("N");
         bool accepted = false;
-        try { return ConfirmBatchCore(previews, user, replaceExisting, ref accepted); }
+        try { return ConfirmBatchCore(previews, user, replaceExisting, ordinaryImport, ref accepted); }
         catch (Exception error)
         {
             NORMHelper.EntityAccessDeniedException denied = error as NORMHelper.EntityAccessDeniedException;
@@ -803,7 +986,7 @@ public static class NORMImportService
         catch { throw new InvalidDataException("Source rejected. Rejection audit evidence could not be saved; contact support. " + reason); }
     }
 
-    private static List<NORMImportOutcome> ConfirmBatchCore(IList<NORMImportPreview> previews, string user, bool replaceExisting, ref bool accepted)
+    private static List<NORMImportOutcome> ConfirmBatchCore(IList<NORMImportPreview> previews, string user, bool replaceExisting, bool ordinaryImport, ref bool accepted)
     {
         if (previews == null || previews.Count == 0)
         { throw new InvalidOperationException("Inspect the source files before confirming acceptance."); }
@@ -863,12 +1046,25 @@ public static class NORMImportService
                 if (!String.Equals(user, NORMHelper.CurrentUserId(), StringComparison.Ordinal))
                 { throw new UnauthorizedAccessException("The authenticated batch owner changed. Inspect again."); }
                 NORMHelper.RequireEntityAccess(entity, connection, transaction);
+                if (ordinaryImport && !releases.ContainsKey(0))
+                {
+                    int reportingYear = ReadConfiguredCurrentYear(entity, connection, transaction);
+                    if (NORMAnnualSourceConfiguration.Load(entity, reportingYear, connection, transaction) != null)
+                    { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
+                }
                 Dictionary<int, int> currentYears = new Dictionary<int, int>();
                 foreach (KeyValuePair<int, string> release in releases)
                 {
                     DataTable permitted, mappings;
                     int currentYear;
-                    if (PreviewConfiguration(release.Key, connection, transaction, out permitted, out mappings, out currentYear) != release.Value)
+                    if (release.Key == 0)
+                    {
+                        currentYear = ReadConfiguredCurrentYear(entity, connection, transaction);
+                        NORMAnnualSourceConfiguration annual = NORMAnnualSourceConfiguration.Load(entity, currentYear, connection, transaction);
+                        if (annual == null || annual.Fingerprint != release.Value)
+                        { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
+                    }
+                    else if (PreviewConfiguration(release.Key, connection, transaction, out permitted, out mappings, out currentYear) != release.Value)
                     { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
                     currentYears.Add(release.Key, currentYear);
                 }
@@ -908,7 +1104,7 @@ public static class NORMImportService
                         ";batch=" + batchReference + ";fileReference=" + previews[i].SourceFile.Token + ";filePopulations=" + file.PopulationCount +
                         ";fileRecords=" + file.RecordCount + ";fileDetail=" + file.DetailRowCount + ";metadata=" + file.MetadataRowCount +
                         ";controls=" + file.ControlRowCount + ";blank=" + file.BlankRowCount + ";populationAccepted=" + preview.RowCount + ";populationInvalid=0",
-                        source.Content.LongLength, preview.Debit, preview.Credit, preview.Net);
+                        source.Content.LongLength, preview.Debit, preview.Credit, preview.Net, preview.AnnualApprovalSnapshot);
                     importIds[i] = importId;
                     foreach (NORMSourceScope scope in previews[i].Scopes.Values)
                     {
@@ -929,7 +1125,12 @@ public static class NORMImportService
         for (int i = 0; i < previews.Count; i++)
         {
             NORMImportPreview preview = validated[i];
-            outcomes.Add(Calculate(importIds[i], preview.RowCount, preview.Debit, preview.Credit, preview.Net, user));
+            if (preview.AnnualApprovalSnapshot != null || preview.ProfileVersion == NihracsTrialBalanceImporter.Profile)
+            {
+                outcomes.Add(new NORMImportOutcome { ImportId = importIds[i], RowCount = preview.RowCount,
+                    TotalDebit = preview.Debit, TotalCredit = preview.Credit, NetBalance = preview.Net });
+            }
+            else { outcomes.Add(Calculate(importIds[i], preview.RowCount, preview.Debit, preview.Credit, preview.Net, user)); }
         }
         return outcomes;
     }
@@ -967,8 +1168,26 @@ public static class NORMImportService
             NORMImportPreview first = members[0];
             if (NORMCrypto.Sha256(first.Content) != first.FileHash)
             { throw new InvalidDataException("The inspected source bytes changed. Inspect again."); }
-            NORMParsedImport parsed;
-            List<NORMImportPreview> fresh = InspectPopulations(first.Content, first.FileName, first.ReleaseId, user, false, false, out parsed);
+            bool nihracs = first.ProfileVersion == NihracsTrialBalanceImporter.Profile;
+            List<NORMImportPreview> fresh;
+            if (first.AnnualApprovalSnapshot != null)
+            {
+                NORMAnnualSourceConfiguration annual = NORMAnnualSourceConfiguration.Load(first.Entity, ConfiguredCurrentYear(first.Entity).Value);
+                if (annual == null) { throw new InvalidOperationException("Configuration changed before acceptance. Inspect again."); }
+                fresh = InspectAnnualFile(first.Content, first.FileName, user, annual, false);
+            }
+            else if (nihracs)
+            {
+                Dictionary<int, int> selections = new Dictionary<int, int>();
+                foreach (NORMImportPreview member in members) { selections.Add(member.FinancialYear, member.ReleaseId); }
+                fresh = InspectNihracs(first.Content, first.FileName, user,
+                    NihracsTrialBalanceImporter.TryParse(first.Content), selections, false);
+            }
+            else
+            {
+                NORMParsedImport parsed;
+                fresh = InspectPopulations(first.Content, first.FileName, first.ReleaseId, user, false, false, out parsed);
+            }
             if (fresh.Count != members.Count || FilePopulationFingerprint(fresh) != first.SourceFile.PopulationFingerprint)
             { throw new InvalidOperationException("The complete original file population set or validation changed. Inspect every population again."); }
             foreach (NORMImportPreview member in fresh)
@@ -978,7 +1197,7 @@ public static class NORMImportService
             foreach (NORMImportPreview member in members)
             {
                 NORMImportPreview match;
-                if (member.ReleaseId != first.ReleaseId || member.FileHash != first.FileHash ||
+                if ((!nihracs && member.ReleaseId != first.ReleaseId) || member.FileHash != first.FileHash ||
                     (!Object.ReferenceEquals(member.Content, first.Content) && NORMCrypto.Sha256(member.Content) != first.FileHash) ||
                     !byIdentity.TryGetValue(SourceIdentity(member.Population), out match) || PopulationEvidence(member, false) != PopulationEvidence(match, false) ||
                     matches.ContainsKey(member))
@@ -1056,6 +1275,26 @@ public static class NORMImportService
             NORMSourceScope current = FindCurrentSource(scope, NORMHelper.Str(population, "SourceCompanyCode"),
                 NORMHelper.Str(population, "SourceLedger"), NORMHelper.Str(population, "ReportingStream"), null, null);
             if (current.ImportId == 0) { missing.Add(current); }
+        }
+        return missing;
+    }
+
+    public static IList<NORMSourceScope> MissingAnnualRequiredPopulations(string entity)
+    {
+        int year = ConfiguredCurrentYear(entity).Value;
+        NORMAnnualSourceConfiguration annual = NORMAnnualSourceConfiguration.Load(entity, year);
+        List<NORMSourceScope> missing = new List<NORMSourceScope>();
+        if (annual == null) { return missing; }
+        foreach (int sourceYear in NORMAnnualSourceConfiguration.RequiredYears(year, annual.PriorYears))
+        {
+            NORMImportPreview scope = new NORMImportPreview { Entity = entity, FinancialYear = sourceYear };
+            foreach (DataRow row in annual.Populations.Rows)
+            {
+                if (!(bool)row["IsRequired"]) { continue; }
+                NORMSourceScope current = FindCurrentSource(scope, NORMHelper.Str(row, "SourceCompanyCode"),
+                    NORMHelper.Str(row, "SourceLedger"), NORMHelper.Str(row, "ReportingStream"), null, null);
+                if (current.ImportId == 0) { missing.Add(current); }
+            }
         }
         return missing;
     }
@@ -1416,7 +1655,7 @@ public static class NORMImportService
     private static int PersistImport(OleDbConnection connection, OleDbTransaction transaction,
         int configurationReleaseId, int financialYear, string entityCode, string sourceType, string sourceFileName,
         string sourceHash, NORMParsedImport statementInput, IList<NORMImportSource> sources, string importedBy,
-        string auditDetail, long totalBytes, decimal debit, decimal credit, decimal net)
+        string auditDetail, long totalBytes, decimal debit, decimal credit, decimal net, string annualSnapshot = null)
     {
         // D3 preserves the historical FY2025 transition contract.
         // Governed source acceptance requires exact coverage.
@@ -1427,12 +1666,14 @@ public static class NORMImportService
             foreach (NORMImportSource source in sources) { ValidateCoverage(source.Parsed, coverageYear.Value); }
         }
 
+        OleDbParameter annualParameter = NORMHelper.P("@annualSnapshot", annualSnapshot);
+        annualParameter.OleDbType = OleDbType.LongVarWChar;
         int importId = NORMHelper.InsertId(connection, transaction,
             "INSERT dbo.tblNORM_Import " +
             "(ConfigurationReleaseId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,SourceFileBytes," +
-            " [RowCount],TotalDebit,TotalCredit,NetBalance,StatusCode,ImportedBy) " +
-            "VALUES (@release,@fy,@entity,@type,@file,@hash,@hash,@bytes,@rows,@debit,@credit,@net,'Importing',@user)",
-            NORMHelper.P("@release", configurationReleaseId),
+            " [RowCount],TotalDebit,TotalCredit,NetBalance,StatusCode,ImportedBy,AnnualSourceApprovalSnapshot) " +
+            "VALUES (@release,@fy,@entity,@type,@file,@hash,@hash,@bytes,@rows,@debit,@credit,@net,'Importing',@user,@annualSnapshot)",
+            NORMHelper.P("@release", annualSnapshot == null ? (object)configurationReleaseId : DBNull.Value),
             NORMHelper.P("@fy", financialYear),
             NORMHelper.P("@entity", entityCode),
             NORMHelper.P("@type", sourceType),
@@ -1443,8 +1684,13 @@ public static class NORMImportService
             NORMHelper.P("@debit", debit),
             NORMHelper.P("@credit", credit),
             NORMHelper.P("@net", net),
-            NORMHelper.P("@user", importedBy));
+            NORMHelper.P("@user", importedBy), annualParameter);
 
+        if (annualSnapshot != null)
+        {
+            WriteAudit(connection, transaction, "ANNUAL_SOURCE_AUTHORITY", "Import", importId.ToString(CultureInfo.InvariantCulture),
+                "Approved snapshot SHA-256=" + NORMCrypto.Sha256(Encoding.Unicode.GetBytes(annualSnapshot)), importedBy);
+        }
         for (int sourceIndex = 0; sourceIndex < sources.Count; sourceIndex++)
         {
             NORMImportSource source = sources[sourceIndex];
@@ -1475,7 +1721,10 @@ public static class NORMImportService
             {
                 WriteAudit(connection, transaction, "IMPORT_SOURCE_PROFILE", "Import", importId.ToString(CultureInfo.InvariantCulture),
                     "Profile=" + source.Parsed.ProfileVersion + ";SHA256=" + source.FileHash +
-                    ";Currency=AUD;Units=Dollars;Multiplier=1;BalanceSign=DebitPositive;CreditMovement=SignedNegative;Rows=" + source.Parsed.Rows.Count,
+                    ";Currency=AUD;Units=Dollars;Multiplier=1;BalanceSign=DebitPositive" +
+                    (source.Parsed.ProfileVersion == NihracsTrialBalanceImporter.Profile
+                        ? ";Worksheet=" + financialYear.ToString(CultureInfo.InvariantCulture) + ";SourceDebit=Positive;SourceCredit=Positive"
+                        : ";CreditMovement=SignedNegative") + ";Rows=" + source.Parsed.Rows.Count,
                     importedBy);
             }
         }
@@ -1486,8 +1735,8 @@ public static class NORMImportService
             NORMHelper.Exec(connection, transaction,
                 "INSERT dbo.tblNORM_TrialBalanceRow " +
                 "(ImportId,SourceRowNo,SourceCompanyCode,SourceLedger,ReportingStream,GlAccount,GlText,OpeningBalance,DebitMovement,CreditMovement," +
-                " AccumBalance,RowHash,IsSynthetic) " +
-                "VALUES (@import,@row,@company,@ledger,@stream,@gl,@text,@opening,@debit,@credit,@balance,@hash,0)",
+                " AccumBalance,RowHash,IsSynthetic,SourceCostCentre,SourceDebit,SourceCredit) " +
+                "VALUES (@import,@row,@company,@ledger,@stream,@gl,@text,@opening,@debit,@credit,@balance,@hash,0,@centre,@sourceDebit,@sourceCredit)",
                 NORMHelper.P("@import", importId),
                 NORMHelper.P("@row", row.SourceRowNo),
                 NORMHelper.P("@company", (object)row.SourceCompanyCode ?? DBNull.Value),
@@ -1499,7 +1748,10 @@ public static class NORMImportService
                 NORMHelper.P("@debit", row.DebitMovement),
                 NORMHelper.P("@credit", row.CreditMovement),
                 NORMHelper.P("@balance", row.AccumBalance),
-                NORMHelper.P("@hash", row.RowHash));
+                NORMHelper.P("@hash", row.RowHash),
+                NORMHelper.P("@centre", row.SourceCostCentre),
+                NORMHelper.P("@sourceDebit", row.SourceDebit),
+                NORMHelper.P("@sourceCredit", row.SourceCredit));
         }
 
         NORMHelper.Exec(connection, transaction,

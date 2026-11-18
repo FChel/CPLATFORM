@@ -7,7 +7,7 @@ using TestDb;
 // Deliberately no real connection implementation or connection string.
 namespace TestDb
 {
-    public enum OleDbType { LongVarBinary }
+    public enum OleDbType { LongVarBinary, LongVarWChar }
     public sealed class OleDbParameter { public string Name; public object Value; public OleDbType OleDbType; }
     public sealed class OleDbConnection : IDisposable
     {
@@ -141,6 +141,7 @@ public static class NORMHelper
         if (sql.Contains("FROM dbo.tblNORM_YearSetup")) { return YearRows(QueryCall(sql,p,true)); }
         if (sql.Contains("AS ScopeRows")) { return ScopeRows(sql, p, true); }
         if (QueryCallResponse != null) { return QueryCallResponse(QueryCall(sql, p, true)); }
+        if (sql.Contains("SourceApprovalSnapshot") && sql.Contains("FROM dbo.tblNORM_ReportingEntity")) { return new DataTable(); }
         if (QueryResponse != null) { return QueryResponse(sql); }
         throw new Exception("Unexpected query");
     }

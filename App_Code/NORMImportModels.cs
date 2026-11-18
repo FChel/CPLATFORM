@@ -10,6 +10,9 @@ public class NORMTrialBalanceRow
     public string ReportingStream;
     public string GlAccount;
     public string GlText;
+    public string SourceCostCentre;
+    public decimal? SourceDebit;
+    public decimal? SourceCredit;
     public decimal? OpeningBalance;
     public decimal? DebitMovement;
     public decimal? CreditMovement;
@@ -87,6 +90,8 @@ public sealed class NORMImportPreview
 {
     internal byte[] Content = null;
     internal string ConfigurationFingerprint = null;
+    internal string AnnualApprovalSnapshot = null;
+    public bool UsesAnnualSourceApproval { get { return AnnualApprovalSnapshot != null; } }
     internal string IdentityFingerprint = null;
     internal string ConfirmationFingerprint = null;
     internal string BatchFingerprint = null;

@@ -107,7 +107,7 @@ namespace CPlatform.NORM
             foreach(NORMSourceVersion version in versions)
             {
                 html.Append("<tr><td><a href=\"").Append(H(HistoryUrl(version.Scope,version.Scope.ImportId,release,filter))).Append("\">Import ").Append(version.Scope.ImportId).Append("</a> ").Append(version.IsCurrent ? "Current" : "Superseded").Append(version.Scope.ImportId==selected ? " (selected)" : "").Append("</td><td>")
-                    .Append(version.ReleaseId).Append(" ").Append(H(version.ConfigurationVersion)).Append("</td><td>").Append(H(version.SourceType+" / "+version.Profile)).Append("</td><td>").Append(H(NORMSourceHistory.Coverage(version))).Append("</td><td>").Append(H(version.AcceptedBy)).Append("<br>").Append(H(version.Scope.ImportedUtc.ToString("yyyy-MM-dd HH:mm:ss",CultureInfo.InvariantCulture))).Append("</td><td>");
+                    .Append(version.AnnualApprovalHash == null ? (version.ReleaseId == 0 ? "" : version.ReleaseId.ToString(CultureInfo.InvariantCulture)) + " " + H(version.ConfigurationVersion) : "Annual source approval<br>" + H(version.AnnualApprovalHash)).Append("</td><td>").Append(H(version.SourceType+" / "+version.Profile)).Append("</td><td>").Append(H(NORMSourceHistory.Coverage(version))).Append("</td><td>").Append(H(version.AcceptedBy)).Append("<br>").Append(H(version.Scope.ImportedUtc.ToString("yyyy-MM-dd HH:mm:ss",CultureInfo.InvariantCulture))).Append("</td><td>");
                 if(version.PredecessorImportId>0) { html.Append("<a href=\"").Append(H(HistoryUrl(version.Scope,version.PredecessorImportId,release,filter))).Append("\">Import ").Append(version.PredecessorImportId).Append("</a>"); } else { html.Append("None"); }
                 if(!String.IsNullOrEmpty(version.ReplacementEvidence)) { html.Append("<details><summary>Replacement audit</summary>").Append(H(version.ReplacementEvidence)).Append("</details>"); }
                 html.Append("</td><td>");
@@ -120,6 +120,7 @@ namespace CPlatform.NORM
         private static string Comparison(NORMSourceComparison comparison)
         {
             if(comparison.Previous==null) { return "<p>This is the first accepted original of this exact population; there is no predecessor to compare.</p>"; }
+            if (comparison.ComparisonUnavailable != null) { return "<p>" + H(comparison.ComparisonUnavailable) + "</p>"; }
             StringBuilder html=new StringBuilder("<p>Import "+comparison.Current.Scope.ImportId+" versus immediate predecessor "+comparison.Previous.Scope.ImportId+". Signed movement = current balance minus previous balance.</p><h3>Structural changes</h3>");
             html.Append(ChangeTable(comparison.Structural,true));
             if(comparison.MetadataChanges.Count>0) { html.Append("<ul>"); foreach(string change in comparison.MetadataChanges) { html.Append("<li>").Append(H(change)).Append("</li>"); } html.Append("</ul>"); }

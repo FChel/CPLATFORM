@@ -32,6 +32,9 @@ namespace CPlatform.NORM
     }
     public partial class NORM_Import
     {
+        public bool AgencySelectorForTest { get { return AgencySelector.Visible; } }
+        public string AgencyContextForTest { get { return AgencyContext.Text; } }
+        public bool HasAgencyForTest(string agency) { return AgencyList.Items.FindByValue(agency) != null; }
         public string PrepareContextForTest(string query)
         {
             HttpContext context=new HttpContext(new HttpRequest("","http://localhost/NORM/NORM_Import.aspx",query),new HttpResponse(new StringWriter()));
@@ -39,7 +42,7 @@ namespace CPlatform.NORM
             HttpContext.Current=context; typeof(Page).GetField("_context",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(this,context);
             typeof(Page).GetField("_request",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(this,context.Request);
             typeof(Page).GetField("_response",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(this,context.Response);
-            Page_Load(this,EventArgs.Empty); return ReleaseList.SelectedValue;
+            Page_Load(this,EventArgs.Empty); return AgencyList.SelectedValue;
         }
     }
 }
