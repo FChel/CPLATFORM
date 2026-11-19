@@ -48,7 +48,7 @@ public static partial class Tests
     static DataTable HistoryQuery(NORMHelper.Call call)
     {
         string sql=call.Sql;
-        if(sql.Contains("FROM dbo.tblNORM_ConfigurationRelease") || sql.Contains("FROM dbo.tblNORM_EntityLedger") || sql.Contains("FROM dbo.tblNORM_AccountMap") || sql.Contains("FROM dbo.tblNORM_StatementLine")) { return StoreQuery(call); }
+        if(sql.Contains("FROM dbo.tblNORM_ReportingEntity") || sql.Contains("FROM dbo.tblNORM_ConfigurationRelease") || sql.Contains("FROM dbo.tblNORM_EntityLedger") || sql.Contains("FROM dbo.tblNORM_AccountMap") || sql.Contains("FROM dbo.tblNORM_StatementLine")) { return StoreQuery(call); }
         if(sql.Contains("SELECT TOP 1 f.ImportFileId"))
         {
             if(!call.Values.ContainsKey("@import")) { return StoreQuery(call); }
@@ -72,6 +72,7 @@ public static partial class Tests
         }
         if(accounts) { Assert(sql.Contains("tb.SourceCompanyCode=@company") && sql.Contains("tb.ReportingStream=@stream") && (call.Values.ContainsKey("@ledger") ? sql.Contains("tb.SourceLedger=@ledger") : sql.Contains("tb.SourceLedger IS NULL")),"Account query merges population rows"); }
         DataTable result=versions ? Table("ImportId,EntityCode,FinancialYear,SourceFileName,ImportedUtc,ImportedBy,SourceType,ConfigurationReleaseId,VersionCode,ImportFileId,EvidenceFileName,SourceFileHash,FileSourceType,PeriodStart,PeriodEnd,CoverageStart,CoverageEnd,IsFullYear,ProfileEvidence,ReplacementEvidence") : accounts ? Table("TbRowId,SourceRowNo,GlAccount,GlText,AccumBalance,SourceCompanyCode,SourceLedger,ReportingStream") : Table("ImportId,EntityCode,FinancialYear,SourceFileName,ImportedUtc,SourceCompanyCode,SourceLedger,ReportingStream");
+        if (accounts && sql.Contains("tb.SourceCostCentre")) { result.Columns.Add("SourceCostCentre", typeof(string)); }
         List<int> ids=new List<int>(store.Keys); ids.Sort(); ids.Reverse();
         foreach(int id in ids)
         {

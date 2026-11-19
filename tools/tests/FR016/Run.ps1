@@ -7,6 +7,8 @@ New-Item -ItemType Directory -Path $output | Out-Null
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 $epplus = Join-Path $root 'bin/EPPlus-LGPL.dll'
 Copy-Item -LiteralPath $epplus -Destination $output
+$annualCode = [IO.File]::ReadAllText((Join-Path $root 'App_Code/NORMAnnualSourceConfiguration.cs'))
+[IO.File]::WriteAllText((Join-Path $output 'NORMAnnualSourceConfiguration.cs'), $annualCode.Replace('using System.Data.OleDb;', 'using TestDb;'))
 foreach ($name in @('NORMImportService', 'StatementEngine')) {
     # Only substitute the database namespace in temporary copies. Business code is unchanged.
     $code = [IO.File]::ReadAllText((Join-Path $root "App_Code/$name.cs"))
@@ -14,13 +16,13 @@ foreach ($name in @('NORMImportService', 'StatementEngine')) {
 }
 $common = @('/nologo', '/warnaserror+', '/r:System.Web.dll', '/r:System.Data.dll', "/r:$epplus",
     (Join-Path $root 'App_Code/NORMErrorHandling.cs'), (Join-Path $root 'App_Code/NORMCrypto.cs'), (Join-Path $root 'App_Code/NORMImportModels.cs'),
-    (Join-Path $root 'App_Code/ErpTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'),
+    (Join-Path $root 'App_Code/ErpTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NihracsTrialBalanceImporter.cs'),
     (Join-Path $PSScriptRoot 'TestSupport.cs'), (Join-Path $PSScriptRoot 'Tests.cs'))
 foreach ($suite in @('Service', 'Engine')) {
     $exe = Join-Path $output "$suite.exe"
     $source = if ($suite -eq 'Service') { 'NORMImportService.cs' } else { 'StatementEngine.cs' }
     $options = @('/target:exe', "/out:$exe") + @($common) + @((Join-Path $output $source))
-    if ($suite -eq 'Service') { $options += '/define:SERVICE' }
+    if ($suite -eq 'Service') { $options += @('/define:SERVICE', (Join-Path $output 'NORMAnnualSourceConfiguration.cs')) }
     & $compiler @options
     if ($LASTEXITCODE -ne 0) { throw "$suite compilation failed" }
     & $exe
@@ -29,7 +31,7 @@ foreach ($suite in @('Service', 'Engine')) {
 # Compile the unmodified production files against the real helper and OleDb APIs.
 $production = @('/nologo', '/warnaserror+', '/target:library', ('/out:' + (Join-Path $output 'Production.dll')),
     '/r:System.Data.dll', '/r:System.Web.dll', '/r:System.Configuration.dll', "/r:$epplus")
-foreach ($name in @('NORMErrorHandling', 'NORMHelper', 'NORMCrypto', 'NORMImportModels', 'ErpTrialBalanceImporter', 'RomanTrialBalanceImporter','NORMTextTrialBalanceImporter', 'NORMImportService', 'StatementEngine')) {
+foreach ($name in @('NORMErrorHandling', 'NORMHelper', 'NORMCrypto', 'NORMImportModels', 'ErpTrialBalanceImporter', 'RomanTrialBalanceImporter','NORMTextTrialBalanceImporter','NihracsTrialBalanceImporter', 'NORMImportService', 'NORMAnnualSourceConfiguration', 'StatementEngine')) {
     $production += Join-Path $root "App_Code/$name.cs"
 }
 & $compiler @production

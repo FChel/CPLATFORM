@@ -16,8 +16,9 @@ namespace CPlatform.NORM
         protected Panel ErrorPanel = new Panel(), ResultPanel = new Panel(), PreviewPanel = new Panel();
         protected Literal ErrorMessage = new Literal(), ResultMessage = new Literal(), PreviewMessage = new Literal(), ReplacementError = new Literal();
         protected Button ImportButton = new Button(), ConfirmButton = new Button();
-        protected DropDownList ReleaseList = new DropDownList();
-        protected ListBox AdditionalReleaseList = new ListBox { SelectionMode = ListSelectionMode.Multiple };
+        protected DropDownList AgencyList = new DropDownList();
+        protected Panel AgencySelector = new Panel();
+        protected Literal AgencyContext = new Literal();
         protected CheckBox ReplaceExisting = new CheckBox { Text = "I confirm replacement of the existing figures." };
         protected FileUpload TrialBalanceFile = new FileUpload();
 
@@ -33,16 +34,16 @@ namespace CPlatform.NORM
             previews.AddRange(additionalFiles);
             Session[PendingKey] = previews;
             ViewState["PreviewToken"] = correctToken ? preview.Token : "stale-tab-token";
-            ReleaseList.Items.Add(new ListItem("Release 1", "1"));
-            ReleaseList.Items.Add(new ListItem("Release 2", "2"));
-            ReleaseList.SelectedValue = preview.ReleaseId.ToString();
-            ViewState["PreviewReleaseSelection"] = ReleaseSelectionKey();
+            AgencyList.Items.Add(new ListItem(preview.Entity, preview.Entity));
+            AgencyList.Items.Add(new ListItem("Alternate agency", "OTHER"));
+            AgencyList.SelectedValue = preview.Entity;
+            ViewState["PreviewAgency"] = preview.Entity;
             ShowPreview(previews);
         }
         public void CheckReplacementForTest() { ReplaceExisting.Checked = true; }
         public void ConfirmForTest() { ConfirmButton_Click(this, EventArgs.Empty); }
         public void CancelForTest() { CancelButton_Click(this, EventArgs.Empty); }
-        public void SwitchReleaseForTest() { ReleaseList.SelectedValue = "2"; }
+        public void SwitchReleaseForTest() { AgencyList.SelectedValue = "OTHER"; }
         public void ForgeSummaryForTest()
         {
             var form = HttpContext.Current.Request.Form;

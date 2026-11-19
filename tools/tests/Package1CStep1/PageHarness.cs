@@ -43,7 +43,7 @@ namespace CPlatform.NORM
             public override int GetTotalEntityBodyLength() { return body.Length; }
         }
 
-        public void InspectUploadsForTest(int primary, int[] additional, byte[][] files, string[] names)
+        public void InspectUploadsForTest(int primary, int[] additional, byte[][] files, string[] names, string agency = "CONTROLLED")
         {
             HttpContext context = new HttpContext(new UploadRequest(files, names));
             SessionStateUtility.AddHttpSessionStateToContext(context, new HttpSessionStateContainer("isolated-session", new SessionStateItemCollection(),
@@ -54,19 +54,17 @@ namespace CPlatform.NORM
             typeof(Page).GetField("_requestValueCollection", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(this, context.Request.Form);
             TrialBalanceFile.ID = "TrialBalanceFile";
             Controls.Add(TrialBalanceFile);
-            BindReleases();
-            ReleaseList.SelectedValue = primary.ToString();
-            foreach (int id in additional) { AdditionalReleaseList.Items.FindByValue(id.ToString()).Selected = true; }
+            BindAgencies();
+            if (AgencyList.Items.FindByValue(agency) != null) { AgencyList.SelectedValue = agency; }
             ImportButton_Click(this, EventArgs.Empty);
         }
         public List<NORMImportPreview> PreviewsForTest { get { return Session[PendingKey] as List<NORMImportPreview>; } }
         public bool ConfirmationEnabledForTest { get { return ConfirmButton.Enabled; } }
-        public string DefaultReleaseSelectionForTest() { BindReleases(); return ReleaseList.SelectedValue; }
+        public string DefaultReleaseSelectionForTest() { BindAgencies(); return AgencyList.SelectedValue; }
         public void ChangeAdditionalForTest(int id)
         {
-            ListItem item = AdditionalReleaseList.Items.FindByValue(id.ToString());
-            if (item == null) { item = new ListItem("Controlled release", id.ToString()); AdditionalReleaseList.Items.Add(item); }
-            item.Selected = !item.Selected;
+            AgencyList.Items.Add(new ListItem("Alternate agency", "OTHER"));
+            AgencyList.SelectedValue = "OTHER";
         }
         public void ClearUploadedFilesForTest()
         {

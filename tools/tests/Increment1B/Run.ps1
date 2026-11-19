@@ -7,6 +7,8 @@ New-Item -ItemType Directory -Path $output | Out-Null
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 $epplus = Join-Path $root 'bin/EPPlus-LGPL.dll'
 Copy-Item -LiteralPath $epplus -Destination $output
+$annualCode = [IO.File]::ReadAllText((Join-Path $root 'App_Code/NORMAnnualSourceConfiguration.cs'))
+[IO.File]::WriteAllText((Join-Path $output 'NORMAnnualSourceConfiguration.cs'), $annualCode.Replace('using System.Data.OleDb;', 'using TestDb;'))
 foreach ($name in @('NORMImportService','StatementEngine')) {
     $code = [IO.File]::ReadAllText((Join-Path $root "App_Code/$name.cs"))
     [IO.File]::WriteAllText((Join-Path $output "$name.cs"), $code.Replace('using System.Data.OleDb;', 'using TestDb;'))
@@ -18,8 +20,8 @@ foreach ($suite in @('Service','Engine','Display')) {
     $exe = Join-Path $output "$suite.exe"
     $options = @("/out:$exe") + @($common)
     if ($suite -eq 'Service') {
-        $options += @('/define:SERVICE',(Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'),
-            (Join-Path $root 'tools/tests/FR016/TestSupport.cs'),(Join-Path $output 'NORMImportService.cs'),(Join-Path $PSScriptRoot 'Tests.cs'))
+        $options += @('/define:SERVICE',(Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NihracsTrialBalanceImporter.cs'),
+            (Join-Path $root 'tools/tests/FR016/TestSupport.cs'),(Join-Path $output 'NORMImportService.cs'),(Join-Path $output 'NORMAnnualSourceConfiguration.cs'),(Join-Path $PSScriptRoot 'Tests.cs'))
     } elseif ($suite -eq 'Engine') {
         $options += @((Join-Path $root 'tools/tests/FR016/TestSupport.cs'),(Join-Path $output 'StatementEngine.cs'),(Join-Path $PSScriptRoot 'EngineTests.cs'))
     } else {

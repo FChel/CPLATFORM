@@ -19,6 +19,7 @@ public sealed class NORMSourceVersion
     public int ReleaseId, PredecessorImportId;
     public string ConfigurationVersion, SourceType, Profile, AcceptedBy, ReplacementEvidence;
     public bool IsCurrent;
+    public string AnnualApprovalHash;
     public readonly List<NORMSourceFileEvidence> Files = new List<NORMSourceFileEvidence>();
 }
 
@@ -26,6 +27,7 @@ public sealed class NORMSourceAccount
 {
     public string Account, Description;
     public int SourceRowNo;
+    public string CostCentre;
     public long RowId;
     public decimal Balance;
 }
@@ -40,6 +42,7 @@ public sealed class NORMSourceAccountChange
 public sealed class NORMSourceComparison
 {
     public NORMSourceVersion Current, Previous;
+    public string ComparisonUnavailable;
     public readonly List<NORMSourceAccountChange> Structural = new List<NORMSourceAccountChange>();
     public readonly List<NORMSourceAccountChange> Financial = new List<NORMSourceAccountChange>();
     public readonly List<string> MetadataChanges = new List<string>();
@@ -104,7 +107,7 @@ public static class NORMSourceHistory
         RequireScope(scope);
         List<OleDbParameter> args; string predicate = ScopePredicate(scope,out args);
         DataTable table = NORMHelper.Query("SELECT i.ImportId,i.EntityCode,i.FinancialYear,i.SourceFileName,i.ImportedUtc,i.ImportedBy,i.SourceType," +
-            "i.ConfigurationReleaseId,c.VersionCode,f.ImportFileId,f.SourceFileName AS EvidenceFileName,f.SourceFileHash,f.SourceType AS FileSourceType," +
+            "i.ConfigurationReleaseId,c.VersionCode,CASE WHEN i.AnnualSourceApprovalSnapshot IS NOT NULL THEN LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),i.AnnualSourceApprovalSnapshot)),2)) END AS AnnualApprovalHash,f.ImportFileId,f.SourceFileName AS EvidenceFileName,f.SourceFileHash,f.SourceType AS FileSourceType," +
             "f.PeriodStart,f.PeriodEnd,f.CoverageStart,f.CoverageEnd,f.IsFullYear," +
             "(SELECT TOP 1 a.DetailText FROM dbo.tblNORM_AuditEvent a WHERE a.EntityType='Import' AND a.EntityId=CONVERT(VARCHAR(20),i.ImportId) " +
             "AND a.EventCode='IMPORT_SOURCE_PROFILE' ORDER BY a.AuditEventId DESC) AS ProfileEvidence," +
@@ -123,6 +126,7 @@ public static class NORMSourceHistory
                     ReportingStream=scope.ReportingStream,ImportId=id,SourceFileName=NORMHelper.Str(row,"SourceFileName"),ImportedUtc=(DateTime)row["ImportedUtc"] },
                     ReleaseId=NORMHelper.Int(row,"ConfigurationReleaseId"),ConfigurationVersion=NORMHelper.Str(row,"VersionCode"),AcceptedBy=NORMHelper.Str(row,"ImportedBy"),
                     SourceType=NORMHelper.Str(row,"SourceType"),Profile=Profile(NORMHelper.Str(row,"ProfileEvidence")),ReplacementEvidence=NORMHelper.Str(row,"ReplacementEvidence") };
+                if (table.Columns.Contains("AnnualApprovalHash")) { current.AnnualApprovalHash = NORMHelper.Str(row,"AnnualApprovalHash"); }
                 versions.Add(current);
             }
             if (!row.IsNull("ImportFileId"))
@@ -143,12 +147,20 @@ public static class NORMSourceHistory
         foreach (NORMSourceVersion version in versions) { if (version.Scope.ImportId==selected.PredecessorImportId) { previous=version; } }
         NORMSourceComparison result = new NORMSourceComparison { Current=selected,Previous=previous };
         if (previous==null) { return result; }
-        Dictionary<string,NORMSourceAccount> a=Accounts(scope,previous.Scope.ImportId), b=Accounts(scope,importId);
+        bool centreAware = selected.Profile == NihracsTrialBalanceImporter.Profile;
+        if (centreAware != (previous.Profile == NihracsTrialBalanceImporter.Profile))
+        {
+            result.ComparisonUnavailable = "Source profiles have different account dimensions. Both originals remain available.";
+            return result;
+        }
+        Dictionary<string,NORMSourceAccount> a=Accounts(scope,previous.Scope.ImportId,centreAware), b=Accounts(scope,importId,centreAware);
         SortedSet<string> keys = new SortedSet<string>(a.Keys,StringComparer.OrdinalIgnoreCase); keys.UnionWith(b.Keys);
         foreach (string account in keys)
         {
             NORMSourceAccount oldRow,newRow; a.TryGetValue(account,out oldRow); b.TryGetValue(account,out newRow);
-            NORMSourceAccountChange change = new NORMSourceAccountChange { Account=account,Previous=oldRow,Current=newRow,
+            NORMSourceAccount row = newRow ?? oldRow;
+            string label = centreAware ? row.Account + " / " + (row.CostCentre ?? "(blank centre)") : row.Account;
+            NORMSourceAccountChange change = new NORMSourceAccountChange { Account=label,Previous=oldRow,Current=newRow,
                 StructuralChange=oldRow==null ? "Added account" : newRow==null ? "Removed account" : !String.Equals(oldRow.Description,newRow.Description,StringComparison.Ordinal) ? "Description changed" : null,
                 Difference=(newRow==null ? 0m : newRow.Balance)-(oldRow==null ? 0m : oldRow.Balance) };
             if (change.StructuralChange!=null) { result.Structural.Add(change); }
@@ -156,17 +168,19 @@ public static class NORMSourceHistory
             if (change.Difference!=0m) { result.Financial.Add(change); if(change.Difference>0m) { result.PositiveMovements+=change.Difference; } else { result.NegativeMovements+=change.Difference; } }
         }
         result.NetMovement=result.CurrentNet-result.PreviousNet;
+        Change(result.MetadataChanges,"Annual source approval",previous.AnnualApprovalHash,selected.AnnualApprovalHash);
         Change(result.MetadataChanges,"Configuration release",previous.ReleaseId.ToString(CultureInfo.InvariantCulture),selected.ReleaseId.ToString(CultureInfo.InvariantCulture));
         Change(result.MetadataChanges,"Source type",previous.SourceType,selected.SourceType); Change(result.MetadataChanges,"Source profile",previous.Profile,selected.Profile);
         Change(result.MetadataChanges,"Coverage and periods",Coverage(previous),Coverage(selected));
         return result;
     }
 
-    private static Dictionary<string,NORMSourceAccount> Accounts(NORMSourceScope scope, int importId)
+    private static Dictionary<string,NORMSourceAccount> Accounts(NORMSourceScope scope, int importId, bool centreAware)
     {
         List<OleDbParameter> args; string predicate=ScopePredicate(scope,out args);
         args.Add(NORMHelper.P("@import",importId));
-        DataTable table=NORMHelper.Query("SELECT tb.TbRowId,tb.SourceRowNo,tb.GlAccount,tb.GlText,tb.AccumBalance FROM dbo.tblNORM_TrialBalanceRow tb " +
+        DataTable table=NORMHelper.Query("SELECT tb.TbRowId,tb.SourceRowNo,tb.GlAccount,tb.GlText,tb.AccumBalance" +
+            (centreAware ? ",tb.SourceCostCentre" : "") + " FROM dbo.tblNORM_TrialBalanceRow tb " +
             "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=tb.ImportId WHERE " + Accepted + " AND " + predicate + " AND i.ImportId=@import AND " +
             "tb.IsDeactivated=0 AND tb.SourceCompanyCode=@company AND " + (scope.Ledger==null ? "tb.SourceLedger IS NULL" : "tb.SourceLedger=@ledger") +
             " AND tb.ReportingStream=@stream ORDER BY tb.SourceRowNo,tb.TbRowId",args.ToArray());
@@ -174,8 +188,11 @@ public static class NORMSourceHistory
         foreach(DataRow row in table.Rows)
         {
             string account=NORMHelper.Str(row,"GlAccount");
-            if(String.IsNullOrWhiteSpace(account) || result.ContainsKey(account)) { throw new InvalidOperationException("Retained accounts are not unique within this population; comparison is ambiguous."); }
-            result.Add(account,new NORMSourceAccount { Account=account,Description=NORMHelper.Str(row,"GlText"),Balance=NORMHelper.Dec(row,"AccumBalance"),SourceRowNo=NORMHelper.Int(row,"SourceRowNo"),RowId=NORMHelper.Long(row,"TbRowId") });
+            if (String.IsNullOrWhiteSpace(account)) { throw new InvalidOperationException("A retained account key is missing."); }
+            string centre = centreAware ? NORMHelper.Str(row,"SourceCostCentre") : null;
+            string key = centreAware ? account.Length + ":" + account + (centre == null ? "-1:" : centre.Length + ":" + centre) : account;
+            if(result.ContainsKey(key)) { throw new InvalidOperationException("Retained account keys are not unique within this population; comparison is ambiguous."); }
+            result.Add(key,new NORMSourceAccount { Account=account,CostCentre=centre,Description=NORMHelper.Str(row,"GlText"),Balance=NORMHelper.Dec(row,"AccumBalance"),SourceRowNo=NORMHelper.Int(row,"SourceRowNo"),RowId=NORMHelper.Long(row,"TbRowId") });
         }
         return result;
     }

@@ -154,7 +154,7 @@ public static class Tests
             });
             Test("changed dropdown configuration rejected by page", delegate {
                 NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), true); page.SwitchReleaseForTest(); page.ConfirmForTest(); NoAcceptance();
-                Assert(page.ErrorForTest.Contains("configuration changed"), "No configuration-switch message");
+                Assert(page.ErrorForTest.Contains("agency changed"), "No agency-switch message");
             });
             Test("stale tab token rejected by page", delegate { NORM_Import page = new NORM_Import(); page.StageForTest(Inspect(original), false); page.ConfirmForTest(); NoAcceptance(); });
             Test("forged browser preview fields are ignored", delegate {

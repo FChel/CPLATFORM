@@ -121,7 +121,7 @@ public static partial class Tests
             if(call.Sql.Contains("INSERT dbo.tblNORM_Import "))
             {
                 Assert(call.ParameterNames[0]=="@release" && call.ParameterNames[1]=="@fy" && call.ParameterNames[2]=="@entity","Import context parameter order changed");
-                additions.Add(call.InsertedId,new StoredPopulation { Id=call.InsertedId,Release=(int)call["@release"],Year=(int)call["@fy"],Entity=(string)call["@entity"] });
+                additions.Add(call.InsertedId,new StoredPopulation { Id=call.InsertedId,Release=call["@release"]==DBNull.Value ? 0 : (int)call["@release"],Year=(int)call["@fy"],Entity=(string)call["@entity"] });
             }
         }
         if(additions.Count==0) { return; } // Standalone rejected-attempt audit.
