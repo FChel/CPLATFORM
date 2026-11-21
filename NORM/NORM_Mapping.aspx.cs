@@ -3,6 +3,7 @@ using System.Data;
 using System.Globalization;
 using System.Text;
 using System.Web;
+using System.Web.UI.WebControls;
 
 namespace CPlatform.NORM
 {
@@ -22,21 +23,84 @@ namespace CPlatform.NORM
             set { ViewState["MappingReleaseId"] = value; }
         }
 
+        protected override void OnInit(EventArgs e)
+        {
+            base.OnInit(e);
+            ViewStateUserKey = Session.SessionID + "|" + NORMHelper.CurrentUserId();
+        }
+
         protected void Page_Load(object sender, EventArgs e)
         {
             if (!IsPostBack)
             {
                 try
                 {
+                    BindMappingContexts();
                     int requestedRelease;
-                    CurrentReleaseId = Int32.TryParse(Request.QueryString["release"], out requestedRelease) && requestedRelease > 0
-                        ? requestedRelease
-                        : NORMMappingManagement.GetOrCreateWorkingDraft(NORMHelper.CurrentUserId());
+                    if (Int32.TryParse(Request.QueryString["release"], out requestedRelease) && requestedRelease > 0)
+                        CurrentReleaseId = requestedRelease;
+                    else if (MappingContextList.Items.Count == 2)
+                    {
+                        MappingContextList.SelectedIndex = 1;
+                        SelectMappingContext();
+                    }
                 }
                 catch (Exception error) { Show("Mapping workbook is not available", NORMErrorHandling.UserMessage(error, System.Web.HttpContext.Current, "Mapping"), false); }
             }
             BindSelectedRelease();
         }
+
+        private void BindMappingContexts()
+        {
+            DataTable contexts = NORMHelper.Query(
+                "SELECT EntityCode,FinancialYear FROM dbo.tblNORM_ReportingEntity WHERE IsDeactivated=0 " +
+                "UNION SELECT EntityCode,FinancialYear FROM dbo.tblNORM_ConfigurationRelease " +
+                "WHERE IsDeactivated=0 AND StatusCode IN ('Draft','Approved') ORDER BY FinancialYear DESC,EntityCode");
+            MappingContextList.Items.Add(new ListItem("Select agency and financial year", ""));
+            foreach (DataRow context in contexts.Rows)
+            {
+                string entity = NORMHelper.Str(context, "EntityCode");
+                if (!NORMHelper.CanPrepareEntity(entity)) continue;
+                int year = NORMHelper.Int(context, "FinancialYear");
+                MappingContextList.Items.Add(new ListItem(entity + " FY" + year.ToString(CultureInfo.InvariantCulture), ContextValue(entity, year)));
+            }
+        }
+
+        protected void MappingContextList_Changed(object sender, EventArgs e)
+        {
+            MessagePanel.Visible = false;
+            try { SelectMappingContext(); BindSelectedRelease(); }
+            catch (Exception error)
+            {
+                WorkflowPanel.Visible = false;
+                BlankWorkbookPanel.Visible = true;
+                Show("Mapping workbook is not available", NORMErrorHandling.UserMessage(error, HttpContext.Current, "Mapping"), false);
+            }
+        }
+
+        private void SelectMappingContext()
+        {
+            CurrentReleaseId = 0;
+            string[] scope = MappingContextList.SelectedValue.Split('|');
+            if (scope.Length != 2) return;
+            CurrentReleaseId = NORMMappingManagement.GetOrCreateWorkingDraft(scope[0],
+                Int32.Parse(scope[1], CultureInfo.InvariantCulture), NORMHelper.CurrentUserId());
+        }
+
+        protected void CreateInitialDraftButton_Click(object sender, EventArgs e)
+        {
+            RunAction(delegate {
+                string[] scope = MappingContextList.SelectedValue.Split('|');
+                if (scope.Length != 2) return;
+                CurrentReleaseId = NORMMappingManagement.CreateInitialDraft(scope[0],
+                    Int32.Parse(scope[1], CultureInfo.InvariantCulture), NORMHelper.CurrentUserId());
+                Show("Mapping draft ready", "Download the editable workbook for this draft.", true);
+                BindSelectedRelease();
+            }, "Mapping draft ready", "Download the editable workbook for this draft.");
+        }
+
+        private static string ContextValue(string entity, int year)
+        { return entity + "|" + year.ToString(CultureInfo.InvariantCulture); }
 
         protected void ApplyWorkbookButton_Click(object sender, EventArgs e)
         {
@@ -73,11 +137,16 @@ namespace CPlatform.NORM
 
         private void BindSelectedRelease()
         {
-            int releaseId = CurrentReleaseId; if (releaseId <= 0) { WorkflowPanel.Visible = false; return; }
+            int releaseId = CurrentReleaseId;
+            BlankWorkbookPanel.Visible = releaseId == 0;
+            CreateInitialDraftButton.Visible = releaseId == 0 && MappingContextList.SelectedIndex > 0 && IsAdministrator;
+            if (releaseId <= 0) { WorkflowPanel.Visible = false; return; }
             DataTable releases = NORMHelper.Query("SELECT c.*,p.VersionCode ParentVersion FROM dbo.tblNORM_ConfigurationRelease c LEFT JOIN dbo.tblNORM_ConfigurationRelease p ON p.ConfigurationReleaseId=c.ParentConfigurationReleaseId WHERE c.ConfigurationReleaseId=@release", NORMHelper.P("@release", releaseId));
             if (releases.Rows.Count == 0) { WorkflowPanel.Visible = false; return; }
             DataRow release = releases.Rows[0];
             if (!NORMHelper.CanPrepareEntity(NORMHelper.Str(release, "EntityCode"))) { WorkflowPanel.Visible = false; return; }
+            ListItem scope = MappingContextList.Items.FindByValue(ContextValue(NORMHelper.Str(release, "EntityCode"), NORMHelper.Int(release, "FinancialYear")));
+            if (!IsPostBack && scope != null) MappingContextList.SelectedValue = scope.Value;
             bool draft = String.Equals(NORMHelper.Str(release, "StatusCode"), "Draft", StringComparison.OrdinalIgnoreCase); bool approved = String.Equals(NORMHelper.Str(release, "StatusCode"), "Approved", StringComparison.OrdinalIgnoreCase);
             WorkflowPanel.Visible = true; UploadPanel.Visible = draft; ApprovalPanel.Visible = draft && IsAdministrator; RecalculatePanel.Visible = approved;
             DownloadWorkbookLink.Visible = draft; DownloadWorkbookLink.NavigateUrl = "NORM_MappingWorkbook.ashx?release=" + releaseId.ToString(CultureInfo.InvariantCulture);

@@ -14,18 +14,27 @@
     </header>
     <main class="norm-mapping-shell">
         <section class="norm-mapping-hero">
-            <div><span class="norm-kicker">Account mapping</span><h1>Edit mapping workbook</h1><p>Download the mapping for the latest retained trial balance, complete any changes in Excel and upload it for controlled validation.</p></div>
+            <div><span class="norm-kicker">Account mapping</span><h1>Edit mapping workbook</h1><p>Select the agency and financial year, then download the workbook and make your changes in Excel.</p></div>
             <aside class="norm-unmapped-callout"><strong><%= UnmappedAccountCount %></strong><span><%= UnmappedAccountLabel %></span><small>Based on unique accounts in the latest retained trial balance.</small></aside>
         </section>
         <asp:Panel ID="MessagePanel" runat="server" Visible="false" CssClass="norm-alert"><strong><asp:Literal ID="MessageTitle" runat="server" /></strong><asp:Literal ID="MessageText" runat="server" /></asp:Panel>
+        <section class="norm-mapping-card">
+            <asp:Label runat="server" AssociatedControlID="MappingContextList" Text="Agency and financial year" />
+            <asp:DropDownList ID="MappingContextList" runat="server" CssClass="norm-input" AutoPostBack="true" OnSelectedIndexChanged="MappingContextList_Changed" />
+            <asp:Panel ID="BlankWorkbookPanel" runat="server" Visible="false">
+                <p>Download a blank workbook, or open a mapping draft for the selected agency and year.</p>
+                <a class="norm-button" href="NORM_MappingWorkbook.ashx?blank=1">Download blank workbook</a>
+                <asp:Button ID="CreateInitialDraftButton" runat="server" Text="Create initial mapping draft" CssClass="norm-button" Visible="false" OnClick="CreateInitialDraftButton_Click" />
+            </asp:Panel>
+        </section>
 
         <asp:Panel ID="WorkflowPanel" runat="server" Visible="false">
             <section class="norm-mapping-card norm-mapping-workbook">
-                <header><div><span class="norm-kicker">Working workbook</span><h2>Edit mapping workbook</h2><p>All accounts from the latest trial balance are included. NORM maintains the controlled working version automatically.</p></div><asp:HyperLink ID="DownloadWorkbookLink" runat="server" CssClass="norm-button norm-button-dark">Download editable workbook</asp:HyperLink></header>
+                <header><div><span class="norm-kicker">Working workbook</span><h2>Edit mapping workbook</h2><p>The workbook starts with the saved mapping. Add retained trial-balance accounts as needed.</p></div><asp:HyperLink ID="DownloadWorkbookLink" runat="server" CssClass="norm-button norm-button-dark">Download editable workbook</asp:HyperLink></header>
                 <div class="norm-release-summary norm-release-summary-compact"><%= ReleaseSummaryHtml %></div>
-                <div class="norm-mapping-guidance"><strong>Edit only the blue workbook columns</strong><span>Account type</span><span>Face statement line code</span><span>Note sub-line</span><span>Cash-flow class</span><span>Change reason</span></div>
+                <div class="norm-mapping-guidance"><strong>Keep existing G/L accounts and enter a reason for each mapping change</strong><span>Account type</span><span>Face statement line code</span><span>Note sub-line</span><span>Cash-flow class</span><span>Change reason</span></div>
                 <asp:Panel ID="UploadPanel" runat="server">
-                    <div class="norm-upload-row"><div><label for="MappingFile">Upload completed mapping workbook</label><asp:FileUpload ID="MappingFile" runat="server" CssClass="norm-file-input" accept=".xlsx" /><small>The full workbook is validated before any account is changed. Invalid or incomplete workbooks are rejected as a whole.</small></div><asp:Button ID="ApplyWorkbookButton" runat="server" Text="Upload and validate workbook" CssClass="norm-button" OnClick="ApplyWorkbookButton_Click" /></div>
+                    <div class="norm-upload-row"><div><label for="MappingFile">Upload completed mapping workbook</label><asp:FileUpload ID="MappingFile" runat="server" CssClass="norm-file-input" accept=".xlsx" /><small>The full workbook is checked before any account is changed. Proposed face codes in an initial draft require a statement template before approval.</small></div><asp:Button ID="ApplyWorkbookButton" runat="server" Text="Upload and validate workbook" CssClass="norm-button" OnClick="ApplyWorkbookButton_Click" /></div>
                 </asp:Panel>
             </section>
 

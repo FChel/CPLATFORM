@@ -33,7 +33,14 @@ namespace CPlatform.NORM
     /// <summary>Draft, workbook, validation, approval and replay workflow for NORM account mappings.</summary>
     public static class NORMMappingManagement
     {
-        private const int HeaderRow = 7;
+        private const int HeaderRow = 4;
+        private const int LegacyHeaderRow = 7;
+        private const string WorkbookMetadata = "_NORM";
+        private const string WorkbookFormat = "4";
+        private static readonly string[] WorkbookHeaders = {
+            "G/L account", "Description", "Account type", "Face statement line code",
+            "Note sub-line", "Cash-flow class", "Change reason"
+        };
         private static readonly HashSet<string> AccountTypes = new HashSet<string>(
             new[] { "Asset", "Liability", "Equity", "Income", "Expense" }, StringComparer.OrdinalIgnoreCase);
 
@@ -77,18 +84,28 @@ namespace CPlatform.NORM
             }
         }
 
-        public static int GetOrCreateWorkingDraft(string user)
+        public static int GetOrCreateWorkingDraft(string entity, int year, string user)
         {
-            object parentValue = NORMHelper.Scalar(
-                "SELECT TOP 1 c.ConfigurationReleaseId FROM dbo.tblNORM_Import i " +
-                "INNER JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId=i.ConfigurationReleaseId " +
-                "WHERE i.IsDeactivated=0 AND i.IsTestBreak=0 AND c.StatusCode='Approved' AND c.IsDeactivated=0 " +
-                "ORDER BY i.ImportId DESC");
-            if (parentValue == null)
-                parentValue = NORMHelper.Scalar("SELECT TOP 1 ConfigurationReleaseId FROM dbo.tblNORM_ConfigurationRelease WHERE StatusCode='Approved' AND IsDeactivated=0 ORDER BY FinancialYear DESC,ConfigurationReleaseId DESC");
-            if (parentValue == null) throw new InvalidOperationException("No approved configuration is available. Import a trial balance before preparing its mapping workbook.");
+            NORMHelper.RequireEntityAccess(entity);
+            DataTable starts = NORMHelper.Query(
+                "SELECT TOP 1 c.ConfigurationReleaseId,c.StatusCode FROM dbo.tblNORM_ConfigurationRelease c " +
+                "OUTER APPLY (SELECT MAX(m.MappingChangeId) LastChange FROM dbo.tblNORM_MappingChange m " +
+                "WHERE m.ConfigurationReleaseId=c.ConfigurationReleaseId) submitted " +
+                "WHERE c.EntityCode=@entity AND c.FinancialYear=@year AND c.IsDeactivated=0 " +
+                "AND (c.StatusCode='Approved' OR (c.StatusCode='Draft' AND submitted.LastChange IS NOT NULL)) " +
+                "ORDER BY submitted.LastChange DESC,CASE WHEN EXISTS (SELECT 1 FROM dbo.tblNORM_AccountMap a " +
+                "WHERE a.ConfigurationReleaseId=c.ConfigurationReleaseId AND a.IsDeactivated=0) THEN 0 ELSE 1 END,c.ConfigurationReleaseId DESC",
+                NORMHelper.P("@entity", entity), NORMHelper.P("@year", year));
+            if (starts.Rows.Count == 0)
+                return Convert.ToInt32(NORMHelper.Scalar(
+                    "SELECT TOP 1 ConfigurationReleaseId FROM dbo.tblNORM_ConfigurationRelease " +
+                    "WHERE EntityCode=@entity AND FinancialYear=@year AND StatusCode='Draft' AND IsDeactivated=0 " +
+                    "ORDER BY ConfigurationReleaseId DESC",
+                    NORMHelper.P("@entity", entity), NORMHelper.P("@year", year)));
 
-            int parentId = Convert.ToInt32(parentValue);
+            DataRow start = starts.Rows[0];
+            int parentId = NORMHelper.Int(start, "ConfigurationReleaseId");
+            if (Text(start, "StatusCode") == "Draft") return parentId;
             object draftValue = NORMHelper.Scalar(
                 "SELECT TOP 1 ConfigurationReleaseId FROM dbo.tblNORM_ConfigurationRelease " +
                 "WHERE ParentConfigurationReleaseId=@parent AND StatusCode='Draft' AND IsDeactivated=0 ORDER BY ConfigurationReleaseId DESC",
@@ -97,6 +114,53 @@ namespace CPlatform.NORM
 
             string version = "map-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture);
             return CreateDraft(parentId, version, "Account mapping workbook update.", user);
+        }
+
+        public static int CreateInitialDraft(string entity, int year, string user)
+        {
+            if (!NORMHelper.HasAdminAccess())
+                throw new UnauthorizedAccessException("Administrator access is required to create an initial mapping draft.");
+            using (OleDbConnection connection = NORMHelper.OpenConnection())
+            using (OleDbTransaction transaction = connection.BeginTransaction(IsolationLevel.Serializable))
+            {
+                try
+                {
+                    if (NORMAnnualSourceConfiguration.Load(entity, year, connection, transaction) == null)
+                        throw new InvalidOperationException("An approved annual source configuration is required for the initial mapping draft.");
+                    DataTable existing = NORMHelper.Query(connection, transaction,
+                        "SELECT TOP 1 ConfigurationReleaseId,ParentConfigurationReleaseId,StatusCode " +
+                        "FROM dbo.tblNORM_ConfigurationRelease WITH (UPDLOCK,HOLDLOCK) " +
+                        "WHERE EntityCode=@entity AND FinancialYear=@year AND StatusCode IN ('Draft','Approved') " +
+                        "AND IsDeactivated=0 ORDER BY ConfigurationReleaseId DESC",
+                        NORMHelper.P("@entity", entity), NORMHelper.P("@year", year));
+                    if (existing.Rows.Count > 0)
+                    {
+                        DataRow draft = existing.Rows[0];
+                        if (!IsParentlessDraft(draft))
+                            throw new InvalidOperationException("A mapping configuration already exists for this agency and year. Select it again.");
+                        transaction.Commit();
+                        return NORMHelper.Int(draft, "ConfigurationReleaseId");
+                    }
+
+                    const string reason = "Initial account mapping workbook.";
+                    int releaseId = NORMHelper.InsertId(connection, transaction,
+                        "INSERT dbo.tblNORM_ConfigurationRelease " +
+                        "(FinancialYear,EntityCode,VersionCode,ReleaseLabel,StatusCode,CreatedBy,ChangeReason) " +
+                        "VALUES (@year,@entity,@version,'Initial mapping draft','Draft',@user,@reason)",
+                        NORMHelper.P("@year", year), NORMHelper.P("@entity", entity),
+                        NORMHelper.P("@version", "map-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture)),
+                        NORMHelper.P("@user", user), NORMHelper.P("@reason", reason));
+                    Audit(connection, transaction, "MAPPING_DRAFT_CREATED", releaseId, reason, user);
+                    transaction.Commit();
+                    return releaseId;
+                }
+                catch { transaction.Rollback(); throw; }
+            }
+        }
+
+        private static bool IsParentlessDraft(DataRow release)
+        {
+            return release.IsNull("ParentConfigurationReleaseId") && Text(release, "StatusCode") == "Draft";
         }
 
         private static void CopyReleaseContent(OleDbConnection c, OleDbTransaction t, int source, int target, string user)
@@ -152,16 +216,11 @@ namespace CPlatform.NORM
 
         public static byte[] BuildEditableWorkbook(int releaseId)
         {
-            DataRow release = DraftRelease(releaseId);
-            int parentId = NORMHelper.Int(release, "ParentConfigurationReleaseId");
-            int importId = LatestImportId(parentId, NORMHelper.Int(release, "FinancialYear"), NORMHelper.Str(release, "EntityCode"));
+            DraftRelease(releaseId);
             DataTable mappings = NORMHelper.Query(
-                "WITH tb AS (SELECT GlAccount,MAX(GlText) GlDescription,SUM(AccumBalance) Balance FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0 GROUP BY GlAccount), " +
-                "accounts AS (SELECT GlCode FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release1 AND IsDeactivated=0 UNION SELECT GlAccount FROM tb) " +
-                "SELECT a.GlCode,COALESCE(NULLIF(m.GlDescription,''),tb.GlDescription,'') GlDescription,m.AccountType,m.StatementLine,m.NoteSubLine,m.CashFlowClass,m.MappingRationale,ISNULL(tb.Balance,0) Balance " +
-                "FROM accounts a LEFT JOIN dbo.tblNORM_AccountMap m ON m.ConfigurationReleaseId=@release2 AND m.GlCode=a.GlCode AND m.IsDeactivated=0 " +
-                "LEFT JOIN tb ON tb.GlAccount=a.GlCode ORDER BY a.GlCode",
-                NORMHelper.P("@import", importId), NORMHelper.P("@release1", releaseId), NORMHelper.P("@release2", releaseId));
+                "SELECT GlCode,GlDescription,AccountType,StatementLine,NoteSubLine,CashFlowClass " +
+                "FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 ORDER BY GlCode",
+                NORMHelper.P("@release", releaseId));
             DataTable lines = NORMHelper.Query(
                 "SELECT LineCode,StatementCode,LineLabel FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release AND LineCode IS NOT NULL AND CalculationKind='Mapped' AND IsDeactivated=0 ORDER BY StatementCode,SeqNo",
                 NORMHelper.P("@release", releaseId));
@@ -179,39 +238,50 @@ namespace CPlatform.NORM
                 "SELECT DISTINCT CashFlowClass FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND CashFlowClass IS NOT NULL AND LTRIM(RTRIM(CashFlowClass))<>'' AND IsDeactivated=0 ORDER BY CashFlowClass",
                 NORMHelper.P("@release", releaseId));
 
+            return BuildWorkbook(releaseId, mappings, lines, typeLines, noteLines, cash);
+        }
+
+        public static byte[] BuildBlankWorkbook()
+        {
+            return BuildWorkbook(0, new DataTable(), new DataTable(), new DataTable(), new DataTable(), new DataTable());
+        }
+
+        private static byte[] BuildWorkbook(int releaseId, DataTable mappings, DataTable lines, DataTable typeLines,
+            DataTable noteLines, DataTable cash)
+        {
             using (ExcelPackage package = new ExcelPackage())
             {
-                package.Workbook.Properties.Title = "NORM editable account mapping - " + NORMHelper.Str(release, "VersionCode");
+                package.Workbook.Properties.Title = "NORM editable account mapping";
                 package.Workbook.Properties.Author = NORMHelper.CurrentUserId() ?? "unknown";
                 ExcelWorksheet sheet = package.Workbook.Worksheets.Add("Mappings");
                 sheet.Cells[1, 1].Value = "NORM controlled account mapping";
-                sheet.Cells[1, 1, 1, 8].Merge = true;
+                sheet.Cells[1, 1, 1, 7].Merge = true;
                 sheet.Cells[1, 1].Style.Font.Bold = true; sheet.Cells[1, 1].Style.Font.Size = 18; sheet.Cells[1, 1].Style.Font.Color.SetColor(Color.White);
                 sheet.Cells[1, 1].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[1, 1].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(20, 47, 65));
-                sheet.Cells[2, 1].Value = "Release ID"; sheet.Cells[2, 2].Value = releaseId;
-                sheet.Cells[3, 1].Value = "Version"; sheet.Cells[3, 2].Value = NORMHelper.Str(release, "VersionCode");
-                sheet.Cells[4, 1].Value = "Instructions"; sheet.Cells[4, 2].Value = "Edit the blue columns only. Use stable face-statement line codes from the Reference lists sheet. A reason is required for every changed row.";
-                sheet.Cells[4, 2, 4, 8].Merge = true; sheet.Cells[4, 2].Style.WrapText = true;
-                sheet.Cells[5, 1].Value = "Workbook format"; sheet.Cells[5, 2].Value = 3;
-                string[] headers = { "G/L account", "Description", "Current TB balance ($)", "Account type", "Face statement line code", "Note sub-line", "Cash-flow class", "Change reason" };
-                for (int i = 0; i < headers.Length; i++) sheet.Cells[HeaderRow, i + 1].Value = headers[i];
-                sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Font.Bold = true; sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Font.Color.SetColor(Color.White);
-                sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[HeaderRow, 1, HeaderRow, 8].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(43, 109, 91));
+                sheet.Cells[2, 1].Value = "Instructions";
+                sheet.Cells[2, 2].Value = releaseId == 0
+                    ? "Use this sheet to prepare your first mapping. Upload it into the agency's configured empty draft when available."
+                    : "Keep existing G/L accounts. Add retained trial-balance accounts as needed. Enter a reason for each changed mapping.";
+                sheet.Cells[2, 2, 2, 7].Merge = true;
+                sheet.Cells[2, 2].Style.WrapText = true;
+                for (int i = 0; i < WorkbookHeaders.Length; i++) sheet.Cells[HeaderRow, i + 1].Value = WorkbookHeaders[i];
+                sheet.Cells[HeaderRow, 1, HeaderRow, 7].Style.Font.Bold = true; sheet.Cells[HeaderRow, 1, HeaderRow, 7].Style.Font.Color.SetColor(Color.White);
+                sheet.Cells[HeaderRow, 1, HeaderRow, 7].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[HeaderRow, 1, HeaderRow, 7].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(43, 109, 91));
+                sheet.Column(1).Style.Numberformat.Format = "@";
                 int row = HeaderRow + 1;
                 foreach (DataRow source in mappings.Rows)
                 {
                     sheet.Cells[row, 1].Value = Text(source, "GlCode"); sheet.Cells[row, 2].Value = Text(source, "GlDescription");
-                    sheet.Cells[row, 3].Value = NORMHelper.Dec(source, "Balance"); sheet.Cells[row, 3].Style.Numberformat.Format = "#,##0.00;[Red](#,##0.00);-";
-                    sheet.Cells[row, 4].Value = Text(source, "AccountType"); sheet.Cells[row, 5].Value = Text(source, "StatementLine");
-                    sheet.Cells[row, 6].Value = Text(source, "NoteSubLine"); sheet.Cells[row, 7].Value = Text(source, "CashFlowClass"); sheet.Cells[row, 8].Value = "";
-                    sheet.Cells[row, 4, row, 5].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[row, 4, row, 5].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(221, 235, 247));
-                    sheet.Cells[row, 6, row, 8].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[row, 6, row, 8].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(221, 235, 247));
+                    sheet.Cells[row, 3].Value = Text(source, "AccountType"); sheet.Cells[row, 4].Value = Text(source, "StatementLine");
+                    sheet.Cells[row, 5].Value = Text(source, "NoteSubLine"); sheet.Cells[row, 6].Value = Text(source, "CashFlowClass");
                     row++;
                 }
                 int last = Math.Max(HeaderRow + 1, row - 1);
-                sheet.View.FreezePanes(HeaderRow + 1, 1); sheet.Cells[HeaderRow, 1, last, 8].AutoFilter = true;
-                sheet.Column(1).Width = 18; sheet.Column(2).Width = 34; sheet.Column(3).Width = 19; sheet.Column(4).Width = 16; sheet.Column(5).Width = 34;
-                sheet.Column(6).Width = 34; sheet.Column(7).Width = 28; sheet.Column(8).Width = 42;
+                sheet.Cells[HeaderRow + 1, 3, last, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                sheet.Cells[HeaderRow + 1, 3, last, 7].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(221, 235, 247));
+                sheet.View.FreezePanes(HeaderRow + 1, 1); sheet.Cells[HeaderRow, 1, last, 7].AutoFilter = true;
+                sheet.Column(1).Width = 18; sheet.Column(2).Width = 34; sheet.Column(3).Width = 16; sheet.Column(4).Width = 34;
+                sheet.Column(5).Width = 34; sheet.Column(6).Width = 28; sheet.Column(7).Width = 42;
 
                 ExcelWorksheet reference = package.Workbook.Worksheets.Add("Reference lists");
                 reference.Cells[1, 1].Value = "Account types"; reference.Cells[1, 3].Value = "Face statement line code"; reference.Cells[1, 4].Value = "Statement"; reference.Cells[1, 5].Value = "Label"; reference.Cells[1, 7].Value = "Cash-flow classes";
@@ -254,13 +324,22 @@ namespace CPlatform.NORM
                 if (lines.Rows.Count > 0) package.Workbook.Names.Add("NoteLineLookup", reference.Cells[2, 17, lines.Rows.Count + 1, 18]);
                 reference.Cells[1, 1, 1, Math.Max(18, 19 + lines.Rows.Count)].Style.Font.Bold = true; reference.Cells.AutoFitColumns();
                 for (int hiddenColumn = 11; hiddenColumn <= 19 + lines.Rows.Count; hiddenColumn++) reference.Column(hiddenColumn).Hidden = true;
-                if (mappings.Rows.Count > 0)
+                int entryRow = HeaderRow + 1;
+                var typeValidation = sheet.DataValidations.AddListValidation("C" + entryRow + ":C" + last);
+                typeValidation.Formula.ExcelFormula = "'Reference lists'!$A$2:$A$6";
+                if (lines.Rows.Count > 0)
                 {
-                    var typeValidation = sheet.DataValidations.AddListValidation("D" + (HeaderRow + 1) + ":D" + last); typeValidation.Formula.ExcelFormula = "'Reference lists'!$A$2:$A$6";
-                    var lineValidation = sheet.DataValidations.AddListValidation("E" + (HeaderRow + 1) + ":E" + last); lineValidation.Formula.ExcelFormula = "INDIRECT(\"FaceLines_\"&$D" + (HeaderRow + 1).ToString(CultureInfo.InvariantCulture) + ")";
-                    if (lines.Rows.Count > 0) { var noteValidation = sheet.DataValidations.AddListValidation("F" + (HeaderRow + 1) + ":F" + last); noteValidation.Formula.ExcelFormula = "INDIRECT(VLOOKUP($E" + (HeaderRow + 1).ToString(CultureInfo.InvariantCulture) + ",NoteLineLookup,2,FALSE))"; noteValidation.AllowBlank = true; }
-                    if (cash.Rows.Count > 0) { var cashValidation = sheet.DataValidations.AddListValidation("G" + (HeaderRow + 1) + ":G" + last); cashValidation.Formula.ExcelFormula = "'Reference lists'!$G$2:$G$" + (cash.Rows.Count + 1).ToString(CultureInfo.InvariantCulture); cashValidation.AllowBlank = true; }
+                    var lineValidation = sheet.DataValidations.AddListValidation("D" + entryRow + ":D" + last);
+                    lineValidation.Formula.ExcelFormula = mappings.Rows.Count == 0
+                        ? "'Reference lists'!$C$2:$C$" + (lines.Rows.Count + 1).ToString(CultureInfo.InvariantCulture)
+                        : "INDIRECT(\"FaceLines_\"&$C" + entryRow.ToString(CultureInfo.InvariantCulture) + ")";
                 }
+                if (lines.Rows.Count > 0 && mappings.Rows.Count > 0) { var noteValidation = sheet.DataValidations.AddListValidation("E" + entryRow + ":E" + last); noteValidation.Formula.ExcelFormula = "INDIRECT(VLOOKUP($D" + entryRow.ToString(CultureInfo.InvariantCulture) + ",NoteLineLookup,2,FALSE))"; noteValidation.AllowBlank = true; }
+                if (cash.Rows.Count > 0) { var cashValidation = sheet.DataValidations.AddListValidation("F" + entryRow + ":F" + last); cashValidation.Formula.ExcelFormula = "'Reference lists'!$G$2:$G$" + (cash.Rows.Count + 1).ToString(CultureInfo.InvariantCulture); cashValidation.AllowBlank = true; }
+                ExcelWorksheet metadata = package.Workbook.Worksheets.Add(WorkbookMetadata);
+                metadata.Cells[1, 1].Value = releaseId;
+                metadata.Cells[1, 2].Value = WorkbookFormat;
+                metadata.Hidden = eWorkSheetHidden.VeryHidden;
                 return package.GetAsByteArray();
             }
         }
@@ -271,12 +350,12 @@ namespace CPlatform.NORM
             if (!String.Equals(Path.GetExtension(fileName), ".xlsx", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("The mapping workbook must be an .xlsx file.");
             DataRow release = DraftRelease(releaseId);
             int parentId = NORMHelper.Int(release, "ParentConfigurationReleaseId");
-            int importId = LatestImportId(parentId, NORMHelper.Int(release, "FinancialYear"), NORMHelper.Str(release, "EntityCode"));
+            int importId = MappingSourceImportId(parentId, release);
             string hash = NORMCrypto.Sha256(content);
             Dictionary<string, DataRow> existing = NORMHelper.Query("SELECT * FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0", NORMHelper.P("@release", releaseId))
                 .AsEnumerable().ToDictionary(x => Text(x, "GlCode"), StringComparer.OrdinalIgnoreCase);
             Dictionary<string, DataRow> trialBalanceAccounts = NORMHelper.Query(
-                "SELECT GlAccount,MAX(GlText) GlDescription,SUM(AccumBalance) Balance FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0 GROUP BY GlAccount",
+                "SELECT GlAccount,MAX(GlText) GlDescription FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0 GROUP BY GlAccount",
                 NORMHelper.P("@import", importId)).AsEnumerable().ToDictionary(x => Text(x, "GlAccount"), StringComparer.OrdinalIgnoreCase);
             HashSet<string> validLines = new HashSet<string>(NORMHelper.Query(
                 "SELECT LineCode FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release AND LineCode IS NOT NULL AND CalculationKind='Mapped' AND IsDeactivated=0",
@@ -292,16 +371,29 @@ namespace CPlatform.NORM
             List<MappingRow> rows = new List<MappingRow>();
             List<string> errors = new List<string>();
             HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool firstMapping = existing.Count == 0;
+            // With no face catalogue, retain proposed destinations for review in the initial annual draft.
+            // Validate still blocks approval until the statement template exists and resolves the codes.
+            bool proposedDestinations = IsParentlessDraft(release) && validLines.Count == 0 &&
+                NORMAnnualSourceConfiguration.Load(Text(release, "EntityCode"), NORMHelper.Int(release, "FinancialYear")) != null;
             using (ExcelPackage package = new ExcelPackage(new MemoryStream(content)))
             {
                 ExcelWorksheet sheet = package.Workbook.Worksheets["Mappings"];
                 if (sheet == null) throw new InvalidOperationException("The workbook does not contain the required Mappings sheet.");
-                int workbookRelease; if (!Int32.TryParse(Convert.ToString(sheet.Cells[2, 2].Value), out workbookRelease) || workbookRelease != releaseId)
+                ExcelWorksheet metadata = package.Workbook.Worksheets[WorkbookMetadata];
+                bool legacy = metadata == null;
+                int workbookRelease;
+                if (!Int32.TryParse(legacy ? Cell(sheet, 2, 2) : Cell(metadata, 1, 1), out workbookRelease) ||
+                    (workbookRelease != releaseId && (legacy || workbookRelease != 0 || !firstMapping)))
                     throw new InvalidOperationException("This workbook belongs to a different configuration release. Download a fresh workbook for this draft.");
-                if (!String.Equals(Cell(sheet, 5, 2), "3", StringComparison.Ordinal))
+                if (legacy ? Cell(sheet, 5, 2) != "3" : Cell(metadata, 1, 2) != WorkbookFormat)
                     throw new InvalidOperationException("This is an older mapping workbook layout. Download a fresh workbook for this draft before making changes.");
-                int last = sheet.Dimension == null ? HeaderRow : sheet.Dimension.End.Row;
-                for (int rowNumber = HeaderRow + 1; rowNumber <= last; rowNumber++)
+                if (!legacy && WorkbookHeaders.Where((header, index) => !Same(Cell(sheet, HeaderRow, index + 1), header)).Any())
+                    throw new InvalidOperationException("The mapping workbook headers have changed. Download a fresh workbook for this draft.");
+                int headerRow = legacy ? LegacyHeaderRow : HeaderRow;
+                int mappingColumn = legacy ? 4 : 3;
+                int last = sheet.Dimension == null ? headerRow : sheet.Dimension.End.Row;
+                for (int rowNumber = headerRow + 1; rowNumber <= last; rowNumber++)
                 {
                     string gl = Cell(sheet, rowNumber, 1); if (gl.Length == 0) continue;
                     if (!seen.Add(gl)) { errors.Add("Row " + rowNumber + ": G/L " + gl + " appears more than once."); continue; }
@@ -309,12 +401,20 @@ namespace CPlatform.NORM
                     DataRow trialBalanceAccount = null;
                     if (before == null && !trialBalanceAccounts.TryGetValue(gl, out trialBalanceAccount)) { errors.Add("Row " + rowNumber + ": G/L " + gl + " is not in this draft or the retained trial balance."); continue; }
                     string description = before == null ? Text(trialBalanceAccount, "GlDescription") : Text(before, "GlDescription");
-                    MappingRow item = new MappingRow { RowNumber = rowNumber, GlCode = gl, GlDescription = description, AccountType = Cell(sheet, rowNumber, 4), StatementLine = Cell(sheet, rowNumber, 5), NoteSubLine = Cell(sheet, rowNumber, 6), CashFlowClass = Cell(sheet, rowNumber, 7), Reason = Cell(sheet, rowNumber, 8), Before = before };
+                    MappingRow item = new MappingRow {
+                        RowNumber = rowNumber, GlCode = gl, GlDescription = description, Before = before,
+                        AccountType = Cell(sheet, rowNumber, mappingColumn),
+                        StatementLine = Cell(sheet, rowNumber, mappingColumn + 1),
+                        NoteSubLine = Cell(sheet, rowNumber, mappingColumn + 2),
+                        CashFlowClass = Cell(sheet, rowNumber, mappingColumn + 3),
+                        Reason = Cell(sheet, rowNumber, mappingColumn + 4)
+                    };
                     if (item.AccountType.Length > 0 && !AccountTypes.Contains(item.AccountType)) errors.Add("Row " + rowNumber + ": account type is not valid.");
-                    if (item.StatementLine.Length > 0 && !validLines.Contains(item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line code '" + item.StatementLine + "' is not valid for this release.");
-                    if (item.AccountType.Length > 0 && item.StatementLine.Length > 0 && !validTypeLines.Contains(item.AccountType + "|" + item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line '" + item.StatementLine + "' is not available for account type " + item.AccountType + ".");
+                    if (item.StatementLine.Length > 120) errors.Add("Row " + rowNumber + ": face statement line exceeds 120 characters.");
+                    else if (!proposedDestinations && item.StatementLine.Length > 0 && !validLines.Contains(item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line code '" + item.StatementLine + "' is not valid for this release.");
+                    if (!firstMapping && !proposedDestinations && item.AccountType.Length > 0 && item.StatementLine.Length > 0 && !validTypeLines.Contains(item.AccountType + "|" + item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line '" + item.StatementLine + "' is not available for account type " + item.AccountType + ".");
                     if (item.NoteSubLine.Length > 0 && item.StatementLine.Length == 0) errors.Add("Row " + rowNumber + ": select a face statement line before selecting a note sub-line.");
-                    if (item.NoteSubLine.Length > 0 && item.StatementLine.Length > 0 && !validNoteLines.Contains(item.StatementLine + "|" + item.NoteSubLine)) errors.Add("Row " + rowNumber + ": note sub-line '" + item.NoteSubLine + "' is not available for face statement line '" + item.StatementLine + "'.");
+                    if (!firstMapping && !proposedDestinations && item.NoteSubLine.Length > 0 && item.StatementLine.Length > 0 && !validNoteLines.Contains(item.StatementLine + "|" + item.NoteSubLine)) errors.Add("Row " + rowNumber + ": note sub-line '" + item.NoteSubLine + "' is not available for face statement line '" + item.StatementLine + "'.");
                     if (item.NoteSubLine.Length > 240) errors.Add("Row " + rowNumber + ": note sub-line exceeds 240 characters.");
                     if (item.CashFlowClass.Length > 120) errors.Add("Row " + rowNumber + ": cash-flow class exceeds 120 characters.");
                     item.Changed = Different(before, item);
@@ -332,6 +432,13 @@ namespace CPlatform.NORM
             {
                 try
                 {
+                    DataTable current = NORMHelper.Query(connection, transaction,
+                        "SELECT ContentHash FROM dbo.tblNORM_ConfigurationRelease WITH (UPDLOCK,HOLDLOCK) " +
+                        "WHERE ConfigurationReleaseId=@release AND StatusCode='Draft' AND IsDeactivated=0",
+                        NORMHelper.P("@release", releaseId));
+                    if (current.Rows.Count != 1 || !Same(Text(current.Rows[0], "ContentHash"), Text(release, "ContentHash")))
+                        throw new InvalidOperationException("The mapping draft changed during validation. Download a fresh workbook and try again.");
+                    NORMHelper.RequireEntityAccess(Text(release, "EntityCode"), connection, transaction);
                     foreach (MappingRow item in rows.Where(x => x.Changed))
                     {
                         if (item.Before == null)
@@ -381,6 +488,10 @@ namespace CPlatform.NORM
             if (result.MappingCount == 0) result.Errors.Add("The release contains no account mappings.");
             if (invalid > 0) result.Errors.Add(invalid + " mapping(s) have an invalid account type.");
             if (duplicates > 0) result.Errors.Add(duplicates + " G/L account(s) have duplicate active mappings.");
+            if (IsParentlessDraft(release) && Convert.ToInt32(NORMHelper.Scalar(
+                "SELECT COUNT(*) FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release " +
+                "AND IsDeactivated=0 AND CalculationKind='Mapped' AND LineCode IS NOT NULL", NORMHelper.P("@release", releaseId))) == 0)
+                result.Errors.Add("Configure the statement lines before approving this initial mapping draft.");
             if (unknownLines > 0) result.Errors.Add(unknownLines + " mapping(s) refer to a line that is not in the statement template.");
             if (result.UnmappedCount > 0) result.Warnings.Add(result.UnmappedCount + " account(s) do not yet have both an account type and face-statement line. They remain visible in the unmapped pool.");
             if (NORMHelper.Str(release, "StatusCode") == "Draft" && result.ChangedCount == 0) result.Warnings.Add("No mapping changes have been recorded in this draft.");
@@ -487,12 +598,23 @@ namespace CPlatform.NORM
             object value = NORMHelper.Scalar("SELECT TOP 1 i.ImportId FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId=i.ImportId WHERE i.FinancialYear=@fy AND i.EntityCode=@entity AND i.IsTestBreak=0 AND i.IsDeactivated=0 AND r.StatusCode='Complete' AND r.IsDeactivated=0 ORDER BY CASE WHEN i.ConfigurationReleaseId=@preferred THEN 0 ELSE 1 END,i.ImportId DESC", NORMHelper.P("@fy", financialYear), NORMHelper.P("@entity", entity), NORMHelper.P("@preferred", preferredRelease));
             return value == null ? 0 : Convert.ToInt32(value);
         }
+        private static int MappingSourceImportId(int preferredRelease, DataRow release)
+        {
+            int year = NORMHelper.Int(release, "FinancialYear");
+            string entity = Text(release, "EntityCode");
+            int importId = LatestImportId(preferredRelease, year, entity);
+            if (importId != 0) return importId;
+            return Convert.ToInt32(NORMHelper.Scalar(
+                "SELECT TOP 1 ImportId FROM dbo.tblNORM_Import WHERE EntityCode=@entity AND FinancialYear=@fy " +
+                "AND IsDeactivated=0 AND IsTestBreak=0 AND ParentImportId IS NULL AND StatusCode IN ('Imported','Calculated') ORDER BY ImportId DESC",
+                NORMHelper.P("@entity", entity), NORMHelper.P("@fy", year)));
+        }
         private static int TrialBalanceUnmappedCount(int releaseId)
         {
             DataRow release = Release(releaseId);
             bool draft = String.Equals(NORMHelper.Str(release, "StatusCode"), "Draft", StringComparison.OrdinalIgnoreCase);
             int preferredRelease = draft ? NORMHelper.Int(release, "ParentConfigurationReleaseId") : releaseId;
-            int importId = LatestImportId(preferredRelease, NORMHelper.Int(release, "FinancialYear"), NORMHelper.Str(release, "EntityCode"));
+            int importId = MappingSourceImportId(preferredRelease, release);
             if (importId == 0)
                 return Convert.ToInt32(NORMHelper.Scalar(
                     "SELECT COUNT(*) FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 AND (AccountType IS NULL OR LTRIM(RTRIM(AccountType))='' OR StatementLine IS NULL OR LTRIM(RTRIM(StatementLine))='')",
