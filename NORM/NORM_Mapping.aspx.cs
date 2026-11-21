@@ -26,6 +26,8 @@ namespace CPlatform.NORM
         protected override void OnInit(EventArgs e)
         {
             base.OnInit(e);
+            // Persist the session before signing ViewState for the first postback.
+            Session["NORM.Mapping.ViewStateInitialized"] = true;
             ViewStateUserKey = Session.SessionID + "|" + NORMHelper.CurrentUserId();
         }
 
