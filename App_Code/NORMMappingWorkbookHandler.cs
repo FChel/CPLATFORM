@@ -14,17 +14,18 @@ namespace CPlatform.NORM
             {
                 context.Response.StatusCode = 403; context.Response.TrySkipIisCustomErrors = true; context.Response.Write("Preparer access is required."); return;
             }
-            int releaseId;
-            if (!Int32.TryParse(context.Request.QueryString["release"], out releaseId) || releaseId <= 0)
+            bool blank = context.Request.QueryString["blank"] == "1";
+            int releaseId = 0;
+            if (!blank && (!Int32.TryParse(context.Request.QueryString["release"], out releaseId) || releaseId <= 0))
             {
                 context.Response.StatusCode = 400; context.Response.TrySkipIisCustomErrors = true; context.Response.Write("Select a draft mapping release."); return;
             }
             try
             {
-                byte[] content = NORMMappingManagement.BuildEditableWorkbook(releaseId);
+                byte[] content = blank ? NORMMappingManagement.BuildBlankWorkbook() : NORMMappingManagement.BuildEditableWorkbook(releaseId);
                 context.Response.Clear(); context.Response.Buffer = true;
                 context.Response.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-                context.Response.AddHeader("Content-Disposition", "attachment; filename=\"NORM_Mapping_Draft_" + releaseId.ToString(CultureInfo.InvariantCulture) + ".xlsx\"");
+                context.Response.AddHeader("Content-Disposition", "attachment; filename=\"NORM_GL_Mapping.xlsx\"");
                 context.Response.AddHeader("Content-Length", content.Length.ToString(CultureInfo.InvariantCulture));
                 context.Response.BinaryWrite(content); context.ApplicationInstance.CompleteRequest();
             }
