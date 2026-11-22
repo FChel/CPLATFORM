@@ -50,6 +50,7 @@ namespace CPlatform.NORM
             public string Label;
             public string Note;
             public decimal? Current;
+            public bool HasReportedCurrent;
             public decimal? Prior;
             public decimal? Budget;
             public string FormulaSpec;
@@ -331,7 +332,8 @@ namespace CPlatform.NORM
                 "r.LineResultId,r.ComputedAmount " +
                 "FROM dbo.tblNORM_StatementLine t " +
                 "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
-                "WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code AND t.IsDeactivated=0 ORDER BY t.SeqNo",
+                "WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code AND t.IsDeactivated=0 " +
+                "AND t.LineType<>'employee-detail' ORDER BY t.SeqNo",
                 NORMHelper.P("@run", model.RunId), NORMHelper.P("@release", model.ReleaseId), NORMHelper.P("@code", code));
             List<FaceRow> rows = new List<FaceRow>();
             List<FaceRow> ownSource = new List<FaceRow>();
@@ -454,6 +456,16 @@ namespace CPlatform.NORM
             {
                 ApplyFaceAggregate(rows, "Total own-source income", new string[] { "TOTAL_OSR", "TOTAL_GAINS" });
                 ApplyFaceDifference(rows, "Operating result", "Revenue from Government", "Net cost of services");
+                Dictionary<string, decimal> reported = NORMReportingFramework.LoadReportedIncomeStatement(model.RunId);
+                foreach (FaceRow row in rows)
+                {
+                    decimal amount;
+                    if (row.Code != null && reported.TryGetValue(row.Code, out amount))
+                    {
+                        row.Current = amount;
+                        row.HasReportedCurrent = true;
+                    }
+                }
                 decimal? effectivePrior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCE", "SOCE_TOTAL_OCI",
                     null);
                 effectivePrior = NORMStartOfYearSetup.FigureValue(model.PriorFigures, "SOCI", "OCI_REVALUATION", effectivePrior);
@@ -653,6 +665,7 @@ namespace CPlatform.NORM
                 string[] terms = item.FormulaSpec.Split('|');
                 for (int col = 3; col <= 5; col++)
                 {
+                    if (col == 3 && item.HasReportedCurrent) continue;
                     List<string> formulaTerms = new List<string>();
                     for (int t = 0; t < terms.Length; t++)
                     {
@@ -987,7 +1000,8 @@ namespace CPlatform.NORM
             sheet.Cells[7, 3].Value = model.Year - 1;
             sheet.Cells[7, 4].Value = "Workpaper reference";
             StyleHeader(sheet.Cells[7, 1, 7, 4], false);
-            bool structured = disclosure.Lines.Any(x => x.SortOrder > 0 || !String.Equals(x.LineType, "detail", StringComparison.OrdinalIgnoreCase));
+            bool structured = disclosure.ReportedAmount.HasValue ||
+                disclosure.Lines.Any(x => x.SortOrder > 0 || !String.Equals(x.LineType, "detail", StringComparison.OrdinalIgnoreCase));
             List<NORMReportingFramework.NoteLine> lines = structured
                 ? disclosure.Lines.OrderBy(x => x.SortOrder).ToList()
                 : disclosure.Lines.OrderBy(x => OtherLast(x.Label)).ToList();
@@ -1004,7 +1018,7 @@ namespace CPlatform.NORM
                     continue;
                 }
                 sheet.Cells[row, 1].Value = lines[i].Label;
-                sheet.Cells[row, 2].Value = Round(lines[i].Amount);
+                sheet.Cells[row, 2].Value = lines[i].ReportedAmount ?? Round(lines[i].Amount);
                 decimal? priorValue;
                 if (lines[i].Prior.HasValue)
                     sheet.Cells[row, 3].Value = Round(lines[i].Prior.Value);
@@ -1035,7 +1049,7 @@ namespace CPlatform.NORM
             {
                 sheet.Cells[row, 1].Value = NoteTotalLabel(disclosure);
                 if (structured)
-                    sheet.Cells[row, 2].Value = Round(disclosure.Amount);
+                    sheet.Cells[row, 2].Value = disclosure.ReportedAmount ?? Round(disclosure.Amount);
                 else
                     sheet.Cells[row, 2].Formula = "SUM(B8:B" + (row - 1).ToString(CultureInfo.InvariantCulture) + ")";
                 if (disclosure.PriorAmount.HasValue)

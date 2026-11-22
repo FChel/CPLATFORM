@@ -16,6 +16,7 @@ namespace CPlatform.NORM
     {
         public int MappingCount;
         public int ChangedCount;
+        public bool HierarchyChanged;
         public int UnmappedCount;
         public int ErrorCount;
         public List<string> Errors = new List<string>();
@@ -37,6 +38,9 @@ namespace CPlatform.NORM
         private const int LegacyHeaderRow = 7;
         private const string WorkbookMetadata = "_NORM";
         private const string WorkbookFormat = "4";
+        internal const string EmployeeHierarchyEvent = "EMPLOYEE_HIERARCHY_CHANGED";
+        private const string EmployeeParentFilter =
+            "ConfigurationReleaseId=@release AND StatementCode='SOCI' AND LineCode='Employee benefits' AND IsDeactivated=0";
         private static readonly string[] WorkbookHeaders = {
             "G/L account", "Description", "Account type", "Face statement line code",
             "Note sub-line", "Cash-flow class", "Change reason"
@@ -89,11 +93,17 @@ namespace CPlatform.NORM
             NORMHelper.RequireEntityAccess(entity);
             DataTable starts = NORMHelper.Query(
                 "SELECT TOP 1 c.ConfigurationReleaseId,c.StatusCode FROM dbo.tblNORM_ConfigurationRelease c " +
-                "OUTER APPLY (SELECT MAX(m.MappingChangeId) LastChange FROM dbo.tblNORM_MappingChange m " +
+                "OUTER APPLY (SELECT MAX(m.MappingChangeId) LastChange,MAX(m.ChangedUtc) ChangedUtc FROM dbo.tblNORM_MappingChange m " +
                 "WHERE m.ConfigurationReleaseId=c.ConfigurationReleaseId) submitted " +
+                "OUTER APPLY (SELECT MAX(a.PerformedUtc) ChangedUtc FROM dbo.tblNORM_AuditEvent a " +
+                "WHERE a.EntityType='ConfigurationRelease' AND a.EntityId=CONVERT(varchar(20),c.ConfigurationReleaseId) " +
+                "AND a.EventCode='" + EmployeeHierarchyEvent + "') hierarchy " +
                 "WHERE c.EntityCode=@entity AND c.FinancialYear=@year AND c.IsDeactivated=0 " +
-                "AND (c.StatusCode='Approved' OR (c.StatusCode='Draft' AND submitted.LastChange IS NOT NULL)) " +
-                "ORDER BY submitted.LastChange DESC,CASE WHEN EXISTS (SELECT 1 FROM dbo.tblNORM_AccountMap a " +
+                "AND (c.StatusCode='Approved' OR (c.StatusCode='Draft' AND (submitted.LastChange IS NOT NULL OR hierarchy.ChangedUtc IS NOT NULL))) " +
+                "ORDER BY CASE WHEN MAX(hierarchy.ChangedUtc) OVER () IS NOT NULL THEN " +
+                "CASE WHEN hierarchy.ChangedUtc > submitted.ChangedUtc THEN hierarchy.ChangedUtc " +
+                "ELSE COALESCE(submitted.ChangedUtc,hierarchy.ChangedUtc) END END DESC," +
+                "submitted.LastChange DESC,CASE WHEN EXISTS (SELECT 1 FROM dbo.tblNORM_AccountMap a " +
                 "WHERE a.ConfigurationReleaseId=c.ConfigurationReleaseId AND a.IsDeactivated=0) THEN 0 ELSE 1 END,c.ConfigurationReleaseId DESC",
                 NORMHelper.P("@entity", entity), NORMHelper.P("@year", year));
             if (starts.Rows.Count == 0)
@@ -175,9 +185,10 @@ namespace CPlatform.NORM
                 "SELECT @target,FinancialYear,EntityCode,GlCode,GlDescription,AccountType,StatementLine,NoteSubLine,CashFlowClass,MappingRationale,IsDeactivated " +
                 "FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@source",
                 NORMHelper.P("@target", target), NORMHelper.P("@source", source));
+            string hierarchyColumn = NORMStatementEngine.HasEmployeeHierarchy(c, t) ? ",ParentLineCode" : "";
             NORMHelper.Exec(c, t,
-                "INSERT dbo.tblNORM_StatementLine (ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,NoteRef,NaturalSign,CalculationKind,FormulaSpec,IsClickable,IsDeactivated) " +
-                "SELECT @target,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,NoteRef,NaturalSign,CalculationKind,FormulaSpec,IsClickable,IsDeactivated " +
+                "INSERT dbo.tblNORM_StatementLine (ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,NoteRef,NaturalSign,CalculationKind,FormulaSpec,IsClickable,IsDeactivated" + hierarchyColumn + ") " +
+                "SELECT @target,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,NoteRef,NaturalSign,CalculationKind,FormulaSpec,IsClickable,IsDeactivated" + hierarchyColumn + " " +
                 "FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@source",
                 NORMHelper.P("@target", target), NORMHelper.P("@source", source));
             NORMHelper.Exec(c, t,
@@ -228,8 +239,10 @@ namespace CPlatform.NORM
                 "SELECT DISTINCT m.AccountType,s.LineCode,s.StatementCode,s.LineLabel,s.SeqNo FROM dbo.tblNORM_AccountMap m " +
                 "INNER JOIN dbo.tblNORM_StatementLine s ON s.ConfigurationReleaseId=m.ConfigurationReleaseId AND s.LineCode=m.StatementLine AND s.CalculationKind='Mapped' AND s.IsDeactivated=0 " +
                 "WHERE m.ConfigurationReleaseId=@release AND m.IsDeactivated=0 AND m.AccountType IN ('Asset','Liability','Equity','Income','Expense') " +
-                "ORDER BY m.AccountType,s.StatementCode,s.SeqNo,s.LineCode",
-                NORMHelper.P("@release", releaseId));
+                "UNION SELECT 'Expense',LineCode,StatementCode,LineLabel,SeqNo FROM dbo.tblNORM_StatementLine " +
+                "WHERE ConfigurationReleaseId=@detailRelease AND IsDeactivated=0 AND LineType='employee-detail' AND CalculationKind='Mapped' " +
+                "ORDER BY AccountType,StatementCode,SeqNo,LineCode",
+                NORMHelper.P("@release", releaseId), NORMHelper.P("@detailRelease", releaseId));
             DataTable noteLines = NORMHelper.Query(
                 "SELECT DISTINCT StatementLine,NoteSubLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
                 "AND StatementLine IS NOT NULL AND NoteSubLine IS NOT NULL AND LTRIM(RTRIM(NoteSubLine))<>'' ORDER BY StatementLine,NoteSubLine",
@@ -364,6 +377,11 @@ namespace CPlatform.NORM
                 "SELECT DISTINCT AccountType,StatementLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
                 "AND AccountType IN ('Asset','Liability','Equity','Income','Expense') AND StatementLine IS NOT NULL",
                 NORMHelper.P("@release", releaseId)).AsEnumerable().Select(x => Text(x, "AccountType") + "|" + Text(x, "StatementLine")), StringComparer.OrdinalIgnoreCase);
+            HashSet<string> employeeDetails = new HashSet<string>(NORMHelper.Query(
+                "SELECT LineCode FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
+                "AND LineType='employee-detail' AND CalculationKind='Mapped'",
+                NORMHelper.P("@release", releaseId)).AsEnumerable().Select(x => Text(x, "LineCode")), StringComparer.OrdinalIgnoreCase);
+            foreach (string detail in employeeDetails) validTypeLines.Add("Expense|" + detail);
             HashSet<string> validNoteLines = new HashSet<string>(NORMHelper.Query(
                 "SELECT DISTINCT StatementLine,NoteSubLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
                 "AND StatementLine IS NOT NULL AND NoteSubLine IS NOT NULL AND LTRIM(RTRIM(NoteSubLine))<>''",
@@ -410,6 +428,11 @@ namespace CPlatform.NORM
                         Reason = Cell(sheet, rowNumber, mappingColumn + 4)
                     };
                     if (item.AccountType.Length > 0 && !AccountTypes.Contains(item.AccountType)) errors.Add("Row " + rowNumber + ": account type is not valid.");
+                    if (employeeDetails.Contains(item.StatementLine))
+                    {
+                        if (Same(item.AccountType, "Expense")) item.AccountType = "Expense";
+                        else errors.Add("Row " + rowNumber + ": Employee benefits details require account type Expense.");
+                    }
                     if (item.StatementLine.Length > 120) errors.Add("Row " + rowNumber + ": face statement line exceeds 120 characters.");
                     else if (!proposedDestinations && item.StatementLine.Length > 0 && !validLines.Contains(item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line code '" + item.StatementLine + "' is not valid for this release.");
                     if (!firstMapping && !proposedDestinations && item.AccountType.Length > 0 && item.StatementLine.Length > 0 && !validTypeLines.Contains(item.AccountType + "|" + item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line '" + item.StatementLine + "' is not available for account type " + item.AccountType + ".");
@@ -468,6 +491,107 @@ namespace CPlatform.NORM
             return new NORMMappingUploadOutcome { ChangedCount = changed, WorkbookHash = hash, Validation = Validate(releaseId) };
         }
 
+        public static DataTable EmployeeCategories(int releaseId)
+        {
+            DataRow release = DraftRelease(releaseId);
+            if (!NORMStatementEngine.HasEmployeeHierarchy(null, null) || !NORMStatementEngine.HasReportedAmounts())
+                return null;
+            DataTable parent = NORMHelper.Query("SELECT CalculationKind,FormulaSpec,ParentLineCode FROM dbo.tblNORM_StatementLine WHERE " +
+                EmployeeParentFilter, NORMHelper.P("@release", releaseId));
+            if (!CanEditEmployeeParent(parent)) return null;
+            return NORMHelper.Query("SELECT LineCode,LineLabel,IsDeactivated FROM dbo.tblNORM_StatementLine " +
+                "WHERE ConfigurationReleaseId=@release AND LineType='employee-detail' AND StatementCode='SOCI' " +
+                "ORDER BY SeqNo", NORMHelper.P("@release", releaseId));
+        }
+
+        public static void SaveEmployeeCategory(int releaseId, string parentCode, string code, string label, bool deactivate, string user)
+        {
+            code = (code ?? "").Trim();
+            label = (label ?? "").Trim();
+            if (!Same(parentCode, NORMStatementEngine.EmployeeBenefitsCode) ||
+                !System.Text.RegularExpressions.Regex.IsMatch(code, @"\A[A-Za-z0-9_]{1,120}\z"))
+                throw new InvalidOperationException("Select Employee benefits as the parent and enter a stable key using letters, digits or underscores.");
+            if (!deactivate && (label.Length == 0 || label.Length > 240))
+                throw new InvalidOperationException("Enter a display description between 1 and 240 characters.");
+            if (!NORMStatementEngine.HasReportedAmounts())
+                throw new InvalidOperationException("The Employee benefits pilot schema is required.");
+
+            using (OleDbConnection c = NORMHelper.OpenConnection())
+            using (OleDbTransaction t = c.BeginTransaction(IsolationLevel.Serializable))
+            {
+                try
+                {
+                    DataTable releases = NORMHelper.Query(c, t, "SELECT EntityCode,FinancialYear FROM dbo.tblNORM_ConfigurationRelease WITH (UPDLOCK,HOLDLOCK) " +
+                        "WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 AND StatusCode='Draft'", NORMHelper.P("@release", releaseId));
+                    if (releases.Rows.Count != 1)
+                        throw new InvalidOperationException("Only a draft configuration release can be changed.");
+                    string entity = Text(releases.Rows[0], "EntityCode");
+                    NORMHelper.RequireEntityAccess(entity, c, t);
+                    if (!NORMStatementEngine.HasEmployeeHierarchy(c, t))
+                        throw new InvalidOperationException("The Employee benefits pilot schema is required.");
+                    DataTable parent = NORMHelper.Query(c, t, "SELECT CalculationKind,FormulaSpec,ParentLineCode FROM dbo.tblNORM_StatementLine WHERE " +
+                        EmployeeParentFilter, NORMHelper.P("@release", releaseId));
+                    if (!CanEditEmployeeParent(parent))
+                        throw new InvalidOperationException("This draft does not have a compatible Employee benefits parent.");
+
+                    DataTable matches = NORMHelper.Query(c, t, "SELECT StatementLineId,LineCode,LineLabel,StatementCode,LineType,CalculationKind,ParentLineCode,IsDeactivated " +
+                        "FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release AND LineCode=@code",
+                        NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code));
+                    DataRow existing = matches.Rows.Count == 1 ? matches.Rows[0] : null;
+                    if (matches.Rows.Count > 1 || (existing != null && (Text(existing, "LineType") != NORMStatementEngine.EmployeeDetailType ||
+                        Text(existing, "StatementCode") != "SOCI" || Text(existing, "CalculationKind") != "Mapped" ||
+                        !Same(Text(existing, "ParentLineCode"), parentCode))))
+                        throw new InvalidOperationException("That key already belongs to another statement classification.");
+
+                    bool inactive = existing != null && Convert.ToBoolean(existing["IsDeactivated"], CultureInfo.InvariantCulture);
+                    if (deactivate && (existing == null || inactive))
+                        throw new InvalidOperationException("Enter the key of an active Employee benefits category.");
+                    if (deactivate && Convert.ToInt32(NORMHelper.Scalar(c, t,
+                        "SELECT COUNT(*) FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND StatementLine=@code AND IsDeactivated=0",
+                        NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code))) > 0)
+                        throw new InvalidOperationException("Reassign or clear accounts mapped to this category in the workbook before deactivating it.");
+                    if (!deactivate && existing != null && !inactive && String.Equals(Text(existing, "LineLabel"), label, StringComparison.Ordinal))
+                        throw new InvalidOperationException("The category already has that description.");
+
+                    string action;
+                    if (existing == null)
+                    {
+                        NORMHelper.Exec(c, t, "UPDATE dbo.tblNORM_StatementLine SET CalculationKind='Formula',FormulaSpec=NULL WHERE " +
+                            EmployeeParentFilter + " AND CalculationKind='Mapped'", NORMHelper.P("@release", releaseId));
+                        int seq = Convert.ToInt32(NORMHelper.Scalar(c, t, "SELECT ISNULL(MAX(SeqNo),0)+1 FROM dbo.tblNORM_StatementLine " +
+                            "WHERE ConfigurationReleaseId=@release AND StatementCode='SOCI'", NORMHelper.P("@release", releaseId)));
+                        NORMHelper.Exec(c, t, "INSERT dbo.tblNORM_StatementLine (ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,CalculationKind,ParentLineCode) " +
+                            "VALUES(@release,@year,@entity,'SOCI',@seq,'employee-detail',@code,@label,'Mapped',@parent)",
+                            NORMHelper.P("@release", releaseId), NORMHelper.P("@year", NORMHelper.Int(releases.Rows[0], "FinancialYear")),
+                            NORMHelper.P("@entity", entity), NORMHelper.P("@seq", seq), NORMHelper.P("@code", code), NORMHelper.P("@label", label),
+                            NORMHelper.P("@parent", NORMStatementEngine.EmployeeBenefitsCode));
+                        action = "Added " + code + " (" + label + ")";
+                    }
+                    else
+                    {
+                        if (deactivate) label = Text(existing, "LineLabel");
+                        NORMHelper.Exec(c, t, "UPDATE dbo.tblNORM_StatementLine SET LineLabel=@label,IsDeactivated=@inactive WHERE StatementLineId=@line",
+                            NORMHelper.P("@label", label), NORMHelper.P("@inactive", deactivate), NORMHelper.P("@line", NORMHelper.Int(existing, "StatementLineId")));
+                        action = (deactivate ? "Deactivated " : inactive ? "Reactivated " : "Updated ") + Text(existing, "LineCode") +
+                            " (" + Text(existing, "LineLabel") + (deactivate ? ")" : " → " + label + ")");
+                    }
+                    NORMHelper.Exec(c, t, "UPDATE dbo.tblNORM_ConfigurationRelease SET ContentHash=@hash,ReviewedBy=NULL,ReviewedUtc=NULL " +
+                        "WHERE ConfigurationReleaseId=@release", NORMHelper.P("@hash", NORMCrypto.Sha256(Guid.NewGuid().ToString())),
+                        NORMHelper.P("@release", releaseId));
+                    Audit(c, t, EmployeeHierarchyEvent, releaseId, action + " under Employee benefits.", user);
+                    t.Commit();
+                }
+                catch { t.Rollback(); throw; }
+            }
+        }
+
+        private static bool CanEditEmployeeParent(DataTable parent)
+        {
+            return parent.Rows.Count == 1 && Text(parent.Rows[0], "ParentLineCode").Length == 0 &&
+                Text(parent.Rows[0], "FormulaSpec").Length == 0 &&
+                (Text(parent.Rows[0], "CalculationKind") == "Mapped" || Text(parent.Rows[0], "CalculationKind") == "Formula");
+        }
+
         public static NORMMappingValidation Validate(int releaseId)
         {
             DataRow release = Release(releaseId);
@@ -493,8 +617,29 @@ namespace CPlatform.NORM
                 "AND IsDeactivated=0 AND CalculationKind='Mapped' AND LineCode IS NOT NULL", NORMHelper.P("@release", releaseId))) == 0)
                 result.Errors.Add("Configure the statement lines before approving this initial mapping draft.");
             if (unknownLines > 0) result.Errors.Add(unknownLines + " mapping(s) refer to a line that is not in the statement template.");
+            if (NORMStatementEngine.HasEmployeeHierarchy(null, null))
+            {
+                try
+                {
+                    if (NORMStatementEngine.ValidateEmployeeHierarchy(releaseId) != null)
+                    {
+                        int invalidEmployee = Convert.ToInt32(NORMHelper.Scalar(
+                            "SELECT COUNT(*) FROM dbo.tblNORM_AccountMap m INNER JOIN dbo.tblNORM_StatementLine s " +
+                            "ON s.ConfigurationReleaseId=m.ConfigurationReleaseId AND s.LineCode=m.StatementLine AND s.IsDeactivated=0 " +
+                            "WHERE m.ConfigurationReleaseId=@release AND m.IsDeactivated=0 AND s.StatementCode='SOCI' " +
+                            "AND (s.LineCode='Employee benefits' OR (s.LineType='employee-detail' AND ISNULL(m.AccountType,'')<>'Expense'))",
+                            NORMHelper.P("@release", releaseId)));
+                        if (invalidEmployee > 0) result.Errors.Add("Map Employee benefits accounts to active detail categories with account type Expense.");
+                        if (!NORMStatementEngine.HasReportedAmounts()) result.Errors.Add("The reported amounts schema is required.");
+                        result.HierarchyChanged = Convert.ToInt32(NORMHelper.Scalar("SELECT COUNT(*) FROM dbo.tblNORM_AuditEvent " +
+                            "WHERE EventCode=@event AND EntityType='ConfigurationRelease' AND EntityId=@id",
+                            NORMHelper.P("@event", EmployeeHierarchyEvent), NORMHelper.P("@id", releaseId.ToString(CultureInfo.InvariantCulture)))) > 0;
+                    }
+                }
+                catch (InvalidOperationException error) { result.Errors.Add(error.Message); }
+            }
             if (result.UnmappedCount > 0) result.Warnings.Add(result.UnmappedCount + " account(s) do not yet have both an account type and face-statement line. They remain visible in the unmapped pool.");
-            if (NORMHelper.Str(release, "StatusCode") == "Draft" && result.ChangedCount == 0) result.Warnings.Add("No mapping changes have been recorded in this draft.");
+            if (NORMHelper.Str(release, "StatusCode") == "Draft" && result.ChangedCount == 0 && !result.HierarchyChanged) result.Warnings.Add("No mapping changes have been recorded in this draft.");
             result.ErrorCount = result.Errors.Count;
             return result;
         }
@@ -519,7 +664,7 @@ namespace CPlatform.NORM
             if (!NORMHelper.HasAdminAccess()) throw new UnauthorizedAccessException("Administrator access is required to approve a mapping release.");
             DataRow release = DraftRelease(releaseId); NORMMappingValidation validation = Validate(releaseId);
             if (!validation.CanApprove) throw new InvalidOperationException("Resolve all mapping validation errors before approval.");
-            if (validation.ChangedCount == 0) throw new InvalidOperationException("The draft contains no recorded mapping changes.");
+            if (validation.ChangedCount == 0 && !validation.HierarchyChanged) throw new InvalidOperationException("The draft contains no recorded mapping or Employee benefits category changes.");
             if (validation.Warnings.Count > 0 && !warningsAcknowledged) throw new InvalidOperationException("Acknowledge the mapping warnings before approval.");
             string contentHash = MappingHash(releaseId);
             using (OleDbConnection connection = NORMHelper.OpenConnection())
@@ -527,11 +672,18 @@ namespace CPlatform.NORM
             {
                 try
                 {
+                    DataTable current = NORMHelper.Query(connection, transaction,
+                        "SELECT ContentHash FROM dbo.tblNORM_ConfigurationRelease WITH (UPDLOCK,HOLDLOCK) " +
+                        "WHERE ConfigurationReleaseId=@release AND StatusCode='Draft' AND IsDeactivated=0",
+                        NORMHelper.P("@release", releaseId));
+                    if (current.Rows.Count != 1 || !Same(Text(current.Rows[0], "ContentHash"), Text(release, "ContentHash")))
+                        throw new InvalidOperationException("The draft changed during validation. Reload and review it before approval.");
                     NORMHelper.Exec(connection, transaction,
                         "UPDATE dbo.tblNORM_ConfigurationRelease SET StatusCode='Approved',ContentHash=@hash,ReviewedBy=@user,ReviewedUtc=SYSUTCDATETIME(),ApprovedBy=@user,ApprovedUtc=SYSUTCDATETIME() WHERE ConfigurationReleaseId=@release AND StatusCode='Draft'",
                         NORMHelper.P("@hash", contentHash), NORMHelper.P("@user", user), NORMHelper.P("@release", releaseId));
                     Audit(connection, transaction, "MAPPING_RELEASE_APPROVED", releaseId,
-                        "Release " + NORMHelper.Str(release, "VersionCode") + " approved with " + validation.ChangedCount + " changed account(s); content SHA-256 " + contentHash + ".", user);
+                        "Release " + NORMHelper.Str(release, "VersionCode") + " approved with " + validation.ChangedCount + " changed account(s)" +
+                        (validation.HierarchyChanged ? " and Employee benefits category changes" : "") + "; content SHA-256 " + contentHash + ".", user);
                     transaction.Commit();
                 }
                 catch { transaction.Rollback(); throw; }
@@ -579,6 +731,17 @@ namespace CPlatform.NORM
         {
             DataTable rows = NORMHelper.Query("SELECT GlCode,ISNULL(AccountType,'') AccountType,ISNULL(StatementLine,'') StatementLine,ISNULL(NoteSubLine,'') NoteSubLine,ISNULL(CashFlowClass,'') CashFlowClass FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 ORDER BY GlCode", NORMHelper.P("@release", releaseId));
             StringBuilder value = new StringBuilder(); foreach (DataRow row in rows.Rows) value.Append(Text(row, "GlCode")).Append('|').Append(Text(row, "AccountType")).Append('|').Append(Text(row, "StatementLine")).Append('|').Append(Text(row, "NoteSubLine")).Append('|').Append(Text(row, "CashFlowClass")).Append('\n');
+            if (NORMStatementEngine.HasEmployeeHierarchy(null, null))
+            {
+                DataTable hierarchy = NORMHelper.Query("SELECT LineCode,LineLabel,ParentLineCode,SeqNo,IsDeactivated FROM dbo.tblNORM_StatementLine " +
+                    "WHERE ConfigurationReleaseId=@release AND StatementCode='SOCI' AND (LineType='employee-detail' OR " +
+                    "(LineCode='Employee benefits' AND CalculationKind='Formula' AND FormulaSpec IS NULL)) ORDER BY LineCode",
+                    NORMHelper.P("@release", releaseId));
+                foreach (DataRow row in hierarchy.Rows)
+                    value.Append("Employee hierarchy|").Append(Text(row, "LineCode")).Append('|').Append(Text(row, "ParentLineCode"))
+                        .Append('|').Append(row["SeqNo"]).Append('|').Append(row["IsDeactivated"])
+                        .Append('|').Append(Text(row, "LineLabel").Length).Append(':').Append(Text(row, "LineLabel")).Append('\n');
+            }
             return NORMCrypto.Sha256(value.ToString());
         }
 

@@ -247,6 +247,7 @@ namespace CPlatform.NORM
                 item["status"] = source.CompletionStatus;
                 item["sourceCount"] = source.SourceCount;
                 item["amount"] = source.Amount;
+                item["reported"] = source.ReportedAmount;
                 item["priorAmount"] = source.PriorAmount.HasValue ? (object)source.PriorAmount.Value : null;
                 item["narrative"] = source.Narrative;
                 item["narrativeStatus"] = source.NarrativeStatus;
@@ -258,6 +259,7 @@ namespace CPlatform.NORM
                     Dictionary<string, object> line = new Dictionary<string, object>();
                     line["label"] = source.Lines[l].Label;
                     line["amount"] = source.Lines[l].Amount;
+                    line["reported"] = source.Lines[l].ReportedAmount;
                     line["prior"] = source.Lines[l].Prior.HasValue ? (object)source.Lines[l].Prior.Value : null;
                     line["sourceCount"] = source.Lines[l].SourceCount;
                     line["type"] = source.Lines[l].LineType;
@@ -706,7 +708,8 @@ namespace CPlatform.NORM
                 "r.LineResultId,r.ComputedAmount,r.PublishedAmount,r.Variance,r.StatusCode " +
                 "FROM dbo.tblNORM_StatementLine t " +
                 "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId = t.StatementLineId AND r.CalculationRunId = @run AND r.IsDeactivated = 0 " +
-                "WHERE t.ConfigurationReleaseId = @release AND t.StatementCode = @statement AND t.IsDeactivated = 0 ORDER BY t.SeqNo",
+                "WHERE t.ConfigurationReleaseId = @release AND t.StatementCode = @statement AND t.IsDeactivated = 0 " +
+                "AND t.LineType<>'employee-detail' ORDER BY t.SeqNo",
                 NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId),
                 NORMHelper.P("@statement", statementCode));
             List<object> rows = new List<object>();
@@ -872,6 +875,12 @@ namespace CPlatform.NORM
                 ApplyDifference(rows, "Operating result", "Revenue from Government", "Net cost of services");
                 ApplyAggregate(rows, "OCI_SUBTOTAL", new string[] { "OCI_REVALUATION" });
                 ApplyAggregate(rows, "OCI_TOTAL", new string[] { "Operating result", "OCI_REVALUATION" });
+                Dictionary<string, decimal> reported = NORMReportingFramework.LoadReportedIncomeStatement(runId);
+                foreach (Dictionary<string, object> row in rows)
+                {
+                    decimal amount;
+                    if (reported.TryGetValue(Convert.ToString(row["code"]), out amount)) row["reported"] = amount;
+                }
             }
             if (statementCode == "SOFP") AddSofpSubtotals(rows);
             Dictionary<string, object> statement = new Dictionary<string, object>();

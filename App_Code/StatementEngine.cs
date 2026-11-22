@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.OleDb;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 
 /// <summary>
@@ -12,6 +13,9 @@ using System.Text;
 /// </summary>
 public static class NORMStatementEngine
 {
+    public const string EmployeeDetailType = "employee-detail";
+    public const string EmployeeBenefitsCode = "Employee benefits";
+
     private class ImportContext
     {
         public int ImportId;
@@ -41,7 +45,9 @@ public static class NORMStatementEngine
         public string LineCode;
         public int SeqNo;
         public string CalculationKind;
+        public string LineType;
         public string FormulaSpec;
+        public string ParentLineCode;
     }
 
     private class SourceContribution
@@ -58,6 +64,8 @@ public static class NORMStatementEngine
         public string LineCode;
         public int? StatementLineId;
         public decimal ComputedAmount;
+        public decimal? ReportedAmount;
+        public bool UsesEmployeeRollup;
         public long LineResultId;
         public List<SourceContribution> Sources = new List<SourceContribution>();
     }
@@ -113,6 +121,18 @@ public static class NORMStatementEngine
             {
                 Dictionary<string, MapEntry> mappings = LoadMappings(connection, transaction, context.ReleaseId);
                 Dictionary<string, TemplateLine> templates = LoadTemplates(connection, transaction, context.ReleaseId);
+                HashSet<string> employeeDetails = EmployeeDetailCodes(templates);
+                if (employeeDetails != null)
+                {
+                    if (!HasReportedAmounts())
+                        throw new InvalidOperationException("Install the reported amounts schema before calculating Employee benefits detail.");
+                    foreach (MapEntry entry in mappings.Values)
+                    {
+                        if (String.Equals(entry.StatementLine, EmployeeBenefitsCode, StringComparison.OrdinalIgnoreCase) ||
+                            (entry.StatementLine != null && employeeDetails.Contains(entry.StatementLine) && entry.AccountType != "Expense"))
+                            throw new InvalidOperationException("Employee benefits must map to its detailed expense classifications.");
+                    }
+                }
                 Dictionary<string, decimal> published = LoadPublished(connection, transaction, context.ReleaseId);
                 DataTable rows = NORMHelper.Query(connection, transaction,
                     "SELECT TbRowId,SourceLedger,GlAccount,GlText,DebitMovement,CreditMovement,AccumBalance FROM dbo.tblNORM_TrialBalanceRow " +
@@ -209,7 +229,15 @@ public static class NORMStatementEngine
                     }
                 }
 
-                AddFormulaLines(connection, transaction, context.ReleaseId, lines, templates);
+                if (employeeDetails != null)
+                {
+                    foreach (string detailCode in employeeDetails)
+                    {
+                        LineAccumulation detail = lines["SOCI|" + detailCode];
+                        detail.ReportedAmount = RoundEmployeeAmount(detail.ComputedAmount);
+                    }
+                }
+                AddFormulaLines(connection, transaction, context.ReleaseId, lines, employeeDetails);
 
                 foreach (KeyValuePair<string, LineAccumulation> item in lines)
                 {
@@ -231,6 +259,10 @@ public static class NORMStatementEngine
                         NORMHelper.P("@computed", line.ComputedAmount),
                         NORMHelper.P("@published", hasPublished ? (object)expected : null),
                         NORMHelper.P("@variance", variance), NORMHelper.P("@status", status)));
+                    if (line.ReportedAmount.HasValue)
+                        NORMHelper.Exec(connection, transaction,
+                            "UPDATE dbo.tblNORM_LineResult SET ReportedAmount=@amount WHERE LineResultId=@id",
+                            NORMHelper.P("@amount", line.ReportedAmount.Value), NORMHelper.P("@id", line.LineResultId));
 
                     for (int s = 0; s < line.Sources.Count; s++)
                     {
@@ -261,6 +293,16 @@ public static class NORMStatementEngine
 
                 WriteValidations(connection, transaction, runId, rows.Rows.Count, totalNet, totalAbs, mappedAbs,
                     unmappedCount, asset, liability, equity, income, expense, classifiedCashMovement, unsafeCashClassCount, lines, published);
+                if (employeeDetails != null)
+                {
+                    LineAccumulation employee = lines["SOCI|" + EmployeeBenefitsCode];
+                    AddValidation(connection, transaction, runId, "EMPLOYEE_PRESENTATION_ROUNDING",
+                        "Employee benefits presentation rounding", "Information", "Pass",
+                        employee.ReportedAmount, RoundEmployeeAmount(employee.ComputedAmount), null,
+                        "Reported total sums rounded detail. Exact underlying amount in AUD: " +
+                        (employee.ComputedAmount * 1000m).ToString("0.00", CultureInfo.InvariantCulture) +
+                        ". Difference is the reported total less the independently rounded underlying amount, in $'000.");
+                }
                 WriteSourceFileValidations(connection, transaction, runId, context);
 
                 NORMHelper.Exec(connection, transaction,
@@ -481,7 +523,8 @@ public static class NORMStatementEngine
     private static Dictionary<string, TemplateLine> LoadTemplates(OleDbConnection connection, OleDbTransaction transaction, int releaseId)
     {
         DataTable table = NORMHelper.Query(connection, transaction,
-            "SELECT StatementLineId,StatementCode,LineCode,SeqNo,CalculationKind,FormulaSpec FROM dbo.tblNORM_StatementLine " +
+            "SELECT StatementLineId,StatementCode,LineCode,SeqNo,CalculationKind,FormulaSpec,LineType," +
+            (HasEmployeeHierarchy(connection, transaction) ? "ParentLineCode" : "NULL AS ParentLineCode") + " FROM dbo.tblNORM_StatementLine " +
             "WHERE ConfigurationReleaseId = @release AND LineCode IS NOT NULL AND IsDeactivated = 0 ORDER BY StatementCode,SeqNo",
             NORMHelper.P("@release", releaseId));
         Dictionary<string, TemplateLine> values = new Dictionary<string, TemplateLine>(StringComparer.OrdinalIgnoreCase);
@@ -495,19 +538,63 @@ public static class NORMStatementEngine
             line.LineCode = code;
             line.SeqNo = NORMHelper.Int(table.Rows[i], "SeqNo");
             line.CalculationKind = NORMHelper.Str(table.Rows[i], "CalculationKind");
+            line.LineType = NORMHelper.Str(table.Rows[i], "LineType");
             line.FormulaSpec = NORMHelper.Str(table.Rows[i], "FormulaSpec");
+            line.ParentLineCode = NORMHelper.Str(table.Rows[i], "ParentLineCode");
             values[code] = line;
         }
         return values;
     }
 
+    private static HashSet<string> EmployeeDetailCodes(Dictionary<string, TemplateLine> templates)
+    {
+        // This pilot uses the existing Employee benefits formula slot with no explicit terms.
+        // An empty set still represents an active subtotal after its last child is deactivated.
+        TemplateLine parent;
+        bool active = templates.TryGetValue(EmployeeBenefitsCode, out parent) && parent.StatementCode == "SOCI" &&
+            parent.CalculationKind == "Formula" && String.IsNullOrWhiteSpace(parent.FormulaSpec);
+        HashSet<string> details = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (TemplateLine line in templates.Values)
+        {
+            if (line.LineType != EmployeeDetailType && String.IsNullOrWhiteSpace(line.ParentLineCode)) continue;
+            if (!active || line == parent || line.LineType != EmployeeDetailType ||
+                line.StatementCode != "SOCI" || line.CalculationKind != "Mapped" ||
+                !String.Equals(line.ParentLineCode, EmployeeBenefitsCode, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Invalid Employee benefits parent relationship. Each mapped detail must have Employee benefits as its parent.");
+            details.Add(line.LineCode);
+        }
+        return active ? details : null;
+    }
+
+    internal static bool HasEmployeeHierarchy(OleDbConnection connection, OleDbTransaction transaction)
+    {
+        const string sql = "SELECT CASE WHEN COL_LENGTH('dbo.tblNORM_StatementLine','ParentLineCode') IS NULL THEN 0 ELSE 1 END";
+        return Convert.ToInt32(connection == null ? NORMHelper.Scalar(sql) : NORMHelper.Scalar(connection, transaction, sql)) == 1;
+    }
+
+    internal static HashSet<string> ValidateEmployeeHierarchy(int releaseId)
+    {
+        using (OleDbConnection connection = NORMHelper.OpenConnection())
+            return EmployeeDetailCodes(LoadTemplates(connection, null, releaseId));
+    }
+
+    private static decimal RoundEmployeeAmount(decimal amount)
+    { return Math.Round(amount, 0, MidpointRounding.AwayFromZero); }
+
+    public static bool HasReportedAmounts()
+    {
+        return Convert.ToInt32(NORMHelper.Scalar(
+            "SELECT CASE WHEN COL_LENGTH('dbo.tblNORM_LineResult','ReportedAmount') IS NULL THEN 0 ELSE 1 END")) == 1;
+    }
+
     private static void AddFormulaLines(OleDbConnection connection, OleDbTransaction transaction, int releaseId,
-        Dictionary<string, LineAccumulation> lines, Dictionary<string, TemplateLine> templates)
+        Dictionary<string, LineAccumulation> lines, HashSet<string> employeeDetails)
     {
         DataTable formulas = NORMHelper.Query(connection, transaction,
             "SELECT StatementLineId,StatementCode,LineCode,SeqNo,FormulaSpec FROM dbo.tblNORM_StatementLine " +
             "WHERE ConfigurationReleaseId = @release AND CalculationKind = 'Formula' AND LineCode IS NOT NULL " +
-            "AND IsDeactivated = 0 ORDER BY StatementCode,SeqNo",
+            "AND IsDeactivated = 0 ORDER BY CASE WHEN StatementCode='SOCI' AND LineCode='Employee benefits' " +
+            "AND FormulaSpec IS NULL THEN 0 ELSE 1 END,StatementCode,SeqNo",
             NORMHelper.P("@release", releaseId));
         for (int i = 0; i < formulas.Rows.Count; i++)
         {
@@ -515,7 +602,9 @@ public static class NORMStatementEngine
             string statementCode = NORMHelper.Str(row, "StatementCode");
             string lineCode = NORMHelper.Str(row, "LineCode");
             string spec = NORMHelper.Str(row, "FormulaSpec");
-            if (String.IsNullOrWhiteSpace(spec))
+            bool employeeParent = employeeDetails != null && statementCode == "SOCI" &&
+                String.Equals(lineCode, EmployeeBenefitsCode, StringComparison.OrdinalIgnoreCase);
+            if (!employeeParent && String.IsNullOrWhiteSpace(spec))
             {
                 throw new InvalidOperationException("Formula line " + lineCode + " has no formula specification.");
             }
@@ -524,10 +613,12 @@ public static class NORMStatementEngine
             formula.StatementCode = statementCode;
             formula.LineCode = lineCode;
             formula.StatementLineId = NORMHelper.Int(row, "StatementLineId");
-            string[] tokens = spec.Split('|');
-            for (int t = 0; t < tokens.Length; t++)
+            List<KeyValuePair<decimal, LineAccumulation>> components = employeeDetails == null
+                ? null : new List<KeyValuePair<decimal, LineAccumulation>>();
+            IEnumerable<string> tokens = employeeParent ? employeeDetails.Select(code => "+" + code) : spec.Split('|');
+            foreach (string term in tokens)
             {
-                string token = tokens[t].Trim();
+                string token = term.Trim();
                 if (token.Length < 2 || (token[0] != '+' && token[0] != '-'))
                 {
                     throw new InvalidOperationException("Formula " + lineCode + " contains an invalid term: " + token + ".");
@@ -539,6 +630,9 @@ public static class NORMStatementEngine
                 {
                     throw new InvalidOperationException("Formula " + lineCode + " references missing line " + componentCode + ".");
                 }
+                if (employeeDetails != null && employeeDetails.Contains(componentCode) && !employeeParent)
+                    throw new InvalidOperationException("Include Employee benefits through its subtotal in other formulas.");
+                if (components != null) components.Add(new KeyValuePair<decimal, LineAccumulation>(factor, component));
                 formula.ComputedAmount += factor * component.ComputedAmount;
                 for (int s = 0; s < component.Sources.Count; s++)
                 {
@@ -551,8 +645,28 @@ public static class NORMStatementEngine
                     formula.Sources.Add(derived);
                 }
             }
+            if (components != null) ReportEmployeeFormula(formula, components, employeeParent);
             lines[statementCode + "|" + lineCode] = formula;
         }
+    }
+
+    private static void ReportEmployeeFormula(LineAccumulation formula,
+        List<KeyValuePair<decimal, LineAccumulation>> components, bool employeeParent)
+    {
+        int employeeTerms = components.FindAll(term => term.Value.UsesEmployeeRollup).Count;
+        if (!employeeParent && employeeTerms == 0) return;
+        if (employeeTerms > 1)
+            throw new InvalidOperationException("A formula cannot include Employee benefits more than once.");
+        decimal reported = 0m;
+        foreach (KeyValuePair<decimal, LineAccumulation> term in components)
+        {
+            LineAccumulation component = term.Value;
+            if (!component.ReportedAmount.HasValue)
+                component.ReportedAmount = RoundEmployeeAmount(component.ComputedAmount);
+            reported += term.Key * component.ReportedAmount.Value;
+        }
+        formula.ReportedAmount = reported;
+        formula.UsesEmployeeRollup = true;
     }
 
     private static Dictionary<string, decimal> LoadPublished(OleDbConnection connection, OleDbTransaction transaction, int releaseId)
@@ -572,6 +686,7 @@ public static class NORMStatementEngine
 
     private static string ConfigurationFingerprint(int releaseId)
     {
+        string parentCode = HasEmployeeHierarchy(null, null) ? "+'|'+ISNULL(ParentLineCode,'')" : "";
         DataTable table = NORMHelper.Query(
             "SELECT 'M' AS Kind,GlCode AS A,ISNULL(AccountType,'') AS B,ISNULL(StatementLine,'') AS C," +
             "ISNULL(NoteSubLine,'') AS D,ISNULL(CashFlowClass,'') AS E FROM dbo.tblNORM_AccountMap " +
@@ -579,7 +694,13 @@ public static class NORMStatementEngine
             "UNION ALL " +
             "SELECT 'S',StatementCode,ISNULL(LineCode,''),LineLabel,ISNULL(NoteRef,''),ISNULL(NaturalSign,'') " +
             "FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId = @release AND IsDeactivated = 0 " +
-            "ORDER BY Kind,A,B,C,D,E", NORMHelper.P("@release", releaseId));
+            "UNION ALL SELECT 'H',StatementCode,ISNULL(LineCode,''),LineType,CalculationKind," +
+            "CONVERT(nvarchar(12),SeqNo)+'|'+ISNULL(FormulaSpec,'')" + parentCode + " FROM dbo.tblNORM_StatementLine t " +
+            "WHERE t.ConfigurationReleaseId=@pilotRelease AND t.IsDeactivated=0 AND EXISTS " +
+            "(SELECT 1 FROM dbo.tblNORM_StatementLine d WHERE d.ConfigurationReleaseId=t.ConfigurationReleaseId " +
+            "AND d.IsDeactivated=0 AND (d.LineType='employee-detail' OR (d.StatementCode='SOCI' " +
+            "AND d.LineCode='Employee benefits' AND d.CalculationKind='Formula' AND d.FormulaSpec IS NULL))) " +
+            "ORDER BY Kind,A,B,C,D,E", NORMHelper.P("@release", releaseId), NORMHelper.P("@pilotRelease", releaseId));
         StringBuilder canonical = new StringBuilder();
         for (int i = 0; i < table.Rows.Count; i++)
         {

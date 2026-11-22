@@ -38,6 +38,24 @@
                 </asp:Panel>
             </section>
 
+            <asp:Panel ID="EmployeeCategoriesPanel" runat="server" Visible="false" CssClass="norm-mapping-card">
+                <h2>Employee benefits categories</h2>
+                <p>Add a category or enter its existing key to change its description. Download a fresh workbook to assign G/L accounts to a new category. Reassign or clear its accounts before deactivating it.</p>
+                <asp:Label runat="server" AssociatedControlID="EmployeeParent" Text="Parent" />
+                <asp:DropDownList ID="EmployeeParent" runat="server" CssClass="norm-input">
+                    <asp:ListItem Text="Employee benefits" Value="Employee benefits" />
+                </asp:DropDownList>
+                <asp:Label runat="server" AssociatedControlID="EmployeeCategoryKey" Text="Stable key" />
+                <asp:TextBox ID="EmployeeCategoryKey" runat="server" CssClass="norm-input" MaxLength="120" />
+                <asp:Label runat="server" AssociatedControlID="EmployeeCategoryLabel" Text="Display description" />
+                <asp:TextBox ID="EmployeeCategoryLabel" runat="server" CssClass="norm-input" MaxLength="240" />
+                <div class="norm-form-actions">
+                    <asp:Button ID="SaveEmployeeCategoryButton" runat="server" Text="Save category" CssClass="norm-button" OnClick="EmployeeCategoryButton_Click" />
+                    <asp:Button ID="DeactivateEmployeeCategoryButton" runat="server" Text="Deactivate category" CssClass="norm-button" OnClick="EmployeeCategoryButton_Click" />
+                </div>
+                <div class="norm-impact-table"><%= EmployeeCategoriesHtml %></div>
+            </asp:Panel>
+
             <section class="norm-mapping-card">
                 <header><div><span class="norm-kicker">Validation</span><h2>Validation and financial impact</h2></div><span class="norm-chip"><%= ValidationStatus %></span></header>
                 <%= ValidationHtml %>
