@@ -126,8 +126,11 @@ namespace CPlatform.NORM
             AddSignOff(package, model, index);
             AddFace(package, model, "SOCI", "SoCI", "Statement of Comprehensive Income", false, index);
             AddFace(package, model, "SOFP", "SoFP", "Statement of Financial Position", true, index);
-            AddEquity(package, model, index);
-            AddCashFlow(package, model, index);
+            if (!NORMReportingFramework.UsesNihracsHierarchy(model.EntityCode, model.Year, model.ReleaseId))
+            {
+                AddEquity(package, model, index);
+                AddCashFlow(package, model, index);
+            }
 
             if (Required(model.Profile, "ADMINISTERED_ACTIVITIES"))
             {
@@ -329,13 +332,30 @@ namespace CPlatform.NORM
         {
             DataTable table = NORMHelper.Query(
                 "SELECT t.SeqNo,t.LineType,t.LineCode,t.LineLabel,t.NoteRef,t.CalculationKind,t.FormulaSpec," +
-                "r.LineResultId,r.ComputedAmount " +
+                "r.LineResultId,r.ComputedAmount," + NORMReportingFramework.HierarchyFaceMarker + " " +
                 "FROM dbo.tblNORM_StatementLine t " +
                 "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
                 "WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code AND t.IsDeactivated=0 " +
-                "AND t.LineType<>'employee-detail' ORDER BY t.SeqNo",
+                "AND t.LineType<>'employee-detail' AND t.LineType<>'hierarchy-detail' ORDER BY t.SeqNo",
                 NORMHelper.P("@run", model.RunId), NORMHelper.P("@release", model.ReleaseId), NORMHelper.P("@code", code));
             List<FaceRow> rows = new List<FaceRow>();
+            if (NORMReportingFramework.IsHierarchyFace(table))
+            {
+                Dictionary<string, decimal> reported = NORMReportingFramework.LoadReportedHierarchyFace(model.RunId, code);
+                foreach (DataRow source in table.Rows)
+                {
+                    FaceRow row = DataRowToFace(source);
+                    decimal amount;
+                    if (row.Code != null && reported.TryGetValue(row.Code, out amount))
+                    {
+                        row.Current = amount;
+                        row.HasReportedCurrent = true;
+                    }
+                    if (row.Type == "section") row.Type = "subsection";
+                    rows.Add(row);
+                }
+                return rows;
+            }
             List<FaceRow> ownSource = new List<FaceRow>();
             List<FaceRow> gains = new List<FaceRow>();
             bool ownSourceTotalAdded = false;

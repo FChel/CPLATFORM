@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.OleDb;
 using System.Globalization;
+using System.Linq;
 
 /// <summary>
 /// Entity profile and PRIMA disclosure planner. The catalogue is stored against
@@ -271,9 +272,11 @@ public static class NORMReportingFramework
         Dictionary<string, List<DemoNoteBucket>> demoNoteFigures = LoadDemoCurrentNoteFigures(runId, entityCode);
         Dictionary<string, decimal> priorNoteFigures = NORMStartOfYearSetup.LoadPriorNoteFigures(entityCode, NORMStartOfYearSetup.RunFinancialYear(runId));
         Dictionary<string, string[]> narratives = LoadNarratives(runId, releaseId);
+        bool hierarchyNotes = String.Equals(entityCode, "NIHRACS", StringComparison.OrdinalIgnoreCase) &&
+            HasHierarchyNoteSource(null, null);
         DataTable table = NORMHelper.Query(
             "SELECT DisclosureCode,SectionCode,SectionTitle,NoteRef,DisclosureTitle,TriggerCode," +
-            "IsBaseRequired,RequiresNarrative,SortOrder,GuidanceText FROM dbo.tblNORM_DisclosureRule " +
+            "IsBaseRequired,RequiresNarrative,SortOrder,GuidanceText" + (hierarchyNotes ? ",NoteSourceLineCode" : "") + " FROM dbo.tblNORM_DisclosureRule " +
             "WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 ORDER BY SortOrder,DisclosureRuleId",
             NORMHelper.P("@release", releaseId));
         for (int i = 0; i < table.Rows.Count; i++)
@@ -301,12 +304,15 @@ public static class NORMReportingFramework
                 item.Narrative = narrative[1];
                 item.NarrativeStatus = narrative[2];
             }
-            if (item.Code != "N1_1A" || !LoadReportedEmployeeBenefits(runId, item))
+            string sourceLine = hierarchyNotes ? NORMHelper.Str(row, "NoteSourceLineCode") : null;
+            if (!String.IsNullOrEmpty(sourceLine))
+                LoadHierarchyNote(runId, sourceLine, item);
+            else if (item.Code != "N1_1A" || !LoadReportedEmployeeBenefits(runId, item))
             {
                 AddMatchingSources(item, sources);
                 ApplyDemoCurrentNoteFigures(item, demoNoteFigures);
             }
-            ApplyPriorNoteFigures(item, priorNoteFigures);
+            if (String.IsNullOrEmpty(sourceLine)) ApplyPriorNoteFigures(item, priorNoteFigures);
             item.Suggested = item.SourceCount > 0;
             item.PotentiallyImmaterial = profile.OverallMateriality.HasValue && item.SourceCount > 0 &&
                 Math.Abs(item.Amount) < profile.OverallMateriality.Value;
@@ -328,6 +334,71 @@ public static class NORMReportingFramework
             values.Add(item);
         }
         return values;
+    }
+
+    internal static bool HasHierarchyNoteSource(OleDbConnection connection, OleDbTransaction transaction)
+    {
+        const string sql = "SELECT CASE WHEN COL_LENGTH('dbo.tblNORM_DisclosureRule','NoteSourceLineCode') IS NULL THEN 0 ELSE 1 END";
+        return Convert.ToInt32(connection == null ? NORMHelper.Scalar(sql) : NORMHelper.Scalar(connection, transaction, sql)) == 1;
+    }
+
+    public const string HierarchyFaceMarker =
+        "CASE WHEN EXISTS (SELECT 1 FROM dbo.tblNORM_StatementLine h WHERE h.ConfigurationReleaseId=t.ConfigurationReleaseId " +
+        "AND h.LineType='hierarchy-detail' AND h.IsDeactivated=0) THEN 1 ELSE 0 END AS IsHierarchy";
+
+    public static bool IsHierarchyFace(DataTable table)
+    {
+        return table.Columns.Contains("IsHierarchy") && table.Rows.Count > 0 && NORMHelper.Int(table.Rows[0], "IsHierarchy") == 1;
+    }
+
+    public static bool UsesNihracsHierarchy(string entity, int year, int releaseId)
+    {
+        return String.Equals(entity, "NIHRACS", StringComparison.OrdinalIgnoreCase) && year == 2026 &&
+            Convert.ToInt32(NORMHelper.Scalar("SELECT COUNT(*) FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release " +
+                "AND LineType='hierarchy-detail' AND IsDeactivated=0", NORMHelper.P("@release", releaseId))) > 0;
+    }
+
+    public static Dictionary<string, decimal> LoadReportedHierarchyFace(int runId, string statementCode)
+    {
+        return NORMHelper.Query("SELECT r.LineCode,r.ReportedAmount FROM dbo.tblNORM_LineResult r " +
+            "JOIN dbo.tblNORM_StatementLine t ON t.StatementLineId=r.StatementLineId WHERE r.CalculationRunId=@run " +
+            "AND r.StatementCode=@statement AND r.IsDeactivated=0 AND r.ReportedAmount IS NOT NULL AND t.LineType<>'hierarchy-detail'",
+            NORMHelper.P("@run", runId), NORMHelper.P("@statement", statementCode)).AsEnumerable()
+            .ToDictionary(row => NORMHelper.Str(row, "LineCode"), row => NORMHelper.Dec(row, "ReportedAmount"), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void LoadHierarchyNote(int runId, string sourceLine, Disclosure note)
+    {
+        DataTable table = NORMHelper.Query(
+            "SELECT r.LineCode,r.ComputedAmount,r.ReportedAmount,t.ParentLineCode,t.LineLabel,t.SeqNo,t.CalculationKind," +
+            "(SELECT COUNT(*) FROM dbo.tblNORM_Lineage x WHERE x.LineResultId=r.LineResultId) SourceCount " +
+            "FROM dbo.tblNORM_LineResult r JOIN dbo.tblNORM_StatementLine t ON t.StatementLineId=r.StatementLineId " +
+            "WHERE r.CalculationRunId=@run AND r.IsDeactivated=0 AND r.ReportedAmount IS NOT NULL ORDER BY t.SeqNo",
+            NORMHelper.P("@run", runId));
+        ILookup<string, DataRow> children = table.AsEnumerable().ToLookup(row => NORMHelper.Str(row, "ParentLineCode"), StringComparer.OrdinalIgnoreCase);
+        DataRow root = table.AsEnumerable().SingleOrDefault(row =>
+            String.Equals(NORMHelper.Str(row, "LineCode"), sourceLine, StringComparison.OrdinalIgnoreCase));
+        if (root == null) return;
+        note.Amount = NORMHelper.Dec(root, "ComputedAmount");
+        note.ReportedAmount = NORMHelper.Dec(root, "ReportedAmount");
+        note.SourceCount = NORMHelper.Int(root, "SourceCount");
+        AddHierarchyNoteLines(note, children, sourceLine, true);
+    }
+
+    private static void AddHierarchyNoteLines(Disclosure note, ILookup<string, DataRow> children, string parent, bool primary)
+    {
+        foreach (DataRow row in children[parent])
+        {
+            bool total = NORMHelper.Str(row, "CalculationKind") == "Formula";
+            string code = NORMHelper.Str(row, "LineCode");
+            if (total) AddHierarchyNoteLines(note, children, code, false);
+            note.Lines.Add(new NoteLine {
+                Label = NORMHelper.Str(row, "LineLabel"), Amount = NORMHelper.Dec(row, "ComputedAmount"),
+                ReportedAmount = NORMHelper.Dec(row, "ReportedAmount"), SourceCount = NORMHelper.Int(row, "SourceCount"),
+                SourceLineCode = code, LineType = total ? "subtotal" : "detail",
+                SortOrder = note.Lines.Count, ContributesToTotal = primary
+            });
+        }
     }
 
     public static Dictionary<string, decimal> LoadReportedIncomeStatement(int runId)

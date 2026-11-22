@@ -47,11 +47,17 @@ namespace CPlatform.NORM
 
 public static class NORMImportService
 {
+    internal static int FindCurrentAnnualDepartmentalImport(string entity, int year)
+    {
+        if (entity == "NIHRACS" && year == 2026) return 25;
+        throw new InvalidOperationException("Unexpected annual fixture scope.");
+    }
+
     public static NORMImportOutcome CreateTestBreak(int importId, decimal delta, string user)
     { throw new InvalidOperationException("Source edits are outside the pilot."); }
 }
 
-internal static class PilotTests
+internal static partial class PilotTests
 {
     private const string Parent = "Employee benefits";
     private const string Detail = "employee-detail";
@@ -116,7 +122,8 @@ internal static class PilotTests
         {
             if ((bool)row["IsDeactivated"]) continue;
             string code = (string)row["LineCode"];
-            if (faceOnly && ((string)row["LineType"] == Detail || (string)row["StatementCode"] != "SOCI")) continue;
+            if (faceOnly && ((string)row["LineType"] == Detail || (string)row["LineType"] == "hierarchy-detail" ||
+                (draft == null && (string)row["StatementCode"] != "SOCI" && !(bool)(row.Table.ExtendedProperties["NIHRACS"] ?? false)))) continue;
             NORMHelper.Call result = Result(code);
             DataRow target = table.NewRow();
             target.ItemArray = row.ItemArray;
@@ -289,7 +296,7 @@ internal static class PilotTests
             foreach (NORMHelper.Call change in changes)
             {
                 if (change.Sql.StartsWith("INSERT dbo.tblNORM_StatementLine"))
-                    templates.Rows.Add(120, "SOCI", change["@code"], change["@seq"], "Mapped", DBNull.Value, Detail,
+                    templates.Rows.Add(400, change["@statement"], change["@code"], change["@seq"], "Mapped", DBNull.Value, change["@type"],
                         change["@label"], DBNull.Value, "D", true, change["@parent"], false);
                 if (change.Sql.StartsWith("UPDATE dbo.tblNORM_StatementLine SET LineLabel"))
                 {
@@ -496,6 +503,11 @@ internal static class PilotTests
 
     public static void Main(string[] args)
     {
+        if (args.Length > 1)
+        {
+            CheckNihracs(args[0], args[1]);
+            return;
+        }
         Prepare();
         CheckRoundTrip(args[0]);
         string originalFingerprint = fingerprint;

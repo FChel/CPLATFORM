@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$Nihracs)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $output = Join-Path ([IO.Path]::GetTempPath()) ('norm-employee-benefits-' + [Guid]::NewGuid().ToString('N'))
@@ -18,9 +18,17 @@ foreach ($name in @('StatementEngine','NORMReportingFramework','NORMStatementEnh
     $options += $target
 }
 $options += @((Join-Path $root 'NORM/NORM_Statements.aspx.cs'), (Join-Path $root 'tools/tests/FR016/TestSupport.cs'),
-    (Join-Path $PSScriptRoot 'PilotTests.cs'))
+    (Join-Path $PSScriptRoot 'PilotTests.cs'), (Join-Path $PSScriptRoot 'NihracsHierarchyTests.cs'))
 & $compiler @options
 if ($LASTEXITCODE -ne 0) { throw 'Employee benefits harness compilation failed' }
+if ($Nihracs) {
+    & (Join-Path $output 'Tests.exe') $output $root
+    if ($LASTEXITCODE -ne 0) { throw 'NIHRACS hierarchy verification failed' }
+    & node (Join-Path $PSScriptRoot 'PresentationTests.js') (Join-Path $root 'js/norm.js') $output --nihracs
+    if ($LASTEXITCODE -ne 0) { throw 'NIHRACS web and print checks failed' }
+    Write-Output "Isolated artifacts: $output"
+    return
+}
 & (Join-Path $output 'Tests.exe') $output
 if ($LASTEXITCODE -ne 0) { throw 'Employee benefits calculations or export checks failed' }
 & node (Join-Path $PSScriptRoot 'PresentationTests.js') (Join-Path $root 'js/norm.js') $output

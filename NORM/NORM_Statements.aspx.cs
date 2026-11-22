@@ -101,10 +101,13 @@ namespace CPlatform.NORM
             List<object> statements = new List<object>();
             statements.Add(BuildStatement(releaseId, runId, "SOCI", "Statement of Comprehensive Income", lineage, budgets, priorFigures));
             statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets, priorFigures));
-            statements.Add(BuildEquityStatement(runId, releaseId, lineage, budgets, priorFigures));
-            statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets, priorFigures));
-            payload["assetMovement"] = BuildAssetMovementStatement(runId, releaseId, lineage,
-                priorAssetMovements, priorFigures);
+            if (!NORMReportingFramework.UsesNihracsHierarchy(entityCode, fy, releaseId))
+            {
+                statements.Add(BuildEquityStatement(runId, releaseId, lineage, budgets, priorFigures));
+                statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets, priorFigures));
+                payload["assetMovement"] = BuildAssetMovementStatement(runId, releaseId, lineage,
+                    priorAssetMovements, priorFigures);
+            }
 
             if (NORMAdministeredStatements.Required(profile))
             {
@@ -705,14 +708,36 @@ namespace CPlatform.NORM
         {
             DataTable table = NORMHelper.Query(
                 "SELECT t.StatementLineId,t.SeqNo,t.LineType,t.LineCode,t.LineLabel,t.NoteRef,t.NaturalSign,t.IsClickable," +
-                "r.LineResultId,r.ComputedAmount,r.PublishedAmount,r.Variance,r.StatusCode " +
+                "r.LineResultId,r.ComputedAmount,r.PublishedAmount,r.Variance,r.StatusCode," + NORMReportingFramework.HierarchyFaceMarker + " " +
                 "FROM dbo.tblNORM_StatementLine t " +
                 "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId = t.StatementLineId AND r.CalculationRunId = @run AND r.IsDeactivated = 0 " +
                 "WHERE t.ConfigurationReleaseId = @release AND t.StatementCode = @statement AND t.IsDeactivated = 0 " +
-                "AND t.LineType<>'employee-detail' ORDER BY t.SeqNo",
+                "AND t.LineType<>'employee-detail' AND t.LineType<>'hierarchy-detail' ORDER BY t.SeqNo",
                 NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId),
                 NORMHelper.P("@statement", statementCode));
             List<object> rows = new List<object>();
+            if (NORMReportingFramework.IsHierarchyFace(table))
+            {
+                Dictionary<string, decimal> reported = NORMReportingFramework.LoadReportedHierarchyFace(runId, statementCode);
+                foreach (DataRow source in table.Rows)
+                {
+                    string code = NORMHelper.Str(source, "LineCode");
+                    long resultId = source.IsNull("LineResultId") ? 0L : NORMHelper.Long(source, "LineResultId");
+                    List<Dictionary<string, object>> contributions;
+                    if (!lineage.TryGetValue(resultId, out contributions)) contributions = new List<Dictionary<string, object>>();
+                    string type = NORMHelper.Str(source, "LineType");
+                    var row = SimpleRow(type == "section" ? "subsection" : type, code,
+                        NORMHelper.Str(source, "LineLabel"), NORMHelper.Str(source, "NoteRef"),
+                        source.IsNull("ComputedAmount") ? 0m : NORMHelper.Dec(source, "ComputedAmount"), null,
+                        resultId > 0, resultId, contributions);
+                    decimal amount;
+                    if (code != null && reported.TryGetValue(code, out amount)) row["reported"] = amount;
+                    rows.Add(row);
+                }
+                return new Dictionary<string, object> {
+                    { "code", statementCode }, { "title", title }, { "layout", "standard" }, { "rows", rows }
+                };
+            }
             bool hasForeignExchangeGains = false;
             bool hasFinancialAssetsHeading = false;
             for (int i = 0; i < table.Rows.Count; i++)

@@ -43,6 +43,18 @@ public static partial class Tests
                 int id = Current(Key("NIHRACS", year, "NIHRA", null, "Departmental"));
                 Assert(NORMCrypto.Sha256(ImportDownload(id)) == NORMCrypto.Sha256(bytes), "Annual original changed");
             }
+            int current = Current(Key("NIHRACS", 2026, "NIHRA", null, "Departmental"));
+            NORMHelper.ScalarCallResponse = call =>
+            {
+                Assert(call.Sql.Contains("AnnualSourceApprovalSnapshot") && (int)call["@id"] == current &&
+                    (string)call["@snapshot"] == snapshot && (string)call["@company"] == "NIHRA" &&
+                    (string)call["@ledger"] == "", "Retained calculation scope changed");
+                return 1;
+            };
+            Assert(NORMImportService.FindCurrentAnnualDepartmentalImport("NIHRACS", 2026) == current,
+                "The calculation did not select the current original");
+            NORMHelper.ScalarCallResponse = call => 0;
+            RejectUnchanged(delegate { NORMImportService.FindCurrentAnnualDepartmentalImport("NIHRACS", 2026); }, "does not match its annual approval");
         });
         HTest("annual context denies unauthorised agency before inspection", delegate {
             AnnualFixture();
