@@ -38,6 +38,7 @@ public static class NORMReportingFramework
     {
         public string Label;
         public decimal Amount;
+        public decimal? ReportedAmount;
         public decimal? Prior;
         public int SourceCount;
         public string SourceLineCode;
@@ -54,6 +55,7 @@ public static class NORMReportingFramework
         public string SectionTitle;
         public string NoteRef;
         public string Title;
+        public decimal? ReportedAmount;
         public string TriggerCode;
         public string Guidance;
         public bool Required;
@@ -299,8 +301,11 @@ public static class NORMReportingFramework
                 item.Narrative = narrative[1];
                 item.NarrativeStatus = narrative[2];
             }
-            AddMatchingSources(item, sources);
-            ApplyDemoCurrentNoteFigures(item, demoNoteFigures);
+            if (item.Code != "N1_1A" || !LoadReportedEmployeeBenefits(runId, item))
+            {
+                AddMatchingSources(item, sources);
+                ApplyDemoCurrentNoteFigures(item, demoNoteFigures);
+            }
             ApplyPriorNoteFigures(item, priorNoteFigures);
             item.Suggested = item.SourceCount > 0;
             item.PotentiallyImmaterial = profile.OverallMateriality.HasValue && item.SourceCount > 0 &&
@@ -323,6 +328,54 @@ public static class NORMReportingFramework
             values.Add(item);
         }
         return values;
+    }
+
+    public static Dictionary<string, decimal> LoadReportedIncomeStatement(int runId)
+    {
+        Dictionary<string, decimal> values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        if (!NORMStatementEngine.HasReportedAmounts()) return values;
+        DataTable table = NORMHelper.Query(
+            "SELECT r.LineCode,r.ReportedAmount FROM dbo.tblNORM_LineResult r " +
+            "INNER JOIN dbo.tblNORM_StatementLine t ON t.StatementLineId=r.StatementLineId " +
+            "WHERE r.CalculationRunId=@run AND r.StatementCode='SOCI' AND r.IsDeactivated=0 " +
+            "AND r.ReportedAmount IS NOT NULL AND t.LineType<>'employee-detail'",
+            NORMHelper.P("@run", runId));
+        foreach (DataRow row in table.Rows)
+            values.Add(NORMHelper.Str(row, "LineCode"), NORMHelper.Dec(row, "ReportedAmount"));
+        return values;
+    }
+
+    private static bool LoadReportedEmployeeBenefits(int runId, Disclosure disclosure)
+    {
+        if (!NORMStatementEngine.HasReportedAmounts()) return false;
+        DataTable table = NORMHelper.Query(
+            "SELECT r.LineCode,r.ComputedAmount,r.ReportedAmount,t.LineLabel,t.LineType,t.SeqNo," +
+            "(SELECT COUNT(*) FROM dbo.tblNORM_Lineage l WHERE l.LineResultId=r.LineResultId) SourceCount " +
+            "FROM dbo.tblNORM_LineResult r INNER JOIN dbo.tblNORM_StatementLine t ON t.StatementLineId=r.StatementLineId " +
+            "WHERE r.CalculationRunId=@run AND r.StatementCode='SOCI' AND r.IsDeactivated=0 AND r.ReportedAmount IS NOT NULL " +
+            "AND (r.LineCode=@parent OR t.LineType='employee-detail') ORDER BY t.SeqNo",
+            NORMHelper.P("@run", runId), NORMHelper.P("@parent", NORMStatementEngine.EmployeeBenefitsCode));
+        foreach (DataRow row in table.Rows)
+        {
+            if (NORMHelper.Str(row, "LineType") == NORMStatementEngine.EmployeeDetailType)
+            {
+                disclosure.Lines.Add(new NoteLine {
+                    Label = NORMHelper.Str(row, "LineLabel"),
+                    Amount = NORMHelper.Dec(row, "ComputedAmount"),
+                    ReportedAmount = NORMHelper.Dec(row, "ReportedAmount"),
+                    SortOrder = NORMHelper.Int(row, "SeqNo"),
+                    SourceLineCode = NORMStatementEngine.EmployeeBenefitsCode,
+                    SourceCount = NORMHelper.Int(row, "SourceCount")
+                });
+            }
+            else
+            {
+                disclosure.Amount = NORMHelper.Dec(row, "ComputedAmount");
+                disclosure.ReportedAmount = NORMHelper.Dec(row, "ReportedAmount");
+                disclosure.SourceCount = NORMHelper.Int(row, "SourceCount");
+            }
+        }
+        return disclosure.ReportedAmount.HasValue;
     }
 
     private static List<SourceBucket> LoadSourceBuckets(int runId)

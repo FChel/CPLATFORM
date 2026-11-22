@@ -205,6 +205,7 @@ public static class NORMStatementEnhancements
             for (int d = 0; d < disclosures.Count; d++)
             {
                 if (!String.Equals(disclosures[d].Code, code, StringComparison.OrdinalIgnoreCase)) { continue; }
+                if (disclosures[d].ReportedAmount.HasValue) { break; }
                 NORMReportingFramework.NoteLine line = new NORMReportingFramework.NoteLine();
                 line.Label = NORMHelper.Str(input, "InputLabel") + " (manual input)";
                 line.Amount = NORMHelper.Dec(input, "AmountCurrent");

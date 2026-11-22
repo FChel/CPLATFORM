@@ -14,6 +14,7 @@ namespace CPlatform.NORM
         protected string ValidationStatus = "Not run";
         protected string ImpactHtml = "";
         protected string AuditHtml = "";
+        protected string EmployeeCategoriesHtml = "";
         protected string UnmappedAccountCount = "—";
         protected string UnmappedAccountLabel = "unmapped accounts";
 
@@ -125,6 +126,21 @@ namespace CPlatform.NORM
             }, "Release approved", "The mapping release is immutable and ready for recalculation.");
         }
 
+        protected void EmployeeCategoryButton_Click(object sender, EventArgs e)
+        {
+            RunAction(delegate {
+                int releaseId = RequireReleaseId("Select the mapping draft first.");
+                NORMMappingManagement.SaveEmployeeCategory(releaseId, EmployeeParent.SelectedValue,
+                    EmployeeCategoryKey.Text, EmployeeCategoryLabel.Text, sender == DeactivateEmployeeCategoryButton,
+                    NORMHelper.CurrentUserId());
+                EmployeeCategoryKey.Text = "";
+                EmployeeCategoryLabel.Text = "";
+                WarningsAcknowledged.Checked = false;
+                Show("Category saved", "The Employee benefits categories and draft validation have been refreshed.", true);
+                BindSelectedRelease();
+            }, "Category saved", "The category change is recorded in the mapping draft.");
+        }
+
         protected void RecalculateButton_Click(object sender, EventArgs e)
         {
             try
@@ -151,6 +167,9 @@ namespace CPlatform.NORM
             if (!IsPostBack && scope != null) MappingContextList.SelectedValue = scope.Value;
             bool draft = String.Equals(NORMHelper.Str(release, "StatusCode"), "Draft", StringComparison.OrdinalIgnoreCase); bool approved = String.Equals(NORMHelper.Str(release, "StatusCode"), "Approved", StringComparison.OrdinalIgnoreCase);
             WorkflowPanel.Visible = true; UploadPanel.Visible = draft; ApprovalPanel.Visible = draft && IsAdministrator; RecalculatePanel.Visible = approved;
+            DataTable categories = draft ? NORMMappingManagement.EmployeeCategories(releaseId) : null;
+            EmployeeCategoriesPanel.Visible = categories != null;
+            if (categories != null) EmployeeCategoriesHtml = RenderEmployeeCategories(categories);
             DownloadWorkbookLink.Visible = draft; DownloadWorkbookLink.NavigateUrl = "NORM_MappingWorkbook.ashx?release=" + releaseId.ToString(CultureInfo.InvariantCulture);
             ApprovalNote.Text = draft ? (IsAdministrator ? "" : "<p class=\"norm-muted\">An active NORM administrator must approve this release.</p>") : "<p class=\"norm-success-copy\">Approved by " + Enc(NORMHelper.Str(release, "ApprovedBy")) + " on " + Enc(Convert.ToString(release["ApprovedUtc"])) + ". This version is locked.</p>";
             RecalculateNote.Text = approved ? "" : "<p class=\"norm-muted\">Approval is required before recalculation.</p>";
@@ -160,6 +179,17 @@ namespace CPlatform.NORM
             UnmappedAccountCount = validation.UnmappedCount.ToString("N0"); UnmappedAccountLabel = validation.UnmappedCount == 1 ? "unmapped account" : "unmapped accounts";
             ImpactHtml = RenderImpact(NORMMappingManagement.Impact(releaseId)); AuditHtml = RenderAudit(releaseId);
             if (draft && validation.Warnings.Count == 0) WarningsAcknowledged.Checked = true;
+        }
+
+        private static string RenderEmployeeCategories(DataTable categories)
+        {
+            if (categories.Rows.Count == 0) return "";
+            StringBuilder html = new StringBuilder("<table><thead><tr><th>Stable key</th><th>Display description</th><th>Status</th></tr></thead><tbody>");
+            foreach (DataRow row in categories.Rows)
+                html.Append("<tr><td>").Append(Enc(NORMHelper.Str(row, "LineCode"))).Append("</td><td>")
+                    .Append(Enc(NORMHelper.Str(row, "LineLabel"))).Append("</td><td>")
+                    .Append(Convert.ToBoolean(row["IsDeactivated"]) ? "Inactive" : "Active").Append("</td></tr>");
+            return html.Append("</tbody></table>").ToString();
         }
 
         private string RenderValidation(NORMMappingValidation value)

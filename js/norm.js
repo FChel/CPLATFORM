@@ -20,6 +20,7 @@
     var text = Math.abs(Math.round(n)).toLocaleString("en-AU");
     return n < 0 ? "(" + text + ")" : text;
   }
+  function reportedNumber(item, exact) { return number(item.reported == null ? exact : item.reported); }
   function decimal(value, places) {
     if (value === null || value === undefined) { return "–"; }
     return Number(value).toLocaleString("en-AU", { minimumFractionDigits: places, maximumFractionDigits: places });
@@ -43,7 +44,7 @@
     if (type === "section") { return '<tr class="norm-note-group"><th colspan="3">' + esc(line.label) + '</th></tr>'; }
     var rowClass = type === "subtotal" ? ' class="norm-note-subtotal"' : "";
     var numberClass = printMode ? ' class="norm-print-number"' : "";
-    return '<tr' + rowClass + '><th>' + esc(line.label) + '</th><td' + numberClass + '>' + number(line.amount) + '</td><td' + numberClass + '>' + number(line.prior) + '</td></tr>';
+    return '<tr' + rowClass + '><th>' + esc(line.label) + '</th><td' + numberClass + '>' + reportedNumber(line, line.amount) + '</td><td' + numberClass + '>' + number(line.prior) + '</td></tr>';
   }
 
   function initialise() {
@@ -164,8 +165,8 @@
       var status = statusClass(row.status);
       var clickable = viewMode === "preparation" && row.clickable && row.resultId;
       var amount = clickable
-        ? '<button type="button" class="norm-figure" data-row="' + index + '"><span class="norm-status ' + status + '"></span><span>' + number(row.computed) + '</span></button>'
-        : '<span class="norm-figure-static">' + number(row.computed) + '</span>';
+        ? '<button type="button" class="norm-figure" data-row="' + index + '"><span class="norm-status ' + status + '"></span><span>' + reportedNumber(row, row.computed) + '</span></button>'
+        : '<span class="norm-figure-static">' + reportedNumber(row, row.computed) + '</span>';
       var note = row.note ? '<button type="button" class="norm-note-jump" data-note="' + esc(row.note) + '" aria-label="Open note ' + esc(row.note) + '">' + esc(row.note) + '</button>' : '';
       var cashWorking = statement.code === "CASH" && (row.original !== undefined || row.adjustment !== undefined)
         ? '<small class="norm-cash-working">Original ' + number(row.original || 0) + ' · adjustments ' + number(row.adjustment || 0) + '</small>' : '';
@@ -354,7 +355,7 @@
           var priorTotal = item.priorAmount !== null && item.priorAmount !== undefined ? Number(item.priorAmount) :
             (priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null);
           var table = item.code === "N3_2A" ? assetMovementNoteTable(true) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.note || "") + ': ' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows +
-            '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td>' + number(item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' :
+            '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td>' + reportedNumber(item, item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' :
             '<div class="norm-note-empty"><span>No mapped balance</span><p>The disclosure remains in the set because the entity profile requires it. Add entity narrative or mapping before sign-off.</p></div>');
           var source = item.demoSeeded ? '<p class="norm-note-source"><strong>Demo reconstruction source</strong>' + esc(item.currentSourceReference || "Published current-year financial statements") + '</p>' : '';
           var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Written disclosures and accounting policy</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
@@ -416,7 +417,7 @@
     var rows = (statement.rows || []).map(function (row) {
       if (row.type === "section" || row.type === "subsection" || row.type === "major" || row.type === "lead")
         return '<tr class="norm-section-row ' + esc(row.type) + (statement.administered ? ' administered' : '') + '"><th colspan="5">' + esc(row.label) + '</th></tr>';
-      return '<tr class="norm-financial-row ' + esc(row.type) + (statement.administered ? ' administered' : '') + '"><th>' + esc(row.label) + '</th><td class="norm-note">' + esc(row.note || '') + '</td><td class="norm-print-number">' + number(row.computed) + '</td><td class="norm-print-number">' + number(row.prior) + '</td><td class="norm-print-number">' + number(row.budget) + '</td></tr>';
+      return '<tr class="norm-financial-row ' + esc(row.type) + (statement.administered ? ' administered' : '') + '"><th>' + esc(row.label) + '</th><td class="norm-note">' + esc(row.note || '') + '</td><td class="norm-print-number">' + reportedNumber(row, row.computed) + '</td><td class="norm-print-number">' + number(row.prior) + '</td><td class="norm-print-number">' + number(row.budget) + '</td></tr>';
     }).join("");
     return '<section class="norm-print-page norm-print-' + esc(String(statement.code || '').toLowerCase()) + (statement.administered ? ' norm-administered-print' : '') + '">' + printHeader(statement) + '<table class="norm-financial-table"><thead><tr><th></th><th>Notes</th><th><b>' + esc(data.meta.yearCurrent) + '</b><small>$\'000</small></th><th><b>' + esc(data.meta.yearPrior) + '</b><small>$\'000</small></th><th><b>Original<br>Budget</b><small>$\'000</small></th></tr></thead><tbody>' + rows + '</tbody></table><p class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.</p></section>';
   }
@@ -453,7 +454,7 @@
           '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' + assetMovementNoteTable(false) + '</section>' + policyPage;
       }
       return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' +
-        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td class="norm-print-number">' + number(item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
+        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td class="norm-print-number">' + reportedNumber(item, item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
         (item.narrative ? '<div class="norm-accounting-policy"><strong>Written disclosures and accounting policy</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
     }).join("");
   }
@@ -554,10 +555,15 @@
     lastFocus = trigger || null;
     var sources = row.sources || [];
     var notes = noteGroups(sources);
-    var comparison = row.published === null || row.published === undefined ? "" :
-      '<div class="norm-trace-comparison"><article><span>Computed</span><strong>' + number(row.computed) + '</strong></article>' +
+    var reported = row.reported == null ? "" :
+      '<article><span>Reported</span><strong>' + number(row.reported) + '</strong></article>';
+    var published = row.published == null ? "" :
       '<article><span>Audited FY' + esc(data.meta.yearCurrent) + '</span><strong>' + number(row.published) + '</strong></article>' +
-      '<article class="' + statusClass(row.status) + '"><span>Variance</span><strong>' + number(row.variance || 0) + '</strong></article></div>';
+      '<article class="' + statusClass(row.status) + '"><span>Variance</span><strong>' + number(row.variance || 0) + '</strong></article>';
+    var computed = row.reported == null ? '<article><span>Computed</span><strong>' + number(row.computed) :
+      '<article><span>Underlying ($\'000)</span><strong>' + decimal(row.computed, 3);
+    var comparison = reported || published
+      ? '<div class="norm-trace-comparison">' + reported + computed + '</strong></article>' + published + '</div>' : "";
     var noteTable = notes.length > 1 ? '<section class="norm-trace-section"><div class="norm-trace-section-head"><h3>Note classifications</h3><span>' + notes.length + ' groups</span></div><table><tbody>' +
       notes.map(function (note) { return '<tr><td>' + esc(note.label) + '<small>' + note.count + ' source rows</small></td><td>' + number(note.amount) + '</td></tr>'; }).join("") +
       '</tbody></table></section>' : "";

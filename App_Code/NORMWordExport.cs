@@ -150,8 +150,10 @@ public class NORM_WordExport : IHttpHandler
             "SELECT t.LineType,t.LineCode,t.LineLabel,t.NoteRef,r.ComputedAmount FROM dbo.tblNORM_StatementLine t " +
             "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
             "WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code " +
-            "AND t.IsDeactivated=0 ORDER BY t.SeqNo",
+            "AND t.IsDeactivated=0 AND t.LineType<>'employee-detail' ORDER BY t.SeqNo",
             NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code));
+        Dictionary<string, decimal> reported = code == "SOCI"
+            ? NORMReportingFramework.LoadReportedIncomeStatement(runId) : new Dictionary<string, decimal>();
         bool hasForeignExchangeGains = false;
         bool hasFinancialAssetsHeading = false;
         for (int i = 0; i < table.Rows.Count; i++)
@@ -299,6 +301,8 @@ public class NORM_WordExport : IHttpHandler
                 AppendWordEquityRows(html, runId, priorFigures);
                 continue;
             }
+            decimal reportedAmount;
+            if (lineCode != null && reported.TryGetValue(lineCode, out reportedAmount)) effectiveCurrent = reportedAmount;
             html.Append("<tr class=\"").Append(type == "total" ? "total" : "").Append("\"><th>").Append(Enc(displayLabel)).Append("</th><td>")
                 .Append(Enc(CanonicalNote(code, NORMHelper.Str(row, "LineLabel"), NORMHelper.Str(row, "NoteRef")))).Append("</td><td class=\"amount\">").Append(Amount(effectiveCurrent)).Append("</td><td class=\"amount\">").Append(Amount(effectivePrior)).Append("</td></tr>");
         }
@@ -307,7 +311,9 @@ public class NORM_WordExport : IHttpHandler
             decimal? currentOci = LineResultValue(runId, "SOCE_TOTAL_OCI") ?? LineResultValue(runId, "OCI_REVALUATION");
             decimal? effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCE", "SOCE_TOTAL_OCI", null);
             effectiveOciPrior = NORMStartOfYearSetup.FigureValue(priorFigures, "SOCI", "OCI_REVALUATION", effectiveOciPrior);
-            decimal? currentResult = operatingResultCurrent;
+            decimal reportedOperatingResult;
+            decimal? currentResult = reported.TryGetValue("Operating result", out reportedOperatingResult)
+                ? (decimal?)reportedOperatingResult : operatingResultCurrent;
             decimal? priorResult = operatingResultPrior;
             decimal? totalCurrent = currentResult.HasValue && currentOci.HasValue ? (decimal?)(currentResult.Value + currentOci.Value) : null;
             decimal? totalPrior = priorResult.HasValue && effectiveOciPrior.HasValue ? (decimal?)(priorResult.Value + effectiveOciPrior.Value) : null;
@@ -468,11 +474,11 @@ public class NORM_WordExport : IHttpHandler
                         continue;
                     }
                     html.Append("<tr").Append(String.Equals(line.LineType, "subtotal", StringComparison.OrdinalIgnoreCase) ? " class=\"subtotal\"" : "")
-                        .Append("><th>").Append(Enc(line.Label)).Append("</th><td class=\"amount\">").Append(FormatAmount(line.Amount)).Append("</td><td class=\"amount\">")
+                        .Append("><th>").Append(Enc(line.Label)).Append("</th><td class=\"amount\">").Append(FormatAmount(line.ReportedAmount ?? line.Amount)).Append("</td><td class=\"amount\">")
                         .Append(line.Prior.HasValue ? FormatAmount(line.Prior.Value) : "-").Append("</td></tr>");
                     if (line.ContributesToTotal && line.Prior.HasValue) { priorTotal += line.Prior.Value; hasPrior = true; }
                 }
-                html.Append("<tr class=\"total\"><th>").Append(Enc(NoteTotalLabel(item))).Append("</th><td class=\"amount\">").Append(FormatAmount(item.Amount)).Append("</td><td class=\"amount\">")
+                html.Append("<tr class=\"total\"><th>").Append(Enc(NoteTotalLabel(item))).Append("</th><td class=\"amount\">").Append(FormatAmount(item.ReportedAmount ?? item.Amount)).Append("</td><td class=\"amount\">")
                     .Append(item.PriorAmount.HasValue ? FormatAmount(item.PriorAmount.Value) : (hasPrior ? FormatAmount(priorTotal) : "-")).Append("</td></tr></tbody></table>");
                 if (item.DemoSeeded) html.Append("<p class=\"small\"><b>Demo reconstruction source:</b> ").Append(Enc(item.CurrentSourceReference)).Append("</p>");
             }

@@ -26,7 +26,7 @@ namespace TestDb
     }
 }
 
-public static class NORMHelper
+public static partial class NORMHelper
 {
     public sealed class Call
     {
@@ -99,8 +99,12 @@ public static class NORMHelper
     public static object Scalar(string sql, params OleDbParameter[] p) { return ScalarCallResponse != null ? ScalarCallResponse(QueryCall(sql, p)) : ScalarResponse != null ? ScalarResponse(sql) : Duplicate ? (object)7 : null; }
     public static object Scalar(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p)
     {
+#if EMPLOYEE_BENEFITS_TESTS
+        return EmployeeBenefitsTransactionScalar(QueryCall(sql, p, true));
+#else
         if (sql.Contains("SELECT TOP 1 i.ImportId")) { return ExistingCompany ? (object)7 : null; }
         return 0;
+#endif
     }
     public static int Exec(string sql, params OleDbParameter[] p) { if (NonTransactionalExec != null) { NonTransactionalExec(QueryCall(sql, p)); return 1; } if (ExecResponse != null) { ExecResponse(sql); return 1; } throw new Exception("Unexpected nontransactional write"); }
     public static int Exec(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p)
