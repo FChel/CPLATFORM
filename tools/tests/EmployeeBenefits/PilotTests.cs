@@ -13,7 +13,8 @@ using OfficeOpenXml;
 public static partial class NORMHelper
 {
     public static Func<Call, object> EmployeeBenefitsTransactionScalar;
-    public static bool HasAdminAccess() { return true; }
+    public static bool MappingAdministrator = true;
+    public static bool HasAdminAccess() { return MappingAdministrator; }
     public static bool CanAccessCompletedRun(int runId) { return runId == 42; }
     public static int LatestAccessibleCompletedRun() { return 42; }
     public static string SourceCompany(DataRow row) { return null; }
@@ -120,7 +121,7 @@ internal static partial class PilotTests
             table.Columns.Add(column, typeof(object));
         foreach (DataRow row in templates.Rows)
         {
-            if ((bool)row["IsDeactivated"]) continue;
+            if ((bool)row["IsDeactivated"] || (string)row["StatementCode"] == "SCFREF") continue;
             string code = (string)row["LineCode"];
             if (faceOnly && ((string)row["LineType"] == Detail || (string)row["LineType"] == "hierarchy-detail" ||
                 (draft == null && (string)row["StatementCode"] != "SOCI" && !(bool)(row.Table.ExtendedProperties["NIHRACS"] ?? false)))) continue;
@@ -152,8 +153,6 @@ internal static partial class PilotTests
                 sql.StartsWith("SELECT EntityCode,FinancialYear FROM dbo.tblNORM_ConfigurationRelease") ||
                 sql.StartsWith("SELECT ContentHash FROM dbo.tblNORM_ConfigurationRelease"))
                 return !sql.Contains("StatusCode='Draft'") || (string)draft.Rows[0]["StatusCode"] == "Draft" ? draft : draft.Clone();
-            if (sql.StartsWith("SELECT COUNT(*) MappingCount"))
-                return Table("MappingCount InvalidTypes", new object[] { accountMap.Rows.Count, 0 });
             if (sql.StartsWith("SELECT MAX(GlText") || sql.StartsWith("SELECT GlAccount,MAX(GlText") ||
                 sql.StartsWith("SELECT DISTINCT StatementLine,NoteSubLine") || sql.StartsWith("SELECT DISTINCT CashFlowClass"))
                 return new DataTable();
@@ -170,6 +169,38 @@ internal static partial class PilotTests
                 return accountMap;
             if (sql.StartsWith("SELECT CalculationKind,FormulaSpec,ParentLineCode"))
                 return TableFrom(templates, row => (string)row["LineCode"] == Parent);
+            if (sql.StartsWith("SELECT s.LineCode,s.LineLabel,p.LineLabel AS ParentLabel"))
+            {
+                DataTable options = Table("LineCode LineLabel ParentLabel MappingDescription");
+                foreach (DataRow line in templates.AsEnumerable().Where(row => (string)row["LineType"] == "hierarchy-detail" &&
+                    (string)row["CalculationKind"] == "Mapped" && !(bool)row["IsDeactivated"]))
+                {
+                    DataRow parent = templates.AsEnumerable().Single(row => (string)row["LineCode"] == (string)line["ParentLineCode"]);
+                    options.Rows.Add(line["LineCode"], line["LineLabel"], parent["LineLabel"], line["MappingDescription"]);
+                }
+                return options;
+            }
+            if (sql.StartsWith("SELECT LineCode,LineLabel,") && sql.Contains("StatementCode='SCFREF'"))
+                return TableFrom(templates, row => (string)row["StatementCode"] == "SCFREF" &&
+                    (string)row["LineType"] == "cashflow-detail" && !(bool)row["IsDeactivated"]);
+            if (sql.StartsWith("SELECT StatementLineId,MappingDescription") || sql.StartsWith("SELECT StatementLineId,LineLabel FROM "))
+                return TableFrom(templates, row => (string)row["LineCode"] == (string)call["@code"] &&
+                    ((string)row["LineType"] == (string)call["@type"] || (sql.Contains("StatementCode='SCFREF'") &&
+                        (string)row["StatementCode"] == "SCFREF" && (string)row["LineType"] == "cashflow-detail")) && !(bool)row["IsDeactivated"]);
+            if (sql.StartsWith("SELECT LineCode,MappingDescription FROM"))
+                return TableFrom(templates, row => !row.IsNull("MappingDescription"));
+            if (sql.StartsWith("SELECT s.LineLabel,s.MappingDescription,"))
+            {
+                DataTable wording = Table("LineLabel MappingDescription ParentLabel");
+                DataRow line = templates.AsEnumerable().Single(row => (int)row["StatementLineId"] == (int)call["@line"]);
+                if (line.IsNull("MappingDescription"))
+                {
+                    string parent = (string)line["ParentLineCode"];
+                    wording.Rows.Add(line["LineLabel"], DBNull.Value, sql.Contains("p.LineLabel AS ParentLabel")
+                        ? templates.AsEnumerable().Single(row => (string)row["LineCode"] == parent)["LineLabel"] : DBNull.Value);
+                }
+                return wording;
+            }
             if (sql.StartsWith("SELECT StatementLineId,LineCode,LineLabel"))
                 return TableFrom(templates, row => (string)row["LineCode"] == (string)call["@code"]);
             if (sql.StartsWith("SELECT LineCode,LineLabel,IsDeactivated"))
@@ -191,10 +222,11 @@ internal static partial class PilotTests
         }
         if (sql.Contains("FROM dbo.tblNORM_StatementLine") && call.InTransaction)
             return TableFrom(templates, row => !(bool)row["IsDeactivated"] &&
+                (!sql.Contains("StatementCode<>'SCFREF'") || (string)row["StatementCode"] != "SCFREF") &&
                 (!sql.Contains("CalculationKind = 'Formula'") || (string)row["CalculationKind"] == "Formula"));
-        if (sql.StartsWith("SELECT TbRowId,SourceLedger"))
+        if (sql.StartsWith("SELECT TbRowId,SourceLedger") || sql.StartsWith("SELECT GlAccount,SourceCompanyCode"))
         {
-            DataTable rows = Table("TbRowId SourceLedger GlAccount GlText DebitMovement CreditMovement AccumBalance");
+            DataTable rows = Table("TbRowId SourceLedger GlAccount GlText DebitMovement CreditMovement AccumBalance SourceCompanyCode ReportingStream");
             for (int i = 0; i < GLs.Length; i++)
                 rows.Rows.Add((long)i + 1, DBNull.Value, GLs[i], "Employee cost", 0m, 0m, i == 4 ? lastSourceAmount : 500m);
             rows.Rows.Add(6L, DBNull.Value, "300000", "Balancing equity credit", 0m, 0m, -2000m - lastSourceAmount);
@@ -234,6 +266,7 @@ internal static partial class PilotTests
         string wagesLabel = "Wages and salaries", decimal leave = 500m)
     {
         NORMHelper.Reset();
+        NORMHelper.MappingAdministrator = true;
         InsertedResults.Clear();
         draft = null;
         legacy = isLegacy;
@@ -267,6 +300,7 @@ internal static partial class PilotTests
 
     private static void ConfigureDraft()
     {
+        if (!templates.Columns.Contains("MappingDescription")) templates.Columns.Add("MappingDescription", typeof(string));
         accountMap = Query(new NORMHelper.Call { Sql = "SELECT AccountMapId,GlCode" });
         draft = Table("ConfigurationReleaseId ParentConfigurationReleaseId EntityCode FinancialYear StatusCode VersionCode ContentHash",
             new object[] { 2, 1, "PILOT", 2026, "Draft", "pilot", "original" });
@@ -301,9 +335,11 @@ internal static partial class PilotTests
                 if (change.Sql.StartsWith("UPDATE dbo.tblNORM_StatementLine SET LineLabel"))
                 {
                     DataRow line = templates.AsEnumerable().Single(row => (int)row["StatementLineId"] == (int)change["@line"]);
-                    line["LineLabel"] = change["@label"];
-                    line["IsDeactivated"] = change["@inactive"];
+                    if (change.Values.ContainsKey("@text")) line["LineLabel"] = change["@text"];
+                    else { line["LineLabel"] = change["@label"]; line["IsDeactivated"] = change["@inactive"]; }
                 }
+                if (change.Sql.StartsWith("UPDATE dbo.tblNORM_StatementLine SET MappingDescription"))
+                    templates.AsEnumerable().Single(row => (int)row["StatementLineId"] == (int)change["@line"])["MappingDescription"] = change["@text"];
                 if (change.Sql.StartsWith("UPDATE dbo.tblNORM_AccountMap"))
                     accountMap.AsEnumerable().Single(row => (string)row["GlCode"] == (string)change["@gl"])["StatementLine"] = change["@line"];
                 if (change.Sql.StartsWith("INSERT dbo.tblNORM_MappingChange")) mappingChanges++;
@@ -350,16 +386,18 @@ internal static partial class PilotTests
         Check((string)accountMap.Rows[0]["StatementLine"] == "EMP_OTHER" &&
             (string)Result("EMP_OTHER")["@line"] == "EMP_OTHER" && Reported(Result("EMP_OTHER")) == 1m,
             "Renaming changed the stable key or reported balance.");
-        Throws(() => NORMMappingManagement.SaveEmployeeCategory(2, Parent, "EMP_OTHER", "", true, "pilot"), "Reassign or clear");
         Throws(() => NORMMappingManagement.SaveEmployeeCategory(2, "EMP_OTHER", "EMP_WAGES", "Invalid", false, "pilot"), "Select Employee benefits");
         NORMHelper.TransactionEntityAccess = entity => false;
         Throws(() => NORMMappingManagement.SaveEmployeeCategory(2, Parent, "EMP_OTHER", "Unauthorised", false, "pilot"), "Entity access denied");
         NORMHelper.TransactionEntityAccess = null;
 
         byte[] removeMapping = EditMappingWorkbook("Other staff costs", "EMP_WAGES");
-        NORMMappingManagement.ApplyWorkbook(2, removeMapping, "pilot.xlsx", "pilot");
+        int draftDetailId = (int)templates.AsEnumerable().Single(row => (string)row["LineCode"] == "EMP_OTHER")["StatementLineId"];
         NORMMappingManagement.SaveEmployeeCategory(2, Parent, "EMP_OTHER", "", true, "pilot");
-        Throws(() => NORMMappingManagement.ApplyWorkbook(2, workbook, "stale.xlsx", "pilot"), "is not valid for this release");
+        Check(!NORMMappingManagement.Validate(2).CanApprove && (string)accountMap.Rows[0]["StatementLine"] == "EMP_OTHER" &&
+            (int)NORMHelper.Committed.Last(call => call.Sql.StartsWith("UPDATE dbo.tblNORM_StatementLine"))["@line"] == draftDetailId,
+            "Deactivation must update only the draft detail and leave its mapping unresolved.");
+        NORMMappingManagement.ApplyWorkbook(2, removeMapping, "pilot.xlsx", "pilot");
         VerifyRecalculation(4m, 4);
         Check(!InsertedResults.Any(row => (string)row["@line"] == "EMP_OTHER"), "Inactive detail was calculated.");
         Check(templates.AsEnumerable().Single(row => (string)row["LineCode"] == Parent).IsNull("FormulaSpec"),
@@ -505,7 +543,7 @@ internal static partial class PilotTests
     {
         if (args.Length > 1)
         {
-            CheckNihracs(args[0], args[1]);
+            CheckNihracs(args[0], args[1], args.Length > 2 ? args[2] : null);
             return;
         }
         Prepare();

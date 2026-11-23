@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$Nihracs)
+param([switch]$Nihracs, [string]$ConsolidatedWorkbook)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $output = Join-Path ([IO.Path]::GetTempPath()) ('norm-employee-benefits-' + [Guid]::NewGuid().ToString('N'))
@@ -22,7 +22,9 @@ $options += @((Join-Path $root 'NORM/NORM_Statements.aspx.cs'), (Join-Path $root
 & $compiler @options
 if ($LASTEXITCODE -ne 0) { throw 'Employee benefits harness compilation failed' }
 if ($Nihracs) {
-    & (Join-Path $output 'Tests.exe') $output $root
+    $arguments = @($output, $root)
+    if ($ConsolidatedWorkbook) { $arguments += (Resolve-Path -LiteralPath $ConsolidatedWorkbook).Path }
+    & (Join-Path $output 'Tests.exe') @arguments
     if ($LASTEXITCODE -ne 0) { throw 'NIHRACS hierarchy verification failed' }
     & node (Join-Path $PSScriptRoot 'PresentationTests.js') (Join-Path $root 'js/norm.js') $output --nihracs
     if ($LASTEXITCODE -ne 0) { throw 'NIHRACS web and print checks failed' }

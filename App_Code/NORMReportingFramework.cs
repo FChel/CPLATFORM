@@ -355,7 +355,7 @@ public static class NORMReportingFramework
     {
         return String.Equals(entity, "NIHRACS", StringComparison.OrdinalIgnoreCase) && year == 2026 &&
             Convert.ToInt32(NORMHelper.Scalar("SELECT COUNT(*) FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release " +
-                "AND LineType='hierarchy-detail' AND IsDeactivated=0", NORMHelper.P("@release", releaseId))) > 0;
+                "AND LineType='hierarchy-detail'", NORMHelper.P("@release", releaseId))) > 0;
     }
 
     public static Dictionary<string, decimal> LoadReportedHierarchyFace(int runId, string statementCode)

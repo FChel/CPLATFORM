@@ -40,19 +40,25 @@
 
             <asp:Panel ID="EmployeeCategoriesPanel" runat="server" Visible="false" CssClass="norm-mapping-card">
                 <h2><%= CategoryHeading %></h2>
-                <p>Add a category or enter its existing key to change its description. Download a fresh workbook to assign G/L accounts to a new category. Reassign or clear its accounts before deactivating it.</p>
-                <asp:Label runat="server" AssociatedControlID="EmployeeParent" Text="Parent" />
-                <asp:DropDownList ID="EmployeeParent" runat="server" CssClass="norm-input">
-                    <asp:ListItem Text="Employee benefits" Value="Employee benefits" />
-                </asp:DropDownList>
+                <p>Use a stable key from the list to edit a detail classification. Mapping descriptions help Preparers choose a classification. Reporting statement labels appear in the financial statements. Cash-flow reference labels are fixed to the source wording.</p>
                 <asp:Label runat="server" AssociatedControlID="EmployeeCategoryKey" Text="Stable key" />
                 <asp:TextBox ID="EmployeeCategoryKey" runat="server" CssClass="norm-input" MaxLength="120" />
-                <asp:Label runat="server" AssociatedControlID="EmployeeCategoryLabel" Text="Display description" />
+                <asp:Label runat="server" AssociatedControlID="EmployeeMappingDescription" Text="Mapping Description" />
+                <asp:TextBox ID="EmployeeMappingDescription" runat="server" CssClass="norm-input" MaxLength="240" />
+                <asp:Label runat="server" AssociatedControlID="EmployeeCategoryLabel" Text="Statement Label" />
                 <asp:TextBox ID="EmployeeCategoryLabel" runat="server" CssClass="norm-input" MaxLength="240" />
                 <div class="norm-form-actions">
-                    <asp:Button ID="SaveEmployeeCategoryButton" runat="server" Text="Save category" CssClass="norm-button" OnClick="EmployeeCategoryButton_Click" />
-                    <asp:Button ID="DeactivateEmployeeCategoryButton" runat="server" Text="Deactivate category" CssClass="norm-button" OnClick="EmployeeCategoryButton_Click" />
+                    <asp:Button ID="SaveMappingDescriptionButton" runat="server" Text="Save Mapping Description" CssClass="norm-button" OnClick="ClassificationTextButton_Click" />
+                    <asp:Button ID="SaveStatementLabelButton" runat="server" Text="Save Statement Label" CssClass="norm-button" OnClick="ClassificationTextButton_Click" />
                 </div>
+                <asp:Panel ID="CategoryStructurePanel" runat="server" Visible="false">
+                    <asp:Label runat="server" AssociatedControlID="EmployeeParent" Text="Parent" />
+                    <asp:DropDownList ID="EmployeeParent" runat="server" CssClass="norm-input" />
+                    <div class="norm-form-actions">
+                        <asp:Button ID="SaveEmployeeCategoryButton" runat="server" Text="Save category" CssClass="norm-button" OnClick="EmployeeCategoryButton_Click" />
+                        <asp:Button ID="DeactivateEmployeeCategoryButton" runat="server" Text="Deactivate category" CssClass="norm-button" OnClick="EmployeeCategoryButton_Click" />
+                    </div>
+                </asp:Panel>
                 <div class="norm-impact-table"><%= EmployeeCategoriesHtml %></div>
             </asp:Panel>
 

@@ -112,6 +112,7 @@ namespace CPlatform.NORM
                 if (!MappingFile.HasFile) throw new InvalidOperationException("Choose the completed mapping workbook.");
                 int releaseId = RequireReleaseId("The mapping workbook is not ready. Return to the Control Centre and select Import mapping.");
                 NORMMappingUploadOutcome result = NORMMappingManagement.ApplyWorkbook(releaseId, MappingFile.FileBytes, MappingFile.FileName, NORMHelper.CurrentUserId());
+                WarningsAcknowledged.Checked = false;
                 Show("Workbook applied", result.ChangedCount.ToString("N0") + " account mapping(s) were changed. The draft has been revalidated.", true);
                 BindSelectedRelease();
             }, "Workbook applied", "The mapping changes and their audit evidence have been saved to the draft.");
@@ -140,6 +141,19 @@ namespace CPlatform.NORM
                 Show("Category saved", "The reporting categories and draft validation have been refreshed.", true);
                 BindSelectedRelease();
             }, "Category saved", "The category change is recorded in the mapping draft.");
+        }
+
+        protected void ClassificationTextButton_Click(object sender, EventArgs e)
+        {
+            RunAction(delegate {
+                bool mappingDescription = sender == SaveMappingDescriptionButton;
+                NORMMappingManagement.SaveClassificationText(RequireReleaseId("Select the mapping draft first."),
+                    EmployeeCategoryKey.Text, mappingDescription ? EmployeeMappingDescription.Text : EmployeeCategoryLabel.Text,
+                    mappingDescription, NORMHelper.CurrentUserId());
+                WarningsAcknowledged.Checked = false;
+                Show("Classification wording saved", "The change is recorded in the draft for review.", true);
+                BindSelectedRelease();
+            }, "Classification wording saved", "The change is recorded in the draft for review.");
         }
 
         protected void RecalculateButton_Click(object sender, EventArgs e)
@@ -171,7 +185,8 @@ namespace CPlatform.NORM
             DataTable categories = draft ? NORMMappingManagement.EmployeeCategories(releaseId) : null;
             DataTable parents = categories == null ? null : NORMMappingManagement.NihracsCategoryParents(releaseId);
             EmployeeCategoriesPanel.Visible = categories != null && (parents == null || parents.Rows.Count > 0);
-            CategoryHeading = parents == null ? "Employee benefits categories" : "Reporting categories";
+            CategoryStructurePanel.Visible = EmployeeCategoriesPanel.Visible && IsAdministrator;
+            CategoryHeading = parents == null ? "Employee benefits categories" : "Reporting and cash-flow classifications";
             string selectedParent = EmployeeParent.SelectedValue;
             EmployeeParent.Items.Clear();
             if (parents == null) EmployeeParent.Items.Add(new ListItem("Employee benefits", NORMStatementEngine.EmployeeBenefitsCode));
@@ -197,9 +212,11 @@ namespace CPlatform.NORM
         private static string RenderEmployeeCategories(DataTable categories)
         {
             if (categories.Rows.Count == 0) return "";
-            StringBuilder html = new StringBuilder("<table><thead><tr><th>Stable key</th><th>Display description</th><th>Status</th></tr></thead><tbody>");
+            StringBuilder html = new StringBuilder("<table><thead><tr><th>Classification</th><th>Stable key</th><th>Mapping Description</th><th>Statement Label</th><th>Status</th></tr></thead><tbody>");
             foreach (DataRow row in categories.Rows)
-                html.Append("<tr><td>").Append(Enc(NORMHelper.Str(row, "LineCode"))).Append("</td><td>")
+                html.Append("<tr><td>").Append(NORMHelper.Str(row, "StatementCode") == "SCFREF" ? "Cash flow" : "Reporting").Append("</td><td>")
+                    .Append(Enc(NORMHelper.Str(row, "LineCode"))).Append("</td><td>")
+                    .Append(Enc(NORMHelper.Str(row, "MappingDescription") ?? NORMHelper.Str(row, "LineLabel"))).Append("</td><td>")
                     .Append(Enc(NORMHelper.Str(row, "LineLabel"))).Append("</td><td>")
                     .Append(Convert.ToBoolean(row["IsDeactivated"]) ? "Inactive" : "Active").Append("</td></tr>");
             return html.Append("</tbody></table>").ToString();
@@ -224,8 +241,15 @@ namespace CPlatform.NORM
         private string RenderAudit(int releaseId)
         {
             DataTable table = NORMHelper.Query("SELECT TOP 100 GlCode,BeforeStatementLine,AfterStatementLine,BeforeNoteSubLine,AfterNoteSubLine,ChangeReason,WorkbookHash,ChangedBy,ChangedUtc FROM dbo.tblNORM_MappingChange WHERE ConfigurationReleaseId=@release ORDER BY MappingChangeId DESC", NORMHelper.P("@release", releaseId));
-            if (table.Rows.Count == 0) return "<div class=\"norm-empty\">No account-level mapping changes recorded yet.</div>";
-            StringBuilder html = new StringBuilder("<div class=\"norm-mapping-audit\">"); foreach (DataRow row in table.Rows) html.Append("<article><strong>").Append(Enc(NORMHelper.Str(row, "GlCode"))).Append("</strong><span>").Append(Enc(NORMHelper.Str(row, "BeforeStatementLine"))).Append(" &rarr; ").Append(Enc(NORMHelper.Str(row, "AfterStatementLine"))).Append("</span><p>").Append(Enc(NORMHelper.Str(row, "ChangeReason"))).Append("</p><small>").Append(Enc(NORMHelper.Str(row, "ChangedBy"))).Append(" · ").Append(Enc(Convert.ToString(row["ChangedUtc"]))).Append(" · SHA-256 ").Append(Enc(NORMHelper.Str(row, "WorkbookHash").Substring(0, 12))).Append("…</small></article>"); html.Append("</div>"); return html.ToString();
+            DataTable categories = NORMMappingManagement.ClassificationAudit(releaseId);
+            if (table.Rows.Count == 0 && categories.Rows.Count == 0) return "<div class=\"norm-empty\">No mapping or category changes recorded yet.</div>";
+            StringBuilder html = new StringBuilder("<div class=\"norm-mapping-audit\">");
+            foreach (DataRow row in categories.Rows)
+                html.Append("<article><strong>Category change</strong><p>").Append(Enc(NORMHelper.Str(row, "DetailText")))
+                    .Append("</p><small>").Append(Enc(NORMHelper.Str(row, "PerformedBy"))).Append(" · ")
+                    .Append(Enc(Convert.ToString(row["PerformedUtc"]))).Append("</small></article>");
+            foreach (DataRow row in table.Rows) html.Append("<article><strong>").Append(Enc(NORMHelper.Str(row, "GlCode"))).Append("</strong><span>").Append(Enc(NORMHelper.Str(row, "BeforeStatementLine"))).Append(" &rarr; ").Append(Enc(NORMHelper.Str(row, "AfterStatementLine"))).Append("</span><p>").Append(Enc(NORMHelper.Str(row, "ChangeReason"))).Append("</p><small>").Append(Enc(NORMHelper.Str(row, "ChangedBy"))).Append(" · ").Append(Enc(Convert.ToString(row["ChangedUtc"]))).Append(" · SHA-256 ").Append(Enc(NORMHelper.Str(row, "WorkbookHash").Substring(0, 12))).Append("…</small></article>");
+            return html.Append("</div>").ToString();
         }
 
         private void RunAction(Action action, string title, string success)

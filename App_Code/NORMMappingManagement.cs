@@ -21,7 +21,7 @@ namespace CPlatform.NORM
         public int ErrorCount;
         public List<string> Errors = new List<string>();
         public List<string> Warnings = new List<string>();
-        public bool CanApprove { get { return ErrorCount == 0 && MappingCount > 0; } }
+        public bool CanApprove { get { return ErrorCount == 0; } }
     }
 
     public sealed class NORMMappingUploadOutcome
@@ -38,6 +38,9 @@ namespace CPlatform.NORM
         private const int LegacyHeaderRow = 7;
         private const string WorkbookMetadata = "_NORM";
         private const string WorkbookFormat = "4";
+        private const string HierarchyWorkbookFormat = "5";
+        private const string DisplaySeparator = " | ";
+        private const string CashFlowReferenceDetail = "StatementCode='SCFREF' AND LineType='cashflow-detail'";
         internal const string EmployeeHierarchyEvent = "EMPLOYEE_HIERARCHY_CHANGED";
         private const string ReportingHierarchyEvent = "NIHRACS_HIERARCHY_CHANGED";
         private const string EmployeeParentFilter =
@@ -45,6 +48,9 @@ namespace CPlatform.NORM
         private static readonly string[] WorkbookHeaders = {
             "G/L account", "Description", "Account type", "Face statement line code",
             "Note sub-line", "Cash-flow class", "Change reason"
+        };
+        private static readonly string[] HierarchyWorkbookHeaders = {
+            "GL Account", "Description", "Reporting Classification", "Cash Flow Classification", "Change Reason"
         };
         private static readonly HashSet<string> AccountTypes = new HashSet<string>(
             new[] { "Asset", "Liability", "Equity", "Income", "Expense" }, StringComparer.OrdinalIgnoreCase);
@@ -187,6 +193,7 @@ namespace CPlatform.NORM
                 "FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@source",
                 NORMHelper.P("@target", target), NORMHelper.P("@source", source));
             string hierarchyColumn = NORMStatementEngine.HasEmployeeHierarchy(c, t) ? ",ParentLineCode" : "";
+            if (HasMappingDescriptions(c, t)) hierarchyColumn += ",MappingDescription";
             NORMHelper.Exec(c, t,
                 "INSERT dbo.tblNORM_StatementLine (ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,NoteRef,NaturalSign,CalculationKind,FormulaSpec,IsClickable,IsDeactivated" + hierarchyColumn + ") " +
                 "SELECT @target,FinancialYear,EntityCode,StatementCode,SeqNo,LineType,LineCode,LineLabel,NoteRef,NaturalSign,CalculationKind,FormulaSpec,IsClickable,IsDeactivated" + hierarchyColumn + " " +
@@ -237,6 +244,21 @@ namespace CPlatform.NORM
                 "SELECT GlCode,GlDescription,AccountType,StatementLine,NoteSubLine,CashFlowClass " +
                 "FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 ORDER BY GlCode",
                 NORMHelper.P("@release", releaseId));
+            if (hierarchy != null)
+            {
+                DataTable options = NORMHelper.Query(
+                    "SELECT s.LineCode,s.LineLabel,p.LineLabel AS ParentLabel," +
+                    (HasMappingDescriptions(null, null) ? "s.MappingDescription" : "NULL AS MappingDescription") +
+                    " FROM dbo.tblNORM_StatementLine s LEFT JOIN dbo.tblNORM_StatementLine p ON p.ConfigurationReleaseId=s.ConfigurationReleaseId " +
+                    "AND p.LineCode=s.ParentLineCode AND p.IsDeactivated=0 WHERE s.ConfigurationReleaseId=@release AND s.IsDeactivated=0 " +
+                    "AND s.LineType='hierarchy-detail' AND s.CalculationKind='Mapped' ORDER BY s.StatementCode,s.SeqNo",
+                    NORMHelper.P("@release", releaseId));
+                var reporting = options.AsEnumerable().ToDictionary(row => Text(row, "LineCode"), MappingDescription, StringComparer.OrdinalIgnoreCase);
+                return BuildWorkbook(releaseId, mappings, null, null, null, null, reporting, CashFlowOptions(releaseId));
+            }
+            DataTable cash = NORMHelper.Query(
+                "SELECT DISTINCT CashFlowClass FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND CashFlowClass IS NOT NULL AND LTRIM(RTRIM(CashFlowClass))<>'' AND IsDeactivated=0 ORDER BY CashFlowClass",
+                NORMHelper.P("@release", releaseId));
             DataTable lines = NORMHelper.Query(
                 "SELECT LineCode,StatementCode,LineLabel FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release AND LineCode IS NOT NULL AND CalculationKind='Mapped' AND IsDeactivated=0 ORDER BY StatementCode,SeqNo",
                 NORMHelper.P("@release", releaseId));
@@ -252,23 +274,7 @@ namespace CPlatform.NORM
                 "SELECT DISTINCT StatementLine,NoteSubLine FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 " +
                 "AND StatementLine IS NOT NULL AND NoteSubLine IS NOT NULL AND LTRIM(RTRIM(NoteSubLine))<>'' ORDER BY StatementLine,NoteSubLine",
                 NORMHelper.P("@release", releaseId));
-            DataTable cash = NORMHelper.Query(
-                "SELECT DISTINCT CashFlowClass FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND CashFlowClass IS NOT NULL AND LTRIM(RTRIM(CashFlowClass))<>'' AND IsDeactivated=0 ORDER BY CashFlowClass",
-                NORMHelper.P("@release", releaseId));
-
-            if (hierarchy != null)
-            {
-                typeLines.Clear();
-                foreach (DataRow line in lines.Rows)
-                {
-                    DataRow option = typeLines.NewRow();
-                    option["AccountType"] = hierarchy[Text(line, "LineCode")];
-                    option["LineCode"] = line["LineCode"];
-                    typeLines.Rows.Add(option);
-                }
-                noteLines.Clear();
-            }
-            return BuildWorkbook(releaseId, mappings, lines, typeLines, noteLines, cash, hierarchy != null);
+            return BuildWorkbook(releaseId, mappings, lines, typeLines, noteLines, cash);
         }
 
         public static byte[] BuildBlankWorkbook()
@@ -276,41 +282,80 @@ namespace CPlatform.NORM
             return BuildWorkbook(0, new DataTable(), new DataTable(), new DataTable(), new DataTable(), new DataTable());
         }
 
-        private static byte[] BuildWorkbook(int releaseId, DataTable mappings, DataTable lines, DataTable typeLines,
-            DataTable noteLines, DataTable cash, bool detailed = false)
+        private static Dictionary<string, string> CashFlowOptions(int releaseId)
         {
+            DataTable lines = NORMHelper.Query(
+                "SELECT LineCode,LineLabel," + MappingDescriptionColumn(null, null) + " FROM dbo.tblNORM_StatementLine " +
+                "WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 AND LineCode IS NOT NULL AND ((" +
+                CashFlowReferenceDetail + ") OR (StatementCode='SCF' AND CalculationKind<>'Heading')) " +
+                "ORDER BY CASE WHEN StatementCode='SCFREF' THEN 0 ELSE 1 END,SeqNo", NORMHelper.P("@release", releaseId));
+            return lines.AsEnumerable()
+                .GroupBy(row => Text(row, "LineCode"), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group =>
+                {
+                    DataRow row = group.First();
+                    string description = Text(row, "MappingDescription");
+                    return description.Length == 0 ? Text(row, "LineLabel") : description;
+                }, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static byte[] BuildWorkbook(int releaseId, DataTable mappings, DataTable lines, DataTable typeLines,
+            DataTable noteLines, DataTable cash, Dictionary<string, string> reporting = null, Dictionary<string, string> cashOptions = null)
+        {
+            bool detailed = reporting != null;
+            string[] headers = detailed ? HierarchyWorkbookHeaders : WorkbookHeaders;
+            int width = headers.Length;
             using (ExcelPackage package = new ExcelPackage())
             {
                 package.Workbook.Properties.Title = "NORM editable account mapping";
                 package.Workbook.Properties.Author = NORMHelper.CurrentUserId() ?? "unknown";
                 ExcelWorksheet sheet = package.Workbook.Worksheets.Add("Mappings");
                 sheet.Cells[1, 1].Value = "NORM controlled account mapping";
-                sheet.Cells[1, 1, 1, 7].Merge = true;
+                sheet.Cells[1, 1, 1, width].Merge = true;
                 sheet.Cells[1, 1].Style.Font.Bold = true; sheet.Cells[1, 1].Style.Font.Size = 18; sheet.Cells[1, 1].Style.Font.Color.SetColor(Color.White);
                 sheet.Cells[1, 1].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[1, 1].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(20, 47, 65));
                 sheet.Cells[2, 1].Value = "Instructions";
                 sheet.Cells[2, 2].Value = releaseId == 0
                     ? "Use this sheet to prepare your first mapping. Upload it into the agency's configured empty draft when available."
-                    : detailed ? "Select one detail key in Face statement line code. Leave Note sub-line blank. NORM derives the note and face from the detail key." :
-                    "Keep existing G/L accounts. Add retained trial-balance accounts as needed. Enter a reason for each changed mapping.";
-                sheet.Cells[2, 2, 2, 7].Merge = true;
+                    : detailed ? "Select a reporting classification. NORM derives the account type and note. Enter a reason for each change." :
+                    "Keep existing G/L accounts. Add accounts as needed. Enter a reason for each changed mapping.";
+                sheet.Cells[2, 2, 2, width].Merge = true;
                 sheet.Cells[2, 2].Style.WrapText = true;
-                for (int i = 0; i < WorkbookHeaders.Length; i++) sheet.Cells[HeaderRow, i + 1].Value = WorkbookHeaders[i];
-                sheet.Cells[HeaderRow, 1, HeaderRow, 7].Style.Font.Bold = true; sheet.Cells[HeaderRow, 1, HeaderRow, 7].Style.Font.Color.SetColor(Color.White);
-                sheet.Cells[HeaderRow, 1, HeaderRow, 7].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[HeaderRow, 1, HeaderRow, 7].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(43, 109, 91));
+                for (int i = 0; i < width; i++) sheet.Cells[HeaderRow, i + 1].Value = headers[i];
+                sheet.Cells[HeaderRow, 1, HeaderRow, width].Style.Font.Bold = true; sheet.Cells[HeaderRow, 1, HeaderRow, width].Style.Font.Color.SetColor(Color.White);
+                sheet.Cells[HeaderRow, 1, HeaderRow, width].Style.Fill.PatternType = ExcelFillStyle.Solid; sheet.Cells[HeaderRow, 1, HeaderRow, width].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(43, 109, 91));
                 sheet.Column(1).Style.Numberformat.Format = "@";
                 int row = HeaderRow + 1;
                 foreach (DataRow source in mappings.Rows)
                 {
                     sheet.Cells[row, 1].Value = Text(source, "GlCode"); sheet.Cells[row, 2].Value = Text(source, "GlDescription");
-                    sheet.Cells[row, 3].Value = Text(source, "AccountType"); sheet.Cells[row, 4].Value = Text(source, "StatementLine");
-                    sheet.Cells[row, 5].Value = Text(source, "NoteSubLine"); sheet.Cells[row, 6].Value = Text(source, "CashFlowClass");
+                    if (detailed)
+                    {
+                        sheet.Cells[row, 3].Value = DisplayOption(Text(source, "StatementLine"), reporting);
+                        sheet.Cells[row, 4].Value = DisplayOption(Text(source, "CashFlowClass"), cashOptions);
+                    }
+                    else
+                    {
+                        sheet.Cells[row, 3].Value = Text(source, "AccountType"); sheet.Cells[row, 4].Value = Text(source, "StatementLine");
+                        sheet.Cells[row, 5].Value = Text(source, "NoteSubLine"); sheet.Cells[row, 6].Value = Text(source, "CashFlowClass");
+                    }
                     row++;
                 }
                 int last = Math.Max(HeaderRow + 1, row - 1);
-                sheet.Cells[HeaderRow + 1, 3, last, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                sheet.Cells[HeaderRow + 1, 3, last, 7].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(221, 235, 247));
-                sheet.View.FreezePanes(HeaderRow + 1, 1); sheet.Cells[HeaderRow, 1, last, 7].AutoFilter = true;
+                sheet.Cells[HeaderRow + 1, 3, last, width].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                sheet.Cells[HeaderRow + 1, 3, last, width].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(221, 235, 247));
+                sheet.View.FreezePanes(HeaderRow + 1, 1); sheet.Cells[HeaderRow, 1, last, width].AutoFilter = true;
+
+                if (detailed)
+                {
+                    sheet.Column(1).Width = 18; sheet.Column(2).Width = 34; sheet.Column(3).Width = 62;
+                    sheet.Column(4).Width = 48; sheet.Column(5).Width = 42;
+                    ExcelWorksheet lists = package.Workbook.Worksheets.Add("Reference lists");
+                    AddClassificationList(package.Workbook, sheet, lists, reporting, "Reporting Classification", "ReportingClassifications", "C", 1);
+                    AddClassificationList(package.Workbook, sheet, lists, cashOptions, "Cash Flow Classification", "CashFlowClassifications", "D", 3);
+                    AddWorkbookMetadata(package, releaseId, HierarchyWorkbookFormat);
+                    return package.GetAsByteArray();
+                }
                 sheet.Column(1).Width = 18; sheet.Column(2).Width = 34; sheet.Column(3).Width = 16; sheet.Column(4).Width = 34;
                 sheet.Column(5).Width = 34; sheet.Column(6).Width = 28; sheet.Column(7).Width = 42;
 
@@ -367,12 +412,46 @@ namespace CPlatform.NORM
                 }
                 if (lines.Rows.Count > 0 && mappings.Rows.Count > 0) { var noteValidation = sheet.DataValidations.AddListValidation("E" + entryRow + ":E" + last); noteValidation.Formula.ExcelFormula = "INDIRECT(VLOOKUP($D" + entryRow.ToString(CultureInfo.InvariantCulture) + ",NoteLineLookup,2,FALSE))"; noteValidation.AllowBlank = true; }
                 if (cash.Rows.Count > 0) { var cashValidation = sheet.DataValidations.AddListValidation("F" + entryRow + ":F" + last); cashValidation.Formula.ExcelFormula = "'Reference lists'!$G$2:$G$" + (cash.Rows.Count + 1).ToString(CultureInfo.InvariantCulture); cashValidation.AllowBlank = true; }
-                ExcelWorksheet metadata = package.Workbook.Worksheets.Add(WorkbookMetadata);
-                metadata.Cells[1, 1].Value = releaseId;
-                metadata.Cells[1, 2].Value = WorkbookFormat;
-                metadata.Hidden = eWorkSheetHidden.VeryHidden;
+                AddWorkbookMetadata(package, releaseId, WorkbookFormat);
                 return package.GetAsByteArray();
             }
+        }
+
+        private static void AddWorkbookMetadata(ExcelPackage package, int releaseId, string format)
+        {
+            ExcelWorksheet metadata = package.Workbook.Worksheets.Add(WorkbookMetadata);
+            metadata.Cells[1, 1].Value = releaseId;
+            metadata.Cells[1, 2].Value = format;
+            metadata.Hidden = eWorkSheetHidden.VeryHidden;
+        }
+
+        private static void AddClassificationList(ExcelWorkbook workbook, ExcelWorksheet sheet, ExcelWorksheet reference,
+            Dictionary<string, string> options, string heading, string rangeName, string targetColumn, int listColumn)
+        {
+            reference.Cells[1, listColumn].Value = heading;
+            reference.Cells[1, listColumn].Style.Font.Bold = true;
+            reference.Column(listColumn).Width = 62;
+            int row = 2;
+            foreach (string key in options.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
+                reference.Cells[row++, listColumn].Value = DisplayOption(key, options);
+            if (row == 2) return;
+            workbook.Names.Add(rangeName, reference.Cells[2, listColumn, row - 1, listColumn]);
+            var validation = sheet.DataValidations.AddListValidation(targetColumn + (HeaderRow + 1) + ":" + targetColumn + ExcelPackage.MaxRows);
+            validation.Formula.ExcelFormula = rangeName;
+            validation.AllowBlank = true;
+            validation.ShowErrorMessage = false;
+        }
+
+        private static string DisplayOption(string key, Dictionary<string, string> options)
+        {
+            string description;
+            return options.TryGetValue(key, out description) && description.Length > 0 ? key + DisplaySeparator + description : key;
+        }
+
+        private static string ClassificationKey(string value)
+        {
+            int separator = value.IndexOf(DisplaySeparator, StringComparison.Ordinal);
+            return separator < 0 ? value : value.Substring(0, separator).Trim();
         }
 
         public static NORMMappingUploadOutcome ApplyWorkbook(int releaseId, byte[] content, string fileName, string user)
@@ -409,23 +488,22 @@ namespace CPlatform.NORM
             List<string> errors = new List<string>();
             HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool firstMapping = existing.Count == 0;
-            // With no face catalogue, retain proposed destinations for review in the initial annual draft.
-            // Validate still blocks approval until the statement template exists and resolves the codes.
-            bool proposedDestinations = IsParentlessDraft(release) && validLines.Count == 0 &&
-                NORMAnnualSourceConfiguration.Load(Text(release, "EntityCode"), NORMHelper.Int(release, "FinancialYear")) != null;
             using (ExcelPackage package = new ExcelPackage(new MemoryStream(content)))
             {
                 ExcelWorksheet sheet = package.Workbook.Worksheets["Mappings"];
                 if (sheet == null) throw new InvalidOperationException("The workbook does not contain the required Mappings sheet.");
                 ExcelWorksheet metadata = package.Workbook.Worksheets[WorkbookMetadata];
                 bool legacy = metadata == null;
+                string format = legacy ? Cell(sheet, 5, 2) : Cell(metadata, 1, 2);
+                bool compact = !legacy && format == HierarchyWorkbookFormat && hierarchy != null;
                 int workbookRelease;
                 if (!Int32.TryParse(legacy ? Cell(sheet, 2, 2) : Cell(metadata, 1, 1), out workbookRelease) ||
                     (workbookRelease != releaseId && (legacy || workbookRelease != 0 || !firstMapping)))
                     throw new InvalidOperationException("This workbook belongs to a different configuration release. Download a fresh workbook for this draft.");
-                if (legacy ? Cell(sheet, 5, 2) != "3" : Cell(metadata, 1, 2) != WorkbookFormat)
-                    throw new InvalidOperationException("This is an older mapping workbook layout. Download a fresh workbook for this draft before making changes.");
-                if (!legacy && WorkbookHeaders.Where((header, index) => !Same(Cell(sheet, HeaderRow, index + 1), header)).Any())
+                if (legacy ? format != "3" : !compact && format != WorkbookFormat)
+                    throw new InvalidOperationException("This mapping workbook layout does not apply to the selected draft. Download a fresh workbook.");
+                string[] headers = compact ? HierarchyWorkbookHeaders : WorkbookHeaders;
+                if (!legacy && headers.Where((header, index) => !Same(Cell(sheet, HeaderRow, index + 1), header)).Any())
                     throw new InvalidOperationException("The mapping workbook headers have changed. Download a fresh workbook for this draft.");
                 int headerRow = legacy ? LegacyHeaderRow : HeaderRow;
                 int mappingColumn = legacy ? 4 : 3;
@@ -434,41 +512,41 @@ namespace CPlatform.NORM
                 {
                     string gl = Cell(sheet, rowNumber, 1); if (gl.Length == 0) continue;
                     if (!seen.Add(gl)) { errors.Add("Row " + rowNumber + ": G/L " + gl + " appears more than once."); continue; }
+                    if (gl.Length > 20) { errors.Add("Row " + rowNumber + ": G/L account exceeds 20 characters."); continue; }
                     DataRow before; existing.TryGetValue(gl, out before);
-                    DataRow trialBalanceAccount = null;
-                    if (before == null && !trialBalanceAccounts.TryGetValue(gl, out trialBalanceAccount)) { errors.Add("Row " + rowNumber + ": G/L " + gl + " is not in this draft or the retained trial balance."); continue; }
+                    DataRow trialBalanceAccount; trialBalanceAccounts.TryGetValue(gl, out trialBalanceAccount);
                     string description = before == null ? Text(trialBalanceAccount, "GlDescription") : Text(before, "GlDescription");
+                    if (before == null && description.Length == 0) description = Cell(sheet, rowNumber, 2);
+                    if (before == null && description.Length > 200) errors.Add("Row " + rowNumber + ": description exceeds 200 characters.");
                     MappingRow item = new MappingRow {
                         RowNumber = rowNumber, GlCode = gl, GlDescription = description, Before = before,
-                        AccountType = Cell(sheet, rowNumber, mappingColumn),
-                        StatementLine = Cell(sheet, rowNumber, mappingColumn + 1),
-                        NoteSubLine = Cell(sheet, rowNumber, mappingColumn + 2),
-                        CashFlowClass = Cell(sheet, rowNumber, mappingColumn + 3),
-                        Reason = Cell(sheet, rowNumber, mappingColumn + 4)
+                        AccountType = compact ? "" : Cell(sheet, rowNumber, mappingColumn),
+                        StatementLine = compact ? ClassificationKey(Cell(sheet, rowNumber, 3)) : Cell(sheet, rowNumber, mappingColumn + 1),
+                        NoteSubLine = compact ? "" : Cell(sheet, rowNumber, mappingColumn + 2),
+                        CashFlowClass = compact ? ClassificationKey(Cell(sheet, rowNumber, 4)) : Cell(sheet, rowNumber, mappingColumn + 3),
+                        Reason = Cell(sheet, rowNumber, compact ? 5 : mappingColumn + 4)
                     };
-                    if (item.AccountType.Length > 0 && !AccountTypes.Contains(item.AccountType)) errors.Add("Row " + rowNumber + ": account type is not valid.");
-                    if (employeeDetails.Contains(item.StatementLine))
-                    {
-                        if (Same(item.AccountType, "Expense")) item.AccountType = "Expense";
-                        else errors.Add("Row " + rowNumber + ": Employee benefits details require account type Expense.");
-                    }
-                    if (item.StatementLine.Length > 120) errors.Add("Row " + rowNumber + ": face statement line exceeds 120 characters.");
-                    else if (!proposedDestinations && item.StatementLine.Length > 0 && !validLines.Contains(item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line code '" + item.StatementLine + "' is not valid for this release.");
                     string expectedType;
-                    if (hierarchy != null && item.StatementLine.Length > 0)
+                    if (hierarchy != null)
+                        item.AccountType = hierarchy.TryGetValue(item.StatementLine, out expectedType) ? expectedType : "";
+                    else if (employeeDetails.Contains(item.StatementLine))
+                        item.AccountType = "Expense";
+                    else if (item.AccountType.Length > 0)
                     {
-                        if (!hierarchy.TryGetValue(item.StatementLine, out expectedType) || !Same(expectedType, item.AccountType))
-                            errors.Add("Row " + rowNumber + ": select one detail classification of the matching account type.");
+                        expectedType = AccountTypes.FirstOrDefault(type => Same(type, item.AccountType));
+                        if (expectedType == null) errors.Add("Row " + rowNumber + ": account type is not valid.");
                         else item.AccountType = expectedType;
                     }
+                    if (item.StatementLine.Length > 120) errors.Add("Row " + rowNumber + ": face statement line exceeds 120 characters.");
                     if (hierarchy != null && item.NoteSubLine.Length > 0)
                         errors.Add("Row " + rowNumber + ": leave Note sub-line blank when you select a detail classification.");
-                    if (hierarchy == null && !firstMapping && !proposedDestinations && item.AccountType.Length > 0 && item.StatementLine.Length > 0 && !validTypeLines.Contains(item.AccountType + "|" + item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line '" + item.StatementLine + "' is not available for account type " + item.AccountType + ".");
+                    bool activeLine = validLines.Contains(item.StatementLine);
+                    if (hierarchy == null && !firstMapping && activeLine && item.AccountType.Length > 0 && !validTypeLines.Contains(item.AccountType + "|" + item.StatementLine)) errors.Add("Row " + rowNumber + ": face statement line '" + item.StatementLine + "' is not available for account type " + item.AccountType + ".");
                     if (item.NoteSubLine.Length > 0 && item.StatementLine.Length == 0) errors.Add("Row " + rowNumber + ": select a face statement line before selecting a note sub-line.");
-                    if (!firstMapping && !proposedDestinations && item.NoteSubLine.Length > 0 && item.StatementLine.Length > 0 && !validNoteLines.Contains(item.StatementLine + "|" + item.NoteSubLine)) errors.Add("Row " + rowNumber + ": note sub-line '" + item.NoteSubLine + "' is not available for face statement line '" + item.StatementLine + "'.");
+                    if (!firstMapping && activeLine && item.NoteSubLine.Length > 0 && !validNoteLines.Contains(item.StatementLine + "|" + item.NoteSubLine)) errors.Add("Row " + rowNumber + ": note sub-line '" + item.NoteSubLine + "' is not available for face statement line '" + item.StatementLine + "'.");
                     if (item.NoteSubLine.Length > 240) errors.Add("Row " + rowNumber + ": note sub-line exceeds 240 characters.");
                     if (item.CashFlowClass.Length > 120) errors.Add("Row " + rowNumber + ": cash-flow class exceeds 120 characters.");
-                    item.Changed = Different(before, item);
+                    item.Changed = before == null || Different(before, item);
                     if (item.Changed && (item.Reason.Length < 5 || item.Reason.Length > 500)) errors.Add("Row " + rowNumber + ": enter a change reason of between 5 and 500 characters.");
                     rows.Add(item);
                 }
@@ -527,16 +605,26 @@ namespace CPlatform.NORM
             if (IsNihracs(release))
             {
                 if (!NORMReportingFramework.HasHierarchyNoteSource(null, null)) return null;
-                return NORMHelper.Query("SELECT LineCode,LineLabel,IsDeactivated FROM dbo.tblNORM_StatementLine " +
-                    "WHERE ConfigurationReleaseId=@release AND LineType='hierarchy-detail' AND CalculationKind='Mapped' ORDER BY StatementCode,SeqNo",
+                return NORMHelper.Query("SELECT LineCode,LineLabel,IsDeactivated,StatementCode," + MappingDescriptionColumn(null, null) + " FROM dbo.tblNORM_StatementLine " +
+                    "WHERE ConfigurationReleaseId=@release AND ((LineType='hierarchy-detail' AND CalculationKind='Mapped') OR (" +
+                    CashFlowReferenceDetail + ")) ORDER BY StatementCode,SeqNo",
                     NORMHelper.P("@release", releaseId));
             }
             DataTable parent = NORMHelper.Query("SELECT CalculationKind,FormulaSpec,ParentLineCode FROM dbo.tblNORM_StatementLine WHERE " +
                 EmployeeParentFilter, NORMHelper.P("@release", releaseId));
             if (!CanEditEmployeeParent(parent)) return null;
-            return NORMHelper.Query("SELECT LineCode,LineLabel,IsDeactivated FROM dbo.tblNORM_StatementLine " +
+            return NORMHelper.Query("SELECT LineCode,LineLabel,IsDeactivated,StatementCode," + MappingDescriptionColumn(null, null) + " FROM dbo.tblNORM_StatementLine " +
                 "WHERE ConfigurationReleaseId=@release AND LineType='employee-detail' AND StatementCode='SOCI' " +
                 "ORDER BY SeqNo", NORMHelper.P("@release", releaseId));
+        }
+
+        public static DataTable ClassificationAudit(int releaseId)
+        {
+            Release(releaseId);
+            return NORMHelper.Query("SELECT TOP 30 DetailText,PerformedBy,PerformedUtc FROM dbo.tblNORM_AuditEvent " +
+                "WHERE EntityType='ConfigurationRelease' AND EntityId=@id AND EventCode IN (@reporting,@employee) ORDER BY AuditEventId DESC",
+                NORMHelper.P("@id", releaseId.ToString(CultureInfo.InvariantCulture)), NORMHelper.P("@reporting", ReportingHierarchyEvent),
+                NORMHelper.P("@employee", EmployeeHierarchyEvent));
         }
 
         private const string ReportingParentsSql =
@@ -554,6 +642,7 @@ namespace CPlatform.NORM
 
         public static void SaveEmployeeCategory(int releaseId, string parentCode, string code, string label, bool deactivate, string user)
         {
+            if (!NORMHelper.HasAdminAccess()) throw new UnauthorizedAccessException("Administrator access is required to change category structure.");
             code = (code ?? "").Trim();
             label = (label ?? "").Trim();
             if (!System.Text.RegularExpressions.Regex.IsMatch(code, @"\A[A-Za-z0-9_]{1,120}\z"))
@@ -612,10 +701,6 @@ namespace CPlatform.NORM
                     bool inactive = existing != null && Convert.ToBoolean(existing["IsDeactivated"], CultureInfo.InvariantCulture);
                     if (deactivate && (existing == null || inactive))
                         throw new InvalidOperationException("Enter the key of an active Employee benefits category.");
-                    if (deactivate && Convert.ToInt32(NORMHelper.Scalar(c, t,
-                        "SELECT COUNT(*) FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND StatementLine=@code AND IsDeactivated=0",
-                        NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code))) > 0)
-                        throw new InvalidOperationException("Reassign or clear accounts mapped to this category in the workbook before deactivating it.");
                     if (!deactivate && existing != null && !inactive && String.Equals(Text(existing, "LineLabel"), label, StringComparison.Ordinal))
                         throw new InvalidOperationException("The category already has that description.");
 
@@ -637,6 +722,8 @@ namespace CPlatform.NORM
                     else
                     {
                         if (deactivate) label = Text(existing, "LineLabel");
+                        else if (!String.Equals(Text(existing, "LineLabel"), label, StringComparison.Ordinal))
+                            PreserveMappingDescription(c, t, releaseId, NORMHelper.Int(existing, "StatementLineId"), nihracs);
                         NORMHelper.Exec(c, t, "UPDATE dbo.tblNORM_StatementLine SET LineLabel=@label,IsDeactivated=@inactive WHERE StatementLineId=@line",
                             NORMHelper.P("@label", label), NORMHelper.P("@inactive", deactivate), NORMHelper.P("@line", NORMHelper.Int(existing, "StatementLineId")));
                         action = (deactivate ? "Deactivated " : inactive ? "Reactivated " : "Updated ") + Text(existing, "LineCode") +
@@ -652,6 +739,81 @@ namespace CPlatform.NORM
             }
         }
 
+        public static void SaveClassificationText(int releaseId, string code, string text, bool editMappingDescription, string user)
+        {
+            code = (code ?? "").Trim();
+            text = (text ?? "").Trim();
+            if (code.Length == 0 || code.Length > 120 || text.Length > 240 || (!editMappingDescription && text.Length == 0))
+                throw new InvalidOperationException("Select a classification key and enter up to 240 characters. A statement label is required.");
+            using (OleDbConnection c = NORMHelper.OpenConnection())
+            using (OleDbTransaction t = c.BeginTransaction(IsolationLevel.Serializable))
+            {
+                DataTable releases = NORMHelper.Query(c, t, "SELECT EntityCode,FinancialYear FROM dbo.tblNORM_ConfigurationRelease WITH (UPDLOCK,HOLDLOCK) " +
+                    "WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 AND StatusCode='Draft'", NORMHelper.P("@release", releaseId));
+                if (releases.Rows.Count != 1) throw new InvalidOperationException("Only a draft configuration release can be changed.");
+                NORMHelper.RequireEntityAccess(Text(releases.Rows[0], "EntityCode"), c, t);
+
+                bool nihracs = IsNihracs(releases.Rows[0]);
+                string column = editMappingDescription ? "MappingDescription" : "LineLabel";
+                if (editMappingDescription && !HasMappingDescriptions(c, t))
+                    throw new InvalidOperationException("Install the mapping descriptions schema before editing mapping descriptions.");
+                // Only the draft's agency detail rows are editable. Face and framework lines stay protected.
+                DataTable matches = NORMHelper.Query(c, t, "SELECT StatementLineId," + column + " FROM dbo.tblNORM_StatementLine " +
+                    "WHERE ConfigurationReleaseId=@release AND LineCode=@code AND IsDeactivated=0 AND ((LineType=@type AND CalculationKind='Mapped')" +
+                    (nihracs && editMappingDescription ? " OR (" + CashFlowReferenceDetail + ")" : "") + ")",
+                    NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code),
+                    NORMHelper.P("@type", nihracs ? NORMStatementEngine.HierarchyDetailType : NORMStatementEngine.EmployeeDetailType));
+                if (matches.Rows.Count != 1)
+                    throw new InvalidOperationException("Choose an active, editable detail classification in this draft.");
+                string previous = Text(matches.Rows[0], column);
+                if (String.Equals(previous, text, StringComparison.Ordinal))
+                    throw new InvalidOperationException("The classification already has that wording.");
+                int lineId = NORMHelper.Int(matches.Rows[0], "StatementLineId");
+                if (!editMappingDescription) PreserveMappingDescription(c, t, releaseId, lineId, nihracs);
+                NORMHelper.Exec(c, t, "UPDATE dbo.tblNORM_StatementLine SET " + column + "=@text WHERE StatementLineId=@line AND ConfigurationReleaseId=@release",
+                    NORMHelper.P("@text", Null(text)), NORMHelper.P("@line", lineId), NORMHelper.P("@release", releaseId));
+                NORMHelper.Exec(c, t, "UPDATE dbo.tblNORM_ConfigurationRelease SET ContentHash=@hash,ReviewedBy=NULL,ReviewedUtc=NULL WHERE ConfigurationReleaseId=@release",
+                    NORMHelper.P("@hash", NORMCrypto.Sha256(Guid.NewGuid().ToString())), NORMHelper.P("@release", releaseId));
+                Audit(c, t, nihracs ? ReportingHierarchyEvent : EmployeeHierarchyEvent,
+                    releaseId, code + ": " + (editMappingDescription ? "Mapping Description" : "Statement Label") +
+                    " changed from \"" + previous + "\" to \"" + text + "\".", user);
+                t.Commit();
+            }
+        }
+
+        private static void PreserveMappingDescription(OleDbConnection c, OleDbTransaction t, int releaseId, int lineId, bool nihracs)
+        {
+            if (!HasMappingDescriptions(c, t)) return;
+            DataTable rows = NORMHelper.Query(c, t, "SELECT s.LineLabel,s.MappingDescription," +
+                (nihracs ? "p.LineLabel" : "NULL") + " AS ParentLabel FROM dbo.tblNORM_StatementLine s " +
+                "LEFT JOIN dbo.tblNORM_StatementLine p ON p.ConfigurationReleaseId=s.ConfigurationReleaseId AND p.LineCode=s.ParentLineCode " +
+                "AND p.IsDeactivated=0 WHERE s.ConfigurationReleaseId=@release AND s.StatementLineId=@line AND s.MappingDescription IS NULL",
+                NORMHelper.P("@release", releaseId), NORMHelper.P("@line", lineId));
+            if (rows.Rows.Count == 1)
+                NORMHelper.Exec(c, t, "UPDATE dbo.tblNORM_StatementLine SET MappingDescription=@text WHERE StatementLineId=@line AND ConfigurationReleaseId=@release",
+                    NORMHelper.P("@text", Null(MappingDescription(rows.Rows[0]))), NORMHelper.P("@line", lineId), NORMHelper.P("@release", releaseId));
+        }
+
+        private static bool HasMappingDescriptions(OleDbConnection c, OleDbTransaction t)
+        {
+            const string sql = "SELECT CASE WHEN COL_LENGTH('dbo.tblNORM_StatementLine','MappingDescription') IS NULL THEN 0 ELSE 1 END";
+            return Convert.ToInt32(c == null ? NORMHelper.Scalar(sql) : NORMHelper.Scalar(c, t, sql)) == 1;
+        }
+
+        private static string MappingDescriptionColumn(OleDbConnection c, OleDbTransaction t)
+        {
+            return HasMappingDescriptions(c, t) ? "MappingDescription" : "NULL AS MappingDescription";
+        }
+
+        private static string MappingDescription(DataRow row)
+        {
+            string description = Text(row, "MappingDescription");
+            if (description.Length != 0) return description;
+            string label = Text(row, "LineLabel");
+            string parent = Text(row, "ParentLabel");
+            return parent.Length == 0 || Same(label, parent) || label.Length + parent.Length + 3 > 240 ? label : label + " (" + parent + ")";
+        }
+
         private static bool CanEditEmployeeParent(DataTable parent)
         {
             return parent.Rows.Count == 1 && Text(parent.Rows[0], "ParentLineCode").Length == 0 &&
@@ -662,72 +824,97 @@ namespace CPlatform.NORM
         public static NORMMappingValidation Validate(int releaseId)
         {
             DataRow release = Release(releaseId);
-            NORMMappingValidation result = new NORMMappingValidation();
-            DataTable checks = NORMHelper.Query(
-                "SELECT COUNT(*) MappingCount," +
-                "SUM(CASE WHEN (AccountType IS NULL OR LTRIM(RTRIM(AccountType))='' OR StatementLine IS NULL OR LTRIM(RTRIM(StatementLine))='') THEN 1 ELSE 0 END) UnmappedCount," +
-                "SUM(CASE WHEN AccountType IS NOT NULL AND AccountType NOT IN ('Asset','Liability','Equity','Income','Expense') THEN 1 ELSE 0 END) InvalidTypes " +
-                "FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0",
+            var result = new NORMMappingValidation();
+            DataTable mappings = NORMHelper.Query(
+                "SELECT GlCode,AccountType,StatementLine,NoteSubLine,CashFlowClass FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0",
                 NORMHelper.P("@release", releaseId));
-            DataRow row = checks.Rows[0]; result.MappingCount = NORMHelper.Int(row, "MappingCount"); result.UnmappedCount = TrialBalanceUnmappedCount(releaseId);
-            int invalid = NORMHelper.Int(row, "InvalidTypes");
-            int duplicates = Convert.ToInt32(NORMHelper.Scalar("SELECT COUNT(*) FROM (SELECT GlCode FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 GROUP BY GlCode HAVING COUNT(*)>1) d", NORMHelper.P("@release", releaseId)));
-            int unknownLines = Convert.ToInt32(NORMHelper.Scalar(
-                "SELECT COUNT(*) FROM dbo.tblNORM_AccountMap m LEFT JOIN dbo.tblNORM_StatementLine s ON s.ConfigurationReleaseId=m.ConfigurationReleaseId AND s.LineCode=m.StatementLine AND s.IsDeactivated=0 " +
-                "WHERE m.ConfigurationReleaseId=@release AND m.IsDeactivated=0 AND m.StatementLine IS NOT NULL AND s.StatementLineId IS NULL", NORMHelper.P("@release", releaseId)));
-            result.ChangedCount = Convert.ToInt32(NORMHelper.Scalar("SELECT COUNT(DISTINCT GlCode) FROM dbo.tblNORM_MappingChange WHERE ConfigurationReleaseId=@release", NORMHelper.P("@release", releaseId)));
-            if (result.MappingCount == 0) result.Errors.Add("The release contains no account mappings.");
-            if (invalid > 0) result.Errors.Add(invalid + " mapping(s) have an invalid account type.");
+            DataTable lines = NORMHelper.Query(
+                "SELECT LineCode,LineType FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 AND CalculationKind='Mapped' AND LineCode IS NOT NULL",
+                NORMHelper.P("@release", releaseId));
+            result.MappingCount = mappings.Rows.Count;
+            int duplicates = mappings.AsEnumerable().GroupBy(row => Text(row, "GlCode"), StringComparer.OrdinalIgnoreCase).Count(group => group.Count() > 1);
             if (duplicates > 0) result.Errors.Add(duplicates + " G/L account(s) have duplicate active mappings.");
-            if (IsParentlessDraft(release) && Convert.ToInt32(NORMHelper.Scalar(
-                "SELECT COUNT(*) FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=@release " +
-                "AND IsDeactivated=0 AND CalculationKind='Mapped' AND LineCode IS NOT NULL", NORMHelper.P("@release", releaseId))) == 0)
-                result.Errors.Add("Configure the statement lines before approving this initial mapping draft.");
-            if (unknownLines > 0) result.Errors.Add(unknownLines + " mapping(s) refer to a line that is not in the statement template.");
-            if (NORMStatementEngine.HasEmployeeHierarchy(null, null))
+            Dictionary<string, string> hierarchy = null;
+            string hierarchyEvent = null;
+            try
             {
-                try
+                if (NORMStatementEngine.HasEmployeeHierarchy(null, null))
                 {
-                    Dictionary<string, string> hierarchy = IsNihracs(release) ? NORMStatementEngine.LoadHierarchyAccountTypes(releaseId) : null;
+                    hierarchy = IsNihracs(release) ? NORMStatementEngine.LoadHierarchyAccountTypes(releaseId) : null;
                     if (hierarchy != null)
                     {
                         if (!NORMReportingFramework.HasHierarchyNoteSource(null, null) || !NORMStatementEngine.HasReportedAmounts())
                             result.Errors.Add("The NIHRACS reporting hierarchy schema is required.");
-                        foreach (DataRow mapping in NORMHelper.Query("SELECT GlCode,AccountType,StatementLine,NoteSubLine " +
-                            "FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 AND StatementLine IS NOT NULL",
-                            NORMHelper.P("@release", releaseId)).Rows)
-                        {
-                            string type;
-                            if (!hierarchy.TryGetValue(Text(mapping, "StatementLine"), out type) ||
-                                !String.Equals(type, Text(mapping, "AccountType"), StringComparison.Ordinal) || Text(mapping, "NoteSubLine").Length != 0)
-                            {
-                                result.Errors.Add("Resolve invalid detail assignments before approving the reporting hierarchy.");
-                                break;
-                            }
-                        }
-                        result.HierarchyChanged = Convert.ToInt32(NORMHelper.Scalar("SELECT COUNT(*) FROM dbo.tblNORM_AuditEvent " +
-                            "WHERE EventCode=@event AND EntityType='ConfigurationRelease' AND EntityId=@id",
-                            NORMHelper.P("@event", ReportingHierarchyEvent), NORMHelper.P("@id", releaseId.ToString(CultureInfo.InvariantCulture)))) > 0;
+                        hierarchyEvent = ReportingHierarchyEvent;
                     }
                     else if (NORMStatementEngine.ValidateEmployeeHierarchy(releaseId) != null)
                     {
-                        int invalidEmployee = Convert.ToInt32(NORMHelper.Scalar(
-                            "SELECT COUNT(*) FROM dbo.tblNORM_AccountMap m INNER JOIN dbo.tblNORM_StatementLine s " +
-                            "ON s.ConfigurationReleaseId=m.ConfigurationReleaseId AND s.LineCode=m.StatementLine AND s.IsDeactivated=0 " +
-                            "WHERE m.ConfigurationReleaseId=@release AND m.IsDeactivated=0 AND s.StatementCode='SOCI' " +
-                            "AND (s.LineCode='Employee benefits' OR (s.LineType='employee-detail' AND ISNULL(m.AccountType,'')<>'Expense'))",
-                            NORMHelper.P("@release", releaseId)));
-                        if (invalidEmployee > 0) result.Errors.Add("Map Employee benefits accounts to active detail categories with account type Expense.");
-                        if (!NORMStatementEngine.HasReportedAmounts()) result.Errors.Add("The reported amounts schema is required.");
-                        result.HierarchyChanged = Convert.ToInt32(NORMHelper.Scalar("SELECT COUNT(*) FROM dbo.tblNORM_AuditEvent " +
-                            "WHERE EventCode=@event AND EntityType='ConfigurationRelease' AND EntityId=@id",
-                            NORMHelper.P("@event", EmployeeHierarchyEvent), NORMHelper.P("@id", releaseId.ToString(CultureInfo.InvariantCulture)))) > 0;
+                        if (!NORMStatementEngine.HasReportedAmounts())
+                            result.Errors.Add("The reported amounts schema is required.");
+                        hierarchyEvent = EmployeeHierarchyEvent;
                     }
                 }
-                catch (InvalidOperationException error) { result.Errors.Add(error.Message); }
             }
-            if (result.UnmappedCount > 0) result.Warnings.Add(result.UnmappedCount + " account(s) do not yet have both an account type and face-statement line. They remain visible in the unmapped pool.");
-            if (NORMHelper.Str(release, "StatusCode") == "Draft" && result.ChangedCount == 0 && !result.HierarchyChanged) result.Warnings.Add("No mapping changes have been recorded in this draft.");
+            catch (InvalidOperationException error) { result.Errors.Add(error.Message); }
+
+            if (IsParentlessDraft(release) && lines.Rows.Count == 0 && hierarchy == null)
+                result.Errors.Add("Configure the statement lines before approving this initial mapping draft.");
+            if (hierarchyEvent != null)
+                result.HierarchyChanged = Convert.ToInt32(NORMHelper.Scalar(
+                    "SELECT COUNT(*) FROM dbo.tblNORM_AuditEvent WHERE EventCode=@event AND EntityType='ConfigurationRelease' AND EntityId=@id",
+                    NORMHelper.P("@event", hierarchyEvent), NORMHelper.P("@id", releaseId.ToString(CultureInfo.InvariantCulture)))) > 0;
+            result.ChangedCount = Convert.ToInt32(NORMHelper.Scalar(
+                "SELECT COUNT(DISTINCT GlCode) FROM dbo.tblNORM_MappingChange WHERE ConfigurationReleaseId=@release", NORMHelper.P("@release", releaseId)));
+
+            var activeLines = lines.AsEnumerable().ToLookup(line => Text(line, "LineCode"), StringComparer.OrdinalIgnoreCase);
+            var mapped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var incomplete = new List<string>();
+            foreach (DataRow mapping in mappings.Rows)
+            {
+                string gl = Text(mapping, "GlCode");
+                string code = Text(mapping, "StatementLine");
+                string type = Text(mapping, "AccountType");
+                bool complete = hierarchy != null ? hierarchy.ContainsKey(code) :
+                    activeLines[code].Any(line => Text(line, "LineType") == NORMStatementEngine.EmployeeDetailType || NORMStatementEngine.IsKnownType(type));
+                if (hierarchy != null && Text(mapping, "NoteSubLine").Length != 0)
+                    result.Errors.Add("Leave Note sub-line blank for " + gl + " in the reporting hierarchy.");
+                if (complete) mapped.Add(gl);
+                else incomplete.Add(code.Length == 0 ? gl : gl + " (" + code + ")");
+            }
+            if (incomplete.Count > 0)
+                result.Warnings.Add(incomplete.Count + " saved mapping row(s) have an incomplete classification. " +
+                    NORMStatementEngine.MappingAccountList(incomplete));
+            if (hierarchy != null)
+            {
+                var cashFlow = CashFlowOptions(releaseId);
+                var unresolvedCash = mappings.AsEnumerable().Where(row => Text(row, "CashFlowClass").Length != 0 &&
+                    !cashFlow.ContainsKey(Text(row, "CashFlowClass")))
+                    .Select(row => Text(row, "GlCode") + " (" + Text(row, "CashFlowClass") + ")").ToList();
+                if (unresolvedCash.Count > 0)
+                    result.Warnings.Add(unresolvedCash.Count + " saved mapping row(s) use an undefined cash-flow classification. " +
+                        NORMStatementEngine.MappingAccountList(unresolvedCash));
+            }
+
+            int importId = MappingSourceImportId(NORMHelper.Int(release, "ParentConfigurationReleaseId"), release);
+            if (importId > 0)
+            {
+                bool annual = hierarchy != null;
+                DataTable source = NORMHelper.Query(
+                    "SELECT GlAccount,SourceCompanyCode,SourceLedger,ReportingStream,AccumBalance,DebitMovement,CreditMovement" +
+                    (annual ? ",SourceDebit,SourceCredit" : "") +
+                    " FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0", NORMHelper.P("@import", importId));
+                var unresolved = NORMStatementEngine.AssessUnmapped(source.AsEnumerable()
+                    .Where(row => !mapped.Contains(Text(row, "GlAccount"))), annual);
+                result.UnmappedCount = unresolved.Count;
+                if (unresolved.Blocking.Count > 0)
+                    result.Errors.Add(unresolved.Blocking.Count + " unmapped G/L account(s) have a non-zero balance or net movement. " +
+                        NORMStatementEngine.MappingAccountList(unresolved.Blocking));
+                if (unresolved.Offsetting.Count > 0)
+                    result.Warnings.Add(unresolved.Offsetting.Count + " unmapped G/L account(s) have activity that offsets to zero. Review the activity. " +
+                        NORMStatementEngine.MappingAccountList(unresolved.Offsetting));
+            }
+            if (NORMHelper.Str(release, "StatusCode") == "Draft" && result.ChangedCount == 0 && !result.HierarchyChanged)
+                result.Warnings.Add("No mapping changes have been recorded in this draft.");
             result.ErrorCount = result.Errors.Count;
             return result;
         }
@@ -846,6 +1033,17 @@ namespace CPlatform.NORM
                         .Append('|').Append(row["SeqNo"]).Append('|').Append(row["IsDeactivated"])
                         .Append('|').Append(Text(row, "LineLabel").Length).Append(':').Append(Text(row, "LineLabel")).Append('\n');
             }
+            if (HasMappingDescriptions(null, null))
+            {
+                DataTable descriptions = NORMHelper.Query("SELECT LineCode,MappingDescription FROM dbo.tblNORM_StatementLine " +
+                    "WHERE ConfigurationReleaseId=@release AND MappingDescription IS NOT NULL ORDER BY StatementCode,SeqNo",
+                    NORMHelper.P("@release", releaseId));
+                foreach (DataRow row in descriptions.Rows)
+                {
+                    string description = Text(row, "MappingDescription");
+                    value.Append(Text(row, "LineCode")).Append('|').Append(description.Length).Append(':').Append(description).Append('\n');
+                }
+            }
             return NORMCrypto.Sha256(value.ToString());
         }
 
@@ -877,23 +1075,6 @@ namespace CPlatform.NORM
                 "SELECT TOP 1 ImportId FROM dbo.tblNORM_Import WHERE EntityCode=@entity AND FinancialYear=@fy " +
                 "AND IsDeactivated=0 AND IsTestBreak=0 AND ParentImportId IS NULL AND StatusCode IN ('Imported','Calculated') ORDER BY ImportId DESC",
                 NORMHelper.P("@entity", entity), NORMHelper.P("@fy", year)));
-        }
-        private static int TrialBalanceUnmappedCount(int releaseId)
-        {
-            DataRow release = Release(releaseId);
-            bool draft = String.Equals(NORMHelper.Str(release, "StatusCode"), "Draft", StringComparison.OrdinalIgnoreCase);
-            int preferredRelease = draft ? NORMHelper.Int(release, "ParentConfigurationReleaseId") : releaseId;
-            int importId = MappingSourceImportId(preferredRelease, release);
-            if (importId == 0)
-                return Convert.ToInt32(NORMHelper.Scalar(
-                    "SELECT COUNT(*) FROM dbo.tblNORM_AccountMap WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 AND (AccountType IS NULL OR LTRIM(RTRIM(AccountType))='' OR StatementLine IS NULL OR LTRIM(RTRIM(StatementLine))='')",
-                    NORMHelper.P("@release", releaseId)));
-            return Convert.ToInt32(NORMHelper.Scalar(
-                "SELECT COUNT(*) FROM (SELECT tb.GlAccount FROM dbo.tblNORM_TrialBalanceRow tb " +
-                "LEFT JOIN dbo.tblNORM_AccountMap m ON m.ConfigurationReleaseId=@release AND m.GlCode=tb.GlAccount AND m.IsDeactivated=0 " +
-                "WHERE tb.ImportId=@import AND tb.IsDeactivated=0 GROUP BY tb.GlAccount " +
-                "HAVING MAX(CASE WHEN m.AccountMapId IS NOT NULL AND NULLIF(LTRIM(RTRIM(m.AccountType)),'') IS NOT NULL AND NULLIF(LTRIM(RTRIM(m.StatementLine)),'') IS NOT NULL THEN 1 ELSE 0 END)=0) u",
-                NORMHelper.P("@release", releaseId), NORMHelper.P("@import", importId)));
         }
         private static bool TableExists(OleDbConnection c, OleDbTransaction t, string name) { return Convert.ToInt32(NORMHelper.Scalar(c, t, "SELECT CASE WHEN OBJECT_ID('dbo." + name.Replace("'", "''") + "','U') IS NULL THEN 0 ELSE 1 END")) == 1; }
         private static void Audit(OleDbConnection c, OleDbTransaction t, string code, int release, string detail, string user) { NORMHelper.Exec(c, t, "INSERT dbo.tblNORM_AuditEvent(EventCode,EntityType,EntityId,DetailText,PerformedBy) VALUES(@code,'ConfigurationRelease',@id,@detail,@user)", NORMHelper.P("@code", code), NORMHelper.P("@id", release.ToString(CultureInfo.InvariantCulture)), NORMHelper.P("@detail", detail.Length > 2000 ? detail.Substring(0, 2000) : detail), NORMHelper.P("@user", user)); }
