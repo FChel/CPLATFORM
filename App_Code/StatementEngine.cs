@@ -87,7 +87,7 @@ public static class NORMStatementEngine
     {
         int importId = context.ImportId;
         string configurationHash = ConfigurationFingerprint(context.ReleaseId);
-        string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" + context.ReportingEntityName);
+        string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" + context.ReportingEntityName + "|mapping-validation-v2");
 
         object existing = NORMHelper.Scalar(
             "SELECT TOP 1 CalculationRunId FROM dbo.tblNORM_CalculationRun " +
@@ -134,35 +134,23 @@ public static class NORMStatementEngine
             {
                 Dictionary<string, MapEntry> mappings = LoadMappings(connection, transaction, context.ReleaseId);
                 Dictionary<string, TemplateLine> templates = LoadTemplates(connection, transaction, context.ReleaseId);
-                bool hierarchy = IsHierarchy(templates);
+                bool hierarchy = IsHierarchy(templates, context.RetainedAnnualSource);
                 HashSet<string> employeeDetails = hierarchy ? null : EmployeeDetailCodes(templates);
-                if (hierarchy)
+                if ((hierarchy || employeeDetails != null) && !HasReportedAmounts())
+                    throw new InvalidOperationException("Install the reported amounts schema before calculating the reporting hierarchy.");
+                Dictionary<string, string> hierarchyTypes = hierarchy ? HierarchyAccountTypes(templates) : null;
+                foreach (MapEntry entry in mappings.Values)
                 {
-                    if (!HasReportedAmounts())
-                        throw new InvalidOperationException("Install the reported amounts schema before calculating the reporting hierarchy.");
-                    Dictionary<string, string> types = HierarchyAccountTypes(templates);
-                    foreach (MapEntry entry in mappings.Values)
-                    {
-                        if (String.IsNullOrWhiteSpace(entry.StatementLine)) continue;
-                        string type;
-                        if (!types.TryGetValue(entry.StatementLine, out type) || !String.Equals(type, entry.AccountType, StringComparison.Ordinal))
-                            throw new InvalidOperationException("Map each account to an active detail classification of the matching account type.");
-                    }
-                }
-                if (employeeDetails != null)
-                {
-                    if (!HasReportedAmounts())
-                        throw new InvalidOperationException("Install the reported amounts schema before calculating Employee benefits detail.");
-                    foreach (MapEntry entry in mappings.Values)
-                    {
-                        if (String.Equals(entry.StatementLine, EmployeeBenefitsCode, StringComparison.OrdinalIgnoreCase) ||
-                            (entry.StatementLine != null && employeeDetails.Contains(entry.StatementLine) && entry.AccountType != "Expense"))
-                            throw new InvalidOperationException("Employee benefits must map to its detailed expense classifications.");
-                    }
+                    string type;
+                    if (hierarchyTypes != null && hierarchyTypes.TryGetValue(entry.StatementLine ?? "", out type))
+                        entry.AccountType = type;
+                    else if (employeeDetails != null && employeeDetails.Contains(entry.StatementLine ?? ""))
+                        entry.AccountType = "Expense";
                 }
                 Dictionary<string, decimal> published = LoadPublished(connection, transaction, context.ReleaseId);
                 DataTable rows = NORMHelper.Query(connection, transaction,
-                    "SELECT TbRowId,SourceLedger,GlAccount,GlText,DebitMovement,CreditMovement,AccumBalance FROM dbo.tblNORM_TrialBalanceRow " +
+                    "SELECT TbRowId,SourceLedger,GlAccount,GlText,DebitMovement,CreditMovement,AccumBalance,SourceCompanyCode,ReportingStream" +
+                    (context.RetainedAnnualSource ? ",SourceDebit,SourceCredit" : "") + " FROM dbo.tblNORM_TrialBalanceRow " +
                     "WHERE ImportId = @import AND IsDeactivated = 0 ORDER BY TbRowId",
                     NORMHelper.P("@import", context.ImportId));
 
@@ -176,7 +164,7 @@ public static class NORMStatementEngine
                 decimal income = 0m;
                 decimal expense = 0m;
                 decimal classifiedCashMovement = 0m;
-                int unmappedCount = 0;
+                var unmappedRows = new List<DataRow>();
                 int unsafeCashClassCount = 0;
 
                 for (int i = 0; i < rows.Rows.Count; i++)
@@ -190,13 +178,13 @@ public static class NORMStatementEngine
                     totalAbs += Math.Abs(sourceAmount);
 
                     MapEntry mapping = null;
+                    TemplateLine template = null;
                     bool mapped = gl != null && mappings.TryGetValue(gl, out mapping) &&
-                        !String.IsNullOrWhiteSpace(mapping.StatementLine) && IsKnownType(mapping.AccountType);
-                    if (!mapped) { mapping = null; }
+                        !String.IsNullOrWhiteSpace(mapping.StatementLine) && IsKnownType(mapping.AccountType) &&
+                        templates.TryGetValue(mapping.StatementLine, out template) && template.CalculationKind == "Mapped";
+                    if (!mapped) { mapping = null; template = null; }
 
                     string lineCode = mapped ? mapping.StatementLine : "UNMAPPED";
-                    TemplateLine template = null;
-                    if (mapped) { templates.TryGetValue(lineCode, out template); }
                     if (hierarchy && template != null) lineCode = template.LineCode;
                     string statementCode = template == null ? "POOL" : template.StatementCode;
                     decimal presented = sourceAmount / 1000m;
@@ -220,7 +208,7 @@ public static class NORMStatementEngine
                                 unsafeCashClassCount++;
                         }
                     }
-                    else { unmappedCount++; }
+                    else { unmappedRows.Add(row); }
 
                     string key = statementCode + "|" + lineCode;
                     LineAccumulation accumulation;
@@ -322,7 +310,8 @@ public static class NORMStatementEngine
                 }
 
                 WriteValidations(connection, transaction, runId, rows.Rows.Count, totalNet, totalAbs, mappedAbs,
-                    unmappedCount, asset, liability, equity, income, expense, classifiedCashMovement, unsafeCashClassCount, lines, published, hierarchy);
+                    AssessUnmapped(unmappedRows, context.RetainedAnnualSource), asset, liability, equity, income, expense,
+                    classifiedCashMovement, unsafeCashClassCount, lines, published, hierarchy);
                 if (employeeDetails != null)
                 {
                     LineAccumulation employee = lines["SOCI|" + EmployeeBenefitsCode];
@@ -371,8 +360,41 @@ public static class NORMStatementEngine
         }
     }
 
+    internal sealed class UnmappedSourceReview
+    {
+        public int Count;
+        public readonly List<string> Blocking = new List<string>();
+        public readonly List<string> Offsetting = new List<string>();
+    }
+
+    internal static UnmappedSourceReview AssessUnmapped(IEnumerable<DataRow> rows, bool annualSource)
+    {
+        var result = new UnmappedSourceReview();
+        foreach (var account in rows.GroupBy(row => NORMHelper.Str(row, "GlAccount"), StringComparer.OrdinalIgnoreCase))
+        {
+            result.Count++;
+            var populations = account.GroupBy(row => Tuple.Create(NORMHelper.Str(row, "SourceCompanyCode"),
+                NORMHelper.Str(row, "SourceLedger"), NORMHelper.Str(row, "ReportingStream")));
+            if (populations.Any(population => population.Sum(row => NORMHelper.Dec(row, "AccumBalance")) != 0m ||
+                population.Sum(row => NORMHelper.Dec(row, "DebitMovement") + NORMHelper.Dec(row, "CreditMovement")) != 0m))
+                result.Blocking.Add(account.Key);
+            else if (account.Any(row => NORMHelper.Dec(row, "AccumBalance") != 0m ||
+                NORMHelper.Dec(row, "DebitMovement") != 0m || NORMHelper.Dec(row, "CreditMovement") != 0m ||
+                (annualSource && (NORMHelper.Dec(row, "SourceDebit") != 0m || NORMHelper.Dec(row, "SourceCredit") != 0m))))
+                result.Offsetting.Add(account.Key);
+        }
+        return result;
+    }
+
+    internal static string MappingAccountList(IList<string> accounts)
+    {
+        if (accounts.Count == 0) return "";
+        return "G/L " + String.Join(", ", accounts.OrderBy(gl => gl, StringComparer.OrdinalIgnoreCase).Take(12)) +
+            (accounts.Count > 12 ? " and " + (accounts.Count - 12) + " more." : ".");
+    }
+
     private static void WriteValidations(OleDbConnection connection, OleDbTransaction transaction, int runId,
-        int rowCount, decimal totalNet, decimal totalAbs, decimal mappedAbs, int unmappedCount,
+        int rowCount, decimal totalNet, decimal totalAbs, decimal mappedAbs, UnmappedSourceReview unmapped,
         decimal asset, decimal liability, decimal equity, decimal income, decimal expense,
         decimal classifiedCashMovement, int unsafeCashClassCount, Dictionary<string, LineAccumulation> lines, Dictionary<string, decimal> published,
         bool hierarchy)
@@ -389,9 +411,13 @@ public static class NORMStatementEngine
             coverage >= 99m ? "Pass" : "Warning", coverage, 100m, 1m,
             coverage.ToString("0.000", CultureInfo.InvariantCulture) + "% of absolute trial-balance value has an explicit mapping.");
 
-        AddValidation(connection, transaction, runId, "UNMAPPED_DISPOSITION", "Every source row has a mapping disposition", "Warning",
-            unmappedCount == 0 ? "Pass" : "Warning", unmappedCount, 0m, 0m,
-            unmappedCount.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) + " of " + rowCount.ToString("N0", CultureInfo.GetCultureInfo("en-AU")) + " rows remain unmapped.");
+        AddValidation(connection, transaction, runId, "UNMAPPED_DISPOSITION", "Unmapped balances and net movements", "Blocking",
+            unmapped.Blocking.Count == 0 ? "Pass" : "Fail", unmapped.Blocking.Count, 0m, 0m,
+            unmapped.Blocking.Count + " unmapped G/L account(s) have a non-zero balance or net movement. " + MappingAccountList(unmapped.Blocking));
+        if (unmapped.Offsetting.Count > 0)
+            AddValidation(connection, transaction, runId, "UNMAPPED_OFFSETTING_ACTIVITY", "Unmapped activity that offsets to zero", "Warning",
+                "Warning", unmapped.Offsetting.Count, 0m, 0m,
+                "Review offsetting activity for " + unmapped.Offsetting.Count + " unmapped G/L account(s). " + MappingAccountList(unmapped.Offsetting));
 
         decimal operatingResult = income - expense;
         decimal sofpDifference = asset - liability - equity - operatingResult;
@@ -567,7 +593,6 @@ public static class NORMStatementEngine
             entry.CashFlowClass = NORMHelper.Str(table.Rows[i], "CashFlowClass");
             values[gl] = entry;
         }
-        if (values.Count == 0) { throw new InvalidOperationException("The selected configuration release contains no account mappings."); }
         return values;
     }
 
@@ -576,7 +601,7 @@ public static class NORMStatementEngine
         DataTable table = NORMHelper.Query(connection, transaction,
             "SELECT StatementLineId,StatementCode,LineCode,SeqNo,CalculationKind,FormulaSpec,LineType,NaturalSign," +
             (HasEmployeeHierarchy(connection, transaction) ? "ParentLineCode" : "NULL AS ParentLineCode") + " FROM dbo.tblNORM_StatementLine " +
-            "WHERE ConfigurationReleaseId = @release AND LineCode IS NOT NULL AND IsDeactivated = 0 ORDER BY StatementCode,SeqNo",
+            "WHERE ConfigurationReleaseId = @release AND LineCode IS NOT NULL AND IsDeactivated = 0 AND StatementCode<>'SCFREF' ORDER BY StatementCode,SeqNo",
             NORMHelper.P("@release", releaseId));
         Dictionary<string, TemplateLine> values = new Dictionary<string, TemplateLine>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < table.Rows.Count; i++)
@@ -618,9 +643,10 @@ public static class NORMStatementEngine
         return active ? details : null;
     }
 
-    private static bool IsHierarchy(Dictionary<string, TemplateLine> templates)
+    private static bool IsHierarchy(Dictionary<string, TemplateLine> templates, bool annualSource)
     {
-        return templates.Values.Any(line => line.LineType == HierarchyDetailType);
+        return templates.Values.Any(line => line.LineType == HierarchyDetailType ||
+            (annualSource && line.LineType != EmployeeDetailType && !String.IsNullOrEmpty(line.ParentLineCode)));
     }
 
     internal static Dictionary<string, string> LoadHierarchyAccountTypes(int releaseId)
@@ -628,7 +654,7 @@ public static class NORMStatementEngine
         using (OleDbConnection connection = NORMHelper.OpenConnection())
         {
             Dictionary<string, TemplateLine> templates = LoadTemplates(connection, null, releaseId);
-            if (!IsHierarchy(templates)) return null;
+            if (!IsHierarchy(templates, true)) return null;
             CalculateHierarchy(templates, new Dictionary<string, LineAccumulation>(StringComparer.OrdinalIgnoreCase));
             return HierarchyAccountTypes(templates);
         }
@@ -850,10 +876,10 @@ public static class NORMStatementEngine
             "WHERE ConfigurationReleaseId = @release AND IsDeactivated = 0 " +
             "UNION ALL " +
             "SELECT 'S',StatementCode,ISNULL(LineCode,''),LineLabel,ISNULL(NoteRef,''),ISNULL(NaturalSign,'') " +
-            "FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId = @release AND IsDeactivated = 0 " +
+            "FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId = @release AND IsDeactivated = 0 AND StatementCode<>'SCFREF' " +
             "UNION ALL SELECT 'H',StatementCode,ISNULL(LineCode,''),LineType,CalculationKind," +
             "CONVERT(nvarchar(12),SeqNo)+'|'+ISNULL(FormulaSpec,'')" + parentCode + " FROM dbo.tblNORM_StatementLine t " +
-            "WHERE t.ConfigurationReleaseId=@pilotRelease AND t.IsDeactivated=0 AND EXISTS " +
+            "WHERE t.ConfigurationReleaseId=@pilotRelease AND t.IsDeactivated=0 AND t.StatementCode<>'SCFREF' AND EXISTS " +
             "(SELECT 1 FROM dbo.tblNORM_StatementLine d WHERE d.ConfigurationReleaseId=t.ConfigurationReleaseId " +
             "AND d.IsDeactivated=0 AND (d.LineType IN ('employee-detail','hierarchy-detail') OR (d.StatementCode='SOCI' " +
             "AND d.LineCode='Employee benefits' AND d.CalculationKind='Formula' AND d.FormulaSpec IS NULL))) " +
@@ -881,7 +907,7 @@ public static class NORMStatementEngine
         return difference <= tolerance ? "Close" : "Variance";
     }
 
-    private static bool IsKnownType(string accountType)
+    internal static bool IsKnownType(string accountType)
     {
         return accountType == "Asset" || accountType == "Liability" || accountType == "Equity" ||
             accountType == "Income" || accountType == "Expense";
