@@ -63,7 +63,8 @@ public class NORM_WordExport : IHttpHandler
 
         NORMAdministeredStatements.Model administered = NORMAdministeredStatements.Required(profile)
             ? NORMAdministeredStatements.Load(runId, releaseId, NORMHelper.Str(header, "EntityCode")) : null;
-        string document = BuildDocument(runId, releaseId, year, entity, NORMHelper.Str(header, "VersionCode"), profile, disclosures, administered);
+        bool nihracsHierarchy = NORMReportingFramework.UsesNihracsHierarchy(NORMHelper.Str(header, "EntityCode"), year, releaseId);
+        string document = BuildDocument(runId, releaseId, year, entity, NORMHelper.Str(header, "VersionCode"), profile, disclosures, administered, nihracsHierarchy);
         string fileName = "NORM_FY" + year.ToString(CultureInfo.InvariantCulture) + "_Run_" + runId.ToString(CultureInfo.InvariantCulture) + "_Financial_Statements.doc";
         context.Response.Clear();
         context.Response.ContentType = "application/msword";
@@ -76,7 +77,7 @@ public class NORM_WordExport : IHttpHandler
 
     private string BuildDocument(int runId, int releaseId, int year, string entity, string version,
         NORMReportingFramework.ReportingProfile profile, List<NORMReportingFramework.Disclosure> disclosures,
-        NORMAdministeredStatements.Model administered)
+        NORMAdministeredStatements.Model administered, bool nihracsHierarchy)
     {
         StringBuilder html = new StringBuilder();
         html.Append("<!doctype html><html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" lang=\"en-AU\"><head><meta charset=\"utf-8\">");
@@ -89,8 +90,11 @@ public class NORM_WordExport : IHttpHandler
 
         AppendStatement(html, runId, releaseId, year, "SOCI", "Statement of Comprehensive Income", false);
         AppendStatement(html, runId, releaseId, year, "SOFP", "Statement of Financial Position", true);
-        AppendEquity(html, runId, releaseId, year);
-        AppendCashFlow(html, runId, releaseId, year);
+        if (!nihracsHierarchy)
+        {
+            AppendEquity(html, runId, releaseId, year);
+            AppendCashFlow(html, runId, releaseId, year);
+        }
         if (administered != null)
         {
             for (int i = 0; i < administered.Statements.Count; i++) AppendAdministeredStatement(html, year, administered.Statements[i]);
@@ -147,11 +151,34 @@ public class NORM_WordExport : IHttpHandler
     private void AppendStatement(StringBuilder html, int runId, int releaseId, int year, string code, string title, bool atDate)
     {
         DataTable table = NORMHelper.Query(
-            "SELECT t.LineType,t.LineCode,t.LineLabel,t.NoteRef,r.ComputedAmount FROM dbo.tblNORM_StatementLine t " +
+            "SELECT t.LineType,t.LineCode,t.LineLabel,t.NoteRef,r.ComputedAmount," + NORMReportingFramework.HierarchyFaceMarker + " FROM dbo.tblNORM_StatementLine t " +
             "LEFT JOIN dbo.tblNORM_LineResult r ON r.StatementLineId=t.StatementLineId AND r.CalculationRunId=@run AND r.IsDeactivated=0 " +
             "WHERE t.ConfigurationReleaseId=@release AND t.StatementCode=@code " +
-            "AND t.IsDeactivated=0 AND t.LineType<>'employee-detail' ORDER BY t.SeqNo",
+            "AND t.IsDeactivated=0 AND t.LineType<>'employee-detail' AND t.LineType<>'hierarchy-detail' ORDER BY t.SeqNo",
             NORMHelper.P("@run", runId), NORMHelper.P("@release", releaseId), NORMHelper.P("@code", code));
+        if (NORMReportingFramework.IsHierarchyFace(table))
+        {
+            Dictionary<string, decimal> figures = NORMReportingFramework.LoadReportedHierarchyFace(runId, code);
+            html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>")
+                .Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
+            html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year)
+                .Append("<br>$'000</th><th class=\"amount\">").Append(year - 1).Append("<br>$'000</th></tr></thead><tbody>");
+            foreach (DataRow row in table.Rows)
+            {
+                string label = NORMHelper.Str(row, "LineLabel");
+                string lineCode = NORMHelper.Str(row, "LineCode");
+                string type = NORMHelper.Str(row, "LineType");
+                if (type == "section") html.Append("<tr class=\"section\"><th colspan=\"4\">").Append(Enc(label)).Append("</th></tr>");
+                else
+                {
+                    decimal amount;
+                    AppendStatementAmountRow(html, label, NORMHelper.Str(row, "NoteRef"),
+                        lineCode != null && figures.TryGetValue(lineCode, out amount) ? (decimal?)amount : null, null, type == "total");
+                }
+            }
+            html.Append("</tbody></table></section>");
+            return;
+        }
         Dictionary<string, decimal> reported = code == "SOCI"
             ? NORMReportingFramework.LoadReportedIncomeStatement(runId) : new Dictionary<string, decimal>();
         bool hasForeignExchangeGains = false;

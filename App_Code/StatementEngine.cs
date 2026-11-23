@@ -15,6 +15,7 @@ public static class NORMStatementEngine
 {
     public const string EmployeeDetailType = "employee-detail";
     public const string EmployeeBenefitsCode = "Employee benefits";
+    public const string HierarchyDetailType = "hierarchy-detail";
 
     private class ImportContext
     {
@@ -26,6 +27,7 @@ public static class NORMStatementEngine
         public string FileHash;
         public string ReleaseVersion;
         public string ReportingEntityName;
+        public bool RetainedAnnualSource;
     }
 
     private class MapEntry
@@ -48,6 +50,7 @@ public static class NORMStatementEngine
         public string LineType;
         public string FormulaSpec;
         public string ParentLineCode;
+        public string NaturalSign;
     }
 
     private class SourceContribution
@@ -72,7 +75,17 @@ public static class NORMStatementEngine
 
     public static int Run(int importId, string startedBy)
     {
-        ImportContext context = LoadContext(importId);
+        return Run(LoadContext(importId), startedBy);
+    }
+
+    internal static int RunAnnualSource(int importId, int releaseId, string startedBy)
+    {
+        return Run(LoadContext(importId, releaseId), startedBy);
+    }
+
+    private static int Run(ImportContext context, string startedBy)
+    {
+        int importId = context.ImportId;
         string configurationHash = ConfigurationFingerprint(context.ReleaseId);
         string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" + context.ReportingEntityName);
 
@@ -121,7 +134,21 @@ public static class NORMStatementEngine
             {
                 Dictionary<string, MapEntry> mappings = LoadMappings(connection, transaction, context.ReleaseId);
                 Dictionary<string, TemplateLine> templates = LoadTemplates(connection, transaction, context.ReleaseId);
-                HashSet<string> employeeDetails = EmployeeDetailCodes(templates);
+                bool hierarchy = IsHierarchy(templates);
+                HashSet<string> employeeDetails = hierarchy ? null : EmployeeDetailCodes(templates);
+                if (hierarchy)
+                {
+                    if (!HasReportedAmounts())
+                        throw new InvalidOperationException("Install the reported amounts schema before calculating the reporting hierarchy.");
+                    Dictionary<string, string> types = HierarchyAccountTypes(templates);
+                    foreach (MapEntry entry in mappings.Values)
+                    {
+                        if (String.IsNullOrWhiteSpace(entry.StatementLine)) continue;
+                        string type;
+                        if (!types.TryGetValue(entry.StatementLine, out type) || !String.Equals(type, entry.AccountType, StringComparison.Ordinal))
+                            throw new InvalidOperationException("Map each account to an active detail classification of the matching account type.");
+                    }
+                }
                 if (employeeDetails != null)
                 {
                     if (!HasReportedAmounts())
@@ -170,9 +197,11 @@ public static class NORMStatementEngine
                     string lineCode = mapped ? mapping.StatementLine : "UNMAPPED";
                     TemplateLine template = null;
                     if (mapped) { templates.TryGetValue(lineCode, out template); }
+                    if (hierarchy && template != null) lineCode = template.LineCode;
                     string statementCode = template == null ? "POOL" : template.StatementCode;
                     decimal presented = sourceAmount / 1000m;
-                    if (mapped && IsCreditType(mapping.AccountType)) { presented = -presented; }
+                    if (mapped && (hierarchy && template != null && !String.IsNullOrEmpty(template.NaturalSign)
+                        ? template.NaturalSign == "C" : IsCreditType(mapping.AccountType))) { presented = -presented; }
 
                     if (mapped)
                     {
@@ -237,7 +266,8 @@ public static class NORMStatementEngine
                         detail.ReportedAmount = RoundEmployeeAmount(detail.ComputedAmount);
                     }
                 }
-                AddFormulaLines(connection, transaction, context.ReleaseId, lines, employeeDetails);
+                if (hierarchy) CalculateHierarchy(templates, lines);
+                else AddFormulaLines(connection, transaction, context.ReleaseId, lines, employeeDetails);
 
                 foreach (KeyValuePair<string, LineAccumulation> item in lines)
                 {
@@ -292,7 +322,7 @@ public static class NORMStatementEngine
                 }
 
                 WriteValidations(connection, transaction, runId, rows.Rows.Count, totalNet, totalAbs, mappedAbs,
-                    unmappedCount, asset, liability, equity, income, expense, classifiedCashMovement, unsafeCashClassCount, lines, published);
+                    unmappedCount, asset, liability, equity, income, expense, classifiedCashMovement, unsafeCashClassCount, lines, published, hierarchy);
                 if (employeeDetails != null)
                 {
                     LineAccumulation employee = lines["SOCI|" + EmployeeBenefitsCode];
@@ -303,12 +333,26 @@ public static class NORMStatementEngine
                         (employee.ComputedAmount * 1000m).ToString("0.00", CultureInfo.InvariantCulture) +
                         ". Difference is the reported total less the independently rounded underlying amount, in $'000.");
                 }
+                if (hierarchy)
+                {
+                    int index = 0;
+                    foreach (TemplateLine template in templates.Values.OrderBy(t => t.StatementLineId))
+                    {
+                        if (template.CalculationKind != "Formula") continue;
+                        LineAccumulation line = lines[template.StatementCode + "|" + template.LineCode];
+                        AddValidation(connection, transaction, runId, "HIERARCHY_ROUNDING_" + (++index).ToString(CultureInfo.InvariantCulture),
+                            Truncate(template.LineCode + " presentation rounding", 240), "Information", "Pass",
+                            line.ReportedAmount, RoundEmployeeAmount(line.ComputedAmount), null,
+                            "Reported result less independently rounded exact result in $'000. Exact underlying AUD: " +
+                            (line.ComputedAmount * 1000m).ToString("0.00", CultureInfo.InvariantCulture) + ".");
+                    }
+                }
                 WriteSourceFileValidations(connection, transaction, runId, context);
 
                 NORMHelper.Exec(connection, transaction,
                     "UPDATE dbo.tblNORM_CalculationRun SET StatusCode = 'Complete',CompletedUtc = SYSUTCDATETIME() " +
                     "WHERE CalculationRunId = @run AND StatusCode = 'Running'", NORMHelper.P("@run", runId));
-                NORMHelper.Exec(connection, transaction,
+                if (!context.RetainedAnnualSource) NORMHelper.Exec(connection, transaction,
                     "UPDATE dbo.tblNORM_Import SET StatusCode = 'Calculated' WHERE ImportId = @import AND StatusCode = 'Imported'",
                     NORMHelper.P("@import", context.ImportId));
                 NORMHelper.Exec(connection, transaction,
@@ -330,7 +374,8 @@ public static class NORMStatementEngine
     private static void WriteValidations(OleDbConnection connection, OleDbTransaction transaction, int runId,
         int rowCount, decimal totalNet, decimal totalAbs, decimal mappedAbs, int unmappedCount,
         decimal asset, decimal liability, decimal equity, decimal income, decimal expense,
-        decimal classifiedCashMovement, int unsafeCashClassCount, Dictionary<string, LineAccumulation> lines, Dictionary<string, decimal> published)
+        decimal classifiedCashMovement, int unsafeCashClassCount, Dictionary<string, LineAccumulation> lines, Dictionary<string, decimal> published,
+        bool hierarchy)
     {
         decimal tbDifference = totalNet / 1000m;
         AddValidation(connection, transaction, runId, "DEBITS_EQUAL_CREDITS", "Debits equal credits", "Blocking",
@@ -350,9 +395,11 @@ public static class NORMStatementEngine
 
         decimal operatingResult = income - expense;
         decimal sofpDifference = asset - liability - equity - operatingResult;
-        AddValidation(connection, transaction, runId, "SOFP_BALANCES", "Statement of financial position balances", "Blocking",
-            Math.Abs(sofpDifference) <= 0.001m ? "Pass" : "Fail", sofpDifference, 0m, 0.001m,
-            "Assets less liabilities, equity and the current-year operating result in $'000.");
+        AddValidation(connection, transaction, runId, "SOFP_BALANCES", "Statement of financial position balances",
+            hierarchy ? "Warning" : "Blocking", hierarchy ? "Warning" : Math.Abs(sofpDifference) <= 0.001m ? "Pass" : "Fail",
+            sofpDifference, 0m, 0.001m, hierarchy
+                ? "Equity is outside the NIHRACS hierarchy scope. Full balance-sheet reconciliation remains outstanding."
+                : "Assets less liabilities, equity and the current-year operating result in $'000.");
 
         decimal closingCash = 0m;
         LineAccumulation cashLine;
@@ -473,15 +520,18 @@ public static class NORMStatementEngine
                 : "Expected exactly ROMAN periods 01-10 as transition evidence and ERP periods 11-12 as statement input.");
     }
 
-    private static ImportContext LoadContext(int importId)
+    private static ImportContext LoadContext(int importId, int? annualRelease = null)
     {
         DataTable table = NORMHelper.Query(
-            "SELECT i.ImportId,i.ConfigurationReleaseId,i.FinancialYear,i.EntityCode,i.SourceType,i.DataFingerprint,c.VersionCode,COALESCE(e.EntityName,i.EntityCode) AS EntityName " +
+            (annualRelease.HasValue ? "SELECT i.ImportId,c.ConfigurationReleaseId," : "SELECT i.ImportId,i.ConfigurationReleaseId,") +
+            "i.FinancialYear,i.EntityCode,i.SourceType,i.DataFingerprint,c.VersionCode,COALESCE(e.EntityName,i.EntityCode) AS EntityName " +
             "FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_ConfigurationRelease c " +
-            "ON c.ConfigurationReleaseId = i.ConfigurationReleaseId " +
+            (annualRelease.HasValue ? "ON c.ConfigurationReleaseId=@release AND c.EntityCode=i.EntityCode AND c.FinancialYear=i.FinancialYear " :
+                "ON c.ConfigurationReleaseId = i.ConfigurationReleaseId ") +
             "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.EntityCode=i.EntityCode AND e.FinancialYear=i.FinancialYear AND e.IsDeactivated=0 " +
-            "WHERE i.ImportId = @import AND i.IsDeactivated = 0 AND c.StatusCode = 'Approved' AND c.IsDeactivated = 0",
-            NORMHelper.P("@import", importId));
+            "WHERE i.ImportId = @import AND i.IsDeactivated = 0 AND c.StatusCode = 'Approved' AND c.IsDeactivated = 0 " +
+            (annualRelease.HasValue ? "AND i.ConfigurationReleaseId IS NULL AND i.ParentImportId IS NULL AND i.IsTestBreak=0 AND i.StatusCode IN ('Imported','Calculated')" : ""),
+            NORMHelper.P("@import", importId), NORMHelper.P("@release", annualRelease));
         if (table.Rows.Count == 0) { throw new InvalidOperationException("The import or its approved configuration release was not found."); }
         DataRow row = table.Rows[0];
         ImportContext context = new ImportContext();
@@ -493,6 +543,7 @@ public static class NORMStatementEngine
         context.FileHash = NORMHelper.Str(row, "DataFingerprint");
         context.ReleaseVersion = NORMHelper.Str(row, "VersionCode");
         context.ReportingEntityName = NORMHelper.Str(row, "EntityName");
+        context.RetainedAnnualSource = annualRelease.HasValue;
         return context;
     }
 
@@ -523,7 +574,7 @@ public static class NORMStatementEngine
     private static Dictionary<string, TemplateLine> LoadTemplates(OleDbConnection connection, OleDbTransaction transaction, int releaseId)
     {
         DataTable table = NORMHelper.Query(connection, transaction,
-            "SELECT StatementLineId,StatementCode,LineCode,SeqNo,CalculationKind,FormulaSpec,LineType," +
+            "SELECT StatementLineId,StatementCode,LineCode,SeqNo,CalculationKind,FormulaSpec,LineType,NaturalSign," +
             (HasEmployeeHierarchy(connection, transaction) ? "ParentLineCode" : "NULL AS ParentLineCode") + " FROM dbo.tblNORM_StatementLine " +
             "WHERE ConfigurationReleaseId = @release AND LineCode IS NOT NULL AND IsDeactivated = 0 ORDER BY StatementCode,SeqNo",
             NORMHelper.P("@release", releaseId));
@@ -541,6 +592,7 @@ public static class NORMStatementEngine
             line.LineType = NORMHelper.Str(table.Rows[i], "LineType");
             line.FormulaSpec = NORMHelper.Str(table.Rows[i], "FormulaSpec");
             line.ParentLineCode = NORMHelper.Str(table.Rows[i], "ParentLineCode");
+            line.NaturalSign = NORMHelper.Str(table.Rows[i], "NaturalSign");
             values[code] = line;
         }
         return values;
@@ -564,6 +616,121 @@ public static class NORMStatementEngine
             details.Add(line.LineCode);
         }
         return active ? details : null;
+    }
+
+    private static bool IsHierarchy(Dictionary<string, TemplateLine> templates)
+    {
+        return templates.Values.Any(line => line.LineType == HierarchyDetailType);
+    }
+
+    internal static Dictionary<string, string> LoadHierarchyAccountTypes(int releaseId)
+    {
+        using (OleDbConnection connection = NORMHelper.OpenConnection())
+        {
+            Dictionary<string, TemplateLine> templates = LoadTemplates(connection, null, releaseId);
+            if (!IsHierarchy(templates)) return null;
+            CalculateHierarchy(templates, new Dictionary<string, LineAccumulation>(StringComparer.OrdinalIgnoreCase));
+            return HierarchyAccountTypes(templates);
+        }
+    }
+
+    private static Dictionary<string, string> HierarchyAccountTypes(Dictionary<string, TemplateLine> templates)
+    {
+        Dictionary<string, string> types = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (TemplateLine line in templates.Values.Where(t => t.CalculationKind == "Mapped"))
+        {
+            TemplateLine root = line;
+            HashSet<string> parents = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { line.LineCode };
+            while (!String.IsNullOrEmpty(root.ParentLineCode))
+            {
+                if (!parents.Add(root.ParentLineCode) || !templates.TryGetValue(root.ParentLineCode, out root))
+                    throw new InvalidOperationException("The reporting hierarchy contains an invalid or circular parent relationship.");
+            }
+            string type = null;
+            switch (root.LineCode)
+            {
+                case "Total expenses": type = "Expense"; break;
+                case "Total own-source income":
+                case "Revenue from Government": type = "Income"; break;
+                case "Total assets": type = "Asset"; break;
+                case "Total liabilities": type = "Liability"; break;
+            }
+            if (line.LineType != HierarchyDetailType || type == null)
+                throw new InvalidOperationException("A mapped classification must be a detail under a recognised reporting total.");
+            types.Add(line.LineCode, type);
+        }
+        return types;
+    }
+
+    private static void CalculateHierarchy(Dictionary<string, TemplateLine> templates, Dictionary<string, LineAccumulation> lines)
+    {
+        var children = templates.Values.Where(t => !String.IsNullOrEmpty(t.ParentLineCode))
+            .ToLookup(t => t.ParentLineCode, StringComparer.OrdinalIgnoreCase);
+        foreach (var group in children)
+        {
+            TemplateLine parent;
+            if (!templates.TryGetValue(group.Key, out parent) || parent.CalculationKind != "Formula" ||
+                !String.IsNullOrEmpty(parent.FormulaSpec) || group.Any(child => child.StatementCode != parent.StatementCode))
+                throw new InvalidOperationException("A hierarchy parent must be an additive total in the same statement.");
+        }
+        var leaves = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (TemplateLine line in templates.Values.Where(t => t.CalculationKind != "Heading"))
+            CalculateHierarchyLine(line, templates, children, lines, leaves, visiting);
+    }
+
+    private static LineAccumulation CalculateHierarchyLine(TemplateLine line, Dictionary<string, TemplateLine> templates,
+        ILookup<string, TemplateLine> children, Dictionary<string, LineAccumulation> lines,
+        Dictionary<string, HashSet<string>> leaves, HashSet<string> visiting)
+    {
+        string key = line.StatementCode + "|" + line.LineCode;
+        if (leaves.ContainsKey(line.LineCode)) return lines[key];
+        if (!visiting.Add(line.LineCode)) throw new InvalidOperationException("The reporting hierarchy contains a circular dependency.");
+        LineAccumulation result;
+        if (!lines.TryGetValue(key, out result))
+            result = new LineAccumulation { StatementCode = line.StatementCode, LineCode = line.LineCode, StatementLineId = line.StatementLineId };
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (line.CalculationKind == "Mapped")
+        {
+            result.ReportedAmount = RoundEmployeeAmount(result.ComputedAmount);
+            used.Add(line.LineCode);
+        }
+        else
+        {
+            result.ReportedAmount = 0m;
+            bool additive = String.IsNullOrEmpty(line.FormulaSpec);
+            IEnumerable<string> terms = additive ? children[line.LineCode].Select(c => "+" + c.LineCode) : line.FormulaSpec.Split('|');
+            var included = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string term in terms)
+            {
+                TemplateLine child;
+                if (term.Length < 2 || (term[0] != '+' && term[0] != '-') ||
+                    !templates.TryGetValue(term.Substring(1), out child) || child.StatementCode != line.StatementCode ||
+                    child.CalculationKind == "Heading" || !included.Add(child.LineCode) ||
+                    (!additive && child.LineType == HierarchyDetailType))
+                    throw new InvalidOperationException("A reporting formula contains an invalid or duplicate component.");
+                LineAccumulation component = CalculateHierarchyLine(child, templates, children, lines, leaves, visiting);
+                foreach (string leaf in leaves[child.LineCode])
+                    if (!used.Add(leaf)) throw new InvalidOperationException("A reporting formula counts a detail more than once.");
+                decimal factor = term[0] == '-' ? -1m : 1m;
+                result.ReportedAmount += factor * component.ReportedAmount.Value;
+                AddComponent(result, component, factor);
+            }
+        }
+        visiting.Remove(line.LineCode);
+        leaves.Add(line.LineCode, used);
+        lines[key] = result;
+        return result;
+    }
+
+    private static void AddComponent(LineAccumulation total, LineAccumulation component, decimal factor)
+    {
+        total.ComputedAmount += factor * component.ComputedAmount;
+        foreach (SourceContribution source in component.Sources)
+            total.Sources.Add(new SourceContribution {
+                TbRowId = source.TbRowId, SourceAmount = source.SourceAmount,
+                PresentedAmount = factor * source.PresentedAmount, Mapping = source.Mapping
+            });
     }
 
     internal static bool HasEmployeeHierarchy(OleDbConnection connection, OleDbTransaction transaction)
@@ -633,17 +800,7 @@ public static class NORMStatementEngine
                 if (employeeDetails != null && employeeDetails.Contains(componentCode) && !employeeParent)
                     throw new InvalidOperationException("Include Employee benefits through its subtotal in other formulas.");
                 if (components != null) components.Add(new KeyValuePair<decimal, LineAccumulation>(factor, component));
-                formula.ComputedAmount += factor * component.ComputedAmount;
-                for (int s = 0; s < component.Sources.Count; s++)
-                {
-                    SourceContribution original = component.Sources[s];
-                    SourceContribution derived = new SourceContribution();
-                    derived.TbRowId = original.TbRowId;
-                    derived.SourceAmount = original.SourceAmount;
-                    derived.PresentedAmount = factor * original.PresentedAmount;
-                    derived.Mapping = original.Mapping;
-                    formula.Sources.Add(derived);
-                }
+                AddComponent(formula, component, factor);
             }
             if (components != null) ReportEmployeeFormula(formula, components, employeeParent);
             lines[statementCode + "|" + lineCode] = formula;
@@ -684,7 +841,7 @@ public static class NORMStatementEngine
         return values;
     }
 
-    private static string ConfigurationFingerprint(int releaseId)
+    internal static string ConfigurationFingerprint(int releaseId)
     {
         string parentCode = HasEmployeeHierarchy(null, null) ? "+'|'+ISNULL(ParentLineCode,'')" : "";
         DataTable table = NORMHelper.Query(
@@ -698,7 +855,7 @@ public static class NORMStatementEngine
             "CONVERT(nvarchar(12),SeqNo)+'|'+ISNULL(FormulaSpec,'')" + parentCode + " FROM dbo.tblNORM_StatementLine t " +
             "WHERE t.ConfigurationReleaseId=@pilotRelease AND t.IsDeactivated=0 AND EXISTS " +
             "(SELECT 1 FROM dbo.tblNORM_StatementLine d WHERE d.ConfigurationReleaseId=t.ConfigurationReleaseId " +
-            "AND d.IsDeactivated=0 AND (d.LineType='employee-detail' OR (d.StatementCode='SOCI' " +
+            "AND d.IsDeactivated=0 AND (d.LineType IN ('employee-detail','hierarchy-detail') OR (d.StatementCode='SOCI' " +
             "AND d.LineCode='Employee benefits' AND d.CalculationKind='Formula' AND d.FormulaSpec IS NULL))) " +
             "ORDER BY Kind,A,B,C,D,E", NORMHelper.P("@release", releaseId), NORMHelper.P("@pilotRelease", releaseId));
         StringBuilder canonical = new StringBuilder();

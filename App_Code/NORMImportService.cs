@@ -1337,6 +1337,28 @@ public static class NORMImportService
             (parsed.IsFullYear == true ? ";Full" : ";Partial");
     }
 
+    internal static int FindCurrentAnnualDepartmentalImport(string entity, int year)
+    {
+        NORMAnnualSourceConfiguration approval = NORMAnnualSourceConfiguration.Load(entity, year);
+        if (approval == null || approval.Populations.Rows.Count != 1 ||
+            NORMHelper.Str(approval.Populations.Rows[0], "ReportingStream") != "Departmental")
+            throw new InvalidOperationException("A single approved Departmental source population is required.");
+        DataRow population = approval.Populations.Rows[0];
+        string company = NORMHelper.Str(population, "SourceCompanyCode");
+        string ledger = NORMHelper.Str(population, "SourceLedger");
+        int importId = FindCurrentSource(new NORMImportPreview { Entity = entity, FinancialYear = year },
+            company, ledger, "Departmental", null, null).ImportId;
+        if (importId == 0 || Convert.ToInt32(NORMHelper.Scalar(
+            "SELECT COUNT(*) FROM dbo.tblNORM_Import i WHERE i.ImportId=@id AND i.ConfigurationReleaseId IS NULL " +
+            "AND i.AnnualSourceApprovalSnapshot=@snapshot AND NOT EXISTS (SELECT 1 FROM dbo.tblNORM_TrialBalanceRow t " +
+            "WHERE t.ImportId=i.ImportId AND t.IsDeactivated=0 AND (ISNULL(t.SourceCompanyCode,'')<>@company " +
+            "OR ISNULL(t.SourceLedger,'')<>@ledger OR ISNULL(t.ReportingStream,'')<>'Departmental'))",
+            NORMHelper.P("@id", importId), NORMHelper.P("@snapshot", approval.Snapshot),
+            NORMHelper.P("@company", company), NORMHelper.P("@ledger", ledger ?? ""))) != 1)
+            throw new InvalidOperationException("The retained Departmental source does not match its annual approval.");
+        return importId;
+    }
+
     private static NORMSourceScope FindCurrentSource(NORMImportPreview preview, string company, string ledger, string stream,
         OleDbConnection connection, OleDbTransaction transaction)
     {

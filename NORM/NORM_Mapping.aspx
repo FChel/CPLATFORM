@@ -39,7 +39,7 @@
             </section>
 
             <asp:Panel ID="EmployeeCategoriesPanel" runat="server" Visible="false" CssClass="norm-mapping-card">
-                <h2>Employee benefits categories</h2>
+                <h2><%= CategoryHeading %></h2>
                 <p>Add a category or enter its existing key to change its description. Download a fresh workbook to assign G/L accounts to a new category. Reassign or clear its accounts before deactivating it.</p>
                 <asp:Label runat="server" AssociatedControlID="EmployeeParent" Text="Parent" />
                 <asp:DropDownList ID="EmployeeParent" runat="server" CssClass="norm-input">

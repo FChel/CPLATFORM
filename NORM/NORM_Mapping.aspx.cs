@@ -15,6 +15,7 @@ namespace CPlatform.NORM
         protected string ImpactHtml = "";
         protected string AuditHtml = "";
         protected string EmployeeCategoriesHtml = "";
+        protected string CategoryHeading = "Employee benefits categories";
         protected string UnmappedAccountCount = "—";
         protected string UnmappedAccountLabel = "unmapped accounts";
 
@@ -136,7 +137,7 @@ namespace CPlatform.NORM
                 EmployeeCategoryKey.Text = "";
                 EmployeeCategoryLabel.Text = "";
                 WarningsAcknowledged.Checked = false;
-                Show("Category saved", "The Employee benefits categories and draft validation have been refreshed.", true);
+                Show("Category saved", "The reporting categories and draft validation have been refreshed.", true);
                 BindSelectedRelease();
             }, "Category saved", "The category change is recorded in the mapping draft.");
         }
@@ -168,7 +169,19 @@ namespace CPlatform.NORM
             bool draft = String.Equals(NORMHelper.Str(release, "StatusCode"), "Draft", StringComparison.OrdinalIgnoreCase); bool approved = String.Equals(NORMHelper.Str(release, "StatusCode"), "Approved", StringComparison.OrdinalIgnoreCase);
             WorkflowPanel.Visible = true; UploadPanel.Visible = draft; ApprovalPanel.Visible = draft && IsAdministrator; RecalculatePanel.Visible = approved;
             DataTable categories = draft ? NORMMappingManagement.EmployeeCategories(releaseId) : null;
-            EmployeeCategoriesPanel.Visible = categories != null;
+            DataTable parents = categories == null ? null : NORMMappingManagement.NihracsCategoryParents(releaseId);
+            EmployeeCategoriesPanel.Visible = categories != null && (parents == null || parents.Rows.Count > 0);
+            CategoryHeading = parents == null ? "Employee benefits categories" : "Reporting categories";
+            string selectedParent = EmployeeParent.SelectedValue;
+            EmployeeParent.Items.Clear();
+            if (parents == null) EmployeeParent.Items.Add(new ListItem("Employee benefits", NORMStatementEngine.EmployeeBenefitsCode));
+            else foreach (DataRow parent in parents.Rows)
+            {
+                string code = NORMHelper.Str(parent, "LineCode");
+                string label = NORMHelper.Str(parent, "LineLabel");
+                EmployeeParent.Items.Add(new ListItem(label == code ? label : label + " (" + code + ")", code));
+            }
+            if (EmployeeParent.Items.FindByValue(selectedParent) != null) EmployeeParent.SelectedValue = selectedParent;
             if (categories != null) EmployeeCategoriesHtml = RenderEmployeeCategories(categories);
             DownloadWorkbookLink.Visible = draft; DownloadWorkbookLink.NavigateUrl = "NORM_MappingWorkbook.ashx?release=" + releaseId.ToString(CultureInfo.InvariantCulture);
             ApprovalNote.Text = draft ? (IsAdministrator ? "" : "<p class=\"norm-muted\">An active NORM administrator must approve this release.</p>") : "<p class=\"norm-success-copy\">Approved by " + Enc(NORMHelper.Str(release, "ApprovedBy")) + " on " + Enc(Convert.ToString(release["ApprovedUtc"])) + ". This version is locked.</p>";
