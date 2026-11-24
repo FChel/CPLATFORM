@@ -28,6 +28,8 @@ namespace TestDb
 
 public static partial class NORMHelper
 {
+    public const string StandardRunPredicate = "NOT EXISTS (SELECT 1 FROM dbo.tblNORM_ValidationResult draft " +
+        "WHERE draft.CalculationRunId=r.CalculationRunId AND draft.CheckCode='DRAFT_MAPPING_REVIEW')";
     public sealed class Call
     {
         public string Sql; public Dictionary<string, object> Values = new Dictionary<string, object>();

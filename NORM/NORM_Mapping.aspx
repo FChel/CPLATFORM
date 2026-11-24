@@ -75,8 +75,16 @@
                     <asp:Literal ID="ApprovalNote" runat="server" />
                 </article>
                 <article class="norm-mapping-card">
-                    <span class="norm-kicker">Apply approved mapping</span><h2>Recalculate the retained TB</h2><p>NORM copies the latest retained trial balance without changing it and creates a new calculation run under the approved mapping version.</p>
-                    <asp:Panel ID="RecalculatePanel" runat="server"><asp:Button ID="RecalculateButton" runat="server" Text="Recalculate latest trial balance" CssClass="norm-button norm-button-dark" OnClick="RecalculateButton_Click" /></asp:Panel>
+                    <asp:Panel ID="DraftReviewPanel" runat="server" Visible="false">
+                        <span class="norm-kicker">Draft review</span><h2>Calculate with draft mappings</h2>
+                        <p>Review the statements and unmapped source amounts using the saved draft and retained trial balance.</p>
+                        <asp:Button ID="DraftReviewButton" runat="server" Text="Calculate draft for review" CssClass="norm-button norm-button-dark" OnClick="DraftReviewButton_Click" />
+                    </asp:Panel>
+                    <asp:Panel ID="RecalculatePanel" runat="server">
+                        <span class="norm-kicker">Apply approved mapping</span><h2>Recalculate the retained TB</h2>
+                        <p>Calculate statements under the approved mapping version using the retained source.</p>
+                        <asp:Button ID="RecalculateButton" runat="server" Text="Recalculate latest trial balance" CssClass="norm-button norm-button-dark" OnClick="RecalculateButton_Click" />
+                    </asp:Panel>
                     <asp:Literal ID="RecalculateNote" runat="server" />
                 </article>
             </section>

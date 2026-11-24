@@ -14,8 +14,10 @@ public static partial class NORMHelper
 {
     public static Func<Call, object> EmployeeBenefitsTransactionScalar;
     public static bool MappingAdministrator = true;
+    public static bool DraftReviewRun;
     public static bool HasAdminAccess() { return MappingAdministrator; }
-    public static bool CanAccessCompletedRun(int runId) { return runId == 42; }
+    public static bool CanAccessCompletedRun(int runId) { return runId == 42 && !DraftReviewRun; }
+    public static bool CanAccessStatementRun(int runId) { return runId == 42; }
     public static int LatestAccessibleCompletedRun() { return 42; }
     public static string SourceCompany(DataRow row) { return null; }
     public static string SourceLedgerLabel(DataRow row) { return null; }
@@ -267,6 +269,7 @@ internal static partial class PilotTests
     {
         NORMHelper.Reset();
         NORMHelper.MappingAdministrator = true;
+        NORMHelper.DraftReviewRun = false;
         InsertedResults.Clear();
         draft = null;
         legacy = isLegacy;

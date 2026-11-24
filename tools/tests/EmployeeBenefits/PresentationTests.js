@@ -7,12 +7,20 @@ const assert = require("node:assert/strict");
 const [, , sourcePath, output, total = "4", leave = "1"] = process.argv;
 const nihracs = total === "--nihracs";
 const data = JSON.parse(fs.readFileSync(path.join(output, "presentation.json"), "utf8"));
+const reviewChecks = path.join(output, "review-checks.json");
+const draftReview = nihracs && fs.existsSync(reviewChecks);
+if (draftReview) {
+  data.meta.draftReview = true;
+  data.validations = JSON.parse(fs.readFileSync(reviewChecks, "utf8"));
+}
 const elements = new Map();
 const document = {
+  body: { classList: { toggle(name, active) { assert.ok(!draftReview || !active, "Draft review opened publication mode"); } } },
   getElementById(id) {
     if (!elements.has(id)) {
       elements.set(id, {
         innerHTML: "",
+        hidden: true,
         classList: { toggle() {} },
         querySelectorAll() { return []; }
       });
@@ -25,6 +33,11 @@ let source = fs.readFileSync(sourcePath, "utf8");
 const entry = "  initialise();";
 assert.ok(source.includes(entry), "Statement script entry point missing");
 source = source.replace(entry, `
+  if (data.meta.draftReview) {
+    configureRunActions();
+    setView("publication");
+    renderReadiness();
+  }
   renderStatement();
   window.income = byId("statementDocument").innerHTML;
   renderNotes(statements[${nihracs ? 2 : 1}]);
@@ -33,6 +46,21 @@ source = source.replace(entry, `
   window.printBook = byId("printBook").innerHTML;
 `);
 vm.runInNewContext(source, { window, document });
+if (draftReview) {
+  for (const id of ["reviewPackLink", "wordExportLink", "excelExportLink", "mappingExportLink"]) {
+    assert.equal(document.getElementById(id).hidden, true, id + " must stay hidden for draft review");
+    assert.equal(document.getElementById(id).href, undefined);
+  }
+  assert.equal(document.getElementById("publicationView").disabled, true);
+  assert.match(document.getElementById("runReadiness").innerHTML, /Not ready for accounting sign-off/);
+  const pages = [...window.printBook.matchAll(/<section class="norm-print-page[^"]*">(.*?)<\/section>/gs)];
+  assert.ok(pages.length > 1);
+  pages.forEach(page => {
+    assert.match(page[1], /INCOMPLETE · DRAFT MAPPING REVIEW/);
+    assert.match(page[1], /10 unmapped G\/L account/);
+  });
+  console.log("PASS draft review stays out of publication, hides controlled downloads and labels all printed sections incomplete");
+}
 
 function displayedAmount(html, label, column) {
   const rows = [...html.matchAll(/<tr\b[^>]*>(.*?)<\/tr>/gs)];

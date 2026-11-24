@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Web;
 using System.Web.Script.Serialization;
 using CPlatform.NORM;
 using OfficeOpenXml;
@@ -212,6 +213,7 @@ internal static partial class PilotTests
         foreach (var group in source.AsEnumerable().GroupBy(row => (string)row["GlAccount"]))
             sourceAccounts.Rows.Add(group.Key, group.Max(row => (string)row["GlText"]));
         bool fullWorkbook = !String.IsNullOrEmpty(consolidatedWorkbook);
+        long lockedRevision = 255L;
         DataTable approvalSource = source;
         if (!fullWorkbook)
         {
@@ -228,6 +230,20 @@ internal static partial class PilotTests
             }
             if (call.Sql.StartsWith("SELECT GlAccount,SourceCompanyCode"))
                 return approvalSource;
+            if (call.Sql.StartsWith("SELECT i.ImportId,c.ConfigurationReleaseId"))
+            {
+                Check(call.Sql.Contains("c.StatusCode='Draft'") && call.Sql.Contains("i.ConfigurationReleaseId IS NULL") &&
+                    (int)call["@release"] == 19 && (int)call["@import"] == 25, "Draft review did not select the retained annual source and draft.");
+                return Table("ImportId ConfigurationReleaseId FinancialYear EntityCode SourceType DataFingerprint VersionCode EntityName DraftRevision",
+                    new object[] { 25, 19, 2026, "NIHRACS", "ERP", "fixture", "fixture", "NIHRACS", 255L });
+            }
+            if (call.Sql.Contains("AS DraftRevision FROM dbo.tblNORM_ConfigurationRelease"))
+            {
+                Check(call.InTransaction && call.Sql.Contains("UPDLOCK,HOLDLOCK") && call.Sql.Contains("c.StatusCode='Draft'") &&
+                    (int)call["@release"] == 19, "Draft review did not lock its current configuration.");
+                return Table("DraftRevision", new object[] { lockedRevision });
+            }
+            if (call.Sql.StartsWith("SELECT TbRowId,SourceLedger")) return source;
             return Query(call);
         };
         var draftScalar = NORMHelper.ScalarCallResponse;
@@ -309,10 +325,55 @@ internal static partial class PilotTests
             " outside Import 25; incomplete mappings reported and approval checked against source impact");
         if (fullWorkbook)
         {
+            CheckDraftReview(output);
+            lockedRevision = 256L;
+            Throws(() => NORMMappingManagement.CalculateDraftReview(19, "fixture"), "The mapping draft changed");
             accountMap.Clear();
             Check(NORMMappingManagement.ApplyWorkbook(19, File.ReadAllBytes(consolidatedWorkbook), "older-layout.xlsx", "fixture").ChangedCount == 433,
                 "The previous seven-column hierarchy format no longer uploads.");
         }
+    }
+
+    private static void CheckDraftReview(string output)
+    {
+        Throws(() => NORMMappingManagement.RecalculateLatest(19, "fixture"), "Approve the mapping release before recalculating");
+        NORMHelper.Committed.Clear();
+        InsertedResults.Clear();
+        string draftHash = (string)draft.Rows[0]["ContentHash"];
+        int runId = NORMMappingManagement.CalculateDraftReview(19, "fixture");
+        var checks = NORMHelper.Committed.Where(call => call.Sql.StartsWith("INSERT dbo.tblNORM_ValidationResult")).ToList();
+        var marker = checks.Single(call => (string)call["@code"] == NORMStatementEngine.DraftReviewCheckCode);
+        var unmapped = checks.Single(call => (string)call["@code"] == "UNMAPPED_DISPOSITION");
+        Check((string)marker["@detail"] == "255" && (string)marker["@severity"] == "Blocking" && (string)marker["@result"] == "Fail" &&
+            (string)unmapped["@result"] == "Fail" && Convert.ToInt32(unmapped["@actual"]) == 10 &&
+            (string)Result("UNMAPPED")["@status"] == "Unmapped", "Draft marker or unresolved source checks were lost.");
+        int markerIndex = NORMHelper.Committed.IndexOf(marker);
+        Check(markerIndex > 0 && NORMHelper.Committed[markerIndex - 1].Sql.StartsWith("INSERT dbo.tblNORM_CalculationRun"),
+            "The review marker must be recorded when the run is created.");
+        Check(NORMHelper.Committed.Any(call => call.Sql.StartsWith("UPDATE dbo.tblNORM_CalculationRun SET StatusCode = 'Complete'")) &&
+            NORMHelper.Committed.Any(call => call.Sql.StartsWith("INSERT dbo.tblNORM_AuditEvent") &&
+                ((string)call["@detail"]).StartsWith("Draft mapping review completed")) &&
+            (string)draft.Rows[0]["StatusCode"] == "Draft" && (string)draft.Rows[0]["ContentHash"] == draftHash &&
+            !NORMHelper.Committed.Any(call => call.Sql.StartsWith("UPDATE dbo.tblNORM_ConfigurationRelease") ||
+                call.Sql.StartsWith("INSERT dbo.tblNORM_Import") || call.Sql.StartsWith("UPDATE dbo.tblNORM_Import") ||
+                call.Sql.StartsWith("INSERT dbo.tblNORM_TrialBalanceRow")), "Draft review did not complete without release or source writes.");
+        NORMHelper.DraftReviewRun = true;
+        foreach (IHttpHandler handler in new IHttpHandler[] {new NORM_WordExport(), new NORM_FinancialStatementsExcel()})
+        {
+            var response = new HttpResponse(new StringWriter());
+            var request = new HttpRequest("", "http://localhost/review.ashx", "run=" + runId.ToString(CultureInfo.InvariantCulture));
+            var context = new HttpContext(request, response) { User = HttpContext.Current.User };
+            handler.ProcessRequest(context);
+            Check(response.StatusCode == 403, "A draft review was allowed through a controlled export.");
+        }
+        NORMHelper.DraftReviewRun = false;
+        Throws(() => NORMMappingManagement.Approve(19, true, "fixture"), "Resolve all mapping validation errors");
+        var validations = checks.Select(call => new {
+            code = call["@code"], label = call["@label"], severity = call["@severity"], result = call["@result"],
+            detail = call == marker ? "Calculation uses a draft mapping release." : call["@detail"]
+        });
+        File.WriteAllText(Path.Combine(output, "review-checks.json"), new JavaScriptSerializer().Serialize(validations));
+        Console.WriteLine("PASS partial mappings calculated through the draft action, with immutable review marker, ten unresolved GLs and no source or approval writes");
     }
 
     private static byte[] ConvertConsolidatedWorkbook(byte[] starting, string consolidatedWorkbook)

@@ -1013,6 +1013,18 @@ namespace CPlatform.NORM
             return new NORMImportOutcome { ImportId = importId, CalculationRunId = runId, RowCount = NORMHelper.Int(source, "RowCount"), TotalDebit = NORMHelper.Dec(source, "TotalDebit"), TotalCredit = NORMHelper.Dec(source, "TotalCredit"), NetBalance = NORMHelper.Dec(source, "NetBalance") };
         }
 
+        public static int CalculateDraftReview(int releaseId, string user)
+        {
+            DataRow release = DraftRelease(releaseId);
+            string entity = Text(release, "EntityCode");
+            int year = NORMHelper.Int(release, "FinancialYear");
+            if (!IsNihracs(release) || !NORMReportingFramework.HasHierarchyNoteSource(null, null) ||
+                !NORMReportingFramework.UsesNihracsHierarchy(entity, year, releaseId))
+                throw new InvalidOperationException("Draft calculation review requires the NIHRACS reporting hierarchy.");
+            int importId = NORMImportService.FindCurrentAnnualDepartmentalImport(entity, year);
+            return NORMStatementEngine.RunAnnualDraftReview(importId, releaseId, user);
+        }
+
         private static bool IsNihracs(DataRow release)
         {
             return Same(Text(release, "EntityCode"), "NIHRACS") && NORMHelper.Int(release, "FinancialYear") == 2026;
@@ -1060,7 +1072,9 @@ namespace CPlatform.NORM
         }
         private static int LatestImportId(int preferredRelease, int financialYear, string entity)
         {
-            object value = NORMHelper.Scalar("SELECT TOP 1 i.ImportId FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId=i.ImportId WHERE i.FinancialYear=@fy AND i.EntityCode=@entity AND i.IsTestBreak=0 AND i.IsDeactivated=0 AND r.StatusCode='Complete' AND r.IsDeactivated=0 ORDER BY CASE WHEN i.ConfigurationReleaseId=@preferred THEN 0 ELSE 1 END,i.ImportId DESC", NORMHelper.P("@fy", financialYear), NORMHelper.P("@entity", entity), NORMHelper.P("@preferred", preferredRelease));
+            object value = NORMHelper.Scalar("SELECT TOP 1 i.ImportId FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_CalculationRun r ON r.ImportId=i.ImportId WHERE i.FinancialYear=@fy AND i.EntityCode=@entity AND i.IsTestBreak=0 AND i.IsDeactivated=0 AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND " +
+                NORMHelper.StandardRunPredicate + " ORDER BY CASE WHEN i.ConfigurationReleaseId=@preferred THEN 0 ELSE 1 END,i.ImportId DESC",
+                NORMHelper.P("@fy", financialYear), NORMHelper.P("@entity", entity), NORMHelper.P("@preferred", preferredRelease));
             return value == null ? 0 : Convert.ToInt32(value);
         }
         private static int MappingSourceImportId(int preferredRelease, DataRow release)

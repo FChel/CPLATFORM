@@ -36,7 +36,8 @@ namespace CPlatform.NORM
                 "FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
                 "INNER JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId = r.ConfigurationReleaseId " +
                 "LEFT JOIN dbo.tblNORM_ValidationResult v ON v.CalculationRunId = r.CalculationRunId " +
-                "WHERE r.StatusCode = 'Complete' AND r.IsDeactivated = 0 AND i.IsDeactivated = 0 AND i.IsTestBreak = 0 " +
+                "WHERE r.StatusCode = 'Complete' AND r.IsDeactivated = 0 AND i.IsDeactivated = 0 AND i.IsTestBreak = 0 AND " +
+                NORMHelper.StandardRunPredicate + " " +
                 "GROUP BY r.CalculationRunId,i.ImportId,i.[RowCount],i.NetBalance,i.IsTestBreak,c.VersionCode,r.CompletedUtc " +
                 "ORDER BY r.CalculationRunId DESC");
             StringBuilder html = new StringBuilder();
@@ -129,7 +130,7 @@ namespace CPlatform.NORM
                 "FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
                 "INNER JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId = r.ConfigurationReleaseId " +
                 "LEFT JOIN dbo.tblNORM_ValidationResult v ON v.CalculationRunId = r.CalculationRunId " +
-                "WHERE r.IsDeactivated = 0 AND i.IsDeactivated = 0 " +
+                "WHERE r.IsDeactivated = 0 AND i.IsDeactivated = 0 AND " + NORMHelper.StandardRunPredicate + " " +
                 "GROUP BY r.CalculationRunId,r.StatusCode,r.CompletedUtc,r.StartedBy,r.FailureDetail,i.ImportId,i.SourceFileName,i.SourceType," +
                 "i.[RowCount],i.NetBalance,i.IsTestBreak,c.VersionCode ORDER BY r.CalculationRunId DESC");
             if (table.Rows.Count == 0) { RunsHtml = "<div class=\"norm-empty\">No calculation runs yet.</div>"; return; }

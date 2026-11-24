@@ -11,19 +11,28 @@ namespace CPlatform.NORM
         protected override bool RequiresPrepareAccess { get { return false; } }
         protected string NormDataJson = "{}";
         protected bool CanPrepare = false;
+        protected bool IsDraftReview;
+        protected int selectedReleaseId;
         protected int selectedRunId;
 
         protected void Page_Load(object sender, EventArgs e)
         {
             CanPrepare = NORMHelper.HasPrepareAccess();
             selectedRunId = ResolveRunId();
-            if (selectedRunId > 0) { NormDataJson = Serialise(BuildPayload(selectedRunId)); }
+            if (selectedRunId > 0)
+            {
+                var payload = BuildPayload(selectedRunId);
+                if (IsDraftReview && !NORMHelper.CanAccessStatementRun(selectedRunId))
+                    throw new System.Web.HttpException(403, "The draft changed. Calculate a fresh review from Mapping.");
+                NormDataJson = Serialise(payload);
+            }
         }
 
         protected void CreateBreak_Click(object sender, EventArgs e)
         {
             if (!NORMHelper.HasPrepareAccess()) { throw new InvalidOperationException("Preparer access is required."); }
             int runId = ResolveRunId();
+            if (!NORMHelper.CanAccessCompletedRun(runId)) throw new InvalidOperationException("Select an approved calculation run for a test break.");
             DataTable source = NORMHelper.Query(
                 "SELECT r.ImportId,i.IsTestBreak,i.ParentImportId FROM dbo.tblNORM_CalculationRun r " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
@@ -44,8 +53,8 @@ namespace CPlatform.NORM
             string value = Request.QueryString["run"];
             if (value == null) { return NORMHelper.LatestAccessibleCompletedRun(); }
             int requested;
-            if (!Int32.TryParse(value, out requested) || requested <= 0 || !NORMHelper.CanAccessCompletedRun(requested))
-            { throw new System.Web.HttpException(403, "You do not have access to this calculation run."); }
+            if (!Int32.TryParse(value, out requested) || requested <= 0 || !NORMHelper.CanAccessStatementRun(requested))
+            { throw new System.Web.HttpException(403, "This calculation is unavailable. If the mapping draft changed, calculate a fresh review from Mapping."); }
             return requested;
         }
 
@@ -55,7 +64,8 @@ namespace CPlatform.NORM
                 "SELECT r.CalculationRunId,r.RunGuid,r.InputFingerprint,r.CompletedUtc," +
                 "i.ImportId,i.FinancialYear,i.EntityCode,i.SourceType,i.SourceFileName,i.SourceFileHash,i.[RowCount] AS [RowCount]," +
                 "i.TotalDebit,i.TotalCredit,i.NetBalance,i.ImportedUtc,i.IsTestBreak,i.ParentImportId," +
-                "c.ConfigurationReleaseId,c.VersionCode,c.ReleaseLabel,COALESCE(r.ReportingEntityName,i.EntityCode) AS EntityName " +
+                "c.ConfigurationReleaseId,c.VersionCode,c.ReleaseLabel,COALESCE(r.ReportingEntityName,i.EntityCode) AS EntityName," +
+                "CASE WHEN " + NORMHelper.StandardRunPredicate + " THEN 0 ELSE 1 END AS IsDraftReview " +
                 "FROM dbo.tblNORM_CalculationRun r " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
                 "INNER JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId = r.ConfigurationReleaseId " +
@@ -64,6 +74,8 @@ namespace CPlatform.NORM
             if (contextTable.Rows.Count == 0) { return new Dictionary<string, object>(); }
             DataRow context = contextTable.Rows[0];
             int releaseId = NORMHelper.Int(context, "ConfigurationReleaseId");
+            selectedReleaseId = releaseId;
+            IsDraftReview = Convert.ToBoolean(context["IsDraftReview"]);
 
             Dictionary<string, object> payload = new Dictionary<string, object>();
             Dictionary<string, object> meta = new Dictionary<string, object>();
@@ -92,8 +104,9 @@ namespace CPlatform.NORM
             meta["isTestBreak"] = Convert.ToBoolean(context["IsTestBreak"]);
             meta["parentImportId"] = context.IsNull("ParentImportId") ? (object)null : NORMHelper.Int(context, "ParentImportId");
             meta["completedUtc"] = Convert.ToString(context["CompletedUtc"]);
-            meta["canPrepare"] = CanPrepare;
-            meta["reportingUrl"] = CanPrepare ? "NORM_Reporting.aspx?run=" + runId.ToString() : "";
+            meta["draftReview"] = IsDraftReview;
+            meta["canPrepare"] = CanPrepare && !IsDraftReview;
+            meta["reportingUrl"] = CanPrepare && !IsDraftReview ? "NORM_Reporting.aspx?run=" + runId.ToString() : "";
             payload["meta"] = meta;
             payload["sourceFiles"] = LoadSourceFiles(importId, runId);
 
@@ -1622,7 +1635,9 @@ namespace CPlatform.NORM
                 item["expected"] = source.IsNull("ExpectedValue") ? (object)null : NORMHelper.Dec(source, "ExpectedValue");
                 item["difference"] = source.IsNull("DifferenceValue") ? (object)null : NORMHelper.Dec(source, "DifferenceValue");
                 item["tolerance"] = source.IsNull("ToleranceValue") ? (object)null : NORMHelper.Dec(source, "ToleranceValue");
-                item["detail"] = NORMHelper.Str(source, "DetailText");
+                item["detail"] = NORMHelper.Str(source, "CheckCode") == NORMStatementEngine.DraftReviewCheckCode
+                    ? "This calculation uses a draft mapping release. Review the source and mapping checks in preparation for a new, approved calculation."
+                    : NORMHelper.Str(source, "DetailText");
                 values.Add(item);
             }
             return values;

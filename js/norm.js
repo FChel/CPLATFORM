@@ -57,14 +57,7 @@
     byId("metaRun").textContent = "#" + data.meta.runId;
     byId("metaFingerprint").textContent = "Fingerprint " + String(data.meta.fingerprint || "").slice(0, 12);
     byId("testBanner").hidden = !data.meta.isTestBreak;
-    byId("reviewPackLink").href = "NORM_ReviewPack.ashx?run=" + encodeURIComponent(data.meta.runId);
-    byId("reviewPackLink").hidden = false;
-    byId("wordExportLink").href = "NORM_WordExport.ashx?run=" + encodeURIComponent(data.meta.runId);
-    byId("wordExportLink").hidden = false;
-    byId("excelExportLink").href = "NORM_ExcelExport.ashx?run=" + encodeURIComponent(data.meta.runId);
-    byId("excelExportLink").hidden = false;
-    byId("mappingExportLink").href = "NORM_MappingExport.ashx?run=" + encodeURIComponent(data.meta.runId);
-    byId("mappingExportLink").hidden = false;
+    configureRunActions();
     applyRoute();
     byId("printStatements").addEventListener("click", requestPrint);
     byId("cancelPrint").addEventListener("click", closePrintReview);
@@ -83,8 +76,24 @@
     scrollToRoutedNote();
   }
 
+  function configureRunActions() {
+    if (!data.meta.draftReview) {
+      byId("reviewPackLink").href = "NORM_ReviewPack.ashx?run=" + encodeURIComponent(data.meta.runId);
+      byId("reviewPackLink").hidden = false;
+      byId("wordExportLink").href = "NORM_WordExport.ashx?run=" + encodeURIComponent(data.meta.runId);
+      byId("wordExportLink").hidden = false;
+      byId("excelExportLink").href = "NORM_ExcelExport.ashx?run=" + encodeURIComponent(data.meta.runId);
+      byId("excelExportLink").hidden = false;
+      byId("mappingExportLink").href = "NORM_MappingExport.ashx?run=" + encodeURIComponent(data.meta.runId);
+      byId("mappingExportLink").hidden = false;
+    } else {
+      byId("publicationView").hidden = true;
+      byId("publicationView").disabled = true;
+    }
+  }
+
   function setView(mode) {
-    viewMode = mode === "publication" ? "publication" : "preparation";
+    viewMode = mode === "publication" && !data.meta.draftReview ? "publication" : "preparation";
     document.body.classList.toggle("norm-publication-view", viewMode === "publication");
     byId("preparationView").classList.toggle("active", viewMode === "preparation");
     byId("publicationView").classList.toggle("active", viewMode === "publication");
@@ -408,7 +417,15 @@
   }
 
   function printHeader(statement) {
-    var draft = publicationIssues().length ? '<div class="norm-print-draft">CONTROLLED DRAFT · OUTSTANDING ASSURANCE ITEMS</div>' : '';
+    var issues = publicationIssues();
+    var draft = issues.length ? '<div class="norm-print-draft">CONTROLLED DRAFT · OUTSTANDING ASSURANCE ITEMS</div>' : '';
+    if (data.meta.draftReview) {
+      var mappingIssues = issues.filter(function (item) {
+        return item.code === "UNMAPPED_DISPOSITION" || item.code === "UNMAPPED_OFFSETTING_ACTIVITY";
+      });
+      draft = '<div class="norm-print-draft">INCOMPLETE · DRAFT MAPPING REVIEW' +
+        mappingIssues.map(function (item) { return '<br>' + esc(item.detail); }).join("") + '</div>';
+    }
     return draft + '<header class="norm-print-head"><span>' + esc(data.meta.entity) + '</span><h1>' + esc(statement.title) + '</h1><p>' +
       (statement.atDate || statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + esc(data.meta.yearCurrent) + '</p></header>';
   }
@@ -448,7 +465,8 @@
       var priorTotal = item.priorAmount !== null && item.priorAmount !== undefined ? Number(item.priorAmount) :
         (priors.length ? priors.reduce(function (total, line) { return total + Number(line.prior || 0); }, 0) : null);
       if (item.code === "N3_2A") {
-        var policyPage = item.narrative ? '<section class="norm-print-page norm-print-note"><h2>Note ' + esc(item.note) + ': Accounting policy</h2>' +
+        var policyPage = item.narrative ? '<section class="norm-print-page norm-print-note">' + (data.meta.draftReview ? printHeader(statement) : '') +
+          '<h2>Note ' + esc(item.note) + ': Accounting policy</h2>' +
           '<div class="norm-accounting-policy"><strong>Written disclosures and accounting policy</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div></section>' : '';
         return '<section class="norm-print-page norm-print-note norm-print-asset-reconciliation">' + printHeader(statement) +
           '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' + assetMovementNoteTable(false) + '</section>' + policyPage;
