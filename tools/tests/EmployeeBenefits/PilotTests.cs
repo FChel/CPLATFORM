@@ -560,6 +560,7 @@ internal static partial class PilotTests
 
     public static void Main(string[] args)
     {
+        CheckDisclosureCompleteness();
         if (args.Length > 1)
         {
             CheckNihracs(args[0], args[1], args.Length > 2 ? args[2] : null);

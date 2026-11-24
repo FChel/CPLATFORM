@@ -69,6 +69,8 @@ public static class NORMReportingFramework
         public string Narrative;
         public string NarrativeStatus;
         public string CompletionStatus;
+        public string CompletenessDetail;
+        internal bool UsesHierarchyAmounts;
         public bool Suggested;
         public bool PotentiallyImmaterial;
         public string RequirementReason;
@@ -265,12 +267,21 @@ public static class NORMReportingFramework
 
     public static List<Disclosure> LoadDisclosures(int runId, int releaseId, ReportingProfile profile)
     {
+        List<NORMDisclosureCompleteness.Finding> checks;
+        return LoadDisclosures(runId, releaseId, profile, out checks);
+    }
+
+    public static List<Disclosure> LoadDisclosures(int runId, int releaseId, ReportingProfile profile,
+        out List<NORMDisclosureCompleteness.Finding> checks)
+    {
         List<Disclosure> values = new List<Disclosure>();
+        checks = new List<NORMDisclosureCompleteness.Finding>();
         if (!IsInstalled()) { return values; }
         List<SourceBucket> sources = LoadSourceBuckets(runId);
         string entityCode = ResolveRunEntity(runId);
         Dictionary<string, List<DemoNoteBucket>> demoNoteFigures = LoadDemoCurrentNoteFigures(runId, entityCode);
-        Dictionary<string, decimal> priorNoteFigures = NORMStartOfYearSetup.LoadPriorNoteFigures(entityCode, NORMStartOfYearSetup.RunFinancialYear(runId));
+        int year = NORMStartOfYearSetup.RunFinancialYear(runId);
+        Dictionary<string, decimal> priorNoteFigures = NORMStartOfYearSetup.LoadPriorNoteFigures(entityCode, year);
         Dictionary<string, string[]> narratives = LoadNarratives(runId, releaseId);
         bool hierarchyNotes = String.Equals(entityCode, "NIHRACS", StringComparison.OrdinalIgnoreCase) &&
             HasHierarchyNoteSource(null, null);
@@ -313,6 +324,7 @@ public static class NORMReportingFramework
             string sourceLine = hierarchyNotes ? NORMHelper.Str(row, "NoteSourceLineCode") : null;
             if (!String.IsNullOrEmpty(sourceLine))
             {
+                item.UsesHierarchyAmounts = true;
                 LoadHierarchyNote(runId, sourceLine, item);
                 decimal amount;
                 if (comparativeNotes != null && comparativeNotes.TryGetValue(sourceLine, out amount))
@@ -338,15 +350,10 @@ public static class NORMReportingFramework
                 item.RequirementReason = item.SourceCount.ToString() + " mapped TB source rows suggest this disclosure";
             else
                 item.RequirementReason = "No selected profile trigger or mapped balance";
-            if (!item.Required) { item.CompletionStatus = "Not applicable"; }
-            else if (item.SourceCount > 0 && (!item.RequiresNarrative || !String.IsNullOrWhiteSpace(item.Narrative)))
-            {
-                item.CompletionStatus = item.NarrativeStatus == "Approved" || item.NarrativeStatus == "Reviewed" ? item.NarrativeStatus : "Generated";
-            }
-            else if (!String.IsNullOrWhiteSpace(item.Narrative)) { item.CompletionStatus = "Draft"; }
-            else { item.CompletionStatus = "Needs input"; }
+            item.CompletionStatus = item.Required ? NORMDisclosureCompleteness.Incomplete : "Not applicable";
             values.Add(item);
         }
+        checks = NORMDisclosureCompleteness.Load(runId, releaseId, entityCode, year, comparativeRun, values);
         return values;
     }
 

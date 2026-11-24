@@ -267,6 +267,19 @@ internal static partial class PilotTests
             }
             if (call.Sql.StartsWith("SELECT StatementLineId,LineCode,LineType,ParentLineCode"))
                 return TableFrom(templates, row => (string)row["StatementCode"] == "SCFREF" && !(bool)row["IsDeactivated"]);
+            if (call.Sql.StartsWith("SELECT r.CalculationRunId,r.ImportId,r.InputFingerprint,c.StatusCode"))
+                return Table("CalculationRunId ImportId InputFingerprint StatusCode", NORMHelper.Committed
+                    .Where(saved => saved.Sql.StartsWith("INSERT dbo.tblNORM_CalculationRun") &&
+                        (saved.InsertedId == (int)call["@run"] || saved.InsertedId == (int)call["@prior"]))
+                    .Select(saved => new object[] { saved.InsertedId, saved["@import"], saved["@fingerprint"], "Draft" }).ToArray());
+            if (call.Sql.StartsWith("SELECT CalculationRunId,CheckCode,ResultCode,ActualValue"))
+                return Table(EvidenceColumns, NORMHelper.Committed
+                    .Where(saved => saved.Sql.StartsWith("INSERT dbo.tblNORM_ValidationResult"))
+                    .Select(saved => new object[] { saved["@run"], saved["@code"], saved["@result"], saved["@actual"],
+                        saved["@expected"], saved["@difference"], saved["@detail"] }).ToArray());
+            if (call.Sql.StartsWith("SELECT CalculationRunId,StatementCode,LineCode,ReportedAmount"))
+                return Table("CalculationRunId StatementCode LineCode ReportedAmount", InsertedResults
+                    .Select(saved => new object[] { saved["@run"], saved["@statement"], saved["@line"], Reported(saved) }).ToArray());
             if (call.Sql.StartsWith("SELECT r.CalculationRunId,r.LineResultId,r.LineCode"))
                 return CashFlowPresentationResults((int)call["@run"], (int)call["@prior"]);
             if (call.Sql.StartsWith("SELECT DisclosureCode,")) return disclosures;
@@ -566,6 +579,7 @@ internal static partial class PilotTests
             call.Sql.StartsWith("INSERT dbo.tblNORM_AccountMap") || call.Sql.StartsWith("INSERT dbo.tblNORM_Import") ||
             call.Sql.StartsWith("UPDATE dbo.tblNORM_Import") || call.Sql.StartsWith("INSERT dbo.tblNORM_TrialBalanceRow")),
             "Cash-flow draft calculation changed its source or mapping configuration.");
+        CheckDraftDisclosureEvidence(run, prior);
         var statement = Invoke(new NORM_Statements(), typeof(NORM_Statements), "BuildDraftCashFlowStatement", run, prior, lineage);
         File.WriteAllText(Path.Combine(output, "cash-flow-presentation.json"), new JavaScriptSerializer().Serialize(new {
             meta = new { yearCurrent = 2026, yearPrior = 2025, entity = "NIHRACS", runId = run, draftReview = true },

@@ -384,7 +384,8 @@
           var source = item.demoSeeded ? '<p class="norm-note-source"><strong>Demo reconstruction source</strong>' + esc(item.currentSourceReference || "Published current-year financial statements") + '</p>' : '';
           var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Written disclosures and accounting policy</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
           return '<article id="' + noteId(item.note || item.code) + '" class="norm-note-card" tabindex="-1"><div class="norm-note-card-head"><div><span>Note ' + esc(item.note || "") + '</span><h3>' + esc(item.title) + '</h3></div><em class="' + statusClass(item.status) + '">' + esc(item.status) + '</em></div>' +
-            table + source + narrative + '</article>';
+            (item.completenessDetail ? '<details class="norm-note-source"><summary>Outstanding disclosure checks</summary><p>' +
+              esc(item.completenessDetail) + '</p></details>' : '') + table + source + narrative + '</article>';
         }).join("") + '</section>';
     }).join("");
     var notApplicable = disclosures.filter(function (item) { return !item.required; });
@@ -545,8 +546,8 @@
 
     var disclosures = data.disclosures || [];
     var requiredDisclosures = disclosures.filter(function (item) { return item.required; });
-    var completedDisclosures = requiredDisclosures.filter(function (item) { return item.status !== "Needs input"; });
-    byId("disclosureProgress").innerHTML = requiredDisclosures.length ? '<span class="norm-kicker">PRIMA disclosure readiness</span><div><strong>' + completedDisclosures.length + ' / ' + requiredDisclosures.length + '</strong><span>generated or drafted</span></div>' +
+    var completedDisclosures = requiredDisclosures.filter(function (item) { return item.status === "Complete (checks)"; });
+    byId("disclosureProgress").innerHTML = requiredDisclosures.length ? '<span class="norm-kicker">Disclosure completeness</span><div><strong>' + completedDisclosures.length + ' / ' + requiredDisclosures.length + '</strong><span>passed all checks</span></div>' +
       '<div class="norm-meter"><i style="width:' + Math.round(100 * completedDisclosures.length / requiredDisclosures.length) + '%"></i></div>' +
       (data.meta.canPrepare ? '<a href="' + esc(data.meta.reportingUrl) + '#disclosure-register">Open disclosure register →</a>' : '') : '';
   }

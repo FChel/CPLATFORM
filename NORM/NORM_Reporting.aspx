@@ -74,11 +74,12 @@
                 <div class="norm-disclosure-content">
                     <div class="norm-disclosure-summary">
                         <article><strong><%= RequiredCount %></strong><span>Required</span></article>
-                        <article><strong><%= GeneratedCount %></strong><span>Generated or drafted</span></article>
+                        <article><strong><%= CompleteCount %></strong><span>Passed all checks</span></article>
                         <article><strong><%= NeedsInputCount %></strong><span>Needs input</span></article>
                         <article><strong><%= NotApplicableCount %></strong><span>Not applicable</span></article>
                     </div>
                     <div class="norm-disclosure-register"><%= DisclosureHtml %></div>
+                    <%= DisclosureChecksHtml %>
                 </div>
             </details>
         </section>
