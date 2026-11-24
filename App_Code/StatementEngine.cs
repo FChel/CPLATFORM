@@ -16,6 +16,9 @@ public static class NORMStatementEngine
     public const string EmployeeDetailType = "employee-detail";
     public const string EmployeeBenefitsCode = "Employee benefits";
     public const string HierarchyDetailType = "hierarchy-detail";
+    public const string DraftReviewCheckCode = "DRAFT_MAPPING_REVIEW";
+    internal const string DraftRevisionSql = "(SELECT ISNULL(MAX(a.AuditEventId),0) FROM dbo.tblNORM_AuditEvent a " +
+        "WHERE a.EntityType='ConfigurationRelease' AND a.EntityId=CONVERT(varchar(60),c.ConfigurationReleaseId))";
 
     private class ImportContext
     {
@@ -28,6 +31,7 @@ public static class NORMStatementEngine
         public string ReleaseVersion;
         public string ReportingEntityName;
         public bool RetainedAnnualSource;
+        public long? DraftRevision;
     }
 
     private class MapEntry
@@ -83,10 +87,17 @@ public static class NORMStatementEngine
         return Run(LoadContext(importId, releaseId), startedBy);
     }
 
+    internal static int RunAnnualDraftReview(int importId, int releaseId, string startedBy)
+    {
+        return Run(LoadContext(importId, releaseId, true), startedBy);
+    }
+
     private static int Run(ImportContext context, string startedBy)
     {
         int importId = context.ImportId;
-        string configurationHash = ConfigurationFingerprint(context.ReleaseId);
+        string configurationHash = context.DraftRevision.HasValue
+            ? "draft-review|" + context.DraftRevision.Value.ToString(CultureInfo.InvariantCulture)
+            : ConfigurationFingerprint(context.ReleaseId);
         string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" + context.ReportingEntityName + "|mapping-validation-v2");
 
         object existing = NORMHelper.Scalar(
@@ -107,6 +118,9 @@ public static class NORMStatementEngine
                 "VALUES (@import,@release,@fingerprint,'Running',@user,@name)",
                 NORMHelper.P("@import", importId), NORMHelper.P("@release", context.ReleaseId),
                 NORMHelper.P("@fingerprint", inputFingerprint), NORMHelper.P("@user", startedBy), NORMHelper.P("@name", context.ReportingEntityName));
+            if (context.DraftRevision.HasValue)
+                AddValidation(connection, transaction, runId, DraftReviewCheckCode, "Draft mapping review", "Blocking", "Fail",
+                    null, null, null, context.DraftRevision.Value.ToString(CultureInfo.InvariantCulture));
             transaction.Commit();
         }
 
@@ -132,9 +146,21 @@ public static class NORMStatementEngine
         {
             try
             {
+                if (context.DraftRevision.HasValue)
+                {
+                    DataTable current = NORMHelper.Query(connection, transaction,
+                        "SELECT " + DraftRevisionSql + " AS DraftRevision FROM dbo.tblNORM_ConfigurationRelease c WITH (UPDLOCK,HOLDLOCK) " +
+                        "WHERE c.ConfigurationReleaseId=@release AND c.StatusCode='Draft' AND c.IsDeactivated=0",
+                        NORMHelper.P("@release", context.ReleaseId));
+                    if (current.Rows.Count != 1 || NORMHelper.Long(current.Rows[0], "DraftRevision") != context.DraftRevision.Value)
+                        throw new InvalidOperationException("The mapping draft changed. Run the draft review again.");
+                    NORMHelper.RequireEntityAccess(context.EntityCode, connection, transaction);
+                }
                 Dictionary<string, MapEntry> mappings = LoadMappings(connection, transaction, context.ReleaseId);
                 Dictionary<string, TemplateLine> templates = LoadTemplates(connection, transaction, context.ReleaseId);
                 bool hierarchy = IsHierarchy(templates, context.RetainedAnnualSource);
+                if (context.DraftRevision.HasValue && !hierarchy)
+                    throw new InvalidOperationException("Draft review requires a configured NIHRACS reporting hierarchy.");
                 HashSet<string> employeeDetails = hierarchy ? null : EmployeeDetailCodes(templates);
                 if ((hierarchy || employeeDetails != null) && !HasReportedAmounts())
                     throw new InvalidOperationException("Install the reported amounts schema before calculating the reporting hierarchy.");
@@ -348,7 +374,9 @@ public static class NORMStatementEngine
                     "INSERT dbo.tblNORM_AuditEvent (EventCode,EntityType,EntityId,DetailText,PerformedBy) " +
                     "VALUES ('CALCULATION_COMPLETED','CalculationRun',@id,@detail,@user)",
                     NORMHelper.P("@id", runId.ToString()),
-                    NORMHelper.P("@detail", "Immutable calculation completed for import " + context.ImportId.ToString() + "."),
+                    NORMHelper.P("@detail", context.DraftRevision.HasValue
+                        ? "Draft mapping review completed for import " + context.ImportId.ToString() + "."
+                        : "Immutable calculation completed for import " + context.ImportId.ToString() + "."),
                     NORMHelper.P("@user", startedBy));
                 transaction.Commit();
             }
@@ -546,19 +574,21 @@ public static class NORMStatementEngine
                 : "Expected exactly ROMAN periods 01-10 as transition evidence and ERP periods 11-12 as statement input.");
     }
 
-    private static ImportContext LoadContext(int importId, int? annualRelease = null)
+    private static ImportContext LoadContext(int importId, int? annualRelease = null, bool draftReview = false)
     {
         DataTable table = NORMHelper.Query(
             (annualRelease.HasValue ? "SELECT i.ImportId,c.ConfigurationReleaseId," : "SELECT i.ImportId,i.ConfigurationReleaseId,") +
             "i.FinancialYear,i.EntityCode,i.SourceType,i.DataFingerprint,c.VersionCode,COALESCE(e.EntityName,i.EntityCode) AS EntityName " +
+            (draftReview ? "," + DraftRevisionSql + " AS DraftRevision " : "") +
             "FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_ConfigurationRelease c " +
             (annualRelease.HasValue ? "ON c.ConfigurationReleaseId=@release AND c.EntityCode=i.EntityCode AND c.FinancialYear=i.FinancialYear " :
                 "ON c.ConfigurationReleaseId = i.ConfigurationReleaseId ") +
             "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.EntityCode=i.EntityCode AND e.FinancialYear=i.FinancialYear AND e.IsDeactivated=0 " +
-            "WHERE i.ImportId = @import AND i.IsDeactivated = 0 AND c.StatusCode = 'Approved' AND c.IsDeactivated = 0 " +
+            "WHERE i.ImportId = @import AND i.IsDeactivated = 0 AND c.IsDeactivated = 0 " +
+            (draftReview ? "AND c.StatusCode='Draft' AND c.EntityCode='NIHRACS' AND c.FinancialYear=2026 " : "AND c.StatusCode='Approved' ") +
             (annualRelease.HasValue ? "AND i.ConfigurationReleaseId IS NULL AND i.ParentImportId IS NULL AND i.IsTestBreak=0 AND i.StatusCode IN ('Imported','Calculated')" : ""),
             NORMHelper.P("@import", importId), NORMHelper.P("@release", annualRelease));
-        if (table.Rows.Count == 0) { throw new InvalidOperationException("The import or its approved configuration release was not found."); }
+        if (table.Rows.Count == 0) { throw new InvalidOperationException(draftReview ? "The retained import or NIHRACS draft was not found." : "The import or its approved configuration release was not found."); }
         DataRow row = table.Rows[0];
         ImportContext context = new ImportContext();
         context.ImportId = importId;
@@ -570,6 +600,7 @@ public static class NORMStatementEngine
         context.ReleaseVersion = NORMHelper.Str(row, "VersionCode");
         context.ReportingEntityName = NORMHelper.Str(row, "EntityName");
         context.RetainedAnnualSource = annualRelease.HasValue;
+        if (draftReview) context.DraftRevision = NORMHelper.Long(row, "DraftRevision");
         return context;
     }
 

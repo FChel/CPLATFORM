@@ -21,7 +21,11 @@
             <a href="NORM_Help.aspx">Help</a>
             <% if (CanPrepare) { %>
                 <a href="NORM_Workspace.aspx">Preparer workspace</a>
-                <a href="NORM_Reporting.aspx?run=<%= selectedRunId %>">Reporting framework</a>
+                <% if (IsDraftReview) { %>
+                    <a href="NORM_Mapping.aspx?release=<%= selectedReleaseId %>">Return to mapping draft</a>
+                <% } else { %>
+                    <a href="NORM_Reporting.aspx?run=<%= selectedRunId %>">Reporting framework</a>
+                <% } %>
                 <a class="norm-button norm-button-small norm-button-statement-action" href="NORM_Import.aspx">Import trial balance</a>
             <% } %>
             <button type="button" id="printStatements" class="norm-button norm-button-small norm-button-quiet norm-button-statement-action">Print</button>
@@ -49,7 +53,7 @@
 
         <section class="norm-document-wrap">
             <div class="norm-viewbar" role="group" aria-label="Statement view">
-                <div><strong>Statement view</strong><span>Preparation evidence or clean publication presentation</span></div>
+                <div><strong>Statement view</strong><span><%= IsDraftReview ? "Draft figures and assurance checks" : "Preparation evidence or clean publication presentation" %></span></div>
                 <div><button type="button" id="preparationView" class="active">Preparation</button><button type="button" id="publicationView">Publication</button></div>
             </div>
             <div class="norm-status-legend"><span><i class="tied"></i>Tied to published baseline</span><span><i class="close"></i>Within tolerance</span><span><i class="variance"></i>Review variance</span><span><i class="mapped"></i>Mapped TB result</span></div>
@@ -57,6 +61,12 @@
                 <strong>Deliberate test break</strong>
                 <span>This is a child copy created to prove that NORM catches an out-of-balance trial balance.</span>
             </div>
+            <% if (IsDraftReview) { %>
+                <div class="norm-test-banner">
+                    <strong>Incomplete statements · draft mapping review</strong>
+                    <span>Check the unmapped source rows and assurance results before preparing the approved calculation.</span>
+                </div>
+            <% } %>
             <div id="runReadiness" class="norm-readiness" hidden></div>
             <article id="statementDocument" class="norm-document"></article>
         </section>
@@ -73,7 +83,7 @@
                 <div><span>Mapped by value</span><strong id="coverageValue">-</strong></div>
                 <div class="norm-meter"><i id="coverageBar"></i></div>
             </div>
-            <% if (CanPrepare) { %>
+            <% if (CanPrepare && !IsDraftReview) { %>
             <div class="norm-proof-card">
                 <span class="norm-kicker">Proof control</span>
                 <strong>Run a genuine break test</strong>
@@ -101,7 +111,7 @@
     <div id="printBook" class="norm-print-book" aria-hidden="true"></div>
 
     <script>window.NORM_DATA = <%= NormDataJson %>;</script>
-    <script src="../js/norm.js?v=20261121-1"></script>
+    <script src="../js/norm.js?v=20261124-1"></script>
 </form>
 </body>
 </html>

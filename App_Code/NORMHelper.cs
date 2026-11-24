@@ -213,12 +213,33 @@ public static class NORMHelper
         return Convert.ToInt32(connection == null ? Scalar(sql, parameters) : Scalar(connection, transaction, sql, parameters)) == 1;
     }
 
+    // Run listings and controlled downloads use this predicate with calculation run alias r.
+    public const string StandardRunPredicate = "NOT EXISTS (SELECT 1 FROM dbo.tblNORM_ValidationResult draft " +
+        "WHERE draft.CalculationRunId=r.CalculationRunId AND draft.CheckCode='" + NORMStatementEngine.DraftReviewCheckCode + "')";
+    private const string CurrentDraftReviewPredicate =
+        "EXISTS (SELECT 1 FROM dbo.tblNORM_ConfigurationRelease c INNER JOIN dbo.tblNORM_ValidationResult draft " +
+        "ON draft.CalculationRunId=r.CalculationRunId AND draft.CheckCode='" + NORMStatementEngine.DraftReviewCheckCode + "' " +
+        "WHERE c.ConfigurationReleaseId=r.ConfigurationReleaseId AND c.StatusCode='Draft' AND c.IsDeactivated=0 " +
+        "AND draft.DetailText=CONVERT(nvarchar(20)," + NORMStatementEngine.DraftRevisionSql + "))";
+
     public static bool CanAccessCompletedRun(int runId)
     {
+        return CanAccessRun(runId, false);
+    }
+
+    public static bool CanAccessStatementRun(int runId)
+    {
+        return CanAccessRun(runId, true);
+    }
+
+    private static bool CanAccessRun(int runId, bool allowDraftReview)
+    {
         if (!HasAuthenticatedIdentity()) { return false; }
+        string currentDraft = allowDraftReview ? " OR " + CurrentDraftReviewPredicate : "";
         string entity = Convert.ToString(Scalar(
             "SELECT i.EntityCode FROM dbo.tblNORM_CalculationRun r INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
-            "WHERE r.CalculationRunId=@run AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0",
+            "WHERE r.CalculationRunId=@run AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0 AND (" +
+            StandardRunPredicate + currentDraft + ")",
             P("@run", runId)));
         return CanPrepareEntity(entity);
     }
@@ -229,7 +250,7 @@ public static class NORMHelper
         DataTable runs = Query(
             "SELECT i.EntityCode,MAX(r.CalculationRunId) AS RunId FROM dbo.tblNORM_CalculationRun r " +
             "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
-            "WHERE r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0 AND i.IsTestBreak=0 " +
+            "WHERE r.StatusCode='Complete' AND r.IsDeactivated=0 AND i.IsDeactivated=0 AND i.IsTestBreak=0 AND " + StandardRunPredicate + " " +
             "GROUP BY i.EntityCode ORDER BY MAX(r.CalculationRunId) DESC");
         foreach (DataRow run in runs.Rows)
         {

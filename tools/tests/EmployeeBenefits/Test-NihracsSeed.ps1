@@ -31,6 +31,17 @@ function Assert-Rejected([string]$seed, [string]$id, [int]$number, [string]$mess
     throw "Seed unexpectedly accepted release $id."
 }
 
+function Read-SqlConstant([string]$source, [string]$name, [hashtable]$references = @{}) {
+    $expression = [regex]::Match($source, '\bconst string ' + $name + '\s*=\s*([^;]+);')
+    if (!$expression.Success) { throw "Could not find the production constant $name." }
+    $parts = foreach ($part in ($expression.Groups[1].Value.Trim() -split '\s+\+\s+')) {
+        if ($references.ContainsKey($part)) { $references[$part] }
+        elseif ($part -match '^"[^"]*"$') { ConvertFrom-Json -InputObject $part }
+        else { throw "Unexpected component in production constant $name." }
+    }
+    $parts -join ''
+}
+
 try {
     $master.Open()
     if ((Invoke-SeedTestSql $master "SELECT CONVERT(int,SERVERPROPERTY('IsLocalDB'));" -Scalar) -ne 1) {
@@ -153,6 +164,55 @@ IF (SELECT COUNT(*) FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=
     Write-Output 'PASS LocalDB: ten cash-flow details and nine totals, draft-only configuration, and no GL writes.'
     if ($protected -cne (Invoke-SeedTestSql $fixture $protectedQuery -Scalar)) { throw 'The migration or seed changed protected fixture data.' }
     Write-Output 'PASS LocalDB: Drafts 10 and 19, retained Imports 23–25 with source bytes and rows, and Employee Benefits UAT fixture fingerprints unchanged.'
+
+    $appCode = Join-Path $PSScriptRoot '../../../App_Code'
+    $engine = Get-Content -LiteralPath (Join-Path $appCode 'StatementEngine.cs') -Raw
+    $helper = Get-Content -LiteralPath (Join-Path $appCode 'NORMHelper.cs') -Raw
+    $marker = Read-SqlConstant $engine 'DraftReviewCheckCode'
+    $revision = Read-SqlConstant $engine 'DraftRevisionSql'
+    $references = @{'NORMStatementEngine.DraftReviewCheckCode'=$marker; 'NORMStatementEngine.DraftRevisionSql'=$revision}
+    $standard = Read-SqlConstant $helper 'StandardRunPredicate' $references
+    $current = Read-SqlConstant $helper 'CurrentDraftReviewPredicate' $references
+    $reviewSql = @'
+BEGIN TRANSACTION;
+INSERT dbo.tblNORM_CalculationRun (ImportId,ConfigurationReleaseId,InputFingerprint,StatusCode,StartedBy)
+VALUES (25,11,REPLICATE('4',64),'Complete','LocalDB fixture');
+DECLARE @review int = SCOPE_IDENTITY();
+INSERT dbo.tblNORM_ValidationResult (CalculationRunId,CheckCode,CheckLabel,SeverityCode,ResultCode,DetailText)
+SELECT @review,'__MARKER__','Draft mapping review','Blocking','Fail',CONVERT(nvarchar(20),__REVISION__)
+FROM dbo.tblNORM_ConfigurationRelease c WHERE c.ConfigurationReleaseId=11;
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=28 AND (__STANDARD__))
+   OR EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=@review AND (__STANDARD__))
+   OR NOT EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=@review AND (__CURRENT__))
+    THROW 51001, 'Approved run and current draft review were not kept separate.', 1;
+
+INSERT dbo.tblNORM_AccountMap (ConfigurationReleaseId,FinancialYear,EntityCode,GlCode,StatementLine)
+VALUES (11,2026,'NIHRACS','10001','EMP_WAGES');
+INSERT dbo.tblNORM_AuditEvent (EventCode,EntityType,EntityId,DetailText,PerformedBy)
+VALUES ('MAPPING_WORKBOOK_APPLIED','ConfigurationRelease','11','Mapping edited','LocalDB fixture');
+IF EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=@review AND (__CURRENT__))
+    THROW 51001, 'A prior draft review survived a mapping change.', 1;
+
+INSERT dbo.tblNORM_CalculationRun (ImportId,ConfigurationReleaseId,InputFingerprint,StatusCode,StartedBy)
+VALUES (25,11,REPLICATE('5',64),'Complete','LocalDB fixture');
+SET @review = SCOPE_IDENTITY();
+INSERT dbo.tblNORM_ValidationResult (CalculationRunId,CheckCode,CheckLabel,SeverityCode,ResultCode,DetailText)
+SELECT @review,'__MARKER__','Draft mapping review','Blocking','Fail',CONVERT(nvarchar(20),__REVISION__)
+FROM dbo.tblNORM_ConfigurationRelease c WHERE c.ConfigurationReleaseId=11;
+IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=@review AND (__CURRENT__))
+    THROW 51001, 'A fresh review could not be read after a mapping change.', 1;
+
+UPDATE dbo.tblNORM_StatementLine SET LineLabel='Fixture label change' WHERE ConfigurationReleaseId=11 AND LineCode='EMP_WAGES';
+INSERT dbo.tblNORM_AuditEvent (EventCode,EntityType,EntityId,DetailText,PerformedBy)
+VALUES ('NIHRACS_HIERARCHY_CHANGED','ConfigurationRelease','11','Statement label edited','LocalDB fixture');
+IF EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=@review AND (__STANDARD__ OR __CURRENT__))
+    THROW 51001, 'A prior draft review survived a label change.', 1;
+ROLLBACK TRANSACTION;
+'@
+    Invoke-SeedTestSql $fixture ($reviewSql.Replace('__MARKER__',$marker).Replace('__REVISION__',$revision).Replace('__STANDARD__',$standard).Replace('__CURRENT__',$current))
+    if ($protected -cne (Invoke-SeedTestSql $fixture $protectedQuery -Scalar)) { throw 'Review isolation test changed protected fixture data.' }
+    Write-Output 'PASS LocalDB: production run predicates exclude reviews from controlled runs and invalidate them after audited mapping and label changes.'
 } finally {
     if ($fixture) { $fixture.Dispose() }
     if ($created) { Invoke-SeedTestSql $master "DROP DATABASE [$database];" }

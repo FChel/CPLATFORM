@@ -168,6 +168,15 @@ namespace CPlatform.NORM
             catch (Exception error) { Show("Recalculation could not be completed", NORMErrorHandling.UserMessage(error, System.Web.HttpContext.Current, "Mapping"), false); BindSelectedRelease(); }
         }
 
+        protected void DraftReviewButton_Click(object sender, EventArgs e)
+        {
+            RunAction(delegate {
+                int releaseId = RequireReleaseId("Select the mapping draft first.");
+                int runId = NORMMappingManagement.CalculateDraftReview(releaseId, NORMHelper.CurrentUserId());
+                Response.Redirect("NORM_Statements.aspx?run=" + runId.ToString(CultureInfo.InvariantCulture), true);
+            }, "Draft review calculated", "Open the draft statements and review the assurance checks.");
+        }
+
         private void BindSelectedRelease()
         {
             int releaseId = CurrentReleaseId;
@@ -184,6 +193,7 @@ namespace CPlatform.NORM
             WorkflowPanel.Visible = true; UploadPanel.Visible = draft; ApprovalPanel.Visible = draft && IsAdministrator; RecalculatePanel.Visible = approved;
             DataTable categories = draft ? NORMMappingManagement.EmployeeCategories(releaseId) : null;
             DataTable parents = categories == null ? null : NORMMappingManagement.NihracsCategoryParents(releaseId);
+            DraftReviewPanel.Visible = draft && parents != null && parents.Rows.Count > 0;
             EmployeeCategoriesPanel.Visible = categories != null && (parents == null || parents.Rows.Count > 0);
             CategoryStructurePanel.Visible = EmployeeCategoriesPanel.Visible && IsAdministrator;
             CategoryHeading = parents == null ? "Employee benefits categories" : "Reporting and cash-flow classifications";
@@ -200,7 +210,7 @@ namespace CPlatform.NORM
             if (categories != null) EmployeeCategoriesHtml = RenderEmployeeCategories(categories);
             DownloadWorkbookLink.Visible = draft; DownloadWorkbookLink.NavigateUrl = "NORM_MappingWorkbook.ashx?release=" + releaseId.ToString(CultureInfo.InvariantCulture);
             ApprovalNote.Text = draft ? (IsAdministrator ? "" : "<p class=\"norm-muted\">An active NORM administrator must approve this release.</p>") : "<p class=\"norm-success-copy\">Approved by " + Enc(NORMHelper.Str(release, "ApprovedBy")) + " on " + Enc(Convert.ToString(release["ApprovedUtc"])) + ". This version is locked.</p>";
-            RecalculateNote.Text = approved ? "" : "<p class=\"norm-muted\">Approval is required before recalculation.</p>";
+            RecalculateNote.Text = approved || DraftReviewPanel.Visible ? "" : "<p class=\"norm-muted\">Approval is required before recalculation.</p>";
             ReleaseSummaryHtml = "<strong>" + Enc(NORMHelper.Str(release, "StatusCode")) + " · " + Enc(NORMHelper.Str(release, "VersionCode")) + "</strong><span>Based on " + Enc(NORMHelper.Str(release, "ParentVersion")) + "</span><small>" + Enc(NORMHelper.Str(release, "ChangeReason")) + "</small>";
 
             NORMMappingValidation validation = NORMMappingManagement.Validate(releaseId); ValidationStatus = validation.CanApprove ? (validation.Warnings.Count == 0 ? "Ready" : "Ready with warnings") : "Action required"; ValidationHtml = RenderValidation(validation);

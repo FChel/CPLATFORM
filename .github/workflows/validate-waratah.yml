@@ -19,6 +19,11 @@ jobs:
       - name: Check POD review rules and lifecycle
         shell: powershell
         run: ./tools/Test-Pord.ps1
+      - name: Check NORM calculation, presentation and Defence workflows
+        shell: powershell
+        run: |
+          ./tools/tests/EmployeeBenefits/Run.ps1
+          ./tools/tests/Increment1B2/Run.ps1 -SamplePath './docs/Trial Balance Examples/Defence TB - ERP Format FY26.xlsx'
       - name: Compile and package tracked application files
         shell: powershell
         run: ./tools/deploy/New-WaratahPackage.ps1 -Commit $env:GITHUB_SHA -OutputDirectory "$env:RUNNER_TEMP/waratah-validation" -Compile
