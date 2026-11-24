@@ -83,6 +83,18 @@ internal static class ComparativeLocalDbTests
             total += contribution;
         }
         Check(lineage.Rows.Count == 4 && total == exactNet, "Cash net does not reconcile to its retained source rows.");
+        DataTable cashBalances = NORMHelper.Query(
+            "SELECT r.LineCode,t.ImportId,l.SourceAmount FROM dbo.tblNORM_Lineage l " +
+            "JOIN dbo.tblNORM_LineResult r ON r.LineResultId=l.LineResultId " +
+            "JOIN dbo.tblNORM_TrialBalanceRow t ON t.TbRowId=l.TbRowId " +
+            "WHERE r.CalculationRunId=@run AND r.StatementCode='SCF' AND r.LineCode IN ('CF_CSH_CLOSE','CF_CSH_OPEN') " +
+            "AND t.GlAccount='70000' AND l.SourceAmount=t.AccumBalance ORDER BY r.LineCode", NORMHelper.P("@run", run));
+        Check(cashBalances.Rows.Count == 2 &&
+            NORMHelper.Int(cashBalances.Rows[0], "ImportId") == import &&
+            NORMHelper.Dec(cashBalances.Rows[0], "SourceAmount") == (import == 32 ? 10498.99m : 12500m) &&
+            NORMHelper.Int(cashBalances.Rows[1], "ImportId") == preceding &&
+            NORMHelper.Dec(cashBalances.Rows[1], "SourceAmount") == (import == 32 ? 12500m : 10000m),
+            "Opening or closing cash lost its source identity or original cents.");
         string detail = Convert.ToString(NORMHelper.Scalar("SELECT DetailText FROM dbo.tblNORM_ValidationResult WHERE " +
             "CalculationRunId=@run AND CheckCode='CASH_FLOW_RECONCILIATION' AND SeverityCode='Blocking' AND ResultCode='Fail' " +
             "AND ActualValue=@net AND ExpectedValue=@movement AND DifferenceValue=@difference",

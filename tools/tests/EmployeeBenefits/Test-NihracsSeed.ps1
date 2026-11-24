@@ -75,8 +75,8 @@ SET IDENTITY_INSERT dbo.tblNORM_Import ON;
 INSERT dbo.tblNORM_Import (ImportId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,
     SourceFileBytes,StatusCode,ImportedBy,AnnualSourceApprovalSnapshot,[RowCount])
 SELECT v.ImportId,v.FinancialYear,'NIHRACS','ERP','cash-fixture.xlsx',REPLICATE('7',64),
-    REPLICATE('0',62)+CONVERT(varchar(2),v.ImportId),1,'Imported','LocalDB fixture',@snapshot,v.RowCount
-FROM (VALUES (32,2026,6),(33,2025,5),(34,2024,4)) v(ImportId,FinancialYear,RowCount);
+    REPLICATE('0',62)+CONVERT(varchar(2),v.ImportId),1,'Imported','LocalDB fixture',@snapshot,v.DetailRows
+FROM (VALUES (32,2026,6),(33,2025,5),(34,2024,4)) v(ImportId,FinancialYear,DetailRows);
 SET IDENTITY_INSERT dbo.tblNORM_Import OFF;
 INSERT dbo.tblNORM_ImportFile (ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,[RowCount],FileContent)
 SELECT ImportId,'ERP',SourceFileName,SourceFileHash,1,[RowCount],0x07 FROM dbo.tblNORM_Import WHERE ImportId BETWEEN 32 AND 34;
@@ -193,7 +193,8 @@ IF EXISTS (SELECT 1 FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=
     Invoke-SeedTestSql $fixture ($seed.Replace('DECLARE @ReleaseId int = NULL;', 'DECLARE @ReleaseId int = 19;'))
     Invoke-SeedTestSql $fixture @'
 INSERT dbo.tblNORM_AccountMap (ConfigurationReleaseId,FinancialYear,EntityCode,GlCode,StatementLine)
-VALUES (10,2026,'NIHRACS','10001',NULL), (18,2026,'UAT_EMP_PILOT','10001','EMP_WAGES');
+VALUES (10,2026,'NIHRACS','10001',NULL), (18,2026,'UAT_EMP_PILOT','10001','EMP_WAGES'),
+       (19,2026,'NIHRACS','10001','EMP_WAGES'),(19,2026,'NIHRACS','70000','CSH_COH');
 SET IDENTITY_INSERT dbo.tblNORM_Import ON;
 INSERT dbo.tblNORM_Import (ImportId,ConfigurationReleaseId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,SourceFileBytes,StatusCode,ImportedBy)
 SELECT v.ImportId,v.ReleaseId,v.FinancialYear,v.EntityCode,'ERP','fixture.xlsx',REPLICATE('1',64),
