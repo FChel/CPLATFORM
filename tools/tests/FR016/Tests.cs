@@ -167,7 +167,7 @@ public static class Tests
                 Type linesType=method.GetParameters()[15].ParameterType;
                 using(var c=NORMHelper.OpenConnection()) using(var t=c.BeginTransaction(System.Data.IsolationLevel.ReadCommitted))
                 {
-                    method.Invoke(null,new object[]{c,t,1,2,value,200m,200m,new NORMStatementEngine.UnmappedSourceReview(),0m,0m,0m,0m,0m,0m,0,Activator.CreateInstance(linesType),new Dictionary<string,decimal>(),false});
+                    method.Invoke(null,new object[]{c,t,1,2,value,200m,200m,new NORMStatementEngine.UnmappedSourceReview(),0m,0m,0m,0m,0m,0m,0,Activator.CreateInstance(linesType),new Dictionary<string,decimal>(),false,false,false});
                     t.Commit();
                 }
                 var check=NORMHelper.Committed.Find(delegate(NORMHelper.Call x) {return x.Values.ContainsKey("@code") && (string)x["@code"]=="DEBITS_EQUAL_CREDITS";});

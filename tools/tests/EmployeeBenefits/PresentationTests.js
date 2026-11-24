@@ -58,6 +58,8 @@ if (draftReview) {
   pages.forEach(page => {
     assert.match(page[1], /INCOMPLETE · DRAFT MAPPING REVIEW/);
     assert.match(page[1], /10 unmapped G\/L account/);
+    assert.match(page[1], /FY2025: \d+ unmapped G\/L account/);
+    assert.match(page[1], /FY2026: 10 unmapped G\/L account/);
   });
   console.log("PASS draft review stays out of publication, hides controlled downloads and labels all printed sections incomplete");
 }
@@ -79,6 +81,26 @@ if (nihracs) {
   assert.equal(displayedAmount(window.printBook, "Total employee benefits", 0), "8,291");
   assert.equal(displayedAmount(window.printBook, "Term deposits", 0), "407");
   assert.equal(displayedAmount(window.printBook, "Net assets", 1), "100");
+  if (draftReview) {
+    const pair = JSON.parse(fs.readFileSync(path.join(output, "comparative-presentation.json"), "utf8"));
+    pair.meta.draftReview = true;
+    pair.validations = data.validations;
+    window.NORM_DATA = pair;
+    vm.runInNewContext(source, { window, document });
+    const current = pair.employeeCurrent.toLocaleString("en-AU");
+    const prior = pair.employeePrior.toLocaleString("en-AU");
+    assert.match(window.income, /FY2025 source: Import #24/);
+    assert.match(window.income, /data-prior-row=/);
+    for (const html of [window.income, window.printBook]) {
+      assert.equal(displayedAmount(html, "Employee benefits", 1), current);
+      assert.equal(displayedAmount(html, "Employee benefits", 2), prior);
+    }
+    for (const html of [window.notes, window.printBook]) {
+      assert.equal(displayedAmount(html, "Total employee benefits", 0), current);
+      assert.equal(displayedAmount(html, "Total employee benefits", 1), prior);
+    }
+    console.log("PASS comparative face and note figures agree in web and print, with both years' warnings");
+  }
 } else {
   assert.equal(displayedAmount(window.income, "Employee benefits", 1), total);
   assert.equal(displayedAmount(window.income, "Total expenses", 1), total);

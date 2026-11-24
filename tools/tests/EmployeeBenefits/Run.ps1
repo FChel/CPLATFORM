@@ -11,7 +11,7 @@ $options = @('/nologo', '/target:exe', '/define:EMPLOYEE_BENEFITS_TESTS', "/out:
     '/r:System.Data.dll', '/r:System.Data.DataSetExtensions.dll', '/r:System.Drawing.dll', '/r:System.Web.dll', '/r:System.Web.Extensions.dll', "/r:$epplus")
 foreach ($name in @('StatementEngine','NORMReportingFramework','NORMStatementEnhancements','NORMAdministeredStatements',
     'NORMWordExport','NORMFinancialStatementsExcel','NORMImportModels','NORMCrypto','NORMErrorHandling',
-    'NORMMappingManagement','NORMAnnualSourceConfiguration')) {
+    'NORMMappingManagement','NORMAnnualSourceConfiguration','NihracsTrialBalanceImporter')) {
     $source = [IO.File]::ReadAllText((Join-Path $root "App_Code/$name.cs"))
     $target = Join-Path $output "$name.cs"
     [IO.File]::WriteAllText($target, $source.Replace('using System.Data.OleDb;', 'using TestDb;'))

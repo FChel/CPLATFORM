@@ -44,6 +44,7 @@
             <div id="profileSummary" class="norm-profile-summary"></div>
             <div class="norm-rail-heading norm-rail-heading-spaced">Evidence</div>
             <button type="button" id="unmappedButton" class="norm-unmapped-button"></button>
+            <button type="button" id="priorUnmappedButton" class="norm-unmapped-button" hidden></button>
             <div class="norm-run-stamp">
                 <span>Calculation run</span>
                 <strong id="metaRun">-</strong>

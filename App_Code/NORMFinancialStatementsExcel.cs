@@ -51,6 +51,7 @@ namespace CPlatform.NORM
             public string Note;
             public decimal? Current;
             public bool HasReportedCurrent;
+            public bool HasReportedPrior;
             public decimal? Prior;
             public decimal? Budget;
             public string FormulaSpec;
@@ -342,6 +343,8 @@ namespace CPlatform.NORM
             if (NORMReportingFramework.IsHierarchyFace(table))
             {
                 Dictionary<string, decimal> reported = NORMReportingFramework.LoadReportedHierarchyFace(model.RunId, code);
+                Dictionary<string, decimal> comparative = NORMReportingFramework.LoadReportedHierarchyFace(
+                    NORMStatementEngine.ComparativeRunId(model.RunId), code);
                 foreach (DataRow source in table.Rows)
                 {
                     FaceRow row = DataRowToFace(source);
@@ -350,6 +353,11 @@ namespace CPlatform.NORM
                     {
                         row.Current = amount;
                         row.HasReportedCurrent = true;
+                    }
+                    if (row.Code != null && comparative.TryGetValue(row.Code, out amount))
+                    {
+                        row.Prior = amount;
+                        row.HasReportedPrior = true;
                     }
                     if (row.Type == "section") row.Type = "subsection";
                     rows.Add(row);
@@ -685,7 +693,7 @@ namespace CPlatform.NORM
                 string[] terms = item.FormulaSpec.Split('|');
                 for (int col = 3; col <= 5; col++)
                 {
-                    if (col == 3 && item.HasReportedCurrent) continue;
+                    if ((col == 3 && item.HasReportedCurrent) || (col == 4 && item.HasReportedPrior)) continue;
                     List<string> formulaTerms = new List<string>();
                     for (int t = 0; t < terms.Length; t++)
                     {

@@ -17,6 +17,15 @@ public static class NORMStatementEngine
     public const string EmployeeBenefitsCode = "Employee benefits";
     public const string HierarchyDetailType = "hierarchy-detail";
     public const string DraftReviewCheckCode = "DRAFT_MAPPING_REVIEW";
+    public const string ComparativePeriodCheckCode = "COMPARATIVE_PERIOD";
+    private const string ComparativeRunCheckCode = "COMPARATIVE_RUN";
+    // Link the two immutable runs through the existing assurance record on the reporting-year run.
+    private const string ComparativeRunSql =
+        "SELECT p.CalculationRunId FROM dbo.tblNORM_ValidationResult link " +
+        "JOIN dbo.tblNORM_CalculationRun p ON p.CalculationRunId=link.ActualValue " +
+        "JOIN dbo.tblNORM_CalculationRun r ON r.CalculationRunId=link.CalculationRunId " +
+        "WHERE r.CalculationRunId=@run AND link.CheckCode='" + ComparativeRunCheckCode +
+        "' AND p.ConfigurationReleaseId=r.ConfigurationReleaseId AND p.StatusCode='Complete' AND p.IsDeactivated=0";
     internal const string DraftRevisionSql = "(SELECT ISNULL(MAX(a.AuditEventId),0) FROM dbo.tblNORM_AuditEvent a " +
         "WHERE a.EntityType='ConfigurationRelease' AND a.EntityId=CONVERT(varchar(60),c.ConfigurationReleaseId))";
 
@@ -82,23 +91,29 @@ public static class NORMStatementEngine
         return Run(LoadContext(importId), startedBy);
     }
 
-    internal static int RunAnnualSource(int importId, int releaseId, string startedBy)
+    internal static int RunAnnualSource(int importId, int releaseId, string startedBy, int? comparativeImportId = null)
     {
-        return Run(LoadContext(importId, releaseId), startedBy);
+        return Run(LoadContext(importId, releaseId), startedBy, comparativeImportId.HasValue
+            ? LoadContext(comparativeImportId.Value, releaseId, comparativePeriod: true) : null);
     }
 
-    internal static int RunAnnualDraftReview(int importId, int releaseId, string startedBy)
+    internal static int RunAnnualDraftReview(int importId, int comparativeImportId, int releaseId, string startedBy)
     {
-        return Run(LoadContext(importId, releaseId, true), startedBy);
+        return Run(LoadContext(importId, releaseId, true), startedBy, LoadContext(comparativeImportId, releaseId, true, true));
     }
 
-    private static int Run(ImportContext context, string startedBy)
+    private static int Run(ImportContext context, string startedBy, ImportContext comparative = null)
     {
         int importId = context.ImportId;
         string configurationHash = context.DraftRevision.HasValue
             ? "draft-review|" + context.DraftRevision.Value.ToString(CultureInfo.InvariantCulture)
             : ConfigurationFingerprint(context.ReleaseId);
-        string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" + context.ReportingEntityName + "|mapping-validation-v2");
+        if (comparative != null && (comparative.FinancialYear != context.FinancialYear - 1 ||
+            comparative.DraftRevision != context.DraftRevision))
+            throw new InvalidOperationException("The annual source years or mapping revision changed. Reload and calculate again.");
+        string comparison = comparative == null ? "" : "|comparative-v1|" + comparative.ImportId + "|" + comparative.FileHash;
+        string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" +
+            context.ReportingEntityName + "|mapping-validation-v2" + comparison);
 
         object existing = NORMHelper.Scalar(
             "SELECT TOP 1 CalculationRunId FROM dbo.tblNORM_CalculationRun " +
@@ -112,12 +127,7 @@ public static class NORMStatementEngine
         using (OleDbConnection connection = NORMHelper.OpenConnection())
         using (OleDbTransaction transaction = connection.BeginTransaction())
         {
-            runId = NORMHelper.InsertId(connection, transaction,
-                "INSERT dbo.tblNORM_CalculationRun " +
-                "(ImportId,ConfigurationReleaseId,InputFingerprint,StatusCode,StartedBy,ReportingEntityName) " +
-                "VALUES (@import,@release,@fingerprint,'Running',@user,@name)",
-                NORMHelper.P("@import", importId), NORMHelper.P("@release", context.ReleaseId),
-                NORMHelper.P("@fingerprint", inputFingerprint), NORMHelper.P("@user", startedBy), NORMHelper.P("@name", context.ReportingEntityName));
+            runId = InsertRun(connection, transaction, context, startedBy, inputFingerprint);
             if (context.DraftRevision.HasValue)
                 AddValidation(connection, transaction, runId, DraftReviewCheckCode, "Draft mapping review", "Blocking", "Fail",
                     null, null, null, context.DraftRevision.Value.ToString(CultureInfo.InvariantCulture));
@@ -126,7 +136,7 @@ public static class NORMStatementEngine
 
         try
         {
-            Calculate(runId, context, startedBy);
+            Calculate(runId, context, startedBy, comparative, inputFingerprint);
             return runId;
         }
         catch (Exception error)
@@ -139,7 +149,24 @@ public static class NORMStatementEngine
         }
     }
 
-    private static void Calculate(int runId, ImportContext context, string startedBy)
+    public static int ComparativeRunId(int runId)
+    {
+        return Convert.ToInt32(NORMHelper.Scalar(ComparativeRunSql, NORMHelper.P("@run", runId)));
+    }
+
+    private static int InsertRun(OleDbConnection connection, OleDbTransaction transaction, ImportContext context,
+        string startedBy, string inputFingerprint)
+    {
+        return NORMHelper.InsertId(connection, transaction,
+            "INSERT dbo.tblNORM_CalculationRun " +
+            "(ImportId,ConfigurationReleaseId,InputFingerprint,StatusCode,StartedBy,ReportingEntityName) " +
+            "VALUES (@import,@release,@fingerprint,'Running',@user,@name)",
+            NORMHelper.P("@import", context.ImportId), NORMHelper.P("@release", context.ReleaseId),
+            NORMHelper.P("@fingerprint", inputFingerprint), NORMHelper.P("@user", startedBy), NORMHelper.P("@name", context.ReportingEntityName));
+    }
+
+    private static void Calculate(int runId, ImportContext context, string startedBy, ImportContext comparative,
+        string inputFingerprint)
     {
         using (OleDbConnection connection = NORMHelper.OpenConnection())
         using (OleDbTransaction transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
@@ -173,211 +200,22 @@ public static class NORMStatementEngine
                     else if (employeeDetails != null && employeeDetails.Contains(entry.StatementLine ?? ""))
                         entry.AccountType = "Expense";
                 }
-                Dictionary<string, decimal> published = LoadPublished(connection, transaction, context.ReleaseId);
-                DataTable rows = NORMHelper.Query(connection, transaction,
-                    "SELECT TbRowId,SourceLedger,GlAccount,GlText,DebitMovement,CreditMovement,AccumBalance,SourceCompanyCode,ReportingStream" +
-                    (context.RetainedAnnualSource ? ",SourceDebit,SourceCredit" : "") + " FROM dbo.tblNORM_TrialBalanceRow " +
-                    "WHERE ImportId = @import AND IsDeactivated = 0 ORDER BY TbRowId",
-                    NORMHelper.P("@import", context.ImportId));
-
-                Dictionary<string, LineAccumulation> lines = new Dictionary<string, LineAccumulation>(StringComparer.OrdinalIgnoreCase);
-                decimal totalNet = 0m;
-                decimal totalAbs = 0m;
-                decimal mappedAbs = 0m;
-                decimal asset = 0m;
-                decimal liability = 0m;
-                decimal equity = 0m;
-                decimal income = 0m;
-                decimal expense = 0m;
-                decimal classifiedCashMovement = 0m;
-                var unmappedRows = new List<DataRow>();
-                int unsafeCashClassCount = 0;
-
-                for (int i = 0; i < rows.Rows.Count; i++)
+                bool requireCompleteMapping = comparative != null && !context.DraftRevision.HasValue;
+                if (comparative != null)
                 {
-                    DataRow row = rows.Rows[i];
-                    long tbRowId = NORMHelper.Long(row, "TbRowId");
-                    string gl = NORMHelper.Str(row, "GlAccount");
-                    decimal sourceAmount = NORMHelper.Dec(row, "AccumBalance");
-                    decimal sourceMovement = NORMHelper.Dec(row, "DebitMovement") + NORMHelper.Dec(row, "CreditMovement");
-                    totalNet += sourceAmount;
-                    totalAbs += Math.Abs(sourceAmount);
-
-                    MapEntry mapping = null;
-                    TemplateLine template = null;
-                    bool mapped = gl != null && mappings.TryGetValue(gl, out mapping) &&
-                        !String.IsNullOrWhiteSpace(mapping.StatementLine) && IsKnownType(mapping.AccountType) &&
-                        templates.TryGetValue(mapping.StatementLine, out template) && template.CalculationKind == "Mapped";
-                    if (!mapped) { mapping = null; template = null; }
-
-                    string lineCode = mapped ? mapping.StatementLine : "UNMAPPED";
-                    if (hierarchy && template != null) lineCode = template.LineCode;
-                    string statementCode = template == null ? "POOL" : template.StatementCode;
-                    decimal presented = sourceAmount / 1000m;
-                    if (mapped && (hierarchy && template != null && !String.IsNullOrEmpty(template.NaturalSign)
-                        ? template.NaturalSign == "C" : IsCreditType(mapping.AccountType))) { presented = -presented; }
-
-                    if (mapped)
-                    {
-                        mappedAbs += Math.Abs(sourceAmount);
-                        decimal normal = sourceAmount / 1000m;
-                        if (mapping.AccountType == "Asset") { asset += normal; }
-                        else if (mapping.AccountType == "Liability") { liability += -normal; }
-                        else if (mapping.AccountType == "Equity") { equity += -normal; }
-                        else if (mapping.AccountType == "Income") { income += -normal; }
-                        else if (mapping.AccountType == "Expense") { expense += normal; }
-                        if (!String.IsNullOrWhiteSpace(mapping.CashFlowClass))
-                        {
-                            if (IsCashFlowClassSafe(mapping.CashFlowClass))
-                                classifiedCashMovement += CashFlowContribution(mapping.CashFlowClass, sourceMovement / 1000m);
-                            else
-                                unsafeCashClassCount++;
-                        }
-                    }
-                    else { unmappedRows.Add(row); }
-
-                    string key = statementCode + "|" + lineCode;
-                    LineAccumulation accumulation;
-                    if (!lines.TryGetValue(key, out accumulation))
-                    {
-                        accumulation = new LineAccumulation();
-                        accumulation.StatementCode = statementCode;
-                        accumulation.LineCode = lineCode;
-                        accumulation.StatementLineId = template == null ? (int?)null : template.StatementLineId;
-                        lines[key] = accumulation;
-                    }
-                    accumulation.ComputedAmount += presented;
-                    SourceContribution contribution = new SourceContribution();
-                    contribution.TbRowId = tbRowId;
-                    contribution.SourceAmount = sourceAmount;
-                    contribution.PresentedAmount = presented;
-                    contribution.Mapping = mapping;
-                    accumulation.Sources.Add(contribution);
+                    int priorRun = InsertRun(connection, transaction, comparative, startedBy,
+                        NORMCrypto.Sha256(inputFingerprint + "|comparative-period"));
+                    AddValidation(connection, transaction, priorRun, ComparativePeriodCheckCode,
+                        "Comparative calculation component", "Information", "Pass", runId, null, null,
+                        "Component of calculation " + runId + ". Open the reporting-year calculation to review both periods.");
+                    CalculatePeriod(connection, transaction, priorRun, comparative, startedBy, mappings, templates,
+                        hierarchy, employeeDetails, true, requireCompleteMapping);
+                    AddValidation(connection, transaction, runId, ComparativeRunCheckCode, "Calculated comparative",
+                        "Information", "Pass", priorRun, null, null, "FY" + comparative.FinancialYear +
+                        " uses retained import " + comparative.ImportId + " and the reporting-year configuration.");
                 }
-
-                /* Persist zero-valued template lines as explicit results. A
-                   missing mapping must never make a disclosure line vanish. */
-                foreach (KeyValuePair<string, TemplateLine> templateItem in templates)
-                {
-                    TemplateLine template = templateItem.Value;
-                    if (template.CalculationKind != "Mapped") { continue; }
-                    string templateKey = template.StatementCode + "|" + template.LineCode;
-                    if (!lines.ContainsKey(templateKey))
-                    {
-                        LineAccumulation empty = new LineAccumulation();
-                        empty.StatementCode = template.StatementCode;
-                        empty.LineCode = template.LineCode;
-                        empty.StatementLineId = template.StatementLineId;
-                        lines[templateKey] = empty;
-                    }
-                }
-
-                if (employeeDetails != null)
-                {
-                    foreach (string detailCode in employeeDetails)
-                    {
-                        LineAccumulation detail = lines["SOCI|" + detailCode];
-                        detail.ReportedAmount = RoundEmployeeAmount(detail.ComputedAmount);
-                    }
-                }
-                if (hierarchy) CalculateHierarchy(templates, lines);
-                else AddFormulaLines(connection, transaction, context.ReleaseId, lines, employeeDetails);
-
-                foreach (KeyValuePair<string, LineAccumulation> item in lines)
-                {
-                    LineAccumulation line = item.Value;
-                    TemplateLine lineTemplate;
-                    bool isFormulaLine = templates.TryGetValue(line.LineCode, out lineTemplate) &&
-                        lineTemplate.CalculationKind == "Formula";
-                    decimal expected;
-                    bool hasPublished = published.TryGetValue(line.StatementCode + "|" + line.LineCode, out expected);
-                    decimal? variance = hasPublished ? (decimal?)(line.ComputedAmount - expected) : null;
-                    string status = ResultStatus(line.LineCode, line.ComputedAmount, hasPublished, expected);
-                    line.LineResultId = Convert.ToInt64(NORMHelper.Scalar(connection, transaction,
-                        "INSERT dbo.tblNORM_LineResult " +
-                        "(CalculationRunId,StatementLineId,StatementCode,LineCode,ComputedAmount,PublishedAmount,Variance,StatusCode) " +
-                        "VALUES (@run,@template,@statement,@line,@computed,@published,@variance,@status); " +
-                        "SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
-                        NORMHelper.P("@run", runId), NORMHelper.P("@template", line.StatementLineId),
-                        NORMHelper.P("@statement", line.StatementCode), NORMHelper.P("@line", line.LineCode),
-                        NORMHelper.P("@computed", line.ComputedAmount),
-                        NORMHelper.P("@published", hasPublished ? (object)expected : null),
-                        NORMHelper.P("@variance", variance), NORMHelper.P("@status", status)));
-                    if (line.ReportedAmount.HasValue)
-                        NORMHelper.Exec(connection, transaction,
-                            "UPDATE dbo.tblNORM_LineResult SET ReportedAmount=@amount WHERE LineResultId=@id",
-                            NORMHelper.P("@amount", line.ReportedAmount.Value), NORMHelper.P("@id", line.LineResultId));
-
-                    for (int s = 0; s < line.Sources.Count; s++)
-                    {
-                        SourceContribution source = line.Sources[s];
-                        MapEntry map = source.Mapping;
-                        string snapshot = map == null
-                            ? "Unmapped in configuration release " + context.ReleaseVersion
-                            : (isFormulaLine ? "Formula " + line.LineCode + "; " : "") +
-                              "Release " + context.ReleaseVersion + "; mapping " + map.AccountMapId.ToString() +
-                              "; " + map.GlCode + " -> " + map.StatementLine;
-                        NORMHelper.Exec(connection, transaction,
-                            "INSERT dbo.tblNORM_Lineage " +
-                            "(CalculationRunId,LineResultId,TbRowId,AccountMapId,ConfigurationReleaseId,SourceAmount," +
-                            " PresentedContribution,DerivationCode,MappingSnapshot,AccountTypeSnapshot,StatementLineSnapshot," +
-                            " NoteSubLineSnapshot,CashFlowClassSnapshot) " +
-                            "VALUES (@run,@result,@row,@map,@release,@source,@presented,@derivation,@snapshot,@type,@line,@note,@cash)",
-                            NORMHelper.P("@run", runId), NORMHelper.P("@result", line.LineResultId),
-                            NORMHelper.P("@row", source.TbRowId), NORMHelper.P("@map", map == null ? (object)null : map.AccountMapId),
-                            NORMHelper.P("@release", context.ReleaseId), NORMHelper.P("@source", source.SourceAmount),
-                            NORMHelper.P("@presented", source.PresentedAmount),
-                            NORMHelper.P("@derivation", map == null ? "UNMAPPED" : (isFormulaLine ? "FORMULA" : "GL_MAPPING")),
-                            NORMHelper.P("@snapshot", snapshot), NORMHelper.P("@type", map == null ? null : map.AccountType),
-                            NORMHelper.P("@line", map == null ? null : map.StatementLine),
-                            NORMHelper.P("@note", map == null ? null : map.NoteSubLine),
-                            NORMHelper.P("@cash", map == null ? null : map.CashFlowClass));
-                    }
-                }
-
-                WriteValidations(connection, transaction, runId, rows.Rows.Count, totalNet, totalAbs, mappedAbs,
-                    AssessUnmapped(unmappedRows, context.RetainedAnnualSource), asset, liability, equity, income, expense,
-                    classifiedCashMovement, unsafeCashClassCount, lines, published, hierarchy);
-                if (employeeDetails != null)
-                {
-                    LineAccumulation employee = lines["SOCI|" + EmployeeBenefitsCode];
-                    AddValidation(connection, transaction, runId, "EMPLOYEE_PRESENTATION_ROUNDING",
-                        "Employee benefits presentation rounding", "Information", "Pass",
-                        employee.ReportedAmount, RoundEmployeeAmount(employee.ComputedAmount), null,
-                        "Reported total sums rounded detail. Exact underlying amount in AUD: " +
-                        (employee.ComputedAmount * 1000m).ToString("0.00", CultureInfo.InvariantCulture) +
-                        ". Difference is the reported total less the independently rounded underlying amount, in $'000.");
-                }
-                if (hierarchy)
-                {
-                    int index = 0;
-                    foreach (TemplateLine template in templates.Values.OrderBy(t => t.StatementLineId))
-                    {
-                        if (template.CalculationKind != "Formula") continue;
-                        LineAccumulation line = lines[template.StatementCode + "|" + template.LineCode];
-                        AddValidation(connection, transaction, runId, "HIERARCHY_ROUNDING_" + (++index).ToString(CultureInfo.InvariantCulture),
-                            Truncate(template.LineCode + " presentation rounding", 240), "Information", "Pass",
-                            line.ReportedAmount, RoundEmployeeAmount(line.ComputedAmount), null,
-                            "Reported result less independently rounded exact result in $'000. Exact underlying AUD: " +
-                            (line.ComputedAmount * 1000m).ToString("0.00", CultureInfo.InvariantCulture) + ".");
-                    }
-                }
-                WriteSourceFileValidations(connection, transaction, runId, context);
-
-                NORMHelper.Exec(connection, transaction,
-                    "UPDATE dbo.tblNORM_CalculationRun SET StatusCode = 'Complete',CompletedUtc = SYSUTCDATETIME() " +
-                    "WHERE CalculationRunId = @run AND StatusCode = 'Running'", NORMHelper.P("@run", runId));
-                if (!context.RetainedAnnualSource) NORMHelper.Exec(connection, transaction,
-                    "UPDATE dbo.tblNORM_Import SET StatusCode = 'Calculated' WHERE ImportId = @import AND StatusCode = 'Imported'",
-                    NORMHelper.P("@import", context.ImportId));
-                NORMHelper.Exec(connection, transaction,
-                    "INSERT dbo.tblNORM_AuditEvent (EventCode,EntityType,EntityId,DetailText,PerformedBy) " +
-                    "VALUES ('CALCULATION_COMPLETED','CalculationRun',@id,@detail,@user)",
-                    NORMHelper.P("@id", runId.ToString()),
-                    NORMHelper.P("@detail", context.DraftRevision.HasValue
-                        ? "Draft mapping review completed for import " + context.ImportId.ToString() + "."
-                        : "Immutable calculation completed for import " + context.ImportId.ToString() + "."),
-                    NORMHelper.P("@user", startedBy));
+                CalculatePeriod(connection, transaction, runId, context, startedBy, mappings, templates,
+                    hierarchy, employeeDetails, false, requireCompleteMapping, comparative != null);
                 transaction.Commit();
             }
             catch
@@ -386,6 +224,226 @@ public static class NORMStatementEngine
                 throw;
             }
         }
+    }
+
+    private static void CalculatePeriod(OleDbConnection connection, OleDbTransaction transaction, int runId,
+        ImportContext context, string startedBy, Dictionary<string, MapEntry> mappings,
+        Dictionary<string, TemplateLine> templates, bool hierarchy, HashSet<string> employeeDetails,
+        bool isComparative, bool requireCompleteMapping, bool hasComparative = false)
+    {
+        Dictionary<string, decimal> published = isComparative
+            ? new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+            : LoadPublished(connection, transaction, context.ReleaseId);
+        DataTable rows = NORMHelper.Query(connection, transaction,
+            "SELECT TbRowId,SourceLedger,GlAccount,GlText,DebitMovement,CreditMovement,AccumBalance,SourceCompanyCode,ReportingStream" +
+            (context.RetainedAnnualSource ? ",SourceDebit,SourceCredit" : "") + " FROM dbo.tblNORM_TrialBalanceRow " +
+            "WHERE ImportId = @import AND IsDeactivated = 0 ORDER BY TbRowId",
+            NORMHelper.P("@import", context.ImportId));
+        if ((isComparative || hasComparative) && rows.Rows.Count == 0)
+            throw new InvalidOperationException("FY" + context.FinancialYear + " has no retained reporting rows.");
+
+        Dictionary<string, LineAccumulation> lines = new Dictionary<string, LineAccumulation>(StringComparer.OrdinalIgnoreCase);
+        decimal totalNet = 0m;
+        decimal totalAbs = 0m;
+        decimal mappedAbs = 0m;
+        decimal asset = 0m;
+        decimal liability = 0m;
+        decimal equity = 0m;
+        decimal income = 0m;
+        decimal expense = 0m;
+        decimal classifiedCashMovement = 0m;
+        var unmappedRows = new List<DataRow>();
+        int unsafeCashClassCount = 0;
+
+        for (int i = 0; i < rows.Rows.Count; i++)
+        {
+            DataRow row = rows.Rows[i];
+            long tbRowId = NORMHelper.Long(row, "TbRowId");
+            string gl = NORMHelper.Str(row, "GlAccount");
+            decimal sourceAmount = NORMHelper.Dec(row, "AccumBalance");
+            decimal sourceMovement = NORMHelper.Dec(row, "DebitMovement") + NORMHelper.Dec(row, "CreditMovement");
+            totalNet += sourceAmount;
+            totalAbs += Math.Abs(sourceAmount);
+
+            MapEntry mapping = null;
+            TemplateLine template = null;
+            bool mapped = gl != null && mappings.TryGetValue(gl, out mapping) &&
+                !String.IsNullOrWhiteSpace(mapping.StatementLine) && IsKnownType(mapping.AccountType) &&
+                templates.TryGetValue(mapping.StatementLine, out template) && template.CalculationKind == "Mapped";
+            if (!mapped) { mapping = null; template = null; }
+
+            string lineCode = mapped ? mapping.StatementLine : "UNMAPPED";
+            if (hierarchy && template != null) lineCode = template.LineCode;
+            string statementCode = template == null ? "POOL" : template.StatementCode;
+            decimal presented = sourceAmount / 1000m;
+            if (mapped && (hierarchy && template != null && !String.IsNullOrEmpty(template.NaturalSign)
+                ? template.NaturalSign == "C" : IsCreditType(mapping.AccountType))) { presented = -presented; }
+
+            if (mapped)
+            {
+                mappedAbs += Math.Abs(sourceAmount);
+                decimal normal = sourceAmount / 1000m;
+                if (mapping.AccountType == "Asset") { asset += normal; }
+                else if (mapping.AccountType == "Liability") { liability += -normal; }
+                else if (mapping.AccountType == "Equity") { equity += -normal; }
+                else if (mapping.AccountType == "Income") { income += -normal; }
+                else if (mapping.AccountType == "Expense") { expense += normal; }
+                if (!isComparative && !String.IsNullOrWhiteSpace(mapping.CashFlowClass))
+                {
+                    if (IsCashFlowClassSafe(mapping.CashFlowClass))
+                        classifiedCashMovement += CashFlowContribution(mapping.CashFlowClass, sourceMovement / 1000m);
+                    else
+                        unsafeCashClassCount++;
+                }
+            }
+            else { unmappedRows.Add(row); }
+
+            string key = statementCode + "|" + lineCode;
+            LineAccumulation accumulation;
+            if (!lines.TryGetValue(key, out accumulation))
+            {
+                accumulation = new LineAccumulation();
+                accumulation.StatementCode = statementCode;
+                accumulation.LineCode = lineCode;
+                accumulation.StatementLineId = template == null ? (int?)null : template.StatementLineId;
+                lines[key] = accumulation;
+            }
+            accumulation.ComputedAmount += presented;
+            SourceContribution contribution = new SourceContribution();
+            contribution.TbRowId = tbRowId;
+            contribution.SourceAmount = sourceAmount;
+            contribution.PresentedAmount = presented;
+            contribution.Mapping = mapping;
+            accumulation.Sources.Add(contribution);
+        }
+
+        /* Persist zero-valued template lines as explicit results. A
+           missing mapping must never make a disclosure line vanish. */
+        foreach (KeyValuePair<string, TemplateLine> templateItem in templates)
+        {
+            TemplateLine template = templateItem.Value;
+            if (template.CalculationKind != "Mapped") { continue; }
+            string templateKey = template.StatementCode + "|" + template.LineCode;
+            if (!lines.ContainsKey(templateKey))
+            {
+                LineAccumulation empty = new LineAccumulation();
+                empty.StatementCode = template.StatementCode;
+                empty.LineCode = template.LineCode;
+                empty.StatementLineId = template.StatementLineId;
+                lines[templateKey] = empty;
+            }
+        }
+
+        if (employeeDetails != null)
+        {
+            foreach (string detailCode in employeeDetails)
+            {
+                LineAccumulation detail = lines["SOCI|" + detailCode];
+                detail.ReportedAmount = RoundEmployeeAmount(detail.ComputedAmount);
+            }
+        }
+        if (hierarchy) CalculateHierarchy(templates, lines);
+        else AddFormulaLines(connection, transaction, context.ReleaseId, lines, employeeDetails);
+
+        foreach (KeyValuePair<string, LineAccumulation> item in lines)
+        {
+            LineAccumulation line = item.Value;
+            TemplateLine lineTemplate;
+            bool isFormulaLine = templates.TryGetValue(line.LineCode, out lineTemplate) &&
+                lineTemplate.CalculationKind == "Formula";
+            decimal expected;
+            bool hasPublished = published.TryGetValue(line.StatementCode + "|" + line.LineCode, out expected);
+            decimal? variance = hasPublished ? (decimal?)(line.ComputedAmount - expected) : null;
+            string status = ResultStatus(line.LineCode, line.ComputedAmount, hasPublished, expected);
+            line.LineResultId = Convert.ToInt64(NORMHelper.Scalar(connection, transaction,
+                "INSERT dbo.tblNORM_LineResult " +
+                "(CalculationRunId,StatementLineId,StatementCode,LineCode,ComputedAmount,PublishedAmount,Variance,StatusCode) " +
+                "VALUES (@run,@template,@statement,@line,@computed,@published,@variance,@status); " +
+                "SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
+                NORMHelper.P("@run", runId), NORMHelper.P("@template", line.StatementLineId),
+                NORMHelper.P("@statement", line.StatementCode), NORMHelper.P("@line", line.LineCode),
+                NORMHelper.P("@computed", line.ComputedAmount),
+                NORMHelper.P("@published", hasPublished ? (object)expected : null),
+                NORMHelper.P("@variance", variance), NORMHelper.P("@status", status)));
+            if (line.ReportedAmount.HasValue)
+                NORMHelper.Exec(connection, transaction,
+                    "UPDATE dbo.tblNORM_LineResult SET ReportedAmount=@amount WHERE LineResultId=@id",
+                    NORMHelper.P("@amount", line.ReportedAmount.Value), NORMHelper.P("@id", line.LineResultId));
+
+            for (int s = 0; s < line.Sources.Count; s++)
+            {
+                SourceContribution source = line.Sources[s];
+                MapEntry map = source.Mapping;
+                string snapshot = map == null
+                    ? "Unmapped in configuration release " + context.ReleaseVersion
+                    : (isFormulaLine ? "Formula " + line.LineCode + "; " : "") +
+                      "Release " + context.ReleaseVersion + "; mapping " + map.AccountMapId.ToString() +
+                      "; " + map.GlCode + " -> " + map.StatementLine;
+                NORMHelper.Exec(connection, transaction,
+                    "INSERT dbo.tblNORM_Lineage " +
+                    "(CalculationRunId,LineResultId,TbRowId,AccountMapId,ConfigurationReleaseId,SourceAmount," +
+                    " PresentedContribution,DerivationCode,MappingSnapshot,AccountTypeSnapshot,StatementLineSnapshot," +
+                    " NoteSubLineSnapshot,CashFlowClassSnapshot) " +
+                    "VALUES (@run,@result,@row,@map,@release,@source,@presented,@derivation,@snapshot,@type,@line,@note,@cash)",
+                    NORMHelper.P("@run", runId), NORMHelper.P("@result", line.LineResultId),
+                    NORMHelper.P("@row", source.TbRowId), NORMHelper.P("@map", map == null ? (object)null : map.AccountMapId),
+                    NORMHelper.P("@release", context.ReleaseId), NORMHelper.P("@source", source.SourceAmount),
+                    NORMHelper.P("@presented", source.PresentedAmount),
+                    NORMHelper.P("@derivation", map == null ? "UNMAPPED" : (isFormulaLine ? "FORMULA" : "GL_MAPPING")),
+                    NORMHelper.P("@snapshot", snapshot), NORMHelper.P("@type", map == null ? null : map.AccountType),
+                    NORMHelper.P("@line", map == null ? null : map.StatementLine),
+                    NORMHelper.P("@note", map == null ? null : map.NoteSubLine),
+                    NORMHelper.P("@cash", map == null ? null : map.CashFlowClass));
+            }
+        }
+
+        UnmappedSourceReview unresolved = AssessUnmapped(unmappedRows, context.RetainedAnnualSource);
+        if (requireCompleteMapping && unresolved.Blocking.Count > 0)
+            throw new InvalidOperationException("FY" + context.FinancialYear +
+                " has unmapped balances or net movements. " + MappingAccountList(unresolved.Blocking));
+        WriteValidations(connection, transaction, runId, rows.Rows.Count, totalNet, totalAbs, mappedAbs,
+            unresolved, asset, liability, equity, income, expense,
+            classifiedCashMovement, unsafeCashClassCount, lines, published, hierarchy, isComparative, hasComparative);
+        if (employeeDetails != null)
+        {
+            LineAccumulation employee = lines["SOCI|" + EmployeeBenefitsCode];
+            AddValidation(connection, transaction, runId, "EMPLOYEE_PRESENTATION_ROUNDING",
+                "Employee benefits presentation rounding", "Information", "Pass",
+                employee.ReportedAmount, RoundEmployeeAmount(employee.ComputedAmount), null,
+                "Reported total sums rounded detail. Exact underlying amount in AUD: " +
+                (employee.ComputedAmount * 1000m).ToString("0.00", CultureInfo.InvariantCulture) +
+                ". Difference is the reported total less the independently rounded underlying amount, in $'000.");
+        }
+        if (hierarchy)
+        {
+            int index = 0;
+            foreach (TemplateLine template in templates.Values.OrderBy(t => t.StatementLineId))
+            {
+                if (template.CalculationKind != "Formula") continue;
+                LineAccumulation line = lines[template.StatementCode + "|" + template.LineCode];
+                AddValidation(connection, transaction, runId, "HIERARCHY_ROUNDING_" + (++index).ToString(CultureInfo.InvariantCulture),
+                    Truncate(template.LineCode + " presentation rounding", 240), "Information", "Pass",
+                    line.ReportedAmount, RoundEmployeeAmount(line.ComputedAmount), null,
+                    "Reported result less independently rounded exact result in $'000. Exact underlying AUD: " +
+                    (line.ComputedAmount * 1000m).ToString("0.00", CultureInfo.InvariantCulture) + ".");
+            }
+        }
+        WriteSourceFileValidations(connection, transaction, runId, context);
+
+        NORMHelper.Exec(connection, transaction,
+            "UPDATE dbo.tblNORM_CalculationRun SET StatusCode = 'Complete',CompletedUtc = SYSUTCDATETIME() " +
+            "WHERE CalculationRunId = @run AND StatusCode = 'Running'", NORMHelper.P("@run", runId));
+        if (!context.RetainedAnnualSource) NORMHelper.Exec(connection, transaction,
+            "UPDATE dbo.tblNORM_Import SET StatusCode = 'Calculated' WHERE ImportId = @import AND StatusCode = 'Imported'",
+            NORMHelper.P("@import", context.ImportId));
+        NORMHelper.Exec(connection, transaction,
+            "INSERT dbo.tblNORM_AuditEvent (EventCode,EntityType,EntityId,DetailText,PerformedBy) " +
+            "VALUES ('CALCULATION_COMPLETED','CalculationRun',@id,@detail,@user)",
+            NORMHelper.P("@id", runId.ToString()),
+            NORMHelper.P("@detail", context.DraftRevision.HasValue
+                ? "Draft mapping review completed for FY" + context.FinancialYear + " import " + context.ImportId.ToString() + "."
+                : "Immutable calculation completed for import " + context.ImportId.ToString() + "."),
+            NORMHelper.P("@user", startedBy));
     }
 
     internal sealed class UnmappedSourceReview
@@ -425,7 +483,7 @@ public static class NORMStatementEngine
         int rowCount, decimal totalNet, decimal totalAbs, decimal mappedAbs, UnmappedSourceReview unmapped,
         decimal asset, decimal liability, decimal equity, decimal income, decimal expense,
         decimal classifiedCashMovement, int unsafeCashClassCount, Dictionary<string, LineAccumulation> lines, Dictionary<string, decimal> published,
-        bool hierarchy)
+        bool hierarchy, bool isComparative, bool hasComparative)
     {
         decimal tbDifference = totalNet / 1000m;
         AddValidation(connection, transaction, runId, "DEBITS_EQUAL_CREDITS", "Debits equal credits", "Blocking",
@@ -455,23 +513,26 @@ public static class NORMStatementEngine
                 ? "Equity is outside the NIHRACS hierarchy scope. Full balance-sheet reconciliation remains outstanding."
                 : "Assets less liabilities, equity and the current-year operating result in $'000.");
 
-        decimal closingCash = 0m;
-        LineAccumulation cashLine;
-        if (lines.TryGetValue("SOFP|Cash and cash equivalents", out cashLine)) { closingCash = cashLine.ComputedAmount; }
-        object priorCashValue = NORMHelper.Scalar(connection, transaction,
-            "SELECT TOP 1 p.AmountPrior FROM dbo.tblNORM_PublishedFigure p " +
-            "INNER JOIN dbo.tblNORM_CalculationRun r ON r.ConfigurationReleaseId=p.ConfigurationReleaseId " +
-            "WHERE r.CalculationRunId=@run AND p.StatementCode='SOFP' AND p.LineCode='Cash and cash equivalents' AND p.IsDeactivated=0",
-            NORMHelper.P("@run", runId));
-        decimal priorCash = priorCashValue == null ? closingCash - classifiedCashMovement : Convert.ToDecimal(priorCashValue);
-        decimal cashDifference = classifiedCashMovement - (closingCash - priorCash);
-        AddValidation(connection, transaction, runId, "CASH_FLOW_TIES", "Cash flow ties to the movement in cash", "Blocking",
-            Math.Abs(cashDifference) <= 0.001m ? "Pass" : "Fail", cashDifference, 0m, 0.001m,
-            "Configured cash-flow classes less the movement in cash and cash equivalents in $'000.");
-        AddValidation(connection, transaction, runId, "CASH_FLOW_NON_CASH_EXCLUDED", "Non-cash balances are excluded from cash flow", "Blocking",
-            unsafeCashClassCount == 0 ? "Pass" : "Fail", unsafeCashClassCount, 0m, 0m,
-            unsafeCashClassCount == 0 ? "No unsafe or non-cash clearing classes feed the direct-method cash-flow statement."
-                                      : unsafeCashClassCount.ToString() + " mapped account(s) use a non-cash or unsafe cash-flow class and have been excluded.");
+        if (!isComparative)
+        {
+            decimal closingCash = 0m;
+            LineAccumulation cashLine;
+            if (lines.TryGetValue("SOFP|Cash and cash equivalents", out cashLine)) { closingCash = cashLine.ComputedAmount; }
+            object priorCashValue = NORMHelper.Scalar(connection, transaction,
+                "SELECT TOP 1 p.AmountPrior FROM dbo.tblNORM_PublishedFigure p " +
+                "INNER JOIN dbo.tblNORM_CalculationRun r ON r.ConfigurationReleaseId=p.ConfigurationReleaseId " +
+                "WHERE r.CalculationRunId=@run AND p.StatementCode='SOFP' AND p.LineCode='Cash and cash equivalents' AND p.IsDeactivated=0",
+                NORMHelper.P("@run", runId));
+            decimal priorCash = priorCashValue == null ? closingCash - classifiedCashMovement : Convert.ToDecimal(priorCashValue);
+            decimal cashDifference = classifiedCashMovement - (closingCash - priorCash);
+            AddValidation(connection, transaction, runId, "CASH_FLOW_TIES", "Cash flow ties to the movement in cash", "Blocking",
+                Math.Abs(cashDifference) <= 0.001m ? "Pass" : "Fail", cashDifference, 0m, 0.001m,
+                "Configured cash-flow classes less the movement in cash and cash equivalents in $'000.");
+            AddValidation(connection, transaction, runId, "CASH_FLOW_NON_CASH_EXCLUDED", "Non-cash balances are excluded from cash flow", "Blocking",
+                unsafeCashClassCount == 0 ? "Pass" : "Fail", unsafeCashClassCount, 0m, 0m,
+                unsafeCashClassCount == 0 ? "No unsafe or non-cash clearing classes feed the direct-method cash-flow statement."
+                                          : unsafeCashClassCount.ToString() + " mapped account(s) use a non-cash or unsafe cash-flow class and have been excluded.");
+        }
 
         int lineageCount = 0;
         decimal maximumLineageDifference = 0m;
@@ -495,6 +556,8 @@ public static class NORMStatementEngine
         AddValidation(connection, transaction, runId, "NOTES_RECONCILE_TO_FACE", "Note classifications reconcile to face lines", "Blocking",
             maximumLineageDifference <= 0.001m ? "Pass" : "Fail", maximumLineageDifference, 0m, 0.001m,
             "Largest difference between a face line and its persisted note/source contributions in $'000.");
+
+        if (isComparative || hasComparative) return;
 
         int tied = 0;
         int close = 0;
@@ -574,16 +637,18 @@ public static class NORMStatementEngine
                 : "Expected exactly ROMAN periods 01-10 as transition evidence and ERP periods 11-12 as statement input.");
     }
 
-    private static ImportContext LoadContext(int importId, int? annualRelease = null, bool draftReview = false)
+    private static ImportContext LoadContext(int importId, int? annualRelease = null, bool draftReview = false, bool comparativePeriod = false)
     {
         DataTable table = NORMHelper.Query(
             (annualRelease.HasValue ? "SELECT i.ImportId,c.ConfigurationReleaseId," : "SELECT i.ImportId,i.ConfigurationReleaseId,") +
             "i.FinancialYear,i.EntityCode,i.SourceType,i.DataFingerprint,c.VersionCode,COALESCE(e.EntityName,i.EntityCode) AS EntityName " +
             (draftReview ? "," + DraftRevisionSql + " AS DraftRevision " : "") +
             "FROM dbo.tblNORM_Import i INNER JOIN dbo.tblNORM_ConfigurationRelease c " +
-            (annualRelease.HasValue ? "ON c.ConfigurationReleaseId=@release AND c.EntityCode=i.EntityCode AND c.FinancialYear=i.FinancialYear " :
+            (annualRelease.HasValue ? "ON c.ConfigurationReleaseId=@release AND c.EntityCode=i.EntityCode AND c.FinancialYear=i.FinancialYear" +
+                (comparativePeriod ? "+1 " : " ") :
                 "ON c.ConfigurationReleaseId = i.ConfigurationReleaseId ") +
-            "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.EntityCode=i.EntityCode AND e.FinancialYear=i.FinancialYear AND e.IsDeactivated=0 " +
+            "LEFT JOIN dbo.tblNORM_ReportingEntity e ON e.EntityCode=i.EntityCode AND e.FinancialYear=" +
+            (comparativePeriod ? "c.FinancialYear" : "i.FinancialYear") + " AND e.IsDeactivated=0 " +
             "WHERE i.ImportId = @import AND i.IsDeactivated = 0 AND c.IsDeactivated = 0 " +
             (draftReview ? "AND c.StatusCode='Draft' AND c.EntityCode='NIHRACS' AND c.FinancialYear=2026 " : "AND c.StatusCode='Approved' ") +
             (annualRelease.HasValue ? "AND i.ConfigurationReleaseId IS NULL AND i.ParentImportId IS NULL AND i.IsTestBreak=0 AND i.StatusCode IN ('Imported','Calculated')" : ""),

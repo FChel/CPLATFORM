@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
+using System.Linq;
 using System.Web.Script.Serialization;
 
 namespace CPlatform.NORM
@@ -82,7 +83,19 @@ namespace CPlatform.NORM
             int fy = NORMHelper.Int(context, "FinancialYear");
             string entityCode = NORMHelper.Str(context, "EntityCode");
             int importId = NORMHelper.Int(context, "ImportId");
+            bool hierarchy = NORMReportingFramework.UsesNihracsHierarchy(entityCode, fy, releaseId);
+            int comparativeRun = hierarchy ? NORMStatementEngine.ComparativeRunId(runId) : 0;
             Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId, fy);
+            if (comparativeRun > 0)
+            {
+                foreach (var item in LoadLineage(comparativeRun, fy - 1)) lineage.Add(item.Key, item.Value);
+                DataRow prior = NORMHelper.Query("SELECT i.ImportId,i.SourceFileName,i.SourceFileHash " +
+                    "FROM dbo.tblNORM_CalculationRun r JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
+                    "WHERE r.CalculationRunId=@run", NORMHelper.P("@run", comparativeRun)).Rows[0];
+                meta["priorImportId"] = NORMHelper.Int(prior, "ImportId");
+                meta["priorFile"] = NORMHelper.Str(prior, "SourceFileName");
+                meta["priorFileHash"] = NORMHelper.Str(prior, "SourceFileHash");
+            }
             Dictionary<string, decimal> budgets = NORMStartOfYearSetup.LoadOriginalBudgetFigures(entityCode, fy);
             Dictionary<string, decimal> priorFigures = NORMStartOfYearSetup.LoadPriorActualFigures(entityCode, fy);
             Dictionary<string, decimal> priorAssetMovements = NORMStartOfYearSetup.LoadPriorAssetMovementFigures(entityCode, fy);
@@ -112,9 +125,9 @@ namespace CPlatform.NORM
 
             NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
             List<object> statements = new List<object>();
-            statements.Add(BuildStatement(releaseId, runId, "SOCI", "Statement of Comprehensive Income", lineage, budgets, priorFigures));
-            statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets, priorFigures));
-            if (!NORMReportingFramework.UsesNihracsHierarchy(entityCode, fy, releaseId))
+            statements.Add(BuildStatement(releaseId, runId, "SOCI", "Statement of Comprehensive Income", lineage, budgets, priorFigures, comparativeRun));
+            statements.Add(BuildStatement(releaseId, runId, "SOFP", "Statement of Financial Position", lineage, budgets, priorFigures, comparativeRun));
+            if (!hierarchy)
             {
                 statements.Add(BuildEquityStatement(runId, releaseId, lineage, budgets, priorFigures));
                 statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets, priorFigures));
@@ -137,7 +150,8 @@ namespace CPlatform.NORM
             payload["statements"] = statements;
             payload["profile"] = BuildProfilePayload(profile);
             payload["disclosures"] = BuildDisclosurePayload(disclosures);
-            List<object> validations = LoadValidations(runId);
+            List<object> validations = LoadValidations(runId, comparativeRun > 0 ? fy : 0);
+            if (comparativeRun > 0) validations.AddRange(LoadValidations(comparativeRun, fy - 1));
             AppendDisclosureValidations(validations, disclosures);
             AppendDemoNoteReconciliations(validations, runId, disclosures);
             AppendEnhancementValidations(validations, runId);
@@ -153,6 +167,7 @@ namespace CPlatform.NORM
             }
             payload["validations"] = validations;
             payload["unmapped"] = BuildUnmapped(runId, lineage);
+            if (comparativeRun > 0) payload["priorUnmapped"] = BuildUnmapped(comparativeRun, lineage);
             return payload;
         }
 
@@ -717,7 +732,7 @@ namespace CPlatform.NORM
 
         private Dictionary<string, object> BuildStatement(int releaseId, int runId, string statementCode,
             string title, Dictionary<long, List<Dictionary<string, object>>> lineage, Dictionary<string, decimal> budgets,
-            Dictionary<string, decimal> priorFigures)
+            Dictionary<string, decimal> priorFigures, int comparativeRun)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT t.StatementLineId,t.SeqNo,t.LineType,t.LineCode,t.LineLabel,t.NoteRef,t.NaturalSign,t.IsClickable," +
@@ -732,6 +747,11 @@ namespace CPlatform.NORM
             if (NORMReportingFramework.IsHierarchyFace(table))
             {
                 Dictionary<string, decimal> reported = NORMReportingFramework.LoadReportedHierarchyFace(runId, statementCode);
+                var priorResults = comparativeRun == 0 ? null : NORMHelper.Query(
+                    "SELECT LineCode,LineResultId,ComputedAmount,ReportedAmount FROM dbo.tblNORM_LineResult " +
+                    "WHERE CalculationRunId=@run AND StatementCode=@statement AND IsDeactivated=0 AND ReportedAmount IS NOT NULL",
+                    NORMHelper.P("@run", comparativeRun), NORMHelper.P("@statement", statementCode)).AsEnumerable()
+                    .ToDictionary(result => NORMHelper.Str(result, "LineCode"), StringComparer.OrdinalIgnoreCase);
                 foreach (DataRow source in table.Rows)
                 {
                     string code = NORMHelper.Str(source, "LineCode");
@@ -745,6 +765,15 @@ namespace CPlatform.NORM
                         resultId > 0, resultId, contributions);
                     decimal amount;
                     if (code != null && reported.TryGetValue(code, out amount)) row["reported"] = amount;
+                    DataRow prior;
+                    if (code != null && priorResults != null && priorResults.TryGetValue(code, out prior))
+                    {
+                        row["prior"] = NORMHelper.Dec(prior, "ReportedAmount");
+                        row["priorComputed"] = NORMHelper.Dec(prior, "ComputedAmount");
+                        List<Dictionary<string, object>> priorContributions;
+                        if (lineage.TryGetValue(NORMHelper.Long(prior, "LineResultId"), out priorContributions))
+                            row["priorSources"] = priorContributions;
+                    }
                     rows.Add(row);
                 }
                 return new Dictionary<string, object> {
@@ -1615,7 +1644,7 @@ namespace CPlatform.NORM
             return values;
         }
 
-        private List<object> LoadValidations(int runId)
+        private List<object> LoadValidations(int runId, int year)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT CheckCode,CheckLabel,SeverityCode,ResultCode,ActualValue,ExpectedValue,DifferenceValue,ToleranceValue,DetailText " +
@@ -1626,18 +1655,21 @@ namespace CPlatform.NORM
             for (int i = 0; i < table.Rows.Count; i++)
             {
                 DataRow source = table.Rows[i];
+                string code = NORMHelper.Str(source, "CheckCode");
+                if (code == NORMStatementEngine.ComparativePeriodCheckCode) continue;
                 Dictionary<string, object> item = new Dictionary<string, object>();
-                item["code"] = NORMHelper.Str(source, "CheckCode");
-                item["label"] = NORMHelper.Str(source, "CheckLabel");
+                item["code"] = code;
+                string period = year == 0 ? "" : "FY" + year + ": ";
+                item["label"] = period + NORMHelper.Str(source, "CheckLabel");
                 item["severity"] = NORMHelper.Str(source, "SeverityCode");
                 item["result"] = NORMHelper.Str(source, "ResultCode");
                 item["actual"] = source.IsNull("ActualValue") ? (object)null : NORMHelper.Dec(source, "ActualValue");
                 item["expected"] = source.IsNull("ExpectedValue") ? (object)null : NORMHelper.Dec(source, "ExpectedValue");
                 item["difference"] = source.IsNull("DifferenceValue") ? (object)null : NORMHelper.Dec(source, "DifferenceValue");
                 item["tolerance"] = source.IsNull("ToleranceValue") ? (object)null : NORMHelper.Dec(source, "ToleranceValue");
-                item["detail"] = NORMHelper.Str(source, "CheckCode") == NORMStatementEngine.DraftReviewCheckCode
+                item["detail"] = code == NORMStatementEngine.DraftReviewCheckCode
                     ? "This calculation uses a draft mapping release. Review the source and mapping checks in preparation for a new, approved calculation."
-                    : NORMHelper.Str(source, "DetailText");
+                    : period + NORMHelper.Str(source, "DetailText");
                 values.Add(item);
             }
             return values;
