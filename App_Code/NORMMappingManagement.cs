@@ -895,28 +895,40 @@ namespace CPlatform.NORM
                         NORMStatementEngine.MappingAccountList(unresolvedCash));
             }
 
+            int year = NORMHelper.Int(release, "FinancialYear");
             int importId = MappingSourceImportId(NORMHelper.Int(release, "ParentConfigurationReleaseId"), release);
-            if (importId > 0)
+            result.UnmappedCount = ValidateSourceMappings(result, mapped, importId, hierarchy != null, year);
+            if (hierarchy != null)
             {
-                bool annual = hierarchy != null;
-                DataTable source = NORMHelper.Query(
-                    "SELECT GlAccount,SourceCompanyCode,SourceLedger,ReportingStream,AccumBalance,DebitMovement,CreditMovement" +
-                    (annual ? ",SourceDebit,SourceCredit" : "") +
-                    " FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0", NORMHelper.P("@import", importId));
-                var unresolved = NORMStatementEngine.AssessUnmapped(source.AsEnumerable()
-                    .Where(row => !mapped.Contains(Text(row, "GlAccount"))), annual);
-                result.UnmappedCount = unresolved.Count;
-                if (unresolved.Blocking.Count > 0)
-                    result.Errors.Add(unresolved.Blocking.Count + " unmapped G/L account(s) have a non-zero balance or net movement. " +
-                        NORMStatementEngine.MappingAccountList(unresolved.Blocking));
-                if (unresolved.Offsetting.Count > 0)
-                    result.Warnings.Add(unresolved.Offsetting.Count + " unmapped G/L account(s) have activity that offsets to zero. Review the activity. " +
-                        NORMStatementEngine.MappingAccountList(unresolved.Offsetting));
+                int comparativeImport = 0;
+                try { comparativeImport = NORMImportService.FindAnnualDepartmentalImport(Text(release, "EntityCode"), year, year - 1); }
+                catch (InvalidOperationException error) { result.Errors.Add(error.Message); }
+                ValidateSourceMappings(result, mapped, comparativeImport, true, year - 1);
             }
             if (NORMHelper.Str(release, "StatusCode") == "Draft" && result.ChangedCount == 0 && !result.HierarchyChanged)
                 result.Warnings.Add("No mapping changes have been recorded in this draft.");
             result.ErrorCount = result.Errors.Count;
             return result;
+        }
+
+        private static int ValidateSourceMappings(NORMMappingValidation result, HashSet<string> mapped, int importId,
+            bool annual, int year)
+        {
+            if (importId <= 0) return 0;
+            DataTable source = NORMHelper.Query(
+                "SELECT GlAccount,SourceCompanyCode,SourceLedger,ReportingStream,AccumBalance,DebitMovement,CreditMovement" +
+                (annual ? ",SourceDebit,SourceCredit" : "") +
+                " FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0", NORMHelper.P("@import", importId));
+            var unresolved = NORMStatementEngine.AssessUnmapped(source.AsEnumerable()
+                .Where(row => !mapped.Contains(Text(row, "GlAccount"))), annual);
+            string period = annual ? "FY" + year + ": " : "";
+            if (unresolved.Blocking.Count > 0)
+                result.Errors.Add(period + unresolved.Blocking.Count + " unmapped G/L account(s) have a non-zero balance or net movement. " +
+                    NORMStatementEngine.MappingAccountList(unresolved.Blocking));
+            if (unresolved.Offsetting.Count > 0)
+                result.Warnings.Add(period + unresolved.Offsetting.Count + " unmapped G/L account(s) have activity that offsets to zero. Review the activity. " +
+                    NORMStatementEngine.MappingAccountList(unresolved.Offsetting));
+            return unresolved.Count;
         }
 
         public static DataTable Impact(int releaseId)
@@ -974,10 +986,13 @@ namespace CPlatform.NORM
             if (!String.Equals(NORMHelper.Str(release, "StatusCode"), "Approved", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Approve the mapping release before recalculating.");
             if (IsNihracs(release) && NORMStatementEngine.LoadHierarchyAccountTypes(releaseId) != null)
             {
-                int retainedImport = NORMImportService.FindCurrentAnnualDepartmentalImport(Text(release, "EntityCode"), NORMHelper.Int(release, "FinancialYear"));
+                string entity = Text(release, "EntityCode");
+                int year = NORMHelper.Int(release, "FinancialYear");
+                int retainedImport = NORMImportService.FindCurrentAnnualDepartmentalImport(entity, year);
+                int comparativeImport = NORMImportService.FindAnnualDepartmentalImport(entity, year, year - 1);
                 return new NORMImportOutcome {
                     ImportId = retainedImport,
-                    CalculationRunId = NORMStatementEngine.RunAnnualSource(retainedImport, releaseId, user)
+                    CalculationRunId = NORMStatementEngine.RunAnnualSource(retainedImport, releaseId, user, comparativeImport)
                 };
             }
             int parent = NORMHelper.Int(release, "ParentConfigurationReleaseId");
@@ -1022,7 +1037,8 @@ namespace CPlatform.NORM
                 !NORMReportingFramework.UsesNihracsHierarchy(entity, year, releaseId))
                 throw new InvalidOperationException("Draft calculation review requires the NIHRACS reporting hierarchy.");
             int importId = NORMImportService.FindCurrentAnnualDepartmentalImport(entity, year);
-            return NORMStatementEngine.RunAnnualDraftReview(importId, releaseId, user);
+            int comparativeImport = NORMImportService.FindAnnualDepartmentalImport(entity, year, year - 1);
+            return NORMStatementEngine.RunAnnualDraftReview(importId, comparativeImport, releaseId, user);
         }
 
         private static bool IsNihracs(DataRow release)

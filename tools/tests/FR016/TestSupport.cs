@@ -119,7 +119,18 @@ public static partial class NORMHelper
             (string)call["@file"] == FailImportFileName) { throw new InvalidOperationException("Injected source write failure"); }
         t.Pending.Add(call); return 1;
     }
-    public static int InsertId(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p) { Exec(c, t, sql, p); int id = sql.Contains("INSERT dbo.tblNORM_Import ") ? nextImportId++ : 42; t.Pending[t.Pending.Count - 1].InsertedId = id; return id; }
+    public static int InsertId(OleDbConnection c, OleDbTransaction t, string sql, params OleDbParameter[] p)
+    {
+        Exec(c, t, sql, p);
+        int id = sql.Contains("INSERT dbo.tblNORM_Import ") ? nextImportId++ : 42;
+#if EMPLOYEE_BENEFITS_TESTS
+        if (sql.StartsWith("INSERT dbo.tblNORM_CalculationRun"))
+            id += Committed.FindAll(call => call.Sql.StartsWith("INSERT dbo.tblNORM_CalculationRun")).Count +
+                t.Pending.FindAll(call => call.Sql.StartsWith("INSERT dbo.tblNORM_CalculationRun")).Count - 1;
+#endif
+        t.Pending[t.Pending.Count - 1].InsertedId = id;
+        return id;
+    }
     public static DataTable Query(string sql, params OleDbParameter[] p)
     {
         if (sql.Contains("FROM dbo.tblNORM_YearSetup")) { return YearRows(QueryCall(sql,p)); }

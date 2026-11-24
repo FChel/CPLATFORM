@@ -159,6 +159,8 @@ public class NORM_WordExport : IHttpHandler
         if (NORMReportingFramework.IsHierarchyFace(table))
         {
             Dictionary<string, decimal> figures = NORMReportingFramework.LoadReportedHierarchyFace(runId, code);
+            Dictionary<string, decimal> comparative = NORMReportingFramework.LoadReportedHierarchyFace(
+                NORMStatementEngine.ComparativeRunId(runId), code);
             html.Append("<section class=\"page\"><h2>").Append(Enc(title)).Append("</h2><p>")
                 .Append(atDate ? "As at" : "For the year ended").Append(" 30 June ").Append(year).Append("</p>");
             html.Append("<table><thead><tr><th></th><th>Notes</th><th class=\"amount\">").Append(year)
@@ -171,9 +173,10 @@ public class NORM_WordExport : IHttpHandler
                 if (type == "section") html.Append("<tr class=\"section\"><th colspan=\"4\">").Append(Enc(label)).Append("</th></tr>");
                 else
                 {
-                    decimal amount;
+                    decimal amount, prior;
                     AppendStatementAmountRow(html, label, NORMHelper.Str(row, "NoteRef"),
-                        lineCode != null && figures.TryGetValue(lineCode, out amount) ? (decimal?)amount : null, null, type == "total");
+                        lineCode != null && figures.TryGetValue(lineCode, out amount) ? (decimal?)amount : null,
+                        lineCode != null && comparative.TryGetValue(lineCode, out prior) ? (decimal?)prior : null, type == "total");
                 }
             }
             html.Append("</tbody></table></section>");

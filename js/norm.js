@@ -176,12 +176,15 @@
       var amount = clickable
         ? '<button type="button" class="norm-figure" data-row="' + index + '"><span class="norm-status ' + status + '"></span><span>' + reportedNumber(row, row.computed) + '</span></button>'
         : '<span class="norm-figure-static">' + reportedNumber(row, row.computed) + '</span>';
+      var priorAmount = row.priorSources && viewMode === "preparation"
+        ? '<button type="button" class="norm-figure" data-prior-row="' + index + '">' + number(row.prior) + '</button>'
+        : number(row.prior);
       var note = row.note ? '<button type="button" class="norm-note-jump" data-note="' + esc(row.note) + '" aria-label="Open note ' + esc(row.note) + '">' + esc(row.note) + '</button>' : '';
       var cashWorking = statement.code === "CASH" && (row.original !== undefined || row.adjustment !== undefined)
         ? '<small class="norm-cash-working">Original ' + number(row.original || 0) + ' · adjustments ' + number(row.adjustment || 0) + '</small>' : '';
       return '<tr class="norm-financial-row ' + esc(row.type) + (statement.administered ? ' administered' : '') + '"><th scope="row">' + esc(row.label) + cashWorking +
         '</th><td class="norm-note">' + note + '</td><td class="norm-amount">' + amount +
-        '</td><td class="norm-amount norm-prior">' + number(row.prior) + '</td><td class="norm-amount norm-budget">' + number(row.budget) + '</td></tr>';
+        '</td><td class="norm-amount norm-prior">' + priorAmount + '</td><td class="norm-amount norm-budget">' + number(row.budget) + '</td></tr>';
     }).join("");
 
     var tableHead = viewMode === "publication"
@@ -190,17 +193,26 @@
 
     byId("statementDocument").innerHTML = '<header class="norm-document-head"><span class="norm-kicker">' + esc(data.meta.entity) + '</span>' +
       '<h1>' + esc(statement.title) + '</h1><p>' + (statement.atDate || statement.code === "SOFP" ? 'As at' : 'For the year ended') + ' 30 June ' + currentYear + '</p>' +
-      '<div class="norm-document-meta"><span>Source set: ' + esc(data.meta.file) + '</span><span>Configuration: ' + esc(data.meta.release) + '</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
+      '<div class="norm-document-meta"><span>Source set: ' + esc(data.meta.file) + '</span>' +
+      (data.meta.priorImportId ? '<span>FY' + esc(priorYear) + ' source: Import #' + esc(data.meta.priorImportId) + ' · ' + esc(data.meta.priorFile) + '</span>' : '') +
+      '<span>Configuration: ' + esc(data.meta.release) + '</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
       (statement.administered && data.meta.administeredCurrentFallback && viewMode === "preparation" ? '<div class="norm-admin-source-warning"><strong>Current-year source control</strong><span>Published administered figures are shown until administered trial-balance mappings are activated.</span></div>' : '') +
       renderSourceEvidence() + '</header>' +
       '<div class="norm-table-scroll"><table class="norm-financial-table"><thead>' + tableHead + '</thead><tbody>' + rows + '</tbody></table></div>' +
       '<footer class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.' +
-      (viewMode === "preparation" ? ' Select any current-year amount to inspect its frozen derivation.' : '') + '</footer>';
+      (viewMode === "preparation" ? ' Select an amount to inspect its frozen derivation.' : '') + '</footer>';
 
     Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-row]"), function (button) {
       button.addEventListener("click", function () {
         var rowIndex = Number(button.getAttribute("data-row"));
         openTrace(statement.rows[rowIndex], button);
+      });
+    });
+    Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-prior-row]"), function (button) {
+      button.addEventListener("click", function () {
+        var row = statement.rows[Number(button.getAttribute("data-prior-row"))];
+        openTrace({ label: row.label, note: row.note, reported: row.prior, computed: row.priorComputed,
+          sources: row.priorSources, comparative: true }, button);
       });
     });
     bindNoteJumps();
@@ -547,13 +559,19 @@
   }
 
   function renderUnmapped() {
-    var sources = (data.unmapped && data.unmapped.sources) || [];
-    var button = byId("unmappedButton");
+    renderUnmappedPeriod(byId("unmappedButton"), data.unmapped, false);
+    if (data.priorUnmapped) renderUnmappedPeriod(byId("priorUnmappedButton"), data.priorUnmapped, true);
+  }
+
+  function renderUnmappedPeriod(button, unmapped, comparative) {
+    var sources = (unmapped && unmapped.sources) || [];
+    var period = data.priorUnmapped ? "FY" + (comparative ? data.meta.yearPrior : data.meta.yearCurrent) + " " : "";
+    button.hidden = false;
     button.innerHTML = '<span class="norm-status ' + (sources.length ? 'warning' : 'pass') + '"></span><span><strong>' +
-      sources.length.toLocaleString("en-AU") + ' unmapped rows</strong><small>Net $\'000 ' + number(data.unmapped ? data.unmapped.amount : 0) + '</small></span>';
+      period + sources.length.toLocaleString("en-AU") + ' unmapped rows</strong><small>Net $\'000 ' + number(unmapped ? unmapped.amount : 0) + '</small></span>';
     button.addEventListener("click", function () {
-      openTrace({ label: "Unmapped source rows", note: "–", computed: data.unmapped.amount,
-        published: null, variance: null, status: "Unmapped", sources: sources }, button);
+      openTrace({ label: "Unmapped source rows", note: "–", computed: unmapped.amount,
+        published: null, variance: null, status: "Unmapped", sources: sources, comparative: comparative }, button);
     });
   }
 
@@ -599,10 +617,10 @@
     var searchBox = sources.length > 8 ? '<label class="norm-trace-search"><span>Find a source account</span><input id="traceSearch" type="search" placeholder="G/L, description, note or cash-flow class" autocomplete="off"><small id="traceSearchCount">' + sources.length + ' rows</small></label>' : '';
 
     byId("traceDrawer").innerHTML = '<header class="norm-trace-head"><button type="button" id="closeTrace" aria-label="Close derivation">×</button>' +
-      '<span class="norm-kicker">Frozen figure derivation · Run #' + esc(data.meta.runId) + '</span><h2>' + esc(row.label) + '</h2><p>Note ' + esc(row.note || '–') + ' · ' + sources.length + ' contributing row' + (sources.length === 1 ? '' : 's') + '</p>' + comparison + '</header>' +
+      '<span class="norm-kicker">Frozen figure derivation · FY' + esc(row.comparative ? data.meta.yearPrior : data.meta.yearCurrent) + ' · Run #' + esc(data.meta.runId) + '</span><h2>' + esc(row.label) + '</h2><p>Note ' + esc(row.note || '–') + ' · ' + sources.length + ' contributing row' + (sources.length === 1 ? '' : 's') + '</p>' + comparison + '</header>' +
       '<div class="norm-trace-body">' + noteTable + '<section class="norm-trace-section"><div class="norm-trace-section-head"><h3>Trial-balance lineage</h3><span>Presented in $\'000</span></div>' +
       searchBox + '<table class="norm-source-table"><thead><tr><th>Account</th><th>Description and classification</th><th>Source $</th><th>Contribution $\'000</th></tr></thead><tbody>' + sourceRows + '</tbody></table></section>' +
-      '<p class="norm-trace-proof">Source-set SHA-256: ' + esc(data.meta.fileHash) + '<br>Input/configuration fingerprint: ' + esc(data.meta.fingerprint) +
+      '<p class="norm-trace-proof">Source-set SHA-256: ' + esc(row.comparative ? data.meta.priorFileHash : data.meta.fileHash) + '<br>Input/configuration fingerprint: ' + esc(data.meta.fingerprint) +
       '<br>SAP links open live G/L line-item investigation. The frozen NORM lineage and retained originals remain the run evidence.</p></div>';
     byId("traceScrim").hidden = false;
     byId("traceDrawer").classList.add("open");

@@ -215,7 +215,8 @@ public static class NORMHelper
 
     // Run listings and controlled downloads use this predicate with calculation run alias r.
     public const string StandardRunPredicate = "NOT EXISTS (SELECT 1 FROM dbo.tblNORM_ValidationResult draft " +
-        "WHERE draft.CalculationRunId=r.CalculationRunId AND draft.CheckCode='" + NORMStatementEngine.DraftReviewCheckCode + "')";
+        "WHERE draft.CalculationRunId=r.CalculationRunId AND draft.CheckCode IN ('" +
+        NORMStatementEngine.DraftReviewCheckCode + "','" + NORMStatementEngine.ComparativePeriodCheckCode + "'))";
     private const string CurrentDraftReviewPredicate =
         "EXISTS (SELECT 1 FROM dbo.tblNORM_ConfigurationRelease c INNER JOIN dbo.tblNORM_ValidationResult draft " +
         "ON draft.CalculationRunId=r.CalculationRunId AND draft.CheckCode='" + NORMStatementEngine.DraftReviewCheckCode + "' " +

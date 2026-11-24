@@ -56,6 +56,12 @@ public static class NORMImportService
         throw new InvalidOperationException("Unexpected annual fixture scope.");
     }
 
+    internal static int FindAnnualDepartmentalImport(string entity, int reportingYear, int sourceYear)
+    {
+        if (entity == "NIHRACS" && reportingYear == 2026 && sourceYear == 2025) return 24;
+        throw new InvalidOperationException("Unexpected comparative fixture scope.");
+    }
+
     public static NORMImportOutcome CreateTestBreak(int importId, decimal delta, string user)
     { throw new InvalidOperationException("Source edits are outside the pilot."); }
 }
@@ -116,7 +122,7 @@ internal static partial class PilotTests
     private static NORMHelper.Call Result(string code)
     { return InsertedResults.Single(result => (string)result["@line"] == code); }
 
-    private static DataTable RowsWithResults(bool faceOnly)
+    private static DataTable RowsWithResults(bool faceOnly, int? runId = null)
     {
         DataTable table = templates.Clone();
         foreach (string column in new[] { "LineResultId", "ComputedAmount", "PublishedAmount", "Variance", "StatusCode", "ReportedAmount", "SourceCount" })
@@ -127,7 +133,8 @@ internal static partial class PilotTests
             string code = (string)row["LineCode"];
             if (faceOnly && ((string)row["LineType"] == Detail || (string)row["LineType"] == "hierarchy-detail" ||
                 (draft == null && (string)row["StatementCode"] != "SOCI" && !(bool)(row.Table.ExtendedProperties["NIHRACS"] ?? false)))) continue;
-            NORMHelper.Call result = Result(code);
+            NORMHelper.Call result = runId.HasValue ? InsertedResults.Single(r =>
+                (string)r["@line"] == code && Convert.ToInt32(r["@run"]) == runId.Value) : Result(code);
             DataRow target = table.NewRow();
             target.ItemArray = row.ItemArray;
             target["LineResultId"] = result.InsertedId;
@@ -295,6 +302,10 @@ internal static partial class PilotTests
                 return null;
             }
             if (call.Sql.StartsWith("SELECT TOP 1 ComputedAmount")) return null;
+            if (call.Sql.StartsWith("SELECT p.CalculationRunId FROM dbo.tblNORM_ValidationResult link"))
+                return NORMHelper.Committed.Where(item => item.Sql.StartsWith("INSERT dbo.tblNORM_ValidationResult") &&
+                    (string)item["@code"] == "COMPARATIVE_RUN" && (int)item["@run"] == (int)call["@run"])
+                    .Select(item => item["@actual"]).SingleOrDefault();
             throw new Exception("Unexpected fixture scalar: " + call.Sql);
         };
         NORMHelper.NonTransactionalExec = call =>
@@ -482,7 +493,7 @@ internal static partial class PilotTests
         Type web = typeof(NORM_Statements);
         var page = new NORM_Statements();
         object face = Invoke(page, web, "BuildStatement", 2, run, "SOCI", "Income Statement",
-            new Dictionary<long, List<Dictionary<string, object>>>(), new Dictionary<string, decimal>(), new Dictionary<string, decimal>());
+            new Dictionary<long, List<Dictionary<string, object>>>(), new Dictionary<string, decimal>(), new Dictionary<string, decimal>(), 0);
         object notes = Invoke(page, web, "BuildNotesStatement", disclosures);
         string payload = new JavaScriptSerializer().Serialize(new {
             meta = new { yearCurrent = 2026, yearPrior = 2025, entity = "Synthetic pilot", runId = run },

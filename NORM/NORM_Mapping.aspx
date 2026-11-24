@@ -77,7 +77,7 @@
                 <article class="norm-mapping-card">
                     <asp:Panel ID="DraftReviewPanel" runat="server" Visible="false">
                         <span class="norm-kicker">Draft review</span><h2>Calculate with draft mappings</h2>
-                        <p>Review the statements and unmapped source amounts using the saved draft and retained trial balance.</p>
+                        <p>Review both years and their unmapped source amounts using this draft and the retained trial balances.</p>
                         <asp:Button ID="DraftReviewButton" runat="server" Text="Calculate draft for review" CssClass="norm-button norm-button-dark" OnClick="DraftReviewButton_Click" />
                     </asp:Panel>
                     <asp:Panel ID="RecalculatePanel" runat="server">

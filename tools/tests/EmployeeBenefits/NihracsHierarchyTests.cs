@@ -95,19 +95,18 @@ internal static partial class PilotTests
             }
         }
         DataTable source = Table("TbRowId SourceLedger GlAccount GlText DebitMovement CreditMovement AccumBalance SourceCompanyCode ReportingStream SourceDebit SourceCredit");
-        using (var file = new ExcelPackage(new FileInfo(Path.Combine(path, "Consolidated TBs.xlsx"))))
+        DataTable priorSource = source.Clone();
+        var parsed = NihracsTrialBalanceImporter.TryParse(File.ReadAllBytes(Path.Combine(path, "Consolidated TBs.xlsx")));
+        foreach (var period in parsed.Where(period => period.FinancialYear == 2025 || period.FinancialYear == 2026))
         {
-            ExcelWorksheet sheet = file.Workbook.Worksheets["2026"];
-            for (int i = 1; i <= sheet.Dimension.End.Row; i++)
-            {
-                if (sheet.Cells[i, 1].Text.Trim() != "NIHRA") continue;
-                decimal debit = Convert.ToDecimal(sheet.Cells[i, 6].Value ?? 0m, CultureInfo.InvariantCulture);
-                decimal credit = Convert.ToDecimal(sheet.Cells[i, 7].Value ?? 0m, CultureInfo.InvariantCulture);
-                source.Rows.Add((long)i, DBNull.Value, sheet.Cells[i, 2].Text.Trim(), sheet.Cells[i, 4].Text, 0m, 0m,
-                    Decimal.Round(debit - credit, 2), "NIHRA", "Departmental", debit, credit);
-            }
+            DataTable target = period.FinancialYear == 2026 ? source : priorSource;
+            foreach (var row in period.Rows)
+                target.Rows.Add((long)(period.FinancialYear * 1000 + row.SourceRowNo), DBNull.Value, row.GlAccount, row.GlText,
+                    0m, 0m, row.AccumBalance, row.SourceCompanyCode, row.ReportingStream, row.SourceDebit, row.SourceCredit);
         }
         Check(source.Rows.Count == 778 && source.AsEnumerable().Sum(r => (decimal)r["AccumBalance"]) == 0m, "Source fixture changed.");
+        Check(priorSource.Rows.Count == 427 && priorSource.AsEnumerable().Sum(r => (decimal)r["AccumBalance"]) == 0m,
+            "FY2025 source fixture changed.");
         var mappings = Table("AccountMapId GlCode AccountType StatementLine NoteSubLine CashFlowClass GlDescription");
         var existingQuery = NORMHelper.QueryCallResponse;
         Func<NORMHelper.Call, object> existingScalar = NORMHelper.ScalarCallResponse;
@@ -196,11 +195,12 @@ internal static partial class PilotTests
             return Query(call);
         };
         TestHierarchyChanges(source, mappings);
-        CheckMappingUpload(source, uploadCatalogue, consolidatedWorkbook, output);
+        CheckMappingUpload(source, priorSource, uploadCatalogue, disclosures, consolidatedWorkbook, output);
         CheckUnmappedActivity();
     }
 
-    private static void CheckMappingUpload(DataTable source, DataTable catalogue, string consolidatedWorkbook, string output)
+    private static void CheckMappingUpload(DataTable source, DataTable priorSource, DataTable catalogue,
+        DataTable disclosures, string consolidatedWorkbook, string output)
     {
         Prepare();
         templates = catalogue;
@@ -214,9 +214,11 @@ internal static partial class PilotTests
             sourceAccounts.Rows.Add(group.Key, group.Max(row => (string)row["GlText"]));
         bool fullWorkbook = !String.IsNullOrEmpty(consolidatedWorkbook);
         long lockedRevision = 255L;
+        bool loseCurrentRows = false;
         DataTable approvalSource = source;
         if (!fullWorkbook)
         {
+            priorSource = priorSource.Clone();
             approvalSource = source.Clone();
             approvalSource.Rows.Add(1L, DBNull.Value, "90004", "Idle", 0m, 0m, 0m, "NIHRA", "Departmental", 0m, 0m);
             approvalSource.Rows.Add(2L, DBNull.Value, "90005", "Offsetting", 0m, 0m, 0m, "NIHRA", "Departmental", 2m, 2m);
@@ -229,13 +231,17 @@ internal static partial class PilotTests
                 return sourceAccounts;
             }
             if (call.Sql.StartsWith("SELECT GlAccount,SourceCompanyCode"))
-                return approvalSource;
+                return (int)call["@import"] == 24 ? priorSource : approvalSource;
             if (call.Sql.StartsWith("SELECT i.ImportId,c.ConfigurationReleaseId"))
             {
+                int import = (int)call["@import"];
+                bool prior = import == 24;
                 Check(call.Sql.Contains("c.StatusCode='Draft'") && call.Sql.Contains("i.ConfigurationReleaseId IS NULL") &&
-                    (int)call["@release"] == 19 && (int)call["@import"] == 25, "Draft review did not select the retained annual source and draft.");
+                    (int)call["@release"] == 19 && (prior || import == 25) &&
+                    call.Sql.Contains("c.FinancialYear=i.FinancialYear+1") == prior,
+                    "Draft review did not select the retained annual source and FY2026 configuration.");
                 return Table("ImportId ConfigurationReleaseId FinancialYear EntityCode SourceType DataFingerprint VersionCode EntityName DraftRevision",
-                    new object[] { 25, 19, 2026, "NIHRACS", "ERP", "fixture", "fixture", "NIHRACS", 255L });
+                    new object[] { import, 19, prior ? 2025 : 2026, "NIHRACS", "ERP", "fixture-" + import, "fixture", "NIHRACS", 255L });
             }
             if (call.Sql.Contains("AS DraftRevision FROM dbo.tblNORM_ConfigurationRelease"))
             {
@@ -243,12 +249,28 @@ internal static partial class PilotTests
                     (int)call["@release"] == 19, "Draft review did not lock its current configuration.");
                 return Table("DraftRevision", new object[] { lockedRevision });
             }
-            if (call.Sql.StartsWith("SELECT TbRowId,SourceLedger")) return source;
+            if (call.Sql.StartsWith("SELECT TbRowId,SourceLedger"))
+                return (int)call["@import"] == 24 ? priorSource : loseCurrentRows ? source.Clone() : source;
+            if (call.Sql.StartsWith("SELECT DisclosureCode,")) return disclosures;
+            if (call.Sql.StartsWith("SELECT r.LineCode,r.ComputedAmount,r.ReportedAmount,t.ParentLineCode") ||
+                call.Sql.StartsWith("SELECT LineCode,ReportedAmount FROM dbo.tblNORM_LineResult"))
+                return RowsWithResults(false, (int)call["@run"]);
+            if (call.Sql.StartsWith("SELECT r.LineCode,r.ReportedAmount") ||
+                call.Sql.StartsWith("SELECT LineCode,LineResultId,ComputedAmount,ReportedAmount"))
+                return TableFrom(RowsWithResults(true, (int)call["@run"]), row => (string)row["StatementCode"] == (string)call["@statement"]);
+            if (call.Sql.Contains("AS IsHierarchy") && call.Sql.Contains("LEFT JOIN dbo.tblNORM_LineResult"))
+            {
+                DataTable face = TableFrom(RowsWithResults(true, (int)call["@run"]), row => (string)row["StatementCode"] ==
+                    (string)call[call.Values.ContainsKey("@code") ? "@code" : "@statement"]);
+                face.Columns.Add("IsHierarchy", typeof(int));
+                foreach (DataRow row in face.Rows) row["IsHierarchy"] = 1;
+                return face;
+            }
             return Query(call);
         };
         var draftScalar = NORMHelper.ScalarCallResponse;
         NORMHelper.ScalarCallResponse = call => call.Sql.StartsWith("SELECT COUNT(*) FROM dbo.tblNORM_StatementLine")
-            ? 60 : draftScalar(call);
+            ? (object)60 : call.Sql.StartsWith("SELECT TOP 1 i.EntityCode") ? "NIHRACS" : draftScalar(call);
         var commitDraft = NORMHelper.OnCommit;
         NORMHelper.OnCommit = changes =>
         {
@@ -321,11 +343,29 @@ internal static partial class PilotTests
         Throws(() => NORMMappingManagement.Approve(19, fullWorkbook, "fixture"),
             fullWorkbook ? "Resolve all mapping validation errors" : "Acknowledge the mapping warnings");
         Check(applied.Validation.CanApprove != fullWorkbook, "Only impactful source omissions must block approval.");
+        if (!fullWorkbook)
+        {
+            priorSource.Rows.Add(2025001L, DBNull.Value, "PRIOR_ONLY", "Comparative-only GL", 0m, 0m, 500m,
+                "NIHRA", "Departmental", 500m, 0m);
+            var priorValidation = NORMMappingManagement.Validate(19);
+            Check(!priorValidation.CanApprove && priorValidation.Errors.Any(error =>
+                error.StartsWith("FY2025:") && error.Contains("PRIOR_ONLY")) &&
+                !priorValidation.Errors.Any(error => error.StartsWith("FY2026:")),
+                "An unresolved comparative-only GL should block approval for its own year.");
+        }
         Console.WriteLine("PASS duplicate rejection; " + applied.ChangedCount + " rows accepted, " + outsideSource.Count +
             " outside Import 25; incomplete mappings reported and approval checked against source impact");
         if (fullWorkbook)
         {
-            CheckDraftReview(output);
+            CheckDraftReview(output, source, priorSource);
+            NORMHelper.Committed.Clear();
+            loseCurrentRows = true;
+            Throws(() => NORMMappingManagement.CalculateDraftReview(19, "fixture"), "FY2026 has no retained reporting rows");
+            Check(NORMHelper.Committed.Count(call => call.Sql.StartsWith("INSERT dbo.tblNORM_CalculationRun")) == 1 &&
+                !NORMHelper.Committed.Any(call => call.Sql.StartsWith("INSERT dbo.tblNORM_Lineage") ||
+                    call.Sql.StartsWith("UPDATE dbo.tblNORM_CalculationRun SET StatusCode = 'Complete'")),
+                "An incomplete pair committed comparative rows after the reporting period failed.");
+            loseCurrentRows = false;
             lockedRevision = 256L;
             Throws(() => NORMMappingManagement.CalculateDraftReview(19, "fixture"), "The mapping draft changed");
             accountMap.Clear();
@@ -334,7 +374,7 @@ internal static partial class PilotTests
         }
     }
 
-    private static void CheckDraftReview(string output)
+    private static void CheckDraftReview(string output, DataTable source, DataTable priorSource)
     {
         Throws(() => NORMMappingManagement.RecalculateLatest(19, "fixture"), "Approve the mapping release before recalculating");
         NORMHelper.Committed.Clear();
@@ -343,10 +383,11 @@ internal static partial class PilotTests
         int runId = NORMMappingManagement.CalculateDraftReview(19, "fixture");
         var checks = NORMHelper.Committed.Where(call => call.Sql.StartsWith("INSERT dbo.tblNORM_ValidationResult")).ToList();
         var marker = checks.Single(call => (string)call["@code"] == NORMStatementEngine.DraftReviewCheckCode);
-        var unmapped = checks.Single(call => (string)call["@code"] == "UNMAPPED_DISPOSITION");
+        var unmapped = checks.Single(call => (string)call["@code"] == "UNMAPPED_DISPOSITION" && (int)call["@run"] == runId);
         Check((string)marker["@detail"] == "255" && (string)marker["@severity"] == "Blocking" && (string)marker["@result"] == "Fail" &&
             (string)unmapped["@result"] == "Fail" && Convert.ToInt32(unmapped["@actual"]) == 10 &&
-            (string)Result("UNMAPPED")["@status"] == "Unmapped", "Draft marker or unresolved source checks were lost.");
+            (string)InsertedResults.Single(result => (int)result["@run"] == runId && (string)result["@line"] == "UNMAPPED")["@status"] ==
+                "Unmapped", "Draft marker or unresolved source checks were lost.");
         int markerIndex = NORMHelper.Committed.IndexOf(marker);
         Check(markerIndex > 0 && NORMHelper.Committed[markerIndex - 1].Sql.StartsWith("INSERT dbo.tblNORM_CalculationRun"),
             "The review marker must be recorded when the run is created.");
@@ -368,12 +409,119 @@ internal static partial class PilotTests
         }
         NORMHelper.DraftReviewRun = false;
         Throws(() => NORMMappingManagement.Approve(19, true, "fixture"), "Resolve all mapping validation errors");
+        int comparison = NORMStatementEngine.ComparativeRunId(runId);
+        Check(comparison > runId && checks.Any(call => (int)call["@run"] == comparison &&
+            (string)call["@code"] == NORMStatementEngine.ComparativePeriodCheckCode), "Comparative component missing or unmarked.");
+        CheckComparison(output, runId, comparison, source, priorSource);
         var validations = checks.Select(call => new {
             code = call["@code"], label = call["@label"], severity = call["@severity"], result = call["@result"],
-            detail = call == marker ? "Calculation uses a draft mapping release." : call["@detail"]
+            detail = call == marker ? "Calculation uses a draft mapping release." :
+                ((int)call["@run"] == comparison ? "FY2025: " : "FY2026: ") + call["@detail"]
         });
         File.WriteAllText(Path.Combine(output, "review-checks.json"), new JavaScriptSerializer().Serialize(validations));
         Console.WriteLine("PASS partial mappings calculated through the draft action, with immutable review marker, ten unresolved GLs and no source or approval writes");
+    }
+
+    private static void CheckComparison(string output, int run, int prior, DataTable source, DataTable priorSource)
+    {
+        var classification = accountMap.AsEnumerable().ToDictionary(row => (string)row["GlCode"],
+            row => Convert.ToString(row["StatementLine"]), StringComparer.OrdinalIgnoreCase);
+        var employeeKeys = templates.AsEnumerable().Where(row => !(bool)row["IsDeactivated"] &&
+            Convert.ToString(row["ParentLineCode"]) == Parent)
+            .Select(row => (string)row["LineCode"]).ToArray();
+        var periods = new[] { Tuple.Create(run, 25, source), Tuple.Create(prior, 24, priorSource) };
+        var reported = new Dictionary<int, decimal>();
+        foreach (var period in periods)
+        {
+            int periodRun = period.Item1;
+            var rows = period.Item3.AsEnumerable().ToDictionary(row => (long)row["TbRowId"]);
+            var edges = NORMHelper.Committed.Where(call => call.Sql.StartsWith("INSERT dbo.tblNORM_Lineage") &&
+                (int)call["@run"] == periodRun).ToList();
+            Check(edges.Select(call => (long)call["@row"]).Distinct().Count() == rows.Count &&
+                edges.All(call => (int)call["@release"] == 19 && (decimal)call["@source"] ==
+                    (decimal)rows[(long)call["@row"]]["AccumBalance"]), "Lineage used another period or changed a source amount.");
+            var values = RowsWithResults(false, periodRun).AsEnumerable().ToDictionary(row => (string)row["LineCode"]);
+            decimal detailTotal = 0m, exactTotal = 0m;
+            foreach (string key in employeeKeys)
+            {
+                decimal exact = rows.Values.Where(row => classification.ContainsKey((string)row["GlAccount"]) &&
+                    classification[(string)row["GlAccount"]] == key).Sum(row => (decimal)row["AccumBalance"]) / 1000m;
+                decimal rounded = Math.Round(exact, 0, MidpointRounding.AwayFromZero);
+                Check((decimal)values[key]["ComputedAmount"] == exact && (decimal)values[key]["ReportedAmount"] == rounded,
+                    "A detail did not use the period's source and current mapping.");
+                exactTotal += exact;
+                detailTotal += rounded;
+            }
+            Check((decimal)values[Parent]["ComputedAmount"] == exactTotal &&
+                (decimal)values[Parent]["ReportedAmount"] == detailTotal, "Calculated parent did not sum its own rounded details.");
+            foreach (var total in templates.AsEnumerable().Where(row => !(bool)row["IsDeactivated"] &&
+                (string)row["CalculationKind"] == "Formula" && row.IsNull("FormulaSpec")))
+            {
+                string code = (string)total["LineCode"];
+                var children = templates.AsEnumerable().Where(row => !(bool)row["IsDeactivated"] &&
+                    Convert.ToString(row["ParentLineCode"]) == code);
+                decimal sum = children.Sum(row => (decimal)values[(string)row["LineCode"]]["ReportedAmount"]);
+                Check((decimal)values[code]["ReportedAmount"] == sum, "Additive parent did not reconcile in import " +
+                    period.Item2 + ": " + code);
+            }
+            var check = NORMHelper.Committed.Single(call => call.Sql.StartsWith("INSERT dbo.tblNORM_ValidationResult") &&
+                (int)call["@run"] == periodRun && (string)call["@code"] == "UNMAPPED_DISPOSITION");
+            int unmapped = rows.Values.Where(row => !classification.ContainsKey((string)row["GlAccount"]) ||
+                !values.ContainsKey(classification[(string)row["GlAccount"]])).GroupBy(row => (string)row["GlAccount"])
+                .Count(gl => gl.Sum(row => (decimal)row["AccumBalance"]) != 0m);
+            Check((string)check["@result"] == "Fail" && Convert.ToInt32(check["@actual"]) == unmapped && unmapped > 0,
+                "Unresolved balances were not calculated independently by year.");
+            Check(NORMHelper.Committed.Any(call => call.Sql.StartsWith("INSERT dbo.tblNORM_CalculationRun") &&
+                call.InsertedId == periodRun && (int)call["@import"] == period.Item2 && (int)call["@release"] == 19),
+                "Run used the wrong import or release.");
+            reported[periodRun] = detailTotal;
+            Console.WriteLine("PASS import #" + period.Item2 + " preserved " + rows.Count + " source rows with FY2026 mapping. " +
+                "Employee benefits exact $000 " + exactTotal + ", reported " + detailTotal + ", unresolved GLs " + unmapped);
+            foreach (string code in new[] { "Total expenses", "Net cost of services", "Total assets", "Total liabilities", "Net assets" })
+                Console.WriteLine("Import #" + period.Item2 + " " + code + " exact $000 " + values[code]["ComputedAmount"] +
+                    " reported " + values[code]["ReportedAmount"]);
+        }
+        Check(reported[run] != reported[prior], "The comparative fixture must distinguish source years.");
+        var notes = NORMReportingFramework.LoadDisclosures(run, 19, new NORMReportingFramework.ReportingProfile());
+        var employee = notes.Single(n => n.Code == "N1_1A");
+        Check(employee.ReportedAmount == reported[run] && employee.PriorAmount == reported[prior] &&
+            employee.Lines.Sum(line => line.Prior.Value) == reported[prior], "Comparative note total differs from its detail or face.");
+        var page = new NORM_Statements();
+        var empty = new Dictionary<string, decimal>();
+        var lineage = new Dictionary<long, List<Dictionary<string, object>>>();
+        foreach (var item in InsertedResults)
+            lineage.Add(item.InsertedId, new List<Dictionary<string, object>> { new Dictionary<string, object>() });
+        object income = Invoke(page, typeof(NORM_Statements), "BuildStatement", 19, run, "SOCI", "Income Statement", lineage, empty, empty, prior);
+        object balance = Invoke(page, typeof(NORM_Statements), "BuildStatement", 19, run, "SOFP", "Balance Sheet", lineage, empty, empty, prior);
+        File.WriteAllText(Path.Combine(output, "comparative-presentation.json"), new JavaScriptSerializer().Serialize(new {
+            meta = new { yearCurrent = 2026, yearPrior = 2025, priorImportId = 24, entity = "NIHRACS", runId = run },
+            statements = new[] { income, balance, Invoke(page, typeof(NORM_Statements), "BuildNotesStatement", notes) },
+            employeeCurrent = reported[run], employeePrior = reported[prior]
+        }));
+        var word = new NORM_WordExport();
+        var html = new StringBuilder();
+        Invoke(word, typeof(NORM_WordExport), "AppendStatement", html, run, 19, 2026, "SOCI", "Income Statement", false);
+        Invoke(word, typeof(NORM_WordExport), "AppendNotes", html, run, 2026, notes);
+        string priorText = reported[prior].ToString("N0", CultureInfo.GetCultureInfo("en-AU"));
+        Check(Regex.Matches(html.ToString(), "<td class=\"amount\">" + Regex.Escape(priorText) + "</td>").Count >= 2,
+            "Word renderer did not reuse the comparative parent on face and note.");
+        Type excel = typeof(NORM_FinancialStatementsExcel);
+        Type ctx = excel.GetNestedType("ExportContext", BindingFlags.NonPublic);
+        object model = Activator.CreateInstance(ctx, true);
+        foreach (var field in new Dictionary<string, object> {
+            { "RunId", run }, { "ReleaseId", 19 }, { "Year", 2026 }, { "Entity", "NIHRACS" },
+            { "Budgets", empty }, { "PriorFigures", empty }, { "ManualInputs", new DataTable() }, { "Disclosures", notes }
+        })
+            ctx.GetField(field.Key).SetValue(model, field.Value);
+        using (var package = new ExcelPackage())
+        {
+            var index = new List<Tuple<string, string, string>>();
+            Invoke(null, excel, "AddFace", package, model, "SOCI", "SoCI", "Income Statement", false, index);
+            var sheet = package.Workbook.Worksheets["SoCI"];
+            int employeeRow = Enumerable.Range(1, sheet.Dimension.End.Row).Single(row => sheet.Cells[row, 1].Text == Parent);
+            Check(Convert.ToDecimal(sheet.Cells[employeeRow, 4].Value) == reported[prior], "Excel renderer lost the comparative face amount.");
+        }
+        Console.WriteLine("PASS both periods' additive totals reconcile and their reported values agree across the note and face renderers");
     }
 
     private static byte[] ConvertConsolidatedWorkbook(byte[] starting, string consolidatedWorkbook)
@@ -544,8 +692,8 @@ internal static partial class PilotTests
         Type web = typeof(NORM_Statements);
         var figures = new Dictionary<string, decimal>();
         var lineage = new Dictionary<long, List<Dictionary<string, object>>>();
-        object income = Invoke(page, web, "BuildStatement", 10, run, "SOCI", "Income Statement", lineage, figures, figures);
-        object balance = Invoke(page, web, "BuildStatement", 10, run, "SOFP", "Balance Sheet", lineage, figures, figures);
+        object income = Invoke(page, web, "BuildStatement", 10, run, "SOCI", "Income Statement", lineage, figures, figures, 0);
+        object balance = Invoke(page, web, "BuildStatement", 10, run, "SOFP", "Balance Sheet", lineage, figures, figures, 0);
         object notes = Invoke(page, web, "BuildNotesStatement", disclosures);
         File.WriteAllText(Path.Combine(output, "presentation.json"), new JavaScriptSerializer().Serialize(new {
             meta = new { yearCurrent = 2026, yearPrior = 2025, entity = "NIHRACS", runId = run },

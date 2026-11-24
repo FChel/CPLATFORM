@@ -274,6 +274,12 @@ public static class NORMReportingFramework
         Dictionary<string, string[]> narratives = LoadNarratives(runId, releaseId);
         bool hierarchyNotes = String.Equals(entityCode, "NIHRACS", StringComparison.OrdinalIgnoreCase) &&
             HasHierarchyNoteSource(null, null);
+        int comparativeRun = hierarchyNotes ? NORMStatementEngine.ComparativeRunId(runId) : 0;
+        Dictionary<string, decimal> comparativeNotes = comparativeRun == 0 ? null :
+            NORMHelper.Query("SELECT LineCode,ReportedAmount FROM dbo.tblNORM_LineResult WHERE CalculationRunId=@run " +
+                "AND IsDeactivated=0 AND ReportedAmount IS NOT NULL", NORMHelper.P("@run", comparativeRun)).AsEnumerable()
+                .ToDictionary(row => NORMHelper.Str(row, "LineCode"), row => NORMHelper.Dec(row, "ReportedAmount"),
+                    StringComparer.OrdinalIgnoreCase);
         DataTable table = NORMHelper.Query(
             "SELECT DisclosureCode,SectionCode,SectionTitle,NoteRef,DisclosureTitle,TriggerCode," +
             "IsBaseRequired,RequiresNarrative,SortOrder,GuidanceText" + (hierarchyNotes ? ",NoteSourceLineCode" : "") + " FROM dbo.tblNORM_DisclosureRule " +
@@ -306,7 +312,15 @@ public static class NORMReportingFramework
             }
             string sourceLine = hierarchyNotes ? NORMHelper.Str(row, "NoteSourceLineCode") : null;
             if (!String.IsNullOrEmpty(sourceLine))
+            {
                 LoadHierarchyNote(runId, sourceLine, item);
+                decimal amount;
+                if (comparativeNotes != null && comparativeNotes.TryGetValue(sourceLine, out amount))
+                    item.PriorAmount = amount;
+                if (comparativeNotes != null)
+                    foreach (NoteLine line in item.Lines)
+                        if (comparativeNotes.TryGetValue(line.SourceLineCode, out amount)) line.Prior = amount;
+            }
             else if (item.Code != "N1_1A" || !LoadReportedEmployeeBenefits(runId, item))
             {
                 AddMatchingSources(item, sources);
@@ -360,6 +374,7 @@ public static class NORMReportingFramework
 
     public static Dictionary<string, decimal> LoadReportedHierarchyFace(int runId, string statementCode)
     {
+        if (runId == 0) return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         return NORMHelper.Query("SELECT r.LineCode,r.ReportedAmount FROM dbo.tblNORM_LineResult r " +
             "JOIN dbo.tblNORM_StatementLine t ON t.StatementLineId=r.StatementLineId WHERE r.CalculationRunId=@run " +
             "AND r.StatementCode=@statement AND r.IsDeactivated=0 AND r.ReportedAmount IS NOT NULL AND t.LineType<>'hierarchy-detail'",

@@ -42,6 +42,70 @@ function Read-SqlConstant([string]$source, [string]$name, [hashtable]$references
     $parts -join ''
 }
 
+function Test-ComparativeEngine {
+    $root = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
+    foreach ($file in @('NORM_08_StartOfFinancialYearSetup.sql','NORM_CompanyLedger_Increment1B.sql',
+        'NORM_Stage1_Package1A_Step1.sql','NORM_Stage1_Package1A_Step2.sql','NORM_Stage1_Package1A_Step3.sql',
+        'NORM_Stage2_Increment2A_Nihracs_SourceRows.sql','NORM_Stage2A_Annual_Source_Configuration.sql')) {
+        $schema = Get-Content -LiteralPath (Join-Path $sqlRoot $file) -Raw
+        Invoke-SeedTestSql $fixture ($schema.Replace('DECLARE @ConfirmedDatabase SYSNAME = NULL;', "DECLARE @ConfirmedDatabase SYSNAME = N'$database';").
+            Replace('DECLARE @ReviewedPopulationReset BIT = 0;', 'DECLARE @ReviewedPopulationReset BIT = 1;'))
+    }
+    Invoke-SeedTestSql $fixture @'
+DECLARE @snapshot nvarchar(max) = N'<annual agency="NIHRACS" year="2026" prior="1"><population company="NIHRA" stream="Departmental" required="1" /></annual>';
+INSERT dbo.tblNORM_ReportingEntity (FinancialYear,EntityCode,EntityName,PriorYearsRequired,SourceApprovalSnapshot,SourceApprovalHash)
+VALUES (2026,'NIHRACS','NIHRACS FY2026',1,@snapshot,LOWER(CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),@snapshot)),2))),
+       (2026,'UAT_EMP_PILOT','Approved pilot',NULL,NULL,NULL);
+INSERT dbo.tblNORM_AdminUser (UserId,DisplayName,RoleCode,CreatedBy)
+VALUES (N'Comparative LocalDB fixture',N'Comparative test operator','Administrator',N'LocalDB');
+UPDATE dbo.tblNORM_Import SET ConfigurationReleaseId=NULL,AnnualSourceApprovalSnapshot=@snapshot,[RowCount]=3 WHERE ImportId IN (24,25);
+UPDATE dbo.tblNORM_ImportFile SET [RowCount]=3, PeriodStart=1, PeriodEnd=12, IsFullYear=1,
+    CoverageStart=DATEFROMPARTS(2024+ImportId-24,7,1), CoverageEnd=DATEFROMPARTS(2025+ImportId-24,6,30) WHERE ImportId IN (24,25);
+UPDATE dbo.tblNORM_TrialBalanceRow SET SourceCompanyCode='NIHRA',SourceLedger=NULL,ReportingStream='Departmental',
+    AccumBalance=CASE ImportId WHEN 24 THEN 1500 ELSE 1499 END,SourceDebit=CASE ImportId WHEN 24 THEN 1500 ELSE 1499 END,SourceCredit=0
+    WHERE ImportId IN (24,25);
+INSERT dbo.tblNORM_TrialBalanceRow (ImportId,SourceRowNo,SourceCompanyCode,ReportingStream,GlAccount,AccumBalance,SourceDebit,SourceCredit,RowHash)
+VALUES (24,2,'NIHRA','Departmental','10002',-500,0,500,REPLICATE('3',64)),
+       (24,3,'NIHRA','Departmental','99925',-1000,0,1000,REPLICATE('4',64)),
+       (25,2,'NIHRA','Departmental','10002',1499,1499,0,REPLICATE('5',64)),
+       (25,3,'NIHRA','Departmental','99926',-2998,0,2998,REPLICATE('6',64));
+INSERT dbo.tblNORM_AccountMap (ConfigurationReleaseId,FinancialYear,EntityCode,GlCode,StatementLine,AccountType)
+VALUES (11,2026,'NIHRACS','10001','EMP_WAGES','Expense'),(11,2026,'NIHRACS','10002','EMP_DC','Expense');
+INSERT dbo.tblNORM_Lineage (CalculationRunId,LineResultId,TbRowId,ConfigurationReleaseId,SourceAmount,PresentedContribution,DerivationCode,MappingSnapshot)
+SELECT 28,r.LineResultId,t.TbRowId,18,t.AccumBalance,0.1,'GL_MAPPING',N'Previously approved fixture'
+FROM dbo.tblNORM_LineResult r CROSS JOIN dbo.tblNORM_TrialBalanceRow t WHERE r.CalculationRunId=28 AND t.ImportId=31;
+'@
+    $compareProtected = $protectedQuery.Replace('WHERE ConfigurationReleaseId IN (10,18,19)', 'WHERE ConfigurationReleaseId IN (10,11,18,19)').
+        Replace('FROM dbo.tblNORM_CalculationRun ORDER', 'FROM dbo.tblNORM_CalculationRun WHERE CalculationRunId=28 ORDER').
+        Replace('FROM dbo.tblNORM_LineResult ORDER', 'FROM dbo.tblNORM_LineResult WHERE CalculationRunId=28 ORDER').
+        Replace(' AS PilotResults', @'
+ AS PilotResults,
+    (SELECT * FROM dbo.tblNORM_Lineage WHERE CalculationRunId=28 ORDER BY LineageId FOR JSON PATH, INCLUDE_NULL_VALUES) AS PilotLineage,
+    (SELECT * FROM dbo.tblNORM_ReportingEntity ORDER BY ReportingEntityId FOR JSON PATH, INCLUDE_NULL_VALUES) AS AnnualApproval
+'@)
+    $beforeEngine = Invoke-SeedTestSql $fixture $compareProtected -Scalar
+
+    $pipeMatch = [regex]::Match((& SqlLocalDB.exe info MSSQLLocalDB | Out-String), '(?im)np:(\\[^\r\n]+)')
+    if (!$pipeMatch.Success) { throw 'Could not resolve the disposable LocalDB named pipe.' }
+    $directory = Join-Path ([IO.Path]::GetTempPath()) $database
+    New-Item -Path $directory -ItemType Directory | Out-Null
+    $exe = Join-Path $directory 'ComparativeTest.exe'
+    $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+    $sources = @('NORMHelper.cs','NORMCrypto.cs','StatementEngine.cs') | ForEach-Object { Join-Path $root "App_Code/$_" }
+    & $compiler /nologo /target:exe /platform:x64 "/out:$exe" /r:System.Configuration.dll /r:System.Data.dll /r:System.Web.dll @sources (Join-Path $PSScriptRoot 'ComparativeLocalDbTests.cs')
+    if ($LASTEXITCODE -ne 0) { throw 'Production engine LocalDB harness did not compile.' }
+    $connection = 'Provider=SQLOLEDB;Data Source=' + $pipeMatch.Groups[1].Value.Trim() +
+        ";Network Library=dbnmpntw;Initial Catalog=$database;Integrated Security=SSPI;OLE DB Services=-2;"
+    $escaped = [Security.SecurityElement]::Escape($connection)
+    [IO.File]::WriteAllText("$exe.config", "<configuration><appSettings><add key='NORM.ConnectionString' value='$escaped'/></appSettings></configuration>")
+    & $exe
+    if ($LASTEXITCODE -ne 0) { throw 'Production engine LocalDB verification failed.' }
+    if ($beforeEngine -cne (Invoke-SeedTestSql $fixture $compareProtected -Scalar)) {
+        throw 'Production calculation changed a protected source, mapping, approval or approved run.'
+    }
+    Write-Output 'PASS LocalDB: production comparative calculation preserved protected sources, mappings, annual approvals and approved lineage.'
+}
+
 try {
     $master.Open()
     if ((Invoke-SeedTestSql $master "SELECT CONVERT(int,SERVERPROPERTY('IsLocalDB'));" -Scalar) -ne 1) {
@@ -170,7 +234,11 @@ IF (SELECT COUNT(*) FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=
     $helper = Get-Content -LiteralPath (Join-Path $appCode 'NORMHelper.cs') -Raw
     $marker = Read-SqlConstant $engine 'DraftReviewCheckCode'
     $revision = Read-SqlConstant $engine 'DraftRevisionSql'
-    $references = @{'NORMStatementEngine.DraftReviewCheckCode'=$marker; 'NORMStatementEngine.DraftRevisionSql'=$revision}
+    $component = Read-SqlConstant $engine 'ComparativePeriodCheckCode'
+    $link = Read-SqlConstant $engine 'ComparativeRunCheckCode'
+    $lookup = Read-SqlConstant $engine 'ComparativeRunSql' @{ComparativeRunCheckCode=$link}
+    $references = @{'NORMStatementEngine.DraftReviewCheckCode'=$marker; 'NORMStatementEngine.DraftRevisionSql'=$revision;
+        'NORMStatementEngine.ComparativePeriodCheckCode'=$component}
     $standard = Read-SqlConstant $helper 'StandardRunPredicate' $references
     $current = Read-SqlConstant $helper 'CurrentDraftReviewPredicate' $references
     $reviewSql = @'
@@ -181,6 +249,22 @@ DECLARE @review int = SCOPE_IDENTITY();
 INSERT dbo.tblNORM_ValidationResult (CalculationRunId,CheckCode,CheckLabel,SeverityCode,ResultCode,DetailText)
 SELECT @review,'__MARKER__','Draft mapping review','Blocking','Fail',CONVERT(nvarchar(20),__REVISION__)
 FROM dbo.tblNORM_ConfigurationRelease c WHERE c.ConfigurationReleaseId=11;
+
+INSERT dbo.tblNORM_CalculationRun (ImportId,ConfigurationReleaseId,InputFingerprint,StatusCode,StartedBy)
+VALUES (24,11,REPLICATE('6',64),'Complete','LocalDB fixture');
+DECLARE @comparative int = SCOPE_IDENTITY();
+INSERT dbo.tblNORM_ValidationResult (CalculationRunId,CheckCode,CheckLabel,SeverityCode,ResultCode,DetailText)
+VALUES (@comparative,'__COMPONENT__','Comparative calculation component','Information','Pass','Fixture');
+IF EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=@comparative AND (__STANDARD__ OR __CURRENT__))
+    THROW 51001, 'A comparative component was directly accessible.', 1;
+INSERT dbo.tblNORM_ValidationResult (CalculationRunId,CheckCode,CheckLabel,SeverityCode,ResultCode,ActualValue,DetailText)
+VALUES (@review,'__LINK__','Calculated comparative','Information','Pass',@comparative,'Fixture');
+DECLARE @run int = @review;
+IF ISNULL((__LOOKUP__),0) <> @comparative
+    THROW 51001, 'The reporting-year run did not resolve its stored comparative.', 1;
+SET @run = 28;
+IF EXISTS (__LOOKUP__)
+    THROW 51001, 'An existing approved run acquired a comparative without a stored link.', 1;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=28 AND (__STANDARD__))
    OR EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=@review AND (__STANDARD__))
@@ -210,9 +294,11 @@ IF EXISTS (SELECT 1 FROM dbo.tblNORM_CalculationRun r WHERE r.CalculationRunId=@
     THROW 51001, 'A prior draft review survived a label change.', 1;
 ROLLBACK TRANSACTION;
 '@
-    Invoke-SeedTestSql $fixture ($reviewSql.Replace('__MARKER__',$marker).Replace('__REVISION__',$revision).Replace('__STANDARD__',$standard).Replace('__CURRENT__',$current))
+    $reviewSql = $reviewSql.Replace('__MARKER__',$marker).Replace('__REVISION__',$revision).Replace('__COMPONENT__',$component)
+    Invoke-SeedTestSql $fixture ($reviewSql.Replace('__STANDARD__',$standard).Replace('__CURRENT__',$current).Replace('__LINK__',$link).Replace('__LOOKUP__',$lookup))
     if ($protected -cne (Invoke-SeedTestSql $fixture $protectedQuery -Scalar)) { throw 'Review isolation test changed protected fixture data.' }
     Write-Output 'PASS LocalDB: production run predicates exclude reviews from controlled runs and invalidate them after audited mapping and label changes.'
+    Test-ComparativeEngine
 } finally {
     if ($fixture) { $fixture.Dispose() }
     if ($created) { Invoke-SeedTestSql $master "DROP DATABASE [$database];" }

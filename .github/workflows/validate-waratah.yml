@@ -27,7 +27,7 @@ jobs:
       - name: Compile and package tracked application files
         shell: powershell
         run: ./tools/deploy/New-WaratahPackage.ps1 -Commit $env:GITHUB_SHA -OutputDirectory "$env:RUNNER_TEMP/waratah-validation" -Compile
-      - name: Verify NIHRACS seed isolation on LocalDB
+      - name: Verify NIHRACS seed isolation and comparative persistence on LocalDB
         if: ${{ hashFiles('sql/NORM_Stage2B_NIHRACS_Hierarchy.sql') != '' }}
         shell: powershell
         run: ./tools/tests/EmployeeBenefits/Test-NihracsSeed.ps1
