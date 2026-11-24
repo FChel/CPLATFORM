@@ -100,6 +100,30 @@ if (nihracs) {
       assert.equal(displayedAmount(html, "Total employee benefits", 1), prior);
     }
     console.log("PASS comparative face and note figures agree in web and print, with both years' warnings");
+    const cash = JSON.parse(fs.readFileSync(path.join(output, "cash-flow-presentation.json"), "utf8"));
+    window.NORM_DATA = cash;
+    vm.runInNewContext(fs.readFileSync(sourcePath, "utf8").replace(entry, `
+      setView("publication");
+      renderStatement();
+      window.cashFlow = byId("statementDocument").innerHTML;
+      buildPrintBook();
+      window.cashFlowPrint = byId("printBook").innerHTML;
+    `), { window, document });
+    const reportNumber = value => value < 0 ? "(" + (-value).toLocaleString("en-AU") + ")" : value.toLocaleString("en-AU");
+    const difference = cash.statements[0].rows.find(row => row.code === "CF_CSH_RECON");
+    for (const html of [window.cashFlow, window.cashFlowPrint]) {
+      assert.match(html, /Statement of Cash Flows/);
+      assert.match(html, /FY2026: Classified activity less the movement in cash/);
+      assert.match(html, /FY2025: Classified activity less the movement in cash/);
+      assert.match(html, /58140 \(CF_OPA_USE_SUP1\)/);
+      assert.equal(displayedAmount(html, "Unreconciled difference \\(classified activity less cash movement\\)", 1),
+        reportNumber(difference.reported));
+      assert.equal(displayedAmount(html, "Unreconciled difference \\(classified activity less cash movement\\)", 2),
+        reportNumber(difference.prior));
+    }
+    assert.match(window.cashFlow, /data-prior-row=/);
+    assert.match(window.cashFlowPrint, /INCOMPLETE · DRAFT MAPPING REVIEW/);
+    console.log("PASS cash flow, both reconciliation differences and classification warnings agree in web and incomplete print");
   }
 } else {
   assert.equal(displayedAmount(window.income, "Employee benefits", 1), total);

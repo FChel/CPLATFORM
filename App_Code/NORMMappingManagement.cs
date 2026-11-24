@@ -1038,7 +1038,8 @@ namespace CPlatform.NORM
                 throw new InvalidOperationException("Draft calculation review requires the NIHRACS reporting hierarchy.");
             int importId = NORMImportService.FindCurrentAnnualDepartmentalImport(entity, year);
             int comparativeImport = NORMImportService.FindAnnualDepartmentalImport(entity, year, year - 1);
-            return NORMStatementEngine.RunAnnualDraftReview(importId, comparativeImport, releaseId, user);
+            int openingImport = NORMImportService.FindAnnualDepartmentalImport(entity, year, year - 2, cashFlowOpening: true);
+            return NORMStatementEngine.RunAnnualDraftReview(importId, comparativeImport, releaseId, user, openingImport);
         }
 
         private static bool IsNihracs(DataRow release)

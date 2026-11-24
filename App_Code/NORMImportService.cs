@@ -1342,19 +1342,22 @@ public static class NORMImportService
         return FindAnnualDepartmentalImport(entity, year, year);
     }
 
-    internal static int FindAnnualDepartmentalImport(string entity, int reportingYear, int sourceYear)
+    internal static int FindAnnualDepartmentalImport(string entity, int reportingYear, int sourceYear,
+        bool cashFlowOpening = false)
     {
         NORMAnnualSourceConfiguration approval = NORMAnnualSourceConfiguration.Load(entity, reportingYear);
         if (approval == null || approval.Populations.Rows.Count != 1 ||
             NORMHelper.Str(approval.Populations.Rows[0], "ReportingStream") != "Departmental")
             throw new InvalidOperationException("A single approved Departmental source population is required.");
-        if (sourceYear < reportingYear - approval.PriorYears || sourceYear > reportingYear)
+        bool optionalOpening = cashFlowOpening && sourceYear == reportingYear - 2;
+        if ((!optionalOpening && sourceYear < reportingYear - approval.PriorYears) || sourceYear > reportingYear)
             throw new InvalidOperationException("FY" + sourceYear + " is outside the required annual source coverage.");
         DataRow population = approval.Populations.Rows[0];
         string company = NORMHelper.Str(population, "SourceCompanyCode");
         string ledger = NORMHelper.Str(population, "SourceLedger");
         int importId = FindCurrentSource(new NORMImportPreview { Entity = entity, FinancialYear = sourceYear },
             company, ledger, "Departmental", null, null).ImportId;
+        if (optionalOpening && importId == 0) return 0;
         if (importId == 0 || Convert.ToInt32(NORMHelper.Scalar(
             "SELECT COUNT(*) FROM dbo.tblNORM_Import i WHERE i.ImportId=@id AND i.ConfigurationReleaseId IS NULL " +
             "AND i.AnnualSourceApprovalSnapshot=@snapshot AND NOT EXISTS (SELECT 1 FROM dbo.tblNORM_TrialBalanceRow t " +

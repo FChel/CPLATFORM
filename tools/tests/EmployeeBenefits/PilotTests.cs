@@ -50,15 +50,20 @@ namespace CPlatform.NORM
 
 public static class NORMImportService
 {
+    internal static int CurrentAnnualImport = 25;
+    internal static int OpeningAnnualImport = 23;
+
     internal static int FindCurrentAnnualDepartmentalImport(string entity, int year)
     {
-        if (entity == "NIHRACS" && year == 2026) return 25;
+        if (entity == "NIHRACS" && year == 2026) return CurrentAnnualImport;
         throw new InvalidOperationException("Unexpected annual fixture scope.");
     }
 
-    internal static int FindAnnualDepartmentalImport(string entity, int reportingYear, int sourceYear)
+    internal static int FindAnnualDepartmentalImport(string entity, int reportingYear, int sourceYear,
+        bool cashFlowOpening = false)
     {
         if (entity == "NIHRACS" && reportingYear == 2026 && sourceYear == 2025) return 24;
+        if (entity == "NIHRACS" && reportingYear == 2026 && sourceYear == 2024 && cashFlowOpening) return OpeningAnnualImport;
         throw new InvalidOperationException("Unexpected comparative fixture scope.");
     }
 

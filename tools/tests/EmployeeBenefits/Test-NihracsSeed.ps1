@@ -71,6 +71,33 @@ VALUES (24,2,'NIHRA','Departmental','10002',-500,0,500,REPLICATE('3',64)),
        (25,3,'NIHRA','Departmental','99926',-2998,0,2998,REPLICATE('6',64));
 INSERT dbo.tblNORM_AccountMap (ConfigurationReleaseId,FinancialYear,EntityCode,GlCode,StatementLine,AccountType)
 VALUES (11,2026,'NIHRACS','10001','EMP_WAGES','Expense'),(11,2026,'NIHRACS','10002','EMP_DC','Expense');
+SET IDENTITY_INSERT dbo.tblNORM_Import ON;
+INSERT dbo.tblNORM_Import (ImportId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,
+    SourceFileBytes,StatusCode,ImportedBy,AnnualSourceApprovalSnapshot,[RowCount])
+SELECT v.ImportId,v.FinancialYear,'NIHRACS','ERP','cash-fixture.xlsx',REPLICATE('7',64),
+    REPLICATE('0',62)+CONVERT(varchar(2),v.ImportId),1,'Imported','LocalDB fixture',@snapshot,v.DetailRows
+FROM (VALUES (32,2026,6),(33,2025,5),(34,2024,4)) v(ImportId,FinancialYear,DetailRows);
+SET IDENTITY_INSERT dbo.tblNORM_Import OFF;
+INSERT dbo.tblNORM_ImportFile (ImportId,SourceType,SourceFileName,SourceFileHash,SourceFileBytes,[RowCount],FileContent)
+SELECT ImportId,'ERP',SourceFileName,SourceFileHash,1,[RowCount],0x07 FROM dbo.tblNORM_Import WHERE ImportId BETWEEN 32 AND 34;
+INSERT dbo.tblNORM_TrialBalanceRow (ImportId,SourceRowNo,SourceCompanyCode,ReportingStream,GlAccount,
+    AccumBalance,SourceDebit,SourceCredit,RowHash)
+SELECT v.ImportId,v.RowNo,'NIHRA','Departmental',v.GL,v.Amount,
+    CASE WHEN v.Amount>0 THEN v.Amount ELSE 0 END,CASE WHEN v.Amount<0 THEN -v.Amount ELSE 0 END,REPLICATE('7',64)
+FROM (VALUES
+    (32,1,'70000',10498.99),(32,2,'59999',-1499.00),(32,3,'60000',4000.00),
+    (32,4,'60002',500.00),(32,5,'58140',115.23),(32,6,'99000',-13615.22),
+    (33,1,'70000',12500.00),(33,2,'59999',-1500.00),(33,3,'60000',2500.00),
+    (33,4,'58140',100.01),(33,5,'99000',-13600.01),
+    (34,1,'70000',10000.00),(34,2,'60000',4000.00),(34,3,'60001',500.00),(34,4,'99000',-14500.00)
+) v(ImportId,RowNo,GL,Amount);
+INSERT dbo.tblNORM_AccountMap (ConfigurationReleaseId,FinancialYear,EntityCode,GlCode,StatementLine,AccountType,CashFlowClass)
+VALUES (11,2026,'NIHRACS','70000','CSH_COH','Asset',NULL),
+       (11,2026,'NIHRACS','59999',NULL,NULL,'CF_OPA_REC_RAG'),
+       (11,2026,'NIHRACS','60000',NULL,NULL,'CF_OPA_USE_SUP'),
+       (11,2026,'NIHRACS','60001',NULL,NULL,'CF_INV_REC_PPE'),
+       (11,2026,'NIHRACS','60002',NULL,NULL,'CF_FIN_USE_LEL'),
+       (11,2026,'NIHRACS','58140',NULL,NULL,'CF_OPA_USE_SUP1');
 INSERT dbo.tblNORM_Lineage (CalculationRunId,LineResultId,TbRowId,ConfigurationReleaseId,SourceAmount,PresentedContribution,DerivationCode,MappingSnapshot)
 SELECT 28,r.LineResultId,t.TbRowId,18,t.AccumBalance,0.1,'GL_MAPPING',N'Previously approved fixture'
 FROM dbo.tblNORM_LineResult r CROSS JOIN dbo.tblNORM_TrialBalanceRow t WHERE r.CalculationRunId=28 AND t.ImportId=31;
@@ -103,7 +130,7 @@ FROM dbo.tblNORM_LineResult r CROSS JOIN dbo.tblNORM_TrialBalanceRow t WHERE r.C
     if ($beforeEngine -cne (Invoke-SeedTestSql $fixture $compareProtected -Scalar)) {
         throw 'Production calculation changed a protected source, mapping, approval or approved run.'
     }
-    Write-Output 'PASS LocalDB: production comparative calculation preserved protected sources, mappings, annual approvals and approved lineage.'
+    Write-Output 'PASS LocalDB: production comparative and draft cash-flow calculations preserved protected sources, mappings, annual approvals and approved lineage.'
 }
 
 try {
@@ -166,7 +193,8 @@ IF EXISTS (SELECT 1 FROM dbo.tblNORM_StatementLine WHERE ConfigurationReleaseId=
     Invoke-SeedTestSql $fixture ($seed.Replace('DECLARE @ReleaseId int = NULL;', 'DECLARE @ReleaseId int = 19;'))
     Invoke-SeedTestSql $fixture @'
 INSERT dbo.tblNORM_AccountMap (ConfigurationReleaseId,FinancialYear,EntityCode,GlCode,StatementLine)
-VALUES (10,2026,'NIHRACS','10001',NULL), (18,2026,'UAT_EMP_PILOT','10001','EMP_WAGES');
+VALUES (10,2026,'NIHRACS','10001',NULL), (18,2026,'UAT_EMP_PILOT','10001','EMP_WAGES'),
+       (19,2026,'NIHRACS','10001','EMP_WAGES'),(19,2026,'NIHRACS','70000','CSH_COH');
 SET IDENTITY_INSERT dbo.tblNORM_Import ON;
 INSERT dbo.tblNORM_Import (ImportId,ConfigurationReleaseId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,SourceFileBytes,StatusCode,ImportedBy)
 SELECT v.ImportId,v.ReleaseId,v.FinancialYear,v.EntityCode,'ERP','fixture.xlsx',REPLICATE('1',64),

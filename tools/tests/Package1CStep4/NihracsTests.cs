@@ -58,6 +58,10 @@ public static partial class Tests
             expectedImport = prior;
             Assert(NORMImportService.FindAnnualDepartmentalImport("NIHRACS", 2026, 2025) == prior,
                 "The comparative did not select the prior original using the FY2026 annual approval");
+            expectedImport = Current(Key("NIHRACS", 2024, "NIHRA", null, "Departmental"));
+            Assert(NORMImportService.FindAnnualDepartmentalImport("NIHRACS", 2026, 2024, cashFlowOpening: true) == expectedImport,
+                "Cash-flow opening did not use the optional retained FY2024 original and its approval");
+            RejectUnchanged(delegate { NORMImportService.FindAnnualDepartmentalImport("NIHRACS", 2026, 2024); }, "outside");
             NORMHelper.ScalarCallResponse = call => 0;
             RejectUnchanged(delegate { NORMImportService.FindCurrentAnnualDepartmentalImport("NIHRACS", 2026); }, "does not match its annual approval");
             RejectUnchanged(delegate { NORMImportService.FindAnnualDepartmentalImport("NIHRACS", 2026, 2025); }, "FY2025");
