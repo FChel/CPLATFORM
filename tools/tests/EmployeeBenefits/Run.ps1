@@ -10,6 +10,7 @@ Copy-Item -LiteralPath $epplus -Destination $output
 $options = @('/nologo', '/target:exe', '/define:EMPLOYEE_BENEFITS_TESTS', "/out:$output/Tests.exe",
     '/r:System.Data.dll', '/r:System.Data.DataSetExtensions.dll', '/r:System.Drawing.dll', '/r:System.Web.dll', '/r:System.Web.Extensions.dll', "/r:$epplus")
 foreach ($name in @('StatementEngine','NORMReportingFramework','NORMStatementEnhancements','NORMAdministeredStatements',
+    'NORMDisclosureCompleteness','NORMNihracsDisclosureCatalogue','NORMReviewPack',
     'NORMWordExport','NORMFinancialStatementsExcel','NORMImportModels','NORMCrypto','NORMErrorHandling',
     'NORMMappingManagement','NORMAnnualSourceConfiguration','NihracsTrialBalanceImporter')) {
     $source = [IO.File]::ReadAllText((Join-Path $root "App_Code/$name.cs"))
@@ -17,8 +18,9 @@ foreach ($name in @('StatementEngine','NORMReportingFramework','NORMStatementEnh
     [IO.File]::WriteAllText($target, $source.Replace('using System.Data.OleDb;', 'using TestDb;'))
     $options += $target
 }
-$options += @((Join-Path $root 'NORM/NORM_Statements.aspx.cs'), (Join-Path $root 'tools/tests/FR016/TestSupport.cs'),
-    (Join-Path $PSScriptRoot 'PilotTests.cs'), (Join-Path $PSScriptRoot 'NihracsHierarchyTests.cs'))
+$options += @((Join-Path $root 'NORM/NORM_Statements.aspx.cs'), (Join-Path $root 'NORM/NORM_Reporting.aspx.cs'),
+    (Join-Path $root 'tools/tests/FR016/TestSupport.cs'), (Join-Path $PSScriptRoot 'PilotTests.cs'),
+    (Join-Path $PSScriptRoot 'NihracsHierarchyTests.cs'), (Join-Path $PSScriptRoot 'DisclosureTests.cs'))
 & $compiler @options
 if ($LASTEXITCODE -ne 0) { throw 'Employee benefits harness compilation failed' }
 if ($Nihracs) {

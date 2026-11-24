@@ -214,10 +214,6 @@ public static class NORMStatementEnhancements
                 disclosures[d].Lines.Add(line);
                 NORMReportingFramework.MoveOtherLinesToEnd(disclosures[d].Lines);
                 disclosures[d].Amount += line.Amount;
-                if (String.Equals(NORMHelper.Str(input, "StatusCode"), "Validated", StringComparison.OrdinalIgnoreCase))
-                    disclosures[d].CompletionStatus = "Validated";
-                else if (disclosures[d].CompletionStatus == "Needs input")
-                    disclosures[d].CompletionStatus = "Draft";
                 break;
             }
         }

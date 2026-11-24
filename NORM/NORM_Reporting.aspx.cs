@@ -24,6 +24,7 @@ namespace CPlatform.NORM
         protected string QualitativeConsiderations = "";
         protected string CapabilityHtml = "";
         protected string DisclosureHtml = "";
+        protected string DisclosureChecksHtml = "";
         protected string NarrativeHtml = "";
         protected string WorkflowHtml = "";
         protected string BudgetFigureHtml = "";
@@ -31,7 +32,7 @@ namespace CPlatform.NORM
         protected string CashFlowJournalHtml = "";
         protected bool EnhancementsInstalled;
         protected int RequiredCount;
-        protected int GeneratedCount;
+        protected int CompleteCount;
         protected int NeedsInputCount;
         protected int NotApplicableCount;
         protected string ReadinessLabel = "Select a completed calculation run";
@@ -173,15 +174,20 @@ namespace CPlatform.NORM
             ReportingBasisOptions = Options(new string[,] { { "GPFS", "General purpose financial statements" }, { "SPFS", "Special purpose financial statements" } }, profile.ReportingBasis);
             DisclosureTierOptions = Options(new string[,] { { "FULL", "Full disclosures" }, { "REDUCED", "Reduced disclosures (where permitted)" } }, profile.DisclosureTier);
             CapabilityHtml = BuildCapabilities(profile);
+            List<NORMDisclosureCompleteness.Finding> disclosureChecks;
             List<NORMReportingFramework.Disclosure> disclosures =
-                NORMReportingFramework.LoadDisclosures(SelectedRunId, SelectedReleaseId, profile);
+                NORMReportingFramework.LoadDisclosures(SelectedRunId, SelectedReleaseId, profile, out disclosureChecks);
             DisclosureHtml = BuildDisclosures(disclosures);
+            DisclosureChecksHtml = BuildDisclosureChecks(disclosureChecks);
             NarrativeHtml = BuildNarratives(disclosures);
             BudgetFigureHtml = BuildBudgetFigures(NORMStatementEnhancements.LoadBudgetRegister(SelectedRunId));
             ManualInputHtml = BuildManualInputs(NORMStatementEnhancements.LoadManualInputs(SelectedRunId));
             CashFlowJournalHtml = BuildCashFlowJournals(NORMStatementEnhancements.LoadCashFlowJournals(SelectedRunId));
             WorkflowHtml = BuildWorkflow(NORMReportingFramework.LoadWorkflow(SelectedRunId));
-            ReadinessLabel = NeedsInputCount == 0 ? "Disclosure plan is ready for review" : NeedsInputCount.ToString() + " required items need input";
+            int openChecks = disclosureChecks.FindAll(check => !check.Passed).Count;
+            ReadinessLabel = disclosureChecks.Count > 0
+                ? openChecks.ToString() + " catalogue checks remain open"
+                : "No mandatory validation catalogue is configured";
         }
 
         private string BuildCapabilities(NORMReportingFramework.ReportingProfile profile)
@@ -222,16 +228,30 @@ namespace CPlatform.NORM
                     .Append("<span class=\"norm-disclosure-status ").Append(statusClass).Append("\">").Append(Enc(item.CompletionStatus)).Append("</span></article>");
                 html.Append("<div class=\"norm-disclosure-reason\"><span>").Append(Enc(item.RequirementReason)).Append("</span>")
                     .Append(item.PotentiallyImmaterial ? "<em>Below overall materiality—assess qualitative factors</em>" : "").Append("</div>");
+                if (!String.IsNullOrEmpty(item.CompletenessDetail))
+                    html.Append("<div class=\"norm-disclosure-reason\"><span>").Append(Enc(item.CompletenessDetail)).Append("</span></div>");
                 if (item.Required)
                 {
                     RequiredCount++;
-                    if (item.CompletionStatus == "Needs input") { NeedsInputCount++; }
-                    else { GeneratedCount++; }
+                    if (item.CompletionStatus == NORMDisclosureCompleteness.Complete) { CompleteCount++; }
+                    else { NeedsInputCount++; }
                 }
                 else { NotApplicableCount++; }
             }
             if (section != null) { html.Append("</div></section>"); }
             return html.ToString();
+        }
+
+        private string BuildDisclosureChecks(List<NORMDisclosureCompleteness.Finding> checks)
+        {
+            if (checks.Count == 0) return "";
+            StringBuilder html = new StringBuilder("<h3>Working disclosure catalogue</h3><ul>");
+            foreach (NORMDisclosureCompleteness.Finding check in checks)
+            {
+                html.Append("<li><strong>").Append(Enc(check.Check.Destination + " · " + check.Check.Title))
+                    .Append("</strong> ").Append(Enc(check.Result + ". " + check.Detail)).Append("</li>");
+            }
+            return html.Append("</ul>").ToString();
         }
 
         private string BuildNarratives(List<NORMReportingFramework.Disclosure> values)
@@ -242,11 +262,12 @@ namespace CPlatform.NORM
                 NORMReportingFramework.Disclosure item = values[i];
                 if (!item.Required || !item.RequiresNarrative) { continue; }
                 string narrative = item.Narrative ?? "";
+                string preparationStatus = String.IsNullOrEmpty(item.NarrativeStatus) ? "Draft" : item.NarrativeStatus;
                 html.Append("<details class=\"norm-policy-card\"")
-                    .Append(item.Code == "OVERVIEW" || item.CompletionStatus == "Needs input" ? " open" : "")
+                    .Append(item.Code == "OVERVIEW" || String.IsNullOrWhiteSpace(narrative) ? " open" : "")
                     .Append("><summary><span><b>").Append(Enc(item.NoteRef ?? item.SectionCode)).Append("</b><strong>")
-                    .Append(Enc(item.Title)).Append("</strong></span><em class=\"").Append(CssStatus(item.CompletionStatus)).Append("\">")
-                    .Append(Enc(item.CompletionStatus)).Append("</em></summary><div><label><span>Entity wording</span><textarea rows=\"7\" name=\"narrative_")
+                    .Append(Enc(item.Title)).Append("</strong></span><em class=\"").Append(CssStatus(preparationStatus)).Append("\">")
+                    .Append(Enc(preparationStatus)).Append("</em></summary><div><label><span>Entity wording</span><textarea rows=\"7\" name=\"narrative_")
                     .Append(Enc(item.Code)).Append("\">").Append(Enc(narrative)).Append("</textarea></label>")
                     .Append("<label class=\"norm-policy-status\"><span>Preparation status</span><select name=\"narrativeStatus_")
                     .Append(Enc(item.Code)).Append("\">").Append(StatusOptions(item.NarrativeStatus)).Append("</select></label>")

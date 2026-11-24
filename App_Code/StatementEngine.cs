@@ -18,6 +18,7 @@ public static class NORMStatementEngine
     public const string HierarchyDetailType = "hierarchy-detail";
     public const string DraftReviewCheckCode = "DRAFT_MAPPING_REVIEW";
     public const string ComparativePeriodCheckCode = "COMPARATIVE_PERIOD";
+    internal const string CashFlowReconciliationCheckCode = "CASH_FLOW_RECONCILIATION";
     private const string ComparativeRunCheckCode = "COMPARATIVE_RUN";
     // Link the two immutable runs through the existing assurance record on the reporting-year run.
     private const string ComparativeRunSql =
@@ -107,16 +108,10 @@ public static class NORMStatementEngine
     private static int Run(ImportContext context, string startedBy, ImportContext comparative = null, int? cashOpeningImport = null)
     {
         int importId = context.ImportId;
-        string configurationHash = context.DraftRevision.HasValue
-            ? "draft-review|" + context.DraftRevision.Value.ToString(CultureInfo.InvariantCulture)
-            : ConfigurationFingerprint(context.ReleaseId);
         if (comparative != null && (comparative.FinancialYear != context.FinancialYear - 1 ||
             comparative.DraftRevision != context.DraftRevision))
             throw new InvalidOperationException("The annual source years or mapping revision changed. Reload and calculate again.");
-        string comparison = comparative == null ? "" : "|comparative-v1|" + comparative.ImportId + "|" + comparative.FileHash;
-        if (cashOpeningImport.HasValue) comparison += "|cash-flow-v1|" + cashOpeningImport.Value;
-        string inputFingerprint = NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" +
-            context.ReportingEntityName + "|mapping-validation-v2" + comparison);
+        string inputFingerprint = RunFingerprint(context, comparative, cashOpeningImport);
 
         object existing = NORMHelper.Scalar(
             "SELECT TOP 1 CalculationRunId FROM dbo.tblNORM_CalculationRun " +
@@ -155,6 +150,47 @@ public static class NORMStatementEngine
     public static int ComparativeRunId(int runId)
     {
         return Convert.ToInt32(NORMHelper.Scalar(ComparativeRunSql, NORMHelper.P("@run", runId)));
+    }
+
+    private static string RunFingerprint(ImportContext context, ImportContext comparative, int? cashOpeningImport)
+    {
+        string configurationHash = context.DraftRevision.HasValue
+            ? "draft-review|" + context.DraftRevision.Value.ToString(CultureInfo.InvariantCulture)
+            : ConfigurationFingerprint(context.ReleaseId);
+        string comparison = comparative == null ? "" : "|comparative-v1|" + comparative.ImportId + "|" + comparative.FileHash;
+        if (cashOpeningImport.HasValue) comparison += "|cash-flow-v1|" + cashOpeningImport.Value;
+        return NORMCrypto.Sha256(context.FileHash + "|" + configurationHash + "|" +
+            context.ReportingEntityName + "|mapping-validation-v2" + comparison);
+    }
+
+    internal static bool HasCurrentAnnualDisclosureEvidence(int runId, int priorRun, int releaseId,
+        int currentImport, int priorImport, Func<int> getOpeningImport)
+    {
+        if (runId <= 0 || priorRun <= 0 || runId == priorRun) return false;
+        DataTable runs = NORMHelper.Query(
+            "SELECT r.CalculationRunId,r.ImportId,r.InputFingerprint,c.StatusCode FROM dbo.tblNORM_CalculationRun r " +
+            "JOIN dbo.tblNORM_ConfigurationRelease c ON c.ConfigurationReleaseId=r.ConfigurationReleaseId " +
+            "WHERE r.CalculationRunId IN (@run,@prior) AND r.ConfigurationReleaseId=@release " +
+            "AND r.StatusCode='Complete' AND r.IsDeactivated=0 AND c.IsDeactivated=0",
+            NORMHelper.P("@run", runId), NORMHelper.P("@prior", priorRun), NORMHelper.P("@release", releaseId));
+        if (runs.Rows.Count != 2) return false;
+        DataRow current = NORMHelper.Int(runs.Rows[0], "CalculationRunId") == runId ? runs.Rows[0] : runs.Rows[1];
+        DataRow prior = current == runs.Rows[0] ? runs.Rows[1] : runs.Rows[0];
+        bool draft = NORMHelper.Str(current, "StatusCode") == "Draft";
+        if (currentImport != NORMHelper.Int(current, "ImportId") || priorImport != NORMHelper.Int(prior, "ImportId"))
+            return false;
+        ImportContext context = LoadContext(currentImport, releaseId, draft);
+        ImportContext comparative = LoadContext(priorImport, releaseId, draft, true);
+        if (context.DraftRevision != comparative.DraftRevision) return false;
+        string fingerprint = RunFingerprint(context, comparative, draft ? (int?)getOpeningImport() : null);
+        return MatchesAnnualDisclosureFingerprints(fingerprint, NORMHelper.Str(current, "InputFingerprint"),
+            NORMHelper.Str(prior, "InputFingerprint"));
+    }
+
+    internal static bool MatchesAnnualDisclosureFingerprints(string expected, string current, string prior)
+    {
+        return String.Equals(current, expected, StringComparison.Ordinal) &&
+            String.Equals(prior, NORMCrypto.Sha256(expected + "|comparative-period"), StringComparison.Ordinal);
     }
 
     private static int InsertRun(OleDbConnection connection, OleDbTransaction transaction, ImportContext context,
@@ -665,7 +701,7 @@ public static class NORMStatementEngine
                 lines.Add("SCF|" + change.LineCode, change);
                 lines.Add("SCF|" + difference.LineCode, difference);
                 bool reconciled = difference.ComputedAmount == 0m && difference.ReportedAmount == 0m;
-                AddValidation(connection, transaction, runId, "CASH_FLOW_RECONCILIATION", "Cash-flow reconciliation",
+                AddValidation(connection, transaction, runId, CashFlowReconciliationCheckCode, "Cash-flow reconciliation",
                     "Blocking", reconciled ? "Pass" : "Fail", activity.ReportedAmount, change.ReportedAmount, 0m,
                     "Classified activity less the movement in cash. Exact difference in AUD: " +
                     (difference.ComputedAmount * 1000m).ToString("0.00", CultureInfo.InvariantCulture) + ".");

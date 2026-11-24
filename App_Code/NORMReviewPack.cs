@@ -249,11 +249,12 @@ namespace CPlatform.NORM
         private static void AddDisclosureRegister(ExcelPackage package, int runId, int releaseId)
         {
             NORMReportingFramework.ReportingProfile profile = NORMReportingFramework.LoadProfile(releaseId);
+            List<NORMDisclosureCompleteness.Finding> checks;
             System.Collections.Generic.List<NORMReportingFramework.Disclosure> disclosures =
-                NORMReportingFramework.LoadDisclosures(runId, releaseId, profile);
+                NORMReportingFramework.LoadDisclosures(runId, releaseId, profile, out checks);
             ExcelWorksheet sheet = package.Workbook.Worksheets.Add("Disclosure register");
-            AddTitle(sheet, "PRIMA disclosure register", "Entity-profile assessment, preparation status and generated balance coverage");
-            string[] headers = { "Section", "Note", "Disclosure", "Trigger", "Required", "Status", "Source rows", "Generated amount ($'000)", "Guidance" };
+            AddTitle(sheet, "PRIMA disclosure register", "Disclosure checks are separate from accounting approval");
+            string[] headers = { "Section", "Note", "Disclosure", "Trigger", "Required", "Status", "Source rows", "Generated amount ($'000)", "Guidance", "Outstanding checks" };
             int headerRow = 4;
             AddHeaders(sheet, headerRow, headers);
             for (int i = 0; i < disclosures.Count; i++)
@@ -269,6 +270,7 @@ namespace CPlatform.NORM
                 sheet.Cells[row, 7].Value = source.SourceCount;
                 sheet.Cells[row, 8].Value = source.Amount;
                 sheet.Cells[row, 9].Value = source.Guidance;
+                sheet.Cells[row, 10].Value = source.CompletenessDetail;
                 if (source.Required && source.CompletionStatus == "Needs input")
                 {
                     sheet.Cells[row, 1, row, headers.Length].Style.Fill.PatternType = ExcelFillStyle.Solid;
@@ -276,11 +278,39 @@ namespace CPlatform.NORM
                 }
             }
             FinishTable(sheet, headerRow, disclosures.Count, headers.Length);
-            if (disclosures.Count > 0) { sheet.Cells[headerRow + 1, 8, headerRow + disclosures.Count, 8].Style.Numberformat.Format = "#,##0.000;[Red](#,##0.000)"; }
             sheet.Column(1).Width = 36;
             sheet.Column(3).Width = 40;
             sheet.Column(9).Width = 70;
-            sheet.Cells[headerRow + 1, 9, headerRow + disclosures.Count, 9].Style.WrapText = true;
+            sheet.Column(10).Width = 70;
+            if (disclosures.Count > 0)
+            {
+                sheet.Cells[headerRow + 1, 8, headerRow + disclosures.Count, 8].Style.Numberformat.Format = "#,##0.000;[Red](#,##0.000)";
+                sheet.Cells[headerRow + 1, 9, headerRow + disclosures.Count, 10].Style.WrapText = true;
+            }
+            if (checks.Count > 0) AddDisclosureChecks(package, checks);
+        }
+
+        internal static void AddDisclosureChecks(ExcelPackage package, List<NORMDisclosureCompleteness.Finding> checks)
+        {
+            ExcelWorksheet sheet = package.Workbook.Worksheets.Add("Disclosure checks");
+            AddTitle(sheet, "Working disclosure catalogue", "Disclosure checks are separate from accounting approval");
+            string[] headers = { "Check", "Destination", "Disclosure requirement", "Applicability", "Result", "Evidence or outstanding action" };
+            AddHeaders(sheet, 4, headers);
+            for (int i = 0; i < checks.Count; i++)
+            {
+                NORMDisclosureCompleteness.Finding check = checks[i];
+                int row = i + 5;
+                sheet.Cells[row, 1].Value = check.Check.Id;
+                sheet.Cells[row, 2].Value = check.Check.Destination;
+                sheet.Cells[row, 3].Value = check.Check.Title;
+                sheet.Cells[row, 4].Value = check.Check.AwaitingDecision ? "Awaiting decision" : "Required";
+                sheet.Cells[row, 5].Value = check.Result;
+                sheet.Cells[row, 6].Value = check.Detail;
+            }
+            FinishTable(sheet, 4, checks.Count, headers.Length);
+            sheet.Column(3).Width = 48;
+            sheet.Column(6).Width = 70;
+            sheet.Column(6).Style.WrapText = true;
         }
 
         private static void AddAuditCommittee(ExcelPackage package, int runId, int releaseId)

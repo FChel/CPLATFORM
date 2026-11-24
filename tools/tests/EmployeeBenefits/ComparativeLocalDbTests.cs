@@ -42,12 +42,19 @@ internal static class ComparativeLocalDbTests
         Check(NORMStatementEngine.RunAnnualDraftReview(32, 33, 11, User, 34) == cash &&
             NORMStatementEngine.RunAnnualDraftReview(32, 33, 11, User) != cash,
             "Cash-flow fingerprints failed to distinguish existing comparative runs.");
+        Check(NORMStatementEngine.HasCurrentAnnualDisclosureEvidence(cash, priorCash, 11, 32, 33, () => 34),
+            "The persisted cash-flow pair was not recognised as current disclosure evidence.");
+        Check(!NORMStatementEngine.HasCurrentAnnualDisclosureEvidence(cash, priorCash, 11, 25, 33, () => 34) &&
+            !NORMStatementEngine.HasCurrentAnnualDisclosureEvidence(cash, priorCash, 11, 32, 33, () => 0) &&
+            !NORMStatementEngine.HasCurrentAnnualDisclosureEvidence(cash, comparative, 11, 32, 33, () => 34),
+            "A superseded source or mismatched run pair was accepted as current disclosure evidence.");
         HttpContext.Current.User = new GenericPrincipal(new GenericIdentity("Unassigned fixture", "Fixture"), new string[0]);
         Check(!NORMHelper.CanAccessStatementRun(current) && !NORMHelper.CanAccessStatementRun(comparative),
             "Unassigned user could access comparative review.");
         Console.WriteLine("PASS LocalDB: production engine persisted both source years and their lineage under FY2026 release 11.");
         Console.WriteLine("PASS LocalDB: both periods retain mapping failures, comparative review is isolated, and approved run 28 remains available.");
         Console.WriteLine("PASS LocalDB: production cash-flow amounts, both source identities, exact and reported differences, and draft-only access.");
+        Console.WriteLine("PASS LocalDB: current persisted disclosure evidence accepted; superseded sources and mismatched runs rejected.");
     }
 
     private static void CheckCash(int run, int import, int preceding, decimal exactReceipts, decimal receipts,

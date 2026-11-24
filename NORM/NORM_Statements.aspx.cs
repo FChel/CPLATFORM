@@ -147,9 +147,9 @@ namespace CPlatform.NORM
                 statements.Add(AdministeredNotesPayload(administered.Notes));
                 meta["administeredCurrentFallback"] = administered.UsesPublishedCurrentFallback;
             }
-            List<NORMReportingFramework.Disclosure> disclosures = NORMReportingFramework.IsInstalled()
-                ? NORMReportingFramework.LoadDisclosures(runId, releaseId, profile)
-                : new List<NORMReportingFramework.Disclosure>();
+            List<NORMDisclosureCompleteness.Finding> disclosureChecks;
+            List<NORMReportingFramework.Disclosure> disclosures =
+                NORMReportingFramework.LoadDisclosures(runId, releaseId, profile, out disclosureChecks);
             NORMStatementEnhancements.ApplyManualInputs(runId, disclosures);
             statements.Add(BuildNotesStatement(disclosures));
             payload["statements"] = statements;
@@ -157,7 +157,7 @@ namespace CPlatform.NORM
             payload["disclosures"] = BuildDisclosurePayload(disclosures);
             List<object> validations = LoadValidations(runId, comparativeRun > 0 ? fy : 0);
             if (comparativeRun > 0) validations.AddRange(LoadValidations(comparativeRun, fy - 1));
-            AppendDisclosureValidations(validations, disclosures);
+            AppendDisclosureValidations(validations, disclosures, disclosureChecks);
             AppendDemoNoteReconciliations(validations, runId, disclosures);
             AppendEnhancementValidations(validations, runId);
             if (meta.ContainsKey("administeredCurrentFallback") && Convert.ToBoolean(meta["administeredCurrentFallback"]))
@@ -281,6 +281,7 @@ namespace CPlatform.NORM
                 item["potentiallyImmaterial"] = source.PotentiallyImmaterial;
                 item["requirementReason"] = source.RequirementReason;
                 item["status"] = source.CompletionStatus;
+                item["completenessDetail"] = source.CompletenessDetail;
                 item["sourceCount"] = source.SourceCount;
                 item["amount"] = source.Amount;
                 item["reported"] = source.ReportedAmount;
@@ -324,7 +325,8 @@ namespace CPlatform.NORM
             return value;
         }
 
-        private void AppendDisclosureValidations(List<object> validations, List<NORMReportingFramework.Disclosure> disclosures)
+        private void AppendDisclosureValidations(List<object> validations, List<NORMReportingFramework.Disclosure> disclosures,
+            List<NORMDisclosureCompleteness.Finding> checks)
         {
             int required = 0;
             int complete = 0;
@@ -333,20 +335,34 @@ namespace CPlatform.NORM
             {
                 if (!disclosures[i].Required) { continue; }
                 required++;
-                if (disclosures[i].CompletionStatus == "Needs input") { missing++; }
-                else { complete++; }
+                if (disclosures[i].CompletionStatus == NORMDisclosureCompleteness.Complete) { complete++; }
+                else { missing++; }
             }
-            if (required == 0) { return; }
+            if (required == 0 && checks.Count == 0) { return; }
+            foreach (NORMDisclosureCompleteness.Finding check in checks)
+            {
+                validations.Add(new Dictionary<string, object> {
+                    { "code", "DISCLOSURE_" + check.Check.Id },
+                    { "label", check.Check.Destination + " · " + check.Check.Title },
+                    { "severity", "Disclosure review" },
+                    { "result", check.Result == "Not Run" ? "Warning" : check.Result },
+                    { "detail", check.Result + ". " + check.Detail }
+                });
+            }
+            int openChecks = checks.FindAll(check => !check.Passed).Count;
             Dictionary<string, object> item = new Dictionary<string, object>();
             item["code"] = "PRIMA_DISCLOSURE_COMPLETENESS";
-            item["label"] = "PRIMA disclosure register is complete";
+            item["label"] = "Disclosure completeness review";
             item["severity"] = "Warning";
-            item["result"] = missing == 0 ? "Pass" : "Warning";
+            item["result"] = missing == 0 && openChecks == 0 ? "Pass" : "Warning";
             item["actual"] = complete;
             item["expected"] = required;
             item["difference"] = complete - required;
             item["tolerance"] = 0;
-            item["detail"] = complete.ToString() + " of " + required.ToString() + " required statements and notes contain generated figures or draft wording; " + missing.ToString() + " need input.";
+            item["detail"] = complete.ToString() + " of " + required.ToString() + " required register entries passed all applicable checks. " +
+                (checks.Count == 0 ? "No mandatory validation catalogue is configured. " :
+                    openChecks.ToString() + " of " + checks.Count.ToString() + " catalogue checks remain open. ") +
+                "Disclosure checks are separate from accounting approval.";
             validations.Add(item);
         }
 
