@@ -206,6 +206,7 @@ public static class NORMErrorHandling
         "This workbook belongs to a different configuration release. Download a fresh workbook for this draft.",
         "Unclosed CSV quoted field.",
         "Unknown source-document type.",
+        "Use a four-digit financial year as each NIHRACS worksheet name.",
         "Unrecognised financial detail on an additional legacy worksheet cannot be excluded from row reconciliation.",
         "Unsupported binary source layout.",
         "Unsupported ERP content: expected an XLSX workbook.",
@@ -215,6 +216,14 @@ public static class NORMErrorHandling
         "Upload a PDF, Word document or Excel workbook.",
     };
     private static readonly string[] BusinessPatterns = {
+        @"\ANIHRACS worksheet [0-9]{4}, row [0-9]{1,7}\. (?:Expected seven source columns|No detail rows were found|Unexpected data after the control footer)\.\z",
+        @"\ANIHRACS worksheet [0-9]{4}, cell [A-G][0-9]{1,7}\. (?:Expected the Trial Balance heading|Expected the NIHRACS report identity|" +
+        @"Expected the worksheet financial year in the annual report heading|Unexpected column heading|Expected one Debit and one Credit heading|" +
+        @"Expected a NIHRA detail row or a labelled control footer|A GL account of up to 30 characters is required|" +
+        @"A cost centre must be no more than 30 characters|A description of up to 300 characters is required|Expected a blank centre description|" +
+        @"Expected the (?:Totals|Credits|Debits|Up / \(Down\)) footer label|Unexpected data in the footer|Unexpected amount in the footer|" +
+        @"Footer amount does not match the calculated control|A numeric amount is required|A non-negative amount within the supported precision is required|" +
+        @"A genuine sub-cent amount cannot be stored|Excel formulas are not accepted\. Supply a fixed numeric amount)\.\z",
         @"\A(?:Debits and credits must differ by exactly zero AUD\. Actual: |Trial balance must sum to exactly zero AUD; actual )-?[0-9]+(?:\.[0-9]+)?\.\z",
         @"\A(?:Unrecognised or incomplete Defence ERP detail row |Defence ERP movements do not reconcile exactly at row |Defence ERP report controls disagree with extracted detail in column |Invalid Icon Water positional record at line |Misaligned Icon Water record at line |Unexpected data after Icon Water control totals at line |Unsupported or malformed Icon Water record at line |Invalid, duplicate or unreconciled Icon Water detail at line |Source identifiers or description exceed storage limits at record )[0-9]+\.\z",
         @"\AMissing or invalid Defence ERP amount at row [0-9]+, column [0-9]+\.\z",

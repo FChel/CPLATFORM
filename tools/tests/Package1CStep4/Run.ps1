@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$NihracsWorkbook)
+param([string]$NihracsWorkbook, [string]$NihracsReplacementWorkbook)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $output = Join-Path ([IO.Path]::GetTempPath()) ('norm-package1c-step4-' + [Guid]::NewGuid().ToString('N'))
@@ -25,6 +25,10 @@ $options += @((Join-Path $output 'NORMImportService.cs'),(Join-Path $output 'NOR
 if ($LASTEXITCODE -ne 0) { throw 'Package 1C Step 4 compilation failed' }
 $testArgs = @($root)
 if ($NihracsWorkbook) { $testArgs += (Resolve-Path -LiteralPath $NihracsWorkbook).Path }
+if ($NihracsReplacementWorkbook) {
+    if (!$NihracsWorkbook) { throw 'Supply the original NIHRACS workbook as well.' }
+    $testArgs += (Resolve-Path -LiteralPath $NihracsReplacementWorkbook).Path
+}
 & (Join-Path $output 'Tests.exe') @testArgs
 if ($LASTEXITCODE -ne 0) { throw 'Package 1C Step 4 tests failed' }
 Write-Output "Isolated artifacts: $output"
