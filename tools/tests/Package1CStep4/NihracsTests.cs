@@ -7,7 +7,7 @@ using OfficeOpenXml;
 
 public static partial class Tests
 {
-    static void RunNihracs(string workbook)
+    static void RunNihracs(string workbook, string replacementWorkbook)
     {
         byte[] bytes = File.ReadAllBytes(workbook);
         int before = passed;
@@ -151,6 +151,41 @@ public static partial class Tests
             RejectUnchanged(delegate { NORMImportService.ConfirmBatch(previews, "isolated-test", false); }, "final year row failure");
             Assert(rows == 841 && NORMHelper.Rollbacks > 0, "Persistence did not reach the final year and roll back");
         });
+        HTest("NIHRACS original footer is validated and excluded from source rows", delegate {
+            var periods = NihracsTrialBalanceImporter.TryParse(bytes);
+            Assert(periods.Select(p => p.SourceFile.ControlRowCount).SequenceEqual(new[] { 0, 0, 4 }),
+                "Unexpected control counts across the original years");
+            CheckNihracsPeriod(periods[2], 2026, 778, 42233019.17m);
+            RejectUnchanged(delegate { NihracsTrialBalanceImporter.TryParse(AlterNihracs(bytes, "2026", 786, 6, 1d)); },
+                "cell F786. Footer amount");
+            RejectUnchanged(delegate { NihracsTrialBalanceImporter.TryParse(AlterNihracs(bytes, "2026", 789, 5, "Other")); },
+                "cell E789. Expected the Up / (Down) footer label");
+            RejectUnchanged(delegate { NihracsTrialBalanceImporter.TryParse(AlterNihracs(bytes, "2026", 790, 1, "NIHRA")); },
+                "row 790. Unexpected data after the control footer");
+        });
+        HTest("NIHRACS individual-year workbook handles a recognised footer in any year", delegate {
+            using (var package = new ExcelPackage(new MemoryStream(bytes, false)))
+            {
+                package.Workbook.Worksheets.Delete("2024");
+                package.Workbook.Worksheets.Delete("2026");
+                var sheet = package.Workbook.Worksheets["2025"];
+                int first = sheet.Dimension.End.Row + 1;
+                sheet.Cells[first, 5].Value = "Totals";
+                sheet.Cells[first, 6].Value = 38135604.94d;
+                sheet.Cells[first, 7].Value = 38135604.94d;
+                sheet.Cells[first + 1, 5].Value = "Credits";
+                sheet.Cells[first + 1, 6].Value = 38135604.94d;
+                sheet.Cells[first + 2, 5].Value = "Debits";
+                sheet.Cells[first + 2, 6].Value = 38135604.94d;
+                sheet.Cells[first + 3, 5].Value = "Up / (Down)";
+                sheet.Cells[first + 3, 6].Value = 0d;
+                var period = NihracsTrialBalanceImporter.TryParse(package.GetAsByteArray()).Single();
+                Assert(period.SourceFile.ControlRowCount == 4, "A FY2025 footer was treated as detail");
+                CheckNihracsPeriod(period, 2025, 427, 38135604.94m);
+            }
+        });
+        if (replacementWorkbook != null)
+            CheckRevisedNihracs(bytes, File.ReadAllBytes(replacementWorkbook));
         HTest("NIHRACS replacement history compares repeated GLs by centre including blanks", delegate {
             Chain();
             foreach (int id in new[] { 20, 30 })
@@ -168,6 +203,85 @@ public static partial class Tests
                 "A centre change did not remain separate from the blank-centre row");
         });
         Console.WriteLine("NIHRACS multi-year: " + (passed - before) + " Passed / 0 Failed");
+    }
+
+    static void CheckRevisedNihracs(byte[] original, byte[] revised)
+    {
+        byte[] withFormula = revised, revisedValues, only2026;
+        using (var package = new ExcelPackage(new MemoryStream(revised, false)))
+        {
+            var amount = package.Workbook.Worksheets["2026"].Cells["F10"];
+            Assert(Convert.ToDecimal(amount.Value) == 6739360.52m,
+                "The supplied revised source does not match the verified F10 amount");
+            if (String.IsNullOrEmpty(amount.Formula))
+            {
+                amount.Formula = "6739360.52";
+                withFormula = package.GetAsByteArray();
+            }
+        }
+        using (var package = new ExcelPackage(new MemoryStream(withFormula, false)))
+        {
+            var amount = package.Workbook.Worksheets["2026"].Cells["F10"];
+            amount.Formula = null;
+            amount.Value = 6739360.52d;
+            revisedValues = package.GetAsByteArray();
+        }
+        HTest("NIHRACS revised workbook identifies the formula cell during browser inspection", delegate {
+            AnnualFixture();
+            var page = new CPlatform.NORM.NORM_Import();
+            page.InspectUploadsForTest(25, new int[0], new[] { withFormula }, new[] { "Consolidated TBs (From Statements).xlsx" }, "NIHRACS");
+            Assert(page.ErrorForTest.Contains("cell F10. Excel formulas are not accepted. Supply a fixed numeric amount.") &&
+                page.PreviewsForTest == null && acceptanceCommits == 0,
+                "The inspection did not reject the formula safely: " + page.ErrorForTest);
+        });
+        using (var package = new ExcelPackage(new MemoryStream(revisedValues, false)))
+        {
+            package.Workbook.Worksheets.Delete("2024");
+            package.Workbook.Worksheets.Delete("2025");
+            only2026 = package.GetAsByteArray();
+        }
+        HTest("NIHRACS revised workbook retains all three populations without a footer", delegate {
+            var periods = NihracsTrialBalanceImporter.TryParse(revisedValues);
+            Assert(periods.Count == 3 && periods.All(p => p.SourceFile.ControlRowCount == 0), "Unexpected detail or control count");
+            CheckNihracsPeriod(periods[0], 2024, 413, 33540798.38m);
+            CheckNihracsPeriod(periods[1], 2025, 427, 38135604.94m);
+            CheckNihracsPeriod(periods[2], 2026, 771, 42822388.89m);
+            Assert(periods[2].Rows.Skip(767).Select(r => r.GlAccount).SequenceEqual(new[] { "21020", "48030", "42350", "46620" }),
+                "The final four GL detail rows were lost");
+            if (!Object.ReferenceEquals(withFormula, revised))
+                CheckNihracsPeriod(NihracsTrialBalanceImporter.TryParse(revised).Single(p => p.FinancialYear == 2026),
+                    2026, 771, 42822388.89m);
+        });
+        HTest("NIHRACS single FY2026 replacement requires consent and preserves the other years", delegate {
+            AnnualFixture();
+            var previous = NORMImportService.ConfirmBatch(
+                NORMImportService.InspectFileForAnnualContext(original, "Original.xlsx", "NIHRACS", "isolated-test"),
+                "isolated-test", false, true);
+            var previews = NORMImportService.InspectFileForAnnualContext(only2026, "FY2026.xlsx", "NIHRACS", "isolated-test");
+            Assert(previews.Count == 1 && previews[0].CanAccept && previews[0].HasReplacement && previews[0].RowCount == 771,
+                "The single FY2026 did not resolve its existing source");
+            RejectUnchanged(delegate { NORMImportService.ConfirmBatch(previews, "isolated-test", false, true); }, "replacement confirmation");
+            int replacement = NORMImportService.ConfirmBatch(previews, "isolated-test", true, true).Single().ImportId;
+            Assert(NORMHelper.Runs == 0 && store[replacement].Rows.Count == 771 &&
+                NORMHelper.Committed.Any(call => call.Values.ContainsKey("@event") && (string)call["@event"] == "IMPORT_SOURCE_REPLACED" &&
+                    Convert.ToString(call["@detail"]).Contains("Prior import=" + previous[2].ImportId + ";")),
+                "Controlled replacement did not retain its audit or source-only behaviour");
+            for (int i = 0; i < previous.Count; i++)
+            {
+                int id = Current(Key("NIHRACS", 2024 + i, "NIHRA", null, "Departmental"));
+                Assert(id == (i == 2 ? replacement : previous[i].ImportId) &&
+                    NORMCrypto.Sha256(ImportDownload(previous[i].ImportId)) == NORMCrypto.Sha256(original),
+                    "The source history or an unaffected year changed");
+            }
+        });
+    }
+
+    static void CheckNihracsPeriod(NORMParsedImport period, int year, int rows, decimal totals)
+    {
+        Assert(period.FinancialYear == year && period.SourceFile.RowsReconciled && period.Rows.Count == rows &&
+            period.Rows.Select(r => r.SourceRowNo).SequenceEqual(Enumerable.Range(8, rows)) &&
+            period.Rows.Sum(r => r.SourceDebit.Value) == totals && period.Rows.Sum(r => r.SourceCredit.Value) == totals &&
+            period.Rows.All(r => r.AccumBalance == r.SourceDebit.Value - r.SourceCredit.Value), "Source detail or totals changed for FY" + year);
     }
 
     static string AnnualFixture()

@@ -13,6 +13,7 @@ public static class NihracsTrialBalanceImporter
     public const string Stream = "Departmental";
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
     private static readonly string[] Headings = { "Entity Code", "Account", "Centre", "Description", "Centre Desc" };
+    private static readonly string[] ControlLabels = { "Totals", "Credits", "Debits", "Up / (Down)" };
 
     public static List<NORMParsedImport> TryParse(byte[] content)
     {
@@ -27,16 +28,16 @@ public static class NihracsTrialBalanceImporter
                 identified |= Text(sheet, 3, 1) == Agency && Text(sheet, 7, 1) == Headings[0];
             }
             if (!identified) { return null; }
-            if (package.Workbook.Worksheets.Count != 3)
-            { throw new InvalidDataException("The NIHRACS profile requires the 2024, 2025 and 2026 worksheets."); }
-
             List<NORMParsedImport> results = new List<NORMParsedImport>();
-            for (int year = 2024; year <= 2026; year++)
+            foreach (ExcelWorksheet sheet in package.Workbook.Worksheets)
             {
-                ExcelWorksheet sheet = package.Workbook.Worksheets[year.ToString(Invariant)];
-                if (sheet == null) { throw new InvalidDataException("NIHRACS worksheet " + year + " is missing."); }
+                int year;
+                if (sheet.Name.Length != 4 || !Int32.TryParse(sheet.Name, NumberStyles.None, Invariant, out year) ||
+                    year < 1900 || year > 2999)
+                { throw new InvalidDataException("Use a four-digit financial year as each NIHRACS worksheet name."); }
                 results.Add(ParseSheet(sheet, year));
             }
+            results.Sort((left, right) => left.FinancialYear.CompareTo(right.FinancialYear));
             return results;
         }
     }
@@ -44,19 +45,23 @@ public static class NihracsTrialBalanceImporter
     private static NORMParsedImport ParseSheet(ExcelWorksheet sheet, int year)
     {
         string caption = "NI Health & Residential Aged Care - Financial Year : " + year.ToString(Invariant);
-        if (year == 2026) { caption += " Period 12"; }
-        if (Text(sheet, 1, 1) != "Trial Balance" || Text(sheet, 3, 1) != Agency || Text(sheet, 4, 1) != caption ||
-            sheet.Dimension == null || sheet.Dimension.End.Column != 7)
-        { throw Invalid(sheet, 4, "Unexpected report identity, financial year or layout."); }
+        if (Text(sheet, 1, 1) != "Trial Balance") { throw InvalidCell(sheet, 1, 1, "Expected the Trial Balance heading."); }
+        if (Text(sheet, 3, 1) != Agency) { throw InvalidCell(sheet, 3, 1, "Expected the NIHRACS report identity."); }
+        string heading = Text(sheet, 4, 1);
+        if (heading != caption && heading != caption + " Period 12")
+        { throw InvalidCell(sheet, 4, 1, "Expected the worksheet financial year in the annual report heading."); }
+        if (sheet.Dimension == null || sheet.Dimension.End.Column != 7)
+        { throw Invalid(sheet, 7, "Expected seven source columns."); }
         for (int column = 1; column <= Headings.Length; column++)
         {
             if (Text(sheet, 7, column) != Headings[column - 1])
-            { throw Invalid(sheet, 7, "Unexpected column headings."); }
+            { throw InvalidCell(sheet, 7, column, "Unexpected column heading."); }
         }
         int debitColumn = Text(sheet, 7, 6) == "Debit" ? 6 : 7;
         int creditColumn = debitColumn == 6 ? 7 : 6;
         if (Text(sheet, 7, debitColumn) != "Debit" || Text(sheet, 7, creditColumn) != "Credit")
-        { throw Invalid(sheet, 7, "Debit and Credit headings are required."); }
+        { throw InvalidCell(sheet, 7, Text(sheet, 7, 6) == "Debit" || Text(sheet, 7, 6) == "Credit" ? 7 : 6,
+            "Expected one Debit and one Credit heading."); }
 
         NORMParsedImport parsed = new NORMParsedImport {
             ProfileVersion = Profile, FinancialYear = year, PeriodStart = 1, PeriodEnd = 12,
@@ -67,17 +72,28 @@ public static class NihracsTrialBalanceImporter
         counts.RecordCount = sheet.Dimension.End.Row;
         counts.MetadataRowCount = 5;
         counts.BlankRowCount = 2;
-        int last = counts.RecordCount;
-        if (year == 2026) { counts.ControlRowCount = 4; last -= 4; }
         decimal debitTotal = 0m, creditTotal = 0m;
-        for (int row = 8; row <= last; row++)
+        for (int row = 8; row <= counts.RecordCount; row++)
         {
+            string centreDescription = Text(sheet, row, 5);
+            if (Array.IndexOf(ControlLabels, centreDescription) >= 0)
+            {
+                VerifyControls(sheet, row, debitColumn, creditColumn, debitTotal, creditTotal);
+                counts.ControlRowCount = ControlLabels.Length;
+                break;
+            }
             string gl = Text(sheet, row, 2), centre = Text(sheet, row, 3);
             string description = Convert.ToString(sheet.Cells[row, 4].Value, Invariant);
-            if (Text(sheet, row, 1) != Company || String.IsNullOrEmpty(gl) || gl.Length > 30 ||
-                (centre != null && centre.Length > 30) || String.IsNullOrWhiteSpace(description) ||
-                description.Length > 300 || Text(sheet, row, 5) != null)
-            { throw Invalid(sheet, row, "Unsupported company, account, centre or description."); }
+            if (Text(sheet, row, 1) != Company)
+            { throw InvalidCell(sheet, row, 1, "Expected a NIHRA detail row or a labelled control footer."); }
+            if (String.IsNullOrEmpty(gl) || gl.Length > 30)
+            { throw InvalidCell(sheet, row, 2, "A GL account of up to 30 characters is required."); }
+            if (centre != null && centre.Length > 30)
+            { throw InvalidCell(sheet, row, 3, "A cost centre must be no more than 30 characters."); }
+            if (String.IsNullOrWhiteSpace(description) || description.Length > 300)
+            { throw InvalidCell(sheet, row, 4, "A description of up to 300 characters is required."); }
+            if (centreDescription != null)
+            { throw InvalidCell(sheet, row, 5, "Expected a blank centre description."); }
             decimal debit = Amount(sheet, row, debitColumn), credit = Amount(sheet, row, creditColumn);
             debitTotal += debit;
             creditTotal += credit;
@@ -91,7 +107,6 @@ public static class NihracsTrialBalanceImporter
             });
         }
         if (parsed.Rows.Count == 0) { throw Invalid(sheet, 8, "No detail rows were found."); }
-        if (year == 2026) { VerifyControls(sheet, last + 1, debitColumn, creditColumn, debitTotal, creditTotal); }
         counts.DetailRowCount = parsed.Rows.Count;
         return parsed;
     }
@@ -99,33 +114,46 @@ public static class NihracsTrialBalanceImporter
     private static void VerifyControls(ExcelWorksheet sheet, int first, int debitColumn, int creditColumn,
         decimal debitTotal, decimal creditTotal)
     {
-        for (int row = first; row < first + 4; row++)
+        for (int index = 0; index < ControlLabels.Length; index++)
         {
+            int row = first + index;
+            if (Text(sheet, row, 5) != ControlLabels[index])
+            { throw InvalidCell(sheet, row, 5, "Expected the " + ControlLabels[index] + " footer label."); }
             for (int column = 1; column <= 4; column++)
             {
                 if (Text(sheet, row, column) != null)
-                { throw Invalid(sheet, row, "Unexpected data in the footer."); }
+                { throw InvalidCell(sheet, row, column, "Unexpected data in the footer."); }
             }
             if (row > first && Text(sheet, row, 7) != null)
-            { throw Invalid(sheet, row, "Unexpected amount in the footer."); }
+            { throw InvalidCell(sheet, row, 7, "Unexpected amount in the footer."); }
         }
-        if (Text(sheet, first, 5) != "Totals" ||
-            Amount(sheet, first, debitColumn) != debitTotal || Amount(sheet, first, creditColumn) != creditTotal ||
-            Text(sheet, first + 1, 5) != "Credits" || Amount(sheet, first + 1, 6) != creditTotal ||
-            Text(sheet, first + 2, 5) != "Debits" || Amount(sheet, first + 2, 6) != debitTotal ||
-            Text(sheet, first + 3, 5) != "Up / (Down)" || Amount(sheet, first + 3, 6) != 0m)
-        { throw Invalid(sheet, first, "Footer controls do not reconcile to the detail."); }
+        if (sheet.Dimension.End.Row >= first + ControlLabels.Length)
+        { throw Invalid(sheet, first + ControlLabels.Length, "Unexpected data after the control footer."); }
+
+        VerifyControlAmount(sheet, first, debitColumn, debitTotal);
+        VerifyControlAmount(sheet, first, creditColumn, creditTotal);
+        VerifyControlAmount(sheet, first + 1, 6, creditTotal);
+        VerifyControlAmount(sheet, first + 2, 6, debitTotal);
+        VerifyControlAmount(sheet, first + 3, 6, 0m);
+    }
+
+    private static void VerifyControlAmount(ExcelWorksheet sheet, int row, int column, decimal expected)
+    {
+        if (Amount(sheet, row, column) != expected)
+        { throw InvalidCell(sheet, row, column, "Footer amount does not match the calculated control."); }
     }
 
     private static decimal Amount(ExcelWorksheet sheet, int row, int column)
     {
         var cell = sheet.Cells[row, column];
         object raw = cell.Value;
-        if (!String.IsNullOrEmpty(cell.Formula) || !(raw is double || raw is int || raw is decimal))
-        { throw Invalid(sheet, row, "A numeric amount is required in " + cell.Address + "."); }
+        if (!String.IsNullOrEmpty(cell.Formula))
+        { throw InvalidCell(sheet, row, column, "Excel formulas are not accepted. Supply a fixed numeric amount."); }
+        if (!(raw is double || raw is int || raw is decimal))
+        { throw InvalidCell(sheet, row, column, "A numeric amount is required."); }
         double value = Convert.ToDouble(raw, Invariant);
         if (Double.IsInfinity(value) || Double.IsNaN(value) || value < 0 || value >= 10000000000000d)
-        { throw Invalid(sheet, row, "A non-negative amount within the supported precision is required in " + cell.Address + "."); }
+        { throw InvalidCell(sheet, row, column, "A non-negative amount within the supported precision is required."); }
 
         // Require both a small number of adjacent floating-point representations
         // and at most a billionth of a dollar. Balance validation remains exact.
@@ -133,7 +161,7 @@ public static class NihracsTrialBalanceImporter
         long distance = Math.Abs(BitConverter.DoubleToInt64Bits(value == 0d ? 0d : value) -
             BitConverter.DoubleToInt64Bits((double)cents));
         if (distance > 16 || Math.Abs(value - (double)cents) > 0.000000001d)
-        { throw Invalid(sheet, row, "A genuine sub-cent amount cannot be stored in " + cell.Address + "."); }
+        { throw InvalidCell(sheet, row, column, "A genuine sub-cent amount cannot be stored."); }
         return cents;
     }
 
@@ -146,5 +174,10 @@ public static class NihracsTrialBalanceImporter
     private static InvalidDataException Invalid(ExcelWorksheet sheet, int row, string reason)
     {
         return new InvalidDataException("NIHRACS worksheet " + sheet.Name + ", row " + row + ". " + reason);
+    }
+
+    private static InvalidDataException InvalidCell(ExcelWorksheet sheet, int row, int column, string reason)
+    {
+        return new InvalidDataException("NIHRACS worksheet " + sheet.Name + ", cell " + sheet.Cells[row, column].Address + ". " + reason);
     }
 }

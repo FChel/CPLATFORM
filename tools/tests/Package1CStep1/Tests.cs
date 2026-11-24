@@ -323,7 +323,7 @@ public static partial class Tests
 #if STEP4
             RunStep4(fixtures);
 #if NIHRACS
-            if (args.Length > 1) { RunNihracs(args[1]); }
+            if (args.Length > 1) { RunNihracs(args[1], args.Length > 2 ? args[2] : null); }
 #endif
 #endif
 #if CORRECTION
