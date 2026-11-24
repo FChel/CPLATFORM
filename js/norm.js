@@ -197,6 +197,9 @@
       (data.meta.priorImportId ? '<span>FY' + esc(priorYear) + ' source: Import #' + esc(data.meta.priorImportId) + ' · ' + esc(data.meta.priorFile) + '</span>' : '') +
       '<span>Configuration: ' + esc(data.meta.release) + '</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
       (statement.administered && data.meta.administeredCurrentFallback && viewMode === "preparation" ? '<div class="norm-admin-source-warning"><strong>Current-year source control</strong><span>Published administered figures are shown until administered trial-balance mappings are activated.</span></div>' : '') +
+      (statement.code === "SCF" ? cashFlowIssues().map(function (issue) {
+        return '<div class="norm-admin-source-warning">' + esc(issue.detail) + '</div>';
+      }).join("") : '') +
       renderSourceEvidence() + '</header>' +
       '<div class="norm-table-scroll"><table class="norm-financial-table"><thead>' + tableHead + '</thead><tbody>' + rows + '</tbody></table></div>' +
       '<footer class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.' +
@@ -428,6 +431,10 @@
     byId("printStatements").focus();
   }
 
+  function cashFlowIssues() {
+    return publicationIssues().filter(function (item) { return item.code.indexOf("CASH_FLOW_") === 0; });
+  }
+
   function printHeader(statement) {
     var issues = publicationIssues();
     var draft = issues.length ? '<div class="norm-print-draft">CONTROLLED DRAFT · OUTSTANDING ASSURANCE ITEMS</div>' : '';
@@ -435,6 +442,7 @@
       var mappingIssues = issues.filter(function (item) {
         return item.code === "UNMAPPED_DISPOSITION" || item.code === "UNMAPPED_OFFSETTING_ACTIVITY";
       });
+      if (statement.code === "SCF") mappingIssues = mappingIssues.concat(cashFlowIssues());
       draft = '<div class="norm-print-draft">INCOMPLETE · DRAFT MAPPING REVIEW' +
         mappingIssues.map(function (item) { return '<br>' + esc(item.detail); }).join("") + '</div>';
     }
@@ -608,10 +616,12 @@
       var account = source.sapUrl
         ? '<a class="norm-sap-link" href="' + esc(source.sapUrl) + '" target="_blank" rel="noopener" title="Open G/L line items in SAP Fiori"><strong>' + esc(source.gl) + '</strong><span>Open in SAP ↗</span></a>'
         : '<strong>' + esc(source.gl) + '</strong>';
-      return '<tr data-source-row data-search="' + esc(search) + '" class="' + (source.synthetic ? 'synthetic' : '') + '"><td>' + account + '<small>' + (source.company ? 'Company ' + esc(source.company) + ' · ' : '') + esc(source.ledger) + ' · source row ' + esc(source.row) + '</small></td>' +
+      return '<tr data-source-row data-search="' + esc(search) + '" class="' + (source.synthetic ? 'synthetic' : '') + '"><td>' + account + '<small>' + (source.company ? 'Company ' + esc(source.company) + ' · ' : '') + esc(source.ledger) +
+        (source.derivation === "CASH_FLOW" ? ' · FY' + esc(source.year) + ' import #' + esc(source.importId) : '') + ' · source row ' + esc(source.row) + '</small></td>' +
         '<td>' + esc(source.text) + (source.cash ? '<span class="norm-tag">' + esc(source.cash) + '</span>' : '') +
         (source.mapping ? '<small class="norm-mapping-rule">' + esc(source.mapping) + '</small>' : '') +
-        '</td><td>' + number(source.sourceAmount) + '</td><td>' + number(source.amount) + '</td></tr>';
+        '</td><td>' + (source.derivation === "CASH_FLOW" ? decimal(source.sourceAmount, 2) : number(source.sourceAmount)) +
+        '</td><td>' + (source.derivation === "CASH_FLOW" ? decimal(source.amount, 3) : number(source.amount)) + '</td></tr>';
     }).join("") : '<tr><td colspan="4">No contributing source rows were recorded for this line.</td></tr>';
 
     var searchBox = sources.length > 8 ? '<label class="norm-trace-search"><span>Find a source account</span><input id="traceSearch" type="search" placeholder="G/L, description, note or cash-flow class" autocomplete="off"><small id="traceSearchCount">' + sources.length + ' rows</small></label>' : '';

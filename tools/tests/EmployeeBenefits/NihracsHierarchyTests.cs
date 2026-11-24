@@ -195,12 +195,12 @@ internal static partial class PilotTests
             return Query(call);
         };
         TestHierarchyChanges(source, mappings);
-        CheckMappingUpload(source, priorSource, uploadCatalogue, disclosures, consolidatedWorkbook, output);
+        CheckMappingUpload(source, priorSource, uploadCatalogue, disclosures, consolidatedWorkbook, output, path);
         CheckUnmappedActivity();
     }
 
     private static void CheckMappingUpload(DataTable source, DataTable priorSource, DataTable catalogue,
-        DataTable disclosures, string consolidatedWorkbook, string output)
+        DataTable disclosures, string consolidatedWorkbook, string output, string sourceFolder)
     {
         Prepare();
         templates = catalogue;
@@ -216,6 +216,7 @@ internal static partial class PilotTests
         long lockedRevision = 255L;
         bool loseCurrentRows = false;
         DataTable approvalSource = source;
+        var revised = fullWorkbook ? ReadRevisedCashFlowSources(sourceFolder, source) : null;
         if (!fullWorkbook)
         {
             priorSource = priorSource.Clone();
@@ -237,7 +238,7 @@ internal static partial class PilotTests
                 int import = (int)call["@import"];
                 bool prior = import == 24;
                 Check(call.Sql.Contains("c.StatusCode='Draft'") && call.Sql.Contains("i.ConfigurationReleaseId IS NULL") &&
-                    (int)call["@release"] == 19 && (prior || import == 25) &&
+                    (int)call["@release"] == 19 && (prior || import == NORMImportService.CurrentAnnualImport) &&
                     call.Sql.Contains("c.FinancialYear=i.FinancialYear+1") == prior,
                     "Draft review did not select the retained annual source and FY2026 configuration.");
                 return Table("ImportId ConfigurationReleaseId FinancialYear EntityCode SourceType DataFingerprint VersionCode EntityName DraftRevision",
@@ -250,7 +251,24 @@ internal static partial class PilotTests
                 return Table("DraftRevision", new object[] { lockedRevision });
             }
             if (call.Sql.StartsWith("SELECT TbRowId,SourceLedger"))
-                return (int)call["@import"] == 24 ? priorSource : loseCurrentRows ? source.Clone() : source;
+                return (int)call["@import"] == 24 ? priorSource : loseCurrentRows ? source.Clone() :
+                    (int)call["@import"] == 99 ? revised[2026] : source;
+            if (call.Sql.StartsWith("SELECT TbRowId,GlAccount,AccumBalance"))
+            {
+                Check(call.InTransaction, "Cash flow read source rows outside the report transaction.");
+                switch ((int)call["@import"])
+                {
+                    case 23: return revised[2024];
+                    case 24: return priorSource;
+                    case 25: return source;
+                    case 99: return revised[2026];
+                    default: throw new Exception("Unexpected cash-flow source import.");
+                }
+            }
+            if (call.Sql.StartsWith("SELECT StatementLineId,LineCode,LineType,ParentLineCode"))
+                return TableFrom(templates, row => (string)row["StatementCode"] == "SCFREF" && !(bool)row["IsDeactivated"]);
+            if (call.Sql.StartsWith("SELECT r.CalculationRunId,r.LineResultId,r.LineCode"))
+                return CashFlowPresentationResults((int)call["@run"], (int)call["@prior"]);
             if (call.Sql.StartsWith("SELECT DisclosureCode,")) return disclosures;
             if (call.Sql.StartsWith("SELECT r.LineCode,r.ComputedAmount,r.ReportedAmount,t.ParentLineCode") ||
                 call.Sql.StartsWith("SELECT LineCode,ReportedAmount FROM dbo.tblNORM_LineResult"))
@@ -358,6 +376,7 @@ internal static partial class PilotTests
         if (fullWorkbook)
         {
             CheckDraftReview(output, source, priorSource);
+            CheckCashFlowReview(output, revised, priorSource);
             NORMHelper.Committed.Clear();
             loseCurrentRows = true;
             Throws(() => NORMMappingManagement.CalculateDraftReview(19, "fixture"), "FY2026 has no retained reporting rows");
@@ -422,6 +441,229 @@ internal static partial class PilotTests
         Console.WriteLine("PASS partial mappings calculated through the draft action, with immutable review marker, ten unresolved GLs and no source or approval writes");
     }
 
+    private static Dictionary<int, DataTable> ReadRevisedCashFlowSources(string folder, DataTable schema)
+    {
+        byte[] bytes = File.ReadAllBytes(Path.Combine(folder, "Consolidated TBs (From Statements).xlsx"));
+        var sources = new Dictionary<int, DataTable>();
+        foreach (var period in NihracsTrialBalanceImporter.TryParse(bytes))
+        {
+            DataTable table = schema.Clone();
+            foreach (var row in period.Rows)
+                table.Rows.Add((long)(period.FinancialYear * 1000 + row.SourceRowNo), DBNull.Value, row.GlAccount, row.GlText,
+                    0m, 0m, row.AccumBalance, row.SourceCompanyCode, row.ReportingStream, row.SourceDebit, row.SourceCredit);
+            sources.Add(period.FinancialYear, table);
+        }
+        Check(sources[2026].Rows.Count == 771 && sources[2025].Rows.Count == 427 && sources[2024].Rows.Count == 413 &&
+            sources.Values.All(table => table.AsEnumerable().Sum(row => (decimal)row["AccumBalance"]) == 0m),
+            "The revised NIHRACS sources no longer match their expected controls.");
+        return sources;
+    }
+
+    private static void CheckCashFlowReview(string output, Dictionary<int, DataTable> sources, DataTable retainedPrior)
+    {
+        Check(retainedPrior.AsEnumerable().Select(row => (decimal)row["AccumBalance"])
+            .SequenceEqual(sources[2025].AsEnumerable().Select(row => (decimal)row["AccumBalance"])),
+            "The replacement workbook changed the retained FY2025 cash-flow fixture.");
+        NORMImportService.CurrentAnnualImport = 99; // Simulated accepted replacement, distinct from Import 25.
+        NORMHelper.Committed.Clear();
+        InsertedResults.Clear();
+        int run = NORMMappingManagement.CalculateDraftReview(19, "fixture");
+        int prior = NORMStatementEngine.ComparativeRunId(run);
+        string cashFingerprint = fingerprint;
+        var checks = NORMHelper.Committed.Where(call => call.Sql.StartsWith("INSERT dbo.tblNORM_ValidationResult")).ToList();
+        var lines = templates.AsEnumerable().Where(row => (string)row["StatementCode"] == "SCFREF").ToList();
+        var cashKeys = lines.Where(row => (string)row["LineType"] == "cashflow-detail")
+            .Select(row => (string)row["LineCode"]).ToArray();
+        var cashMapping = accountMap.AsEnumerable().Where(row => !row.IsNull("CashFlowClass"))
+            .ToDictionary(row => (string)row["GlCode"], row => (string)row["CashFlowClass"]);
+        var cashAccounts = accountMap.AsEnumerable().Where(row => NORMHelper.Str(row, "StatementLine") == "CSH_COH")
+            .Select(row => (string)row["GlCode"]).ToArray();
+        var lineage = new Dictionary<long, List<Dictionary<string, object>>>();
+        foreach (var period in new[] { Tuple.Create(2026, run, 99, 24), Tuple.Create(2025, prior, 24, 23) })
+        {
+            int year = period.Item1;
+            int id = period.Item2;
+            var current = sources[year].AsEnumerable().ToArray();
+            var opening = sources[year - 1].AsEnumerable().ToArray();
+            var closingBalances = CashBalancesByGl(current);
+            var openingBalances = CashBalancesByGl(opening);
+            var amounts = cashKeys.ToDictionary(key => key, key => 0m);
+            var expectedRows = cashKeys.ToDictionary(key => key, key => new Dictionary<long, decimal>());
+            foreach (string gl in closingBalances.Keys.Union(openingBalances.Keys))
+            {
+                string key;
+                if (!cashMapping.TryGetValue(gl, out key) || !amounts.ContainsKey(key)) continue;
+                decimal closingAmount, priorAmount;
+                closingBalances.TryGetValue(gl, out closingAmount);
+                openingBalances.TryGetValue(gl, out priorAmount);
+                bool movement = Int32.Parse(gl, CultureInfo.InvariantCulture) >= 60000;
+                amounts[key] += ((movement ? priorAmount : 0m) - closingAmount) / 1000m;
+                foreach (DataRow row in current.Where(row => (string)row["GlAccount"] == gl))
+                    expectedRows[key].Add((long)row["TbRowId"], -(decimal)row["AccumBalance"] / 1000m);
+                if (movement)
+                    foreach (DataRow row in opening.Where(row => (string)row["GlAccount"] == gl))
+                        expectedRows[key].Add((long)row["TbRowId"], (decimal)row["AccumBalance"] / 1000m);
+            }
+            var results = InsertedResults.Where(call => (int)call["@run"] == id && (string)call["@statement"] == "SCF")
+                .ToDictionary(call => (string)call["@line"]);
+            var sourceRows = current.Concat(opening).ToDictionary(row => (long)row["TbRowId"]);
+            foreach (string key in cashKeys)
+            {
+                var result = results[key];
+                Check((decimal)result["@computed"] == amounts[key] &&
+                    Reported(result) == Math.Round(amounts[key], 0, MidpointRounding.AwayFromZero),
+                    "Incorrect exact or reported cash-flow classification: FY" + year + " " + key);
+                var contributions = NORMHelper.Committed.Where(call => call.Sql.StartsWith("INSERT dbo.tblNORM_Lineage") &&
+                    Convert.ToInt32(call["@result"]) == result.InsertedId).ToList();
+                Check(contributions.Count == expectedRows[key].Count && contributions.All(call =>
+                    expectedRows[key][(long)call["@row"]] == (decimal)call["@presented"] &&
+                    (decimal)sourceRows[(long)call["@row"]]["AccumBalance"] == (decimal)call["@source"] &&
+                    (string)call["@cash"] == key && (int)call["@release"] == 19 &&
+                    (string)call["@derivation"] == "CASH_FLOW"), "Incorrect cash-flow source lineage: FY" + year + " " + key);
+                lineage[result.InsertedId] = contributions.Select(call => new Dictionary<string, object> {
+                    { "gl", sourceRows[(long)call["@row"]]["GlAccount"] }, { "year", (long)call["@row"] / 1000 },
+                    { "importId", (long)call["@row"] / 1000 == year ? period.Item3 : period.Item4 },
+                    { "derivation", "CASH_FLOW" }, { "sourceAmount", call["@source"] }, { "amount", call["@presented"] }
+                }).ToList();
+            }
+            foreach (DataRow total in lines.Where(row => (string)row["LineType"] == "cashflow-total"))
+            {
+                string key = (string)total["LineCode"];
+                var childResults = lines.Where(row => NORMHelper.Str(row, "ParentLineCode") == key)
+                    .Select(row => results[(string)row["LineCode"]]).ToArray();
+                Check(Reported(results[key]) == childResults.Sum(row => Reported(row).Value) &&
+                    (decimal)results[key]["@computed"] == childResults.Sum(row => (decimal)row["@computed"]),
+                    "Cash-flow parent did not sum its children: " + key);
+            }
+            decimal closingCash = current.Where(row => cashAccounts.Contains((string)row["GlAccount"]))
+                .Sum(row => (decimal)row["AccumBalance"]) / 1000m;
+            decimal openingCash = opening.Where(row => cashAccounts.Contains((string)row["GlAccount"]))
+                .Sum(row => (decimal)row["AccumBalance"]) / 1000m;
+            decimal balanceMovement = closingCash - openingCash;
+            decimal difference = amounts.Values.Sum() - balanceMovement;
+            Check((decimal)results["CF_CSH_CLOSE"]["@computed"] == closingCash &&
+                (decimal)results["CF_CSH_OPEN"]["@computed"] == openingCash &&
+                (decimal)results["CF_CSH_CHANGE"]["@computed"] == balanceMovement &&
+                (decimal)results["CF_CSH_RECON"]["@computed"] == difference &&
+                Reported(results["CF_CSH_RECON"]) == Reported(results["CF_CSH_NET"]) -
+                    (Reported(results["CF_CSH_CLOSE"]) - Reported(results["CF_CSH_OPEN"])),
+                "Reported or exact reconciliation incorrectly changed the cash figures.");
+            Check(Reported(results["CF_CSH_CLOSE"]) == Reported(InsertedResults.Single(call =>
+                (int)call["@run"] == id && (string)call["@line"] == "Cash and cash equivalents")),
+                "Closing cash differs from the unchanged Statement of Financial Position.");
+            Check(checks.Any(call => (int)call["@run"] == id && (string)call["@code"] == "CASH_FLOW_SOURCE" &&
+                    Convert.ToInt32(call["@actual"]) == period.Item4) &&
+                checks.Any(call => (int)call["@run"] == id && (string)call["@code"] == "CASH_FLOW_CLASSIFICATION" &&
+                    ((string)call["@detail"]).Contains("58140 (CF_OPA_USE_SUP1)") && (string)call["@severity"] == "Blocking") &&
+                checks.Any(call => (int)call["@run"] == id && (string)call["@code"] == "CASH_FLOW_RECONCILIATION" &&
+                    (string)call["@severity"] == "Blocking" && (string)call["@result"] == "Fail"),
+                "Cash-flow source identity, unresolved key or reconciliation warning was lost.");
+            foreach (string key in new[] { "CF_OPA", "CF_INV", "CF_FIN", "CF_CSH_NET", "CF_CSH_OPEN", "CF_CSH_CLOSE", "CF_CSH_CHANGE", "CF_CSH_RECON" })
+                Console.WriteLine("FY" + year + " " + key + " exact $000 " + results[key]["@computed"] + " reported " + Reported(results[key]));
+            Console.WriteLine("FY" + year + " GL 58140 excluded signed activity AUD " + -closingBalances["58140"]);
+        }
+        Check(!NORMHelper.Committed.Any(call => call.Sql.StartsWith("UPDATE dbo.tblNORM_ConfigurationRelease") ||
+            call.Sql.StartsWith("INSERT dbo.tblNORM_AccountMap") || call.Sql.StartsWith("INSERT dbo.tblNORM_Import") ||
+            call.Sql.StartsWith("UPDATE dbo.tblNORM_Import") || call.Sql.StartsWith("INSERT dbo.tblNORM_TrialBalanceRow")),
+            "Cash-flow draft calculation changed its source or mapping configuration.");
+        var statement = Invoke(new NORM_Statements(), typeof(NORM_Statements), "BuildDraftCashFlowStatement", run, prior, lineage);
+        File.WriteAllText(Path.Combine(output, "cash-flow-presentation.json"), new JavaScriptSerializer().Serialize(new {
+            meta = new { yearCurrent = 2026, yearPrior = 2025, entity = "NIHRACS", runId = run, draftReview = true },
+            statements = new[] { statement },
+            validations = checks.Where(call => ((string)call["@code"]).StartsWith("CASH_FLOW_")).Select(call => new {
+                code = call["@code"], label = call["@label"], severity = call["@severity"], result = call["@result"],
+                detail = ((int)call["@run"] == prior ? "FY2025: " : "FY2026: ") + call["@detail"]
+            })
+        }));
+        NORMImportService.OpeningAnnualImport = 0;
+        NORMHelper.Committed.Clear();
+        InsertedResults.Clear();
+        int withoutOpening = NORMMappingManagement.CalculateDraftReview(19, "fixture");
+        int priorWithoutOpening = NORMStatementEngine.ComparativeRunId(withoutOpening);
+        Check(fingerprint != cashFingerprint &&
+            InsertedResults.Any(call => (int)call["@run"] == withoutOpening && (string)call["@line"] == "CF_CSH_NET") &&
+            InsertedResults.Any(call => (int)call["@run"] == priorWithoutOpening && (string)call["@line"] == "CF_CSH_CLOSE") &&
+            !InsertedResults.Any(call => (int)call["@run"] == priorWithoutOpening && (string)call["@line"] == "CF_CSH_NET") &&
+            NORMHelper.Committed.Any(call => call.Sql.StartsWith("INSERT dbo.tblNORM_ValidationResult") &&
+                (int)call["@run"] == priorWithoutOpening && (string)call["@code"] == "CASH_FLOW_SOURCE" &&
+                (string)call["@result"] == "Fail"), "Missing FY2024 must not manufacture FY2025 activity or hide FY2026.");
+        NORMImportService.OpeningAnnualImport = 23;
+        CheckCashFlowBoundary(sources[2026], retainedPrior);
+        NORMImportService.CurrentAnnualImport = 25;
+        Console.WriteLine("PASS cash-flow GL rules, two-year rounding, row lineage, replacement identity, reconciliation and missing FY2024 warning");
+    }
+
+    private static void CheckCashFlowBoundary(DataTable current, DataTable prior)
+    {
+        var retainedCurrent = current.AsEnumerable().Select(row => row.ItemArray).ToArray();
+        var retainedPrior = prior.AsEnumerable().Select(row => row.ItemArray).ToArray();
+        var retainedMappings = accountMap.AsEnumerable().Select(row => row.ItemArray).ToArray();
+        current.Clear();
+        prior.Clear();
+        accountMap.Clear();
+        try
+        {
+            accountMap.Rows.Add(1, "59999", DBNull.Value, DBNull.Value, DBNull.Value, "CF_OPA_REC_RAG", "Balance");
+            accountMap.Rows.Add(2, "60000", DBNull.Value, DBNull.Value, DBNull.Value, "CF_OPA_USE_SUP", "Movement");
+            accountMap.Rows.Add(3, "60001", DBNull.Value, DBNull.Value, DBNull.Value, "CF_INV_REC_PPE", "Preceding year only");
+            accountMap.Rows.Add(4, "70000", "Asset", "CSH_COH", DBNull.Value, DBNull.Value, "Cash, blank cash-flow key");
+            current.Rows.Add(2026001L, DBNull.Value, "59999", "Balance", 0m, 0m, -1500m, "NIHRA", "Departmental", 0m, 1500m);
+            current.Rows.Add(2026002L, DBNull.Value, "60000", "Movement", 0m, 0m, 2500m, "NIHRA", "Departmental", 2500m, 0m);
+            current.Rows.Add(2026003L, DBNull.Value, "70000", "Cash", 0m, 0m, -1000m, "NIHRA", "Departmental", 0m, 1000m);
+            prior.Rows.Add(2025001L, DBNull.Value, "59999", "Ignored preceding balance", 0m, 0m, -500m, "NIHRA", "Departmental", 0m, 500m);
+            prior.Rows.Add(2025002L, DBNull.Value, "60000", "Movement", 0m, 0m, 1000m, "NIHRA", "Departmental", 1000m, 0m);
+            prior.Rows.Add(2025003L, DBNull.Value, "60001", "Preceding year only", 0m, 0m, 1500m, "NIHRA", "Departmental", 1500m, 0m);
+            prior.Rows.Add(2025004L, DBNull.Value, "70000", "Cash", 0m, 0m, -2000m, "NIHRA", "Departmental", 0m, 2000m);
+            InsertedResults.Clear();
+            NORMHelper.Committed.Clear();
+            int run = NORMMappingManagement.CalculateDraftReview(19, "fixture");
+            var results = InsertedResults.Where(call => (int)call["@run"] == run && (string)call["@statement"] == "SCF")
+                .ToDictionary(call => (string)call["@line"]);
+            Check((decimal)results["CF_OPA_REC_RAG"]["@computed"] == 1.5m && Reported(results["CF_OPA_REC_RAG"]) == 2m &&
+                (decimal)results["CF_OPA_USE_SUP"]["@computed"] == -1.5m && Reported(results["CF_OPA_USE_SUP"]) == -2m &&
+                (decimal)results["CF_INV_REC_PPE"]["@computed"] == 1.5m && Reported(results["CF_INV_REC_PPE"]) == 2m &&
+                Reported(results["CF_CSH_NET"]) == 2m && (decimal)results["CF_CSH_CLOSE"]["@computed"] == -1m &&
+                !NORMHelper.Committed.Any(call => call.Sql.StartsWith("INSERT dbo.tblNORM_ValidationResult") &&
+                    (int)call["@run"] == run && (string)call["@code"] == "CASH_FLOW_CLASSIFICATION"),
+                "The cash-flow threshold, blank keys, signed midpoints or preceding-only GL changed.");
+            Console.WriteLine("PASS cash-flow GLs 59999 and 60000, preceding-only GL, blank key and signed midpoint rounding");
+        }
+        finally
+        {
+            current.Clear();
+            prior.Clear();
+            accountMap.Clear();
+            foreach (object[] row in retainedCurrent) current.Rows.Add(row);
+            foreach (object[] row in retainedPrior) prior.Rows.Add(row);
+            foreach (object[] row in retainedMappings) accountMap.Rows.Add(row);
+        }
+    }
+
+    private static Dictionary<string, decimal> CashBalancesByGl(IEnumerable<DataRow> rows)
+    {
+        return rows.GroupBy(row => (string)row["GlAccount"])
+            .ToDictionary(group => group.Key, group => group.Sum(row => (decimal)row["AccumBalance"]));
+    }
+
+    private static DataTable CashFlowPresentationResults(int run, int prior)
+    {
+        DataTable results = Table("CalculationRunId LineResultId LineCode ComputedAmount ReportedAmount LineLabel LineType SeqNo");
+        var references = templates.AsEnumerable().Where(row => (string)row["StatementCode"] == "SCFREF")
+            .ToDictionary(row => (string)row["LineCode"]);
+        string[] cash = { "CF_CSH_OPEN", "CF_CSH_CLOSE", "CF_CSH_CHANGE", "CF_CSH_RECON" };
+        foreach (var call in InsertedResults.Where(call => (string)call["@statement"] == "SCF" &&
+            ((int)call["@run"] == run || (int)call["@run"] == prior)))
+        {
+            string code = (string)call["@line"];
+            DataRow reference;
+            references.TryGetValue(code, out reference);
+            results.Rows.Add(call["@run"], (long)call.InsertedId, code, call["@computed"], Reported(call),
+                reference == null ? DBNull.Value : reference["LineLabel"], reference == null ? DBNull.Value : reference["LineType"],
+                reference == null ? 122 + Array.IndexOf(cash, code) : reference["SeqNo"]);
+        }
+        return results.AsEnumerable().OrderBy(row => (int)row["SeqNo"]).CopyToDataTable();
+    }
+
     private static void CheckComparison(string output, int run, int prior, DataTable source, DataTable priorSource)
     {
         var classification = accountMap.AsEnumerable().ToDictionary(row => (string)row["GlCode"],
@@ -436,7 +678,7 @@ internal static partial class PilotTests
             int periodRun = period.Item1;
             var rows = period.Item3.AsEnumerable().ToDictionary(row => (long)row["TbRowId"]);
             var edges = NORMHelper.Committed.Where(call => call.Sql.StartsWith("INSERT dbo.tblNORM_Lineage") &&
-                (int)call["@run"] == periodRun).ToList();
+                (int)call["@run"] == periodRun && (string)call["@derivation"] != "CASH_FLOW").ToList();
             Check(edges.Select(call => (long)call["@row"]).Distinct().Count() == rows.Count &&
                 edges.All(call => (int)call["@release"] == 19 && (decimal)call["@source"] ==
                     (decimal)rows[(long)call["@row"]]["AccumBalance"]), "Lineage used another period or changed a source amount.");

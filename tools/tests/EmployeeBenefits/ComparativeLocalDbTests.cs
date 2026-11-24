@@ -32,11 +32,77 @@ internal static class ComparativeLocalDbTests
             "One period bypassed the existing draft or controlled access rules.");
         Check(NORMHelper.CanAccessCompletedRun(28) && NORMHelper.LatestAccessibleCompletedRun() == 28 &&
             NORMStatementEngine.ComparativeRunId(28) == 0, "Existing approved run access or reproduction changed.");
+        int cash = NORMStatementEngine.RunAnnualDraftReview(32, 33, 11, User, 34);
+        int priorCash = NORMStatementEngine.ComparativeRunId(cash);
+        CheckCash(cash, 32, 33, 1.499m, 1m, -1.5m, -2m, -0.501m, -2m, 13m, 10m, 1m, 1.500m, "1500.01");
+        CheckCash(priorCash, 33, 34, 1.5m, 2m, 1.5m, 2m, 3.5m, 5m, 10m, 13m, 2m, 1m, "1000.00");
+        Check(NORMHelper.CanAccessStatementRun(cash) && !NORMHelper.CanAccessStatementRun(priorCash) &&
+            !NORMHelper.CanAccessCompletedRun(cash) && !NORMHelper.CanAccessCompletedRun(priorCash) &&
+            NORMHelper.LatestAccessibleCompletedRun() == 28, "Cash-flow review escaped the controlled reporting gate.");
+        Check(NORMStatementEngine.RunAnnualDraftReview(32, 33, 11, User, 34) == cash &&
+            NORMStatementEngine.RunAnnualDraftReview(32, 33, 11, User) != cash,
+            "Cash-flow fingerprints failed to distinguish existing comparative runs.");
         HttpContext.Current.User = new GenericPrincipal(new GenericIdentity("Unassigned fixture", "Fixture"), new string[0]);
         Check(!NORMHelper.CanAccessStatementRun(current) && !NORMHelper.CanAccessStatementRun(comparative),
             "Unassigned user could access comparative review.");
         Console.WriteLine("PASS LocalDB: production engine persisted both source years and their lineage under FY2026 release 11.");
         Console.WriteLine("PASS LocalDB: both periods retain mapping failures, comparative review is isolated, and approved run 28 remains available.");
+        Console.WriteLine("PASS LocalDB: production cash-flow amounts, both source identities, exact and reported differences, and draft-only access.");
+    }
+
+    private static void CheckCash(int run, int import, int preceding, decimal exactReceipts, decimal receipts,
+        decimal exactSuppliers, decimal suppliers, decimal exactNet, decimal net, decimal opening, decimal closing,
+        decimal difference, decimal storedDifference, string exactDifferenceAud)
+    {
+        CashLine(run, "CF_OPA_REC_RAG", exactReceipts, receipts);
+        CashLine(run, "CF_OPA_USE_SUP", exactSuppliers, suppliers);
+        CashLine(run, "CF_INV", import == 32 ? 0m : 0.5m, import == 32 ? 0m : 1m);
+        CashLine(run, "CF_FIN", import == 32 ? -0.5m : 0m, import == 32 ? -1m : 0m);
+        CashLine(run, "CF_CSH_NET", exactNet, net);
+        CashLine(run, "CF_CSH_OPEN", import == 32 ? 12.5m : 10m, opening);
+        CashLine(run, "CF_CSH_CLOSE", import == 32 ? 10.499m : 12.5m, closing);
+        CashLine(run, "CF_CSH_RECON", storedDifference, difference);
+        const string edges = "SELECT t.GlAccount,t.ImportId,t.AccumBalance,l.SourceAmount,l.PresentedContribution," +
+            "l.ConfigurationReleaseId,m.ConfigurationReleaseId AS MapRelease,l.CashFlowClassSnapshot " +
+            "FROM dbo.tblNORM_Lineage l JOIN dbo.tblNORM_LineResult r ON r.LineResultId=l.LineResultId " +
+            "JOIN dbo.tblNORM_TrialBalanceRow t ON t.TbRowId=l.TbRowId JOIN dbo.tblNORM_AccountMap m ON m.AccountMapId=l.AccountMapId " +
+            "WHERE r.CalculationRunId=@run AND r.StatementCode='SCF' AND r.LineCode='CF_CSH_NET' AND l.DerivationCode='CASH_FLOW'";
+        DataTable lineage = NORMHelper.Query(edges, NORMHelper.P("@run", run));
+        decimal total = 0m;
+        foreach (DataRow row in lineage.Rows)
+        {
+            int source = NORMHelper.Int(row, "ImportId");
+            string gl = NORMHelper.Str(row, "GlAccount");
+            decimal original = NORMHelper.Dec(row, "AccumBalance");
+            decimal contribution = NORMHelper.Dec(row, "PresentedContribution");
+            Check((source == import || source == preceding) && (gl != "59999" || source == import) &&
+                gl != "58140" && gl != "70000" && gl != "99000" &&
+                NORMHelper.Dec(row, "SourceAmount") == original && contribution == (source == import ? -original : original) / 1000m &&
+                NORMHelper.Int(row, "ConfigurationReleaseId") == 11 && NORMHelper.Int(row, "MapRelease") == 11 &&
+                !String.IsNullOrEmpty(NORMHelper.Str(row, "CashFlowClassSnapshot")), "Cash source lineage changed.");
+            total += contribution;
+        }
+        Check(lineage.Rows.Count == 4 && total == exactNet, "Cash net does not reconcile to its retained source rows.");
+        string detail = Convert.ToString(NORMHelper.Scalar("SELECT DetailText FROM dbo.tblNORM_ValidationResult WHERE " +
+            "CalculationRunId=@run AND CheckCode='CASH_FLOW_RECONCILIATION' AND SeverityCode='Blocking' AND ResultCode='Fail' " +
+            "AND ActualValue=@net AND ExpectedValue=@movement AND DifferenceValue=@difference",
+            NORMHelper.P("@run", run), NORMHelper.P("@net", net), NORMHelper.P("@movement", closing - opening),
+            NORMHelper.P("@difference", difference)));
+        Check(detail.Contains(exactDifferenceAud), "The exact AUD difference or the reported blocking difference was lost.");
+        string unresolved = Convert.ToString(NORMHelper.Scalar("SELECT DetailText FROM dbo.tblNORM_ValidationResult WHERE " +
+            "CalculationRunId=@run AND CheckCode='CASH_FLOW_CLASSIFICATION' AND ActualValue=1 AND ResultCode='Fail'",
+            NORMHelper.P("@run", run)));
+        Check(unresolved.Contains("58140 (CF_OPA_USE_SUP1)") && !unresolved.Contains("70000"), "Unknown or optional keys changed.");
+    }
+
+    private static void CashLine(int run, string code, decimal computed, decimal reported)
+    {
+        DataTable rows = NORMHelper.Query("SELECT v.ComputedAmount,v.ReportedAmount FROM dbo.tblNORM_LineResult v " +
+            "JOIN dbo.tblNORM_CalculationRun r ON r.CalculationRunId=v.CalculationRunId " +
+            "WHERE r.StatusCode='Complete' AND r.ConfigurationReleaseId=11 AND r.CalculationRunId=@run " +
+            "AND v.StatementCode='SCF' AND v.LineCode=@code", NORMHelper.P("@run", run), NORMHelper.P("@code", code));
+        Check(rows.Rows.Count == 1 && NORMHelper.Dec(rows.Rows[0], "ComputedAmount") == computed &&
+            NORMHelper.Dec(rows.Rows[0], "ReportedAmount") == reported, "Unexpected stored cash line: " + code);
     }
 
     private static void CheckPeriod(int run, int import, int year, decimal computed, decimal reported, string unmapped)

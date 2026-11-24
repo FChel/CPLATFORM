@@ -85,10 +85,10 @@ namespace CPlatform.NORM
             int importId = NORMHelper.Int(context, "ImportId");
             bool hierarchy = NORMReportingFramework.UsesNihracsHierarchy(entityCode, fy, releaseId);
             int comparativeRun = hierarchy ? NORMStatementEngine.ComparativeRunId(runId) : 0;
-            Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId, fy);
+            Dictionary<long, List<Dictionary<string, object>>> lineage = LoadLineage(runId);
             if (comparativeRun > 0)
             {
-                foreach (var item in LoadLineage(comparativeRun, fy - 1)) lineage.Add(item.Key, item.Value);
+                foreach (var item in LoadLineage(comparativeRun)) lineage.Add(item.Key, item.Value);
                 DataRow prior = NORMHelper.Query("SELECT i.ImportId,i.SourceFileName,i.SourceFileHash " +
                     "FROM dbo.tblNORM_CalculationRun r JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId " +
                     "WHERE r.CalculationRunId=@run", NORMHelper.P("@run", comparativeRun)).Rows[0];
@@ -133,6 +133,11 @@ namespace CPlatform.NORM
                 statements.Add(BuildCashFlowStatement(runId, releaseId, lineage, budgets, priorFigures));
                 payload["assetMovement"] = BuildAssetMovementStatement(runId, releaseId, lineage,
                     priorAssetMovements, priorFigures);
+            }
+            else if (IsDraftReview && comparativeRun > 0)
+            {
+                var cashFlow = BuildDraftCashFlowStatement(runId, comparativeRun, lineage);
+                if (cashFlow != null) statements.Add(cashFlow);
             }
 
             if (NORMAdministeredStatements.Required(profile))
@@ -728,6 +733,61 @@ namespace CPlatform.NORM
             row["status"] = "Mapped";
             row["sources"] = sources;
             return row;
+        }
+
+        private Dictionary<string, object> BuildDraftCashFlowStatement(int runId, int comparativeRun,
+            Dictionary<long, List<Dictionary<string, object>>> lineage)
+        {
+            DataTable results = NORMHelper.Query(
+                "SELECT r.CalculationRunId,r.LineResultId,r.LineCode,r.ComputedAmount,r.ReportedAmount,t.LineLabel,t.LineType,t.SeqNo " +
+                "FROM dbo.tblNORM_LineResult r LEFT JOIN dbo.tblNORM_StatementLine t ON t.StatementLineId=r.StatementLineId " +
+                "WHERE r.CalculationRunId IN (@run,@prior) AND r.StatementCode='SCF' AND r.IsDeactivated=0 " +
+                "ORDER BY ISNULL(t.SeqNo,CASE r.LineCode WHEN 'CF_CSH_OPEN' THEN 122 WHEN 'CF_CSH_CLOSE' THEN 123 " +
+                "WHEN 'CF_CSH_CHANGE' THEN 124 ELSE 125 END),r.CalculationRunId",
+                NORMHelper.P("@run", runId), NORMHelper.P("@prior", comparativeRun));
+            if (results.Rows.Count == 0) return null;
+            var rows = new List<object>();
+            foreach (var group in results.AsEnumerable().GroupBy(row => NORMHelper.Str(row, "LineCode"), StringComparer.OrdinalIgnoreCase))
+            {
+                string code = group.Key;
+                DataRow current = group.SingleOrDefault(row => NORMHelper.Int(row, "CalculationRunId") == runId);
+                DataRow prior = group.SingleOrDefault(row => NORMHelper.Int(row, "CalculationRunId") == comparativeRun);
+                DataRow definition = current ?? prior;
+                string label = NORMHelper.Str(definition, "LineLabel");
+                string type = NORMHelper.Str(definition, "LineType") == "cashflow-detail" ? "line" : "total";
+                switch (code)
+                {
+                    case "CF_OPA_REC_RAG":
+                        rows.Add(SimpleRow("section", null, "Operating activities", null, 0m, null, false, 0L, SourcesFor(null, lineage)));
+                        break;
+                    case "CF_INV_REC_PPE":
+                        rows.Add(SimpleRow("section", null, "Investing activities", null, 0m, null, false, 0L, SourcesFor(null, lineage)));
+                        break;
+                    case "CF_FIN_USE_LEL":
+                        rows.Add(SimpleRow("section", null, "Financing activities", null, 0m, null, false, 0L, SourcesFor(null, lineage)));
+                        break;
+                    case "CF_CSH_OPEN": label = "Cash and cash equivalents at the beginning of the period"; break;
+                    case "CF_CSH_CLOSE": label = "Cash and cash equivalents at the end of the period"; break;
+                    case "CF_CSH_CHANGE": label = "Movement in cash balances"; break;
+                    case "CF_CSH_RECON": label = "Unreconciled difference (classified activity less cash movement)"; break;
+                }
+                var sources = SourcesFor(current, lineage);
+                var rowPayload = SimpleRow(type, code, label, null, current == null ? 0m : NORMHelper.Dec(current, "ComputedAmount"),
+                    prior == null ? (decimal?)null : NORMHelper.Dec(prior, "ReportedAmount"), sources.Count > 0,
+                    current == null ? 0L : NORMHelper.Long(current, "LineResultId"), sources);
+                rowPayload["computed"] = current == null ? null : rowPayload["computed"];
+                if (current != null) rowPayload["reported"] = NORMHelper.Dec(current, "ReportedAmount");
+                if (prior != null)
+                {
+                    rowPayload["priorComputed"] = NORMHelper.Dec(prior, "ComputedAmount");
+                    var priorSources = SourcesFor(prior, lineage);
+                    if (priorSources.Count > 0) rowPayload["priorSources"] = priorSources;
+                }
+                rows.Add(rowPayload);
+            }
+            return new Dictionary<string, object> {
+                { "code", "SCF" }, { "title", "Statement of Cash Flows" }, { "layout", "standard" }, { "rows", rows }
+            };
         }
 
         private Dictionary<string, object> BuildStatement(int releaseId, int runId, string statementCode,
@@ -1565,12 +1625,12 @@ namespace CPlatform.NORM
             return configured;
         }
 
-        private Dictionary<long, List<Dictionary<string, object>>> LoadLineage(int runId, int financialYear)
+        private Dictionary<long, List<Dictionary<string, object>>> LoadLineage(int runId)
         {
             DataTable table = NORMHelper.Query(
                 "SELECT l.LineResultId,l.AccountMapId,l.SourceAmount,l.PresentedContribution,l.DerivationCode,l.MappingSnapshot," +
                 "l.AccountTypeSnapshot,l.NoteSubLineSnapshot,l.CashFlowClassSnapshot," +
-                "tb.SourceRowNo,tb.SourceCompanyCode,tb.SourceLedger,tb.GlAccount,tb.GlText,tb.DebitMovement,tb.CreditMovement,tb.IsSynthetic,i.SourceType " +
+                "tb.SourceRowNo,tb.SourceCompanyCode,tb.SourceLedger,tb.GlAccount,tb.GlText,tb.DebitMovement,tb.CreditMovement,tb.IsSynthetic,i.SourceType,i.ImportId,i.FinancialYear " +
                 "FROM dbo.tblNORM_Lineage l INNER JOIN dbo.tblNORM_TrialBalanceRow tb ON tb.TbRowId = l.TbRowId " +
                 "INNER JOIN dbo.tblNORM_Import i ON i.ImportId=tb.ImportId " +
                 "WHERE l.CalculationRunId = @run ORDER BY l.LineResultId,ABS(l.PresentedContribution) DESC,tb.GlAccount",
@@ -1584,6 +1644,8 @@ namespace CPlatform.NORM
                 if (!values.ContainsKey(resultId)) { values[resultId] = new List<Dictionary<string, object>>(); }
                 Dictionary<string, object> row = new Dictionary<string, object>();
                 row["row"] = NORMHelper.Int(source, "SourceRowNo");
+                row["importId"] = NORMHelper.Int(source, "ImportId");
+                row["year"] = NORMHelper.Int(source, "FinancialYear");
                 row["company"] = NORMHelper.SourceCompany(source);
                 row["ledger"] = NORMHelper.SourceLedgerLabel(source);
                 row["gl"] = NORMHelper.Str(source, "GlAccount");
@@ -1602,7 +1664,7 @@ namespace CPlatform.NORM
                     NORMHelper.SapGlLineItemsLink(
                         NORMHelper.Str(source, "GlAccount"),
                         NORMHelper.SourceCompany(source),
-                        financialYear);
+                        NORMHelper.Int(source, "FinancialYear"));
                 values[resultId].Add(row);
             }
             return values;
