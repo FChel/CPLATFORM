@@ -18,6 +18,7 @@ namespace CPlatform.NORM
         protected string CategoryHeading = "Employee benefits categories";
         protected string UnmappedAccountCount = "—";
         protected string UnmappedAccountLabel = "unmapped accounts";
+        protected string NarrativeEditorUrl = "";
 
         private int CurrentReleaseId
         {
@@ -191,6 +192,8 @@ namespace CPlatform.NORM
             if (!IsPostBack && scope != null) MappingContextList.SelectedValue = scope.Value;
             bool draft = String.Equals(NORMHelper.Str(release, "StatusCode"), "Draft", StringComparison.OrdinalIgnoreCase); bool approved = String.Equals(NORMHelper.Str(release, "StatusCode"), "Approved", StringComparison.OrdinalIgnoreCase);
             WorkflowPanel.Visible = true; UploadPanel.Visible = draft; ApprovalPanel.Visible = draft && IsAdministrator; RecalculatePanel.Visible = approved;
+            if ((draft || approved) && NORMNarrativeBlocks.Installed())
+                NarrativeEditorUrl = "NORM_Reporting.aspx?narratives=1&release=" + releaseId.ToString(CultureInfo.InvariantCulture);
             DataTable categories = draft ? NORMMappingManagement.EmployeeCategories(releaseId) : null;
             DataTable parents = categories == null ? null : NORMMappingManagement.NihracsCategoryParents(releaseId);
             DraftReviewPanel.Visible = draft && parents != null && parents.Rows.Count > 0;

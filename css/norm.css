@@ -253,3 +253,29 @@ body.norm-upload-busy{overflow:hidden}
 .norm-statements-page .norm-topbar{height:auto;min-height:72px;flex-wrap:wrap;gap:12px 20px;padding:12px 16px}
 .norm-statements-page .norm-top-actions{flex:1 1 780px;min-width:0;max-width:100%;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 @media(max-width:620px){.norm-statements-page .norm-top-actions{justify-content:flex-start}.norm-statements-page .norm-brand{min-width:0;max-width:100%}.norm-statements-page .norm-brand span:last-child{min-width:0}}
+/* Narrative preparation */
+.norm-narrative-panel h1 { margin: 0; font-size: 1.65rem; }
+.norm-narrative-layout { display: grid; grid-template-columns: minmax(13rem, 1fr) minmax(0, 3fr); gap: 1.5rem; }
+.norm-narrative-index { border-right: 1px solid #ddd; padding-right: 1rem; }
+.norm-narrative-index h2, .norm-narrative-rollover h2 { font-size: 1rem; }
+.norm-narrative-index ul { padding: 0; list-style: none; }
+.norm-narrative-index li + li { margin-top: .5rem; }
+.norm-narrative-index li button { text-align: left; width: 100%; padding: .65rem; background: #fff; border: 1px solid #ddd; border-radius: .3rem; font: inherit; cursor: pointer; }
+.norm-narrative-destination { grid-column: 1 / -1; }
+.norm-narrative-toolbar { display: flex; flex-wrap: wrap; gap: .35rem; padding: .55rem; border: 1px solid #ccc; background: #f5f5f5; }
+.norm-narrative-toolbar button { padding: .35rem .55rem; border: 1px solid #ccc; border-radius: .25rem; background: #fff; color: inherit; font: inherit; cursor: pointer; }
+.norm-narrative-content { min-height: 12rem; border: 1px solid #ccc; padding: 1rem; background: #fff; overflow-wrap: anywhere; }
+.norm-narrative-content:focus { outline: 2px solid currentColor; outline-offset: -2px; }
+.norm-narrative-actions { display: flex; gap: .6rem; margin-top: 1rem; }
+.norm-narrative-rollover { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #ddd; }
+.norm-narrative-rollover select { margin: .5rem; }
+.norm-narrative-notice:empty { display: none; }
+.norm-narrative-block { margin: 1rem 0; padding: .75rem 1rem; border-left: 3px solid #d1d5db; overflow-wrap: anywhere; }
+.norm-narrative-block header { display: flex; gap: .5rem; flex-wrap: wrap; align-items: baseline; }
+.norm-narrative-block header small { color: #5b534b; }
+.norm-narrative-block p, .norm-narrative-content p { margin: .6rem 0; }
+.norm-narrative-block h3, .norm-narrative-content h3 { margin: .8rem 0 .4rem; font-size: 1.05rem; }
+@media (max-width: 760px) {
+  .norm-narrative-layout { grid-template-columns: 1fr; }
+  .norm-narrative-index { border-right: 0; padding-right: 0; }
+}

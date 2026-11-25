@@ -34,6 +34,14 @@ jobs:
         if: ${{ hashFiles('sql/NORM_Stage2B_NIHRACS_Hierarchy.sql') != '' }}
         shell: powershell
         run: ./tools/tests/EmployeeBenefits/Test-NihracsSeed.ps1
+      - name: Verify narrative migration, persistence and browser preparation
+        shell: pwsh
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP 'norm-narrative-validation'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          ./tools/tests/NarrativeBlocks/Run.ps1 -EvidenceDirectory $evidence
+          node --experimental-websocket ./tools/tests/NarrativeBlocks/Browser.cjs (Join-Path $evidence 'narratives.json') $evidence 'validation'
+          if ($LASTEXITCODE -ne 0) { throw 'Narrative browser fixture failed.' }
       - name: Exercise deployment and rollback in isolation
         shell: powershell
         run: ./tools/deploy/Test-DeploymentSafety.ps1 -PackageInfo "$env:RUNNER_TEMP/waratah-validation/package.json"
