@@ -211,24 +211,26 @@ namespace CPlatform.NORM
 
         protected void SaveNarrativeBlock_Click(object sender, EventArgs e)
         {
+            NORMErrorHandling.BeginNarrativeSave(Context, NarrativeCanEdit ? SelectedReleaseId : 0);
             RequireNarrativePostback();
             long id;
             int sequence;
             string target = Request.Form["blockDestination"] ?? "";
             string[] parts = target.Split(new[] { '|' }, 2);
-            string html = Request.Form["blockHtml"] ?? "";
+            // Only the editor HTML bypasses request validation. Save applies the server-side allowlist.
+            string html = Request.Unvalidated.Form["blockHtml"] ?? "";
             try
             {
                 if (!Int64.TryParse(Request.Form["blockId"], out id) || id < 0 ||
                     !Int32.TryParse(Request.Form["blockSequence"], out sequence))
-                    throw new InvalidOperationException("Choose a narrative block and enter a sequence from 1 to 999.");
+                    throw new NORMNarrativeBlocks.InputException("Choose a narrative block and enter a sequence from 1 to 999.");
                 NORMNarrativeBlocks.Save(SelectedReleaseId, id, Request.Form["blockEditToken"], target,
                     Request.Form["blockType"], Request.Form["blockPlacement"], sequence, html, Request.Form["blockStatus"]);
                 NarrativeNotice = "Narrative saved.";
             }
-            catch (InvalidOperationException error)
+            catch (NORMNarrativeBlocks.InputException error)
             {
-                NarrativeNotice = error.Message;
+                NarrativeNotice = "Not saved. " + error.Message;
                 string recoverable;
                 try { recoverable = NORMNarrativeBlocks.Sanitize(html); }
                 catch (InvalidOperationException) { recoverable = ""; }

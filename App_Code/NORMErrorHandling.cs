@@ -11,6 +11,77 @@ using System.Web;
 public static class NORMErrorHandling
 {
     public const string GenericMessage = "NORM could not complete this operation. Reload and try again, or contact support.";
+    private const string NarrativeSaveKey = "NORM.NarrativeSave";
+    private const string NarrativeDiagnosticPrefix = "Operation=NarrativeSave;Outcome=Failed;SaveOutcome=";
+
+    private enum NarrativeSaveOutcome { NotSaved, CouldNotConfirm, Saved }
+
+    private sealed class NarrativeSaveAttempt
+    {
+        public NarrativeSaveOutcome Outcome { get; private set; }
+        public int EditorReleaseId { get; set; }
+
+        public void Commit(Action commit)
+        {
+            // An exception from Commit does not prove whether the database committed.
+            Outcome = NarrativeSaveOutcome.CouldNotConfirm;
+            commit();
+            Outcome = NarrativeSaveOutcome.Saved;
+        }
+    }
+
+    public static void BeginNarrativeSave(HttpContext context, int editorReleaseId)
+    {
+        context.Items[NarrativeSaveKey] = new NarrativeSaveAttempt { EditorReleaseId = editorReleaseId };
+    }
+
+    private static NarrativeSaveAttempt NarrativeAttempt(HttpContext context)
+    { return context == null ? null : context.Items[NarrativeSaveKey] as NarrativeSaveAttempt; }
+
+    internal static bool IsNarrativeSave(HttpContext context)
+    { return NarrativeAttempt(context) != null; }
+
+    internal static void CommitNarrativeSave(HttpContext context, Action commit)
+    {
+        var attempt = NarrativeAttempt(context);
+        if (attempt == null) commit();
+        else attempt.Commit(commit);
+    }
+
+    internal static int NarrativeEditorRelease(HttpContext context)
+    {
+        var attempt = NarrativeAttempt(context);
+        return attempt == null ? 0 : attempt.EditorReleaseId;
+    }
+
+    private static string NarrativeOutcomeMessage(NarrativeSaveOutcome outcome)
+    {
+        switch (outcome)
+        {
+            case NarrativeSaveOutcome.Saved:
+                return "Saved. Reopen the editor to review the narrative. Contact a NORM administrator if the error recurs.";
+            case NarrativeSaveOutcome.CouldNotConfirm:
+                return "Could not confirm. Reopen the editor and check the stored block before trying again. Share this reference with a NORM administrator if available.";
+            default:
+                return "Not saved. Reopen the editor before trying again. If the error recurs, contact a NORM administrator with the reference if available.";
+        }
+    }
+
+    public static string SafeDiagnosticSummary(string detail)
+    {
+        if (detail != null && detail.StartsWith(NarrativeDiagnosticPrefix, StringComparison.Ordinal))
+        {
+            string recorded = detail.Substring(NarrativeDiagnosticPrefix.Length).Split(';')[0];
+            const string operation = "Save narrative block. ";
+            if (recorded == NarrativeSaveOutcome.Saved.ToString())
+                return operation + "Saved. Check the stored block with the preparer. The failure happened after the save completed.";
+            if (recorded == NarrativeSaveOutcome.NotSaved.ToString())
+                return operation + "Not saved. Ask the preparer to reopen the editor before retrying.";
+            if (recorded == NarrativeSaveOutcome.CouldNotConfirm.ToString())
+                return operation + "Could not confirm. Check the stored block with the preparer before any retry.";
+        }
+        return "NORM request. Save outcome was not recorded. Ask the preparer to verify the stored record before retrying and share the reference with support if needed.";
+    }
     private const string PdfMessage = "NORM could not read the PDF. Check the file and selected start page, then try again.";
     private static readonly HashSet<string> BusinessMessages = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -258,6 +329,19 @@ public static class NORMErrorHandling
     public static string UserMessage(Exception error, HttpContext context, string operation)
     {
         bool denied = error is UnauthorizedAccessException;
+        var attempt = NarrativeAttempt(context);
+        if (attempt != null)
+        {
+            var httpError = error as HttpException;
+            if (!context.Response.HeadersWritten)
+            {
+                context.Response.StatusCode = denied || (httpError != null && httpError.GetHttpCode() == 403) ? 403 : 500;
+                context.Response.TrySkipIisCustomErrors = true;
+                context.Response.Cache.SetNoStore();
+            }
+            string saveReference = RecordDiagnostic(error, context, "NarrativeSave");
+            return NarrativeOutcomeMessage(attempt.Outcome) + (saveReference == null ? "" : " Reference: " + saveReference + ".");
+        }
         string reviewed = IsBusiness(error) ? error.Message : null;
         // These two controlled aggregate families use fixed guidance; their suffix is never rendered.
         if (error != null && error.InnerException == null && (error is InvalidOperationException || error is InvalidDataException))
@@ -304,10 +388,11 @@ public static class NORMErrorHandling
             if (actor != context.User.Identity.Name || Convert.ToInt32(NORMHelper.Scalar(
                 "SELECT COUNT(*) FROM dbo.tblNORM_AdminUser WHERE LOWER(UserId)=LOWER(@user) AND IsDeactivated=0 AND RoleCode IN ('Preparer','Administrator')",
                 NORMHelper.P("@user", actor))) != 1) { return null; }
+            var attempt = NarrativeAttempt(context);
             string[] allowed = { "Request", "ImportInspection", "ImportConfirmation", "YearSetup", "Mapping", "SourceHistory", "MappingWorkbook", "SourceFile", "FinancialStatementsExcel", "WordExport", "MappingExport", "ReviewPack", "YearSetupDocument" };
             if (Array.IndexOf(allowed, operation) < 0) { operation = "Request"; }
             string reference = Guid.NewGuid().ToString("N");
-            StringBuilder detail = new StringBuilder("Operation=" + operation + ";Outcome=Failed");
+            StringBuilder detail = new StringBuilder(attempt == null ? "Operation=" + operation + ";Outcome=Failed" : NarrativeDiagnosticPrefix + attempt.Outcome);
             if (error != null)
             {
                 detail.Append(";Type=").Append(error.GetType().FullName).Append(";HResult=").Append(error.HResult.ToString(CultureInfo.InvariantCulture));

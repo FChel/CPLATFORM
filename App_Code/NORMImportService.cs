@@ -1885,6 +1885,7 @@ public static class NORMImportService
         return value.Length <= 260 ? value : value.Substring(0, 257) + "...";
     }
 
+#if NORM_TEST_BREAK
     public static NORMImportOutcome CreateTestBreak(int parentImportId, decimal breakAmount, string importedBy)
     {
         if (breakAmount == 0m) { throw new ArgumentException("The test-break amount must be non-zero."); }
@@ -1966,6 +1967,7 @@ public static class NORMImportService
         outcome.NetBalance = NORMHelper.Dec(parent, "NetBalance") + breakAmount;
         return outcome;
     }
+#endif
 
     private static DataRow LoadApprovedRelease(int releaseId)
     {

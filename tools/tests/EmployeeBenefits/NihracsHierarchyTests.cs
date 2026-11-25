@@ -339,7 +339,8 @@ internal static partial class PilotTests
             outsideSource.Count == (fullWorkbook ? 183 : 4), "Mapping upload omitted GLs outside the retained trial balance.");
         Check((string)outsideSource.Single(row => (string)row["GlCode"] == "58200")["GlDescription"] == "Inventory Adjustment",
             "The new GL description did not come from the workbook.");
-        Check(applied.Validation.UnmappedCount == (fullWorkbook ? 10 : 2) &&
+        Check(applied.Validation.UnmappedCountsByYear[2026] == (fullWorkbook ? 10 : 2) &&
+            (fullWorkbook || applied.Validation.UnmappedCount == 2) &&
             applied.Validation.Warnings.Any(warning => warning.StartsWith(expectedIncomplete + " saved mapping")),
             "Incomplete classifications must remain blank and visible before approval.");
         if (!fullWorkbook)
@@ -381,8 +382,11 @@ internal static partial class PilotTests
             var priorValidation = NORMMappingManagement.Validate(19);
             Check(!priorValidation.CanApprove && priorValidation.Errors.Any(error =>
                 error.StartsWith("FY2025:") && error.Contains("PRIOR_ONLY")) &&
-                !priorValidation.Errors.Any(error => error.StartsWith("FY2026:")),
+                !priorValidation.Errors.Any(error => error.StartsWith("FY2026:")) &&
+                priorValidation.UnmappedCount == 3 && priorValidation.UnmappedCountsByYear[2026] == 2 &&
+                priorValidation.UnmappedCountsByYear[2025] == 1,
                 "An unresolved comparative-only GL should block approval for its own year.");
+
         }
         Console.WriteLine("PASS duplicate rejection; " + applied.ChangedCount + " rows accepted, " + outsideSource.Count +
             " outside Import 25; incomplete mappings reported and approval checked against source impact");
@@ -404,6 +408,42 @@ internal static partial class PilotTests
             Check(NORMMappingManagement.ApplyWorkbook(19, File.ReadAllBytes(consolidatedWorkbook), "older-layout.xlsx", "fixture").ChangedCount == 433,
                 "The previous seven-column hierarchy format no longer uploads.");
         }
+    }
+
+    private static void CheckComparativeMappingSummary()
+    {
+        Prepare();
+        ConfigureDraft();
+        draft.Rows[0]["ConfigurationReleaseId"] = 19;
+        draft.Rows[0]["EntityCode"] = "NIHRACS";
+        templates.Clear();
+        templates.Rows.Add(1, "SOCI", "Total expenses", 1, "Formula", DBNull.Value, "total", "Total expenses", DBNull.Value, "D", true, DBNull.Value, false);
+        templates.Rows.Add(2, "SOCI", "FIXTURE_MAPPED", 2, "Mapped", DBNull.Value, "hierarchy-detail", "Fixture detail", DBNull.Value, "D", true, "Total expenses", false);
+        accountMap.Clear();
+        accountMap.Rows.Add(1, "MAPPED", "Expense", "FIXTURE_MAPPED");
+        var shared = new[] { "SHARED1", "SHARED2", "SHARED3", "SHARED4" };
+        DataTable current = UnmappedFixtureRows(shared.Concat(new[] { "CURRENT1", "CURRENT2", "SHARED1", "MAPPED" }));
+        DataTable prior = UnmappedFixtureRows(shared.Select(gl => gl.ToLowerInvariant())
+            .Concat(Enumerable.Range(1, 6).Select(index => "PRIOR" + index)).Concat(new[] { "MAPPED" }));
+        NORMHelper.QueryCallResponse = call => call.Sql.StartsWith("SELECT GlAccount,SourceCompanyCode")
+            ? ((int)call["@import"] == 24 ? prior : current) : Query(call);
+        var draftScalar = NORMHelper.ScalarCallResponse;
+        NORMHelper.ScalarCallResponse = call => call.Sql.StartsWith("SELECT COUNT(*) FROM dbo.tblNORM_StatementLine")
+            ? (object)2 : draftScalar(call);
+        var combined = NORMMappingManagement.Validate(19);
+        Check(combined.UnmappedCount == 12 && combined.UnmappedCountsByYear[2026] == 6 &&
+            combined.UnmappedCountsByYear[2025] == 10, "Count distinct GLs in either year and count a shared GL once.");
+        Check(!combined.CanApprove && combined.ErrorCount == 2 && combined.Errors.Count == 2 &&
+            combined.Errors.Any(error => error.StartsWith("FY2026: 6 unmapped") && error.Contains("CURRENT1")) &&
+            combined.Errors.Any(error => error.StartsWith("FY2025: 10 unmapped") && error.Contains("PRIOR6")),
+            "The two blocking messages and existing year-specific approval rules must remain intact.");
+        Console.WriteLine("PASS 12 distinct unmapped GLs across FY2026 (6) and FY2025 (10), with four shared GLs and two blocking checks");
+    }
+
+    private static DataTable UnmappedFixtureRows(IEnumerable<string> accounts)
+    {
+        return Table("GlAccount SourceCompanyCode SourceLedger ReportingStream AccumBalance DebitMovement CreditMovement SourceDebit SourceCredit",
+            accounts.Select(gl => new object[] { gl, "NIHRA", null, "Departmental", 500m, 500m, 0m, 500m, 0m }).ToArray());
     }
 
     private static void CheckDraftReview(string output, DataTable source, DataTable priorSource)

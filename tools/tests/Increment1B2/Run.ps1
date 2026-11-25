@@ -12,7 +12,7 @@ $annualCode = [IO.File]::ReadAllText((Join-Path $root 'App_Code/NORMAnnualSource
 $code = [IO.File]::ReadAllText((Join-Path $root 'App_Code/NORMImportService.cs'))
 [IO.File]::WriteAllText((Join-Path $output 'NORMImportService.cs'), $code.Replace('using System.Data.OleDb;', 'using TestDb;'))
 $exe = Join-Path $output 'Tests.exe'
-$options = @('/nologo','/warnaserror+','/define:SERVICE','/target:exe',"/out:$exe",'/r:System.Data.dll','/r:System.Web.dll',"/r:$epplus",
+$options = @('/nologo','/warnaserror+','/define:SERVICE,NORM_TEST_BREAK','/target:exe',"/out:$exe",'/r:System.Data.dll','/r:System.Web.dll',"/r:$epplus",
     (Join-Path $root 'App_Code/NORMCrypto.cs'),(Join-Path $root 'App_Code/NORMImportModels.cs'),
     (Join-Path $root 'App_Code/ErpTrialBalanceImporter.cs'),(Join-Path $root 'App_Code/RomanTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NORMTextTrialBalanceImporter.cs'), (Join-Path $root 'App_Code/NihracsTrialBalanceImporter.cs'),
     (Join-Path $root 'tools/tests/FR016/TestSupport.cs'),(Join-Path $output 'NORMImportService.cs'),(Join-Path $output 'NORMAnnualSourceConfiguration.cs'),

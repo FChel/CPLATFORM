@@ -57,7 +57,8 @@ namespace CPlatform.NORM
             Exception error = Server.GetLastError();
             if (error is System.Threading.ThreadAbortException) { return; }
 
-            string title = error is OleDbException ? "The database request failed" : "NORM could not complete the request";
+            string title = NORMErrorHandling.IsNarrativeSave(Context) ? "Narrative save result" :
+                error is OleDbException ? "The database request failed" : "NORM could not complete the request";
             string detail = NORMErrorHandling.UserMessage(error, Context, "Request");
             int failureStatus = Response.StatusCode;
             if (Response.HeadersWritten)
@@ -75,8 +76,12 @@ namespace CPlatform.NORM
             html.Append("\"></head><body class=\"norm-page\"><main class=\"norm-error\"><div class=\"norm-kicker\">NORM</div><h1>");
             html.Append(HttpUtility.HtmlEncode(title));
             html.Append("</h1><p>").Append(HttpUtility.HtmlEncode(detail)).Append("</p><a class=\"norm-button\" href=\"");
-            html.Append(ResolveUrl("~/NORM/NORM_Statements.aspx"));
-            html.Append("\">Return to statements</a></main></body></html>");
+            int narrativeRelease = NORMErrorHandling.NarrativeEditorRelease(Context);
+            html.Append(HttpUtility.HtmlAttributeEncode(ResolveUrl(narrativeRelease > 0
+                ? "~/NORM/NORM_Reporting.aspx?narratives=1&release=" + narrativeRelease.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "~/NORM/NORM_Statements.aspx")));
+            html.Append(narrativeRelease > 0 ? "\">Return to narrative editor" : "\">Return to statements");
+            html.Append("</a></main></body></html>");
 
             Response.Clear();
             Response.StatusCode = failureStatus;

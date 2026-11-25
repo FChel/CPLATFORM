@@ -13,6 +13,30 @@ namespace CPlatform.NORM
             if (!IsPostBack) { BindUsers(); }
         }
 
+        protected void FindDiagnostic_Click(object sender, EventArgs e)
+        {
+            if (!NORMHelper.HasAdminAccess()) throw new UnauthorizedAccessException();
+            Response.Cache.SetNoStore();
+            Guid reference;
+            if (!Guid.TryParseExact(DiagnosticReference.Text.Trim(), "N", out reference))
+            {
+                DiagnosticResult.Text = "Enter the complete 32-character diagnostic reference.";
+                return;
+            }
+            DataTable records = NORMHelper.Query(
+                "SELECT TOP 2 DetailText,CONVERT(varchar(19),PerformedUtc,120) AS PerformedUtcText FROM dbo.tblNORM_AuditEvent " +
+                "WHERE EventCode='NORM_REQUEST_FAILED' AND EntityType='NORMRequest' AND EntityId=@reference",
+                NORMHelper.P("@reference", reference.ToString("N")));
+            if (records.Rows.Count != 1)
+            {
+                DiagnosticResult.Text = "No diagnostic found for this reference.";
+                return;
+            }
+            DataRow record = records.Rows[0];
+            DiagnosticResult.Text = Server.HtmlEncode(NORMHelper.Str(record, "PerformedUtcText") + " UTC · " +
+                NORMErrorHandling.SafeDiagnosticSummary(NORMHelper.Str(record, "DetailText")));
+        }
+
         protected void AddButton_Click(object sender, EventArgs e)
         {
             string userId = (UserIdTextBox.Text ?? "").Trim();

@@ -1,6 +1,7 @@
 using System;
 using System.Data;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Web;
 using System.Web.UI.WebControls;
@@ -237,8 +238,13 @@ namespace CPlatform.NORM
 
         private string RenderValidation(NORMMappingValidation value)
         {
-            StringBuilder html = new StringBuilder("<div class=\"norm-validation-summary\"><article><strong>" + value.MappingCount.ToString("N0") + "</strong><span>active mappings</span></article><article><strong>" + value.ChangedCount.ToString("N0") + "</strong><span>accounts changed</span></article><article><strong>" + value.UnmappedCount.ToString("N0") + "</strong><span>unmapped accounts</span></article><article><strong>" + value.ErrorCount.ToString("N0") + "</strong><span>blocking errors</span></article></div>");
-            if (value.Errors.Count > 0) { html.Append("<div class=\"norm-validation-list error\"><strong>Resolve before approval</strong><ul>"); foreach (string item in value.Errors) html.Append("<li>").Append(Enc(item)).Append("</li>"); html.Append("</ul></div>"); }
+            StringBuilder html = new StringBuilder("<div class=\"norm-validation-summary\"><article><strong>" + value.MappingCount.ToString("N0") + "</strong><span>active mappings</span></article><article><strong>" + value.ChangedCount.ToString("N0") + "</strong><span>accounts changed</span></article><article><strong>" + value.UnmappedCount.ToString("N0") + "</strong><span>distinct unmapped G/L accounts</span>");
+            if (value.UnmappedCountsByYear.Count > 1)
+                html.Append("<small>").Append(Enc(String.Join(" · ", value.UnmappedCountsByYear.OrderByDescending(period => period.Key)
+                    .Select(period => "FY" + period.Key + " (" + period.Value.ToString("N0") + ")")))).Append("</small>");
+            html.Append("</article><article><strong>").Append(value.ErrorCount.ToString("N0"))
+                .Append("</strong><span>failed approval checks</span></article></div>");
+            if (value.Errors.Count > 0) { html.Append("<div class=\"norm-validation-list error\"><strong>Resolve before approval</strong><p>Each message below counts as one failed approval check and may list multiple accounts.</p><ul>"); foreach (string item in value.Errors) html.Append("<li>").Append(Enc(item)).Append("</li>"); html.Append("</ul></div>"); }
             if (value.Warnings.Count > 0) { html.Append("<div class=\"norm-validation-list warning\"><strong>Review warnings</strong><ul>"); foreach (string item in value.Warnings) html.Append("<li>").Append(Enc(item)).Append("</li>"); html.Append("</ul></div>"); }
             return html.ToString();
         }

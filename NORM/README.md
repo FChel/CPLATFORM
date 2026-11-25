@@ -104,10 +104,6 @@ preparers and reviewers.
    sheet match the statement screen and supplied original. The retained source
    download is the authoritative TB to provide to a reviewer who needs to
    reproduce or refine mappings.
-6. Use **Create test break** to create a separate child import with a deliberate
-   $48,250 imbalance. The valid parent import remains unchanged.
-7. Return to the valid run from the workspace after confirming the blocking
-   debit/credit validation fails on the test run.
 
 The independent expected baseline and variance list are recorded in
 `FY2025_VERIFICATION.md`. The repeatable checker is
