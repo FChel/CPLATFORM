@@ -101,7 +101,12 @@ WHERE c.Id<>21 OR n.Code<>'LOCAL_ONLY';
     Invoke-FixtureSql $fixture $migration
     Assert-ProtectedRows $fixture $protectedRows
 
-    $localDb = Join-Path $env:ProgramFiles 'Microsoft SQL Server/160/Tools/Binn/SqlLocalDB.exe'
+    $localDb = (Get-Command SqlLocalDB.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    if (!$localDb) {
+        $localDb = (Get-ChildItem (Join-Path $env:ProgramFiles 'Microsoft SQL Server/*/Tools/Binn/SqlLocalDB.exe') -File |
+            Sort-Object FullName -Descending | Select-Object -First 1).FullName
+    }
+    if (!$localDb) { throw 'Could not find the SQL Server LocalDB command.' }
     $pipe = [regex]::Match((& $localDb info MSSQLLocalDB | Out-String), '(?im)np:(\\[^\r\n]+)')
     if (!$pipe.Success) { throw 'Could not resolve the local named pipe.' }
     $connection = 'Provider=SQLOLEDB;Data Source=' + $pipe.Groups[1].Value.Trim() +
