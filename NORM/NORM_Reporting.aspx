@@ -16,12 +16,87 @@
             <span class="norm-chip norm-env"><%= Server.HtmlEncode(CurrentEnvironment) %></span>
             <a href="../Default.aspx">FinHub</a>
             <a href="NORM_Workspace.aspx">Preparer workspace</a>
-            <a href="NORM_Statements.aspx?run=<%= SelectedRunId %>">Financial statements</a>
+            <a href="NORM_Statements.aspx<%= SelectedRunId > 0 ? "?run=" + SelectedRunId : "" %>">Financial statements</a>
+            <% if (NarrativeMode) { %><a href="NORM_Mapping.aspx?release=<%= SelectedReleaseId %>">Mapping release</a><% } %>
             <a href="NORM_Help.aspx">Help</a>
         </nav>
     </header>
 
     <main class="norm-reporting-shell">
+        <% if (NarrativeMode) { %>
+        <section class="norm-reporting-panel norm-narrative-panel">
+            <header><div><h1>Disclosures and accounting policies</h1><p><%= Server.HtmlEncode(RunLabel) %></p></div></header>
+            <% if (!PlatformInstalled) { %>
+            <p>Narrative blocks are unavailable until the approved migration is installed.</p>
+            <% } else { %>
+            <div class="norm-narrative-layout">
+                <aside class="norm-narrative-index" aria-label="Narrative blocks">
+                    <h2>Content blocks</h2>
+                    <% if (NarrativeCanEdit) { %>
+                    <button type="button" class="norm-button norm-button-small norm-button-quiet" id="newNarrative">New block</button>
+                    <% } %>
+                    <ul id="narrativeList"></ul>
+                </aside>
+                <div>
+                    <p id="narrativeNotice" class="norm-narrative-notice" role="status"><%= Server.HtmlEncode(NarrativeNotice) %></p>
+                    <% if (!NarrativeCanEdit) { %><p>This approved configuration is read-only.</p><% } %>
+                    <div class="norm-profile-grid norm-narrative-fields">
+                        <label class="norm-narrative-destination"><span>Destination</span><select name="blockDestination" id="blockDestination"></select></label>
+                        <label><span>Content type</span><select name="blockType" id="blockType">
+                            <option value="Disclosure">Narrative disclosure</option><option value="AccountingPolicy">Accounting policy</option>
+                            <option value="EntityOverview">Entity overview</option><option value="SectionIntroduction">Section introduction</option>
+                        </select></label>
+                        <label><span>Position</span><select name="blockPlacement" id="blockPlacement">
+                            <option value="Before">Before content</option><option value="After">After content</option>
+                        </select></label>
+                        <label><span>Sequence</span><input name="blockSequence" id="blockSequence" type="number" min="1" max="999" value="1" /></label>
+                        <label><span>Preparation status</span><select name="blockStatus" id="blockStatus">
+                            <option value="Draft">Draft</option><option value="Prepared">Prepared</option>
+                        </select></label>
+                    </div>
+                    <p id="blockReview" class="norm-muted">Awaiting review</p>
+                    <% if (NarrativeCanEdit) { %>
+                    <div class="norm-narrative-toolbar" role="toolbar" aria-label="Text formatting">
+                        <button type="button" data-format="bold"><strong>Bold</strong></button>
+                        <button type="button" data-format="italic"><em>Italic</em></button>
+                        <button type="button" data-format="underline"><u>Underline</u></button>
+                        <button type="button" data-format="formatBlock" data-value="h3">Subheading</button>
+                        <button type="button" data-format="formatBlock" data-value="p">Paragraph</button>
+                        <button type="button" data-format="insertUnorderedList">Bullet list</button>
+                        <button type="button" data-format="insertOrderedList">Numbered list</button>
+                        <button type="button" data-format="superscript">Superscript</button>
+                        <button type="button" data-format="subscript">Subscript</button>
+                    </div>
+                    <% } %>
+                    <div id="blockEditor" class="norm-narrative-content" role="textbox" aria-multiline="true" aria-label="Narrative content"
+                        contenteditable="<%= NarrativeCanEdit ? "true" : "false" %>"></div>
+                    <input type="hidden" name="blockId" id="blockId" value="0" />
+                    <input type="hidden" name="blockEditToken" id="blockEditToken" />
+                    <input type="hidden" name="blockHtml" id="blockHtml" />
+                    <input type="hidden" name="narrativeToken" value="<%= Server.HtmlEncode(NarrativeToken) %>" />
+                    <% if (NarrativeCanEdit) { %>
+                    <div class="norm-narrative-actions">
+                        <asp:Button ID="SaveNarrativeBlock" runat="server" Text="Save block" CssClass="norm-button"
+                            OnClick="SaveNarrativeBlock_Click" OnClientClick="if (!window.normSubmitNarrative()) return false;" />
+                        <button type="button" class="norm-button norm-button-quiet" id="cancelNarrative">Cancel</button>
+                    </div>
+                    <% } %>
+                </div>
+            </div>
+            <% if (NarrativeCanEdit) { %>
+            <section class="norm-narrative-rollover" id="narrativeRollover" hidden>
+                <h2>Carry content forward</h2>
+                <label for="narrativeSource">Preceding-year release</label>
+                <select id="narrativeSource" name="narrativeSource"></select>
+                <asp:Button ID="RollNarratives" runat="server" Text="Carry forward blocks" CssClass="norm-button norm-button-quiet"
+                    OnClick="RollNarrativeBlocks_Click" OnClientClick="if (!window.normConfirmRollover()) return false;" />
+            </section>
+            <% } %>
+            <script id="narrativeEditorData" type="application/json"><%= NarrativeEditorData %></script>
+            <script src="../js/norm-narrative.js" defer></script>
+            <% } %>
+        </section>
+        <% } else { %>
         <section class="norm-reporting-hero">
             <div>
                 <span class="norm-kicker">Commonwealth reporting framework</span>
@@ -109,6 +184,7 @@
             <div><strong>Run-specific working content</strong><span>Profile selections apply to FY configuration; narratives and workflow are retained against this calculation run.</span><label class="norm-change-reason"><span>Reason for change</span><input name="changeReason" placeholder="What changed and why?" /></label></div>
             <asp:Button ID="SaveButton" runat="server" Text="Save reporting workspace" CssClass="norm-button norm-button-dark" OnClick="Save_Click" />
         </div>
+        <% } %>
         <% } %>
     </main>
 </form>

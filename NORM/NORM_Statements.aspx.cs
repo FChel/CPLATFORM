@@ -155,6 +155,9 @@ namespace CPlatform.NORM
             payload["statements"] = statements;
             payload["profile"] = BuildProfilePayload(profile);
             payload["disclosures"] = BuildDisclosurePayload(disclosures);
+            payload["narrativeBlocks"] = NORMNarrativeBlocks.Load(releaseId);
+            if (CanPrepare && NORMNarrativeBlocks.Installed())
+                meta["narrativeUrl"] = "NORM_Reporting.aspx?narratives=1&run=" + runId.ToString(CultureInfo.InvariantCulture);
             List<object> validations = LoadValidations(runId, comparativeRun > 0 ? fy : 0);
             if (comparativeRun > 0) validations.AddRange(LoadValidations(comparativeRun, fy - 1));
             AppendDisclosureValidations(validations, disclosures, disclosureChecks);

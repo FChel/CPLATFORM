@@ -28,6 +28,18 @@
   function pad2(value) { return Number(value) < 10 ? "0" + Number(value) : String(value); }
   function statusClass(value) { return String(value || "Mapped").toLowerCase(); }
   function noteId(value) { return "note-" + String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+  function narrativeBlocks(kind, key, placement) {
+    if (viewMode !== "preparation") return "";
+    var labels = { Disclosure: "Narrative disclosure", AccountingPolicy: "Accounting policy",
+      EntityOverview: "Entity overview", SectionIntroduction: "Section introduction" };
+    return (data.narrativeBlocks || []).filter(function (item) {
+      return item.Kind === kind && item.Key === key && item.Placement === placement && item.Html;
+    }).map(function (item) {
+      // Only the server allowlisted fragment is rendered as markup.
+      return '<section class="norm-narrative-block"><header><strong>' + esc(labels[item.Type]) + '</strong>' +
+        (item.RolledForward ? '<small>Carried forward · annual review required</small>' : '') + '</header>' + item.Html + '</section>';
+    }).join("");
+  }
   function noteLines(lines) {
     var values = (lines || []).slice();
     if (values.some(function (line) { return Number(line.order || 0) > 0; })) {
@@ -117,7 +129,8 @@
       '<small>' + esc(labels[profile.reportingBasis] || profile.reportingBasis || "Reporting basis") + ' · ' + esc(labels[profile.disclosureTier] || profile.disclosureTier || "Disclosure set") + '</small></div>' +
       '<div class="norm-profile-tags">' + requirements.slice(0, 5).map(function (item) { return '<span>' + esc(item.label) + '</span>'; }).join("") +
       (requirements.length > 5 ? '<span>+' + (requirements.length - 5) + ' more</span>' : '') + '</div>' +
-      (data.meta.canPrepare ? '<a href="' + esc(data.meta.reportingUrl) + '">Edit reporting profile →</a>' : '');
+      (data.meta.canPrepare ? '<a href="' + esc(data.meta.reportingUrl) + '">Edit reporting profile →</a>' : '') +
+      (data.meta.narrativeUrl ? '<a href="' + esc(data.meta.narrativeUrl) + '">Disclosures and accounting policies →</a>' : '');
   }
 
   function renderNavigation() {
@@ -201,7 +214,9 @@
         return '<div class="norm-admin-source-warning">' + esc(issue.detail) + '</div>';
       }).join("") : '') +
       renderSourceEvidence() + '</header>' +
+      narrativeBlocks("Statement", statement.code === "SCF" ? "CASH" : statement.code, "Before") +
       '<div class="norm-table-scroll"><table class="norm-financial-table"><thead>' + tableHead + '</thead><tbody>' + rows + '</tbody></table></div>' +
+      narrativeBlocks("Statement", statement.code === "SCF" ? "CASH" : statement.code, "After") +
       '<footer class="norm-document-foot">The above statement should be read in conjunction with the accompanying notes.' +
       (viewMode === "preparation" ? ' Select an amount to inspect its frozen derivation.' : '') + '</footer>';
 
@@ -363,13 +378,22 @@
     var disclosures = statement.disclosures || data.disclosures || [];
     var required = disclosures.filter(function (item) { return item.required && item.note; });
     var sections = [];
-    var bySection = {};
-    required.forEach(function (item) {
-      if (!bySection[item.section]) { bySection[item.section] = []; sections.push(item.section); }
-      bySection[item.section].push(item);
+    var bySection = Object.create(null);
+    var sectionTitles = Object.create(null);
+    disclosures.forEach(function (item) {
+      var key = item.sectionCode || item.section;
+      var hasNote = item.note && (item.required || ["Before", "After"].some(function (position) {
+        return narrativeBlocks("Note", item.code, position) || narrativeBlocks("Schedule", item.code, position);
+      }));
+      var hasSection = narrativeBlocks("Section", key, "Before") || narrativeBlocks("Section", key, "After");
+      if (!hasNote && !hasSection) return;
+      if (!bySection[key]) { bySection[key] = []; sectionTitles[key] = item.section; sections.push(key); }
+      if (hasNote) bySection[key].push(item);
     });
     var notes = sections.map(function (section) {
-      return '<section class="norm-note-section"><header><span>' + esc(bySection[section][0].sectionCode) + '</span><h2>' + esc(section) + '</h2></header>' +
+      return '<section class="norm-note-section"><header><span>' + esc(section) +
+        '</span><h2>' + esc(sectionTitles[section]) + '</h2></header>' +
+        narrativeBlocks("Section", section, "Before") +
         bySection[section].map(function (item) {
           var lines = noteLines(item.lines);
           var rows = lines.map(function (line) {
@@ -385,15 +409,18 @@
           var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Written disclosures and accounting policy</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
           return '<article id="' + noteId(item.note || item.code) + '" class="norm-note-card" tabindex="-1"><div class="norm-note-card-head"><div><span>Note ' + esc(item.note || "") + '</span><h3>' + esc(item.title) + '</h3></div><em class="' + statusClass(item.status) + '">' + esc(item.status) + '</em></div>' +
             (item.completenessDetail ? '<details class="norm-note-source"><summary>Outstanding disclosure checks</summary><p>' +
-              esc(item.completenessDetail) + '</p></details>' : '') + table + source + narrative + '</article>';
-        }).join("") + '</section>';
+              esc(item.completenessDetail) + '</p></details>' : '') +
+            narrativeBlocks("Note", item.code, "Before") + narrativeBlocks("Schedule", item.code, "Before") + table +
+            narrativeBlocks("Schedule", item.code, "After") + source + narrative + narrativeBlocks("Note", item.code, "After") + '</article>';
+        }).join("") + narrativeBlocks("Section", section, "After") + '</section>';
     }).join("");
     var notApplicable = disclosures.filter(function (item) { return !item.required; });
     var na = notApplicable.length ? '<details class="norm-na-register"><summary>' + notApplicable.length + ' disclosures assessed as not applicable</summary><div>' +
       notApplicable.map(function (item) { return '<span><b>' + esc(item.note || item.sectionCode) + '</b>' + esc(item.title) + '<small>Trigger: ' + esc(item.trigger) + '</small></span>'; }).join("") + '</div></details>' : '';
     byId("statementDocument").innerHTML = '<header class="norm-document-head norm-notes-head"><span class="norm-kicker">' + esc(data.meta.entity) + '</span><h1>' + esc(statement.title) + '</h1>' +
       '<p>For the year ended 30 June ' + esc(data.meta.yearCurrent) + '</p><div class="norm-document-meta"><span>PRIMA-aligned conditional set</span><span>' + required.length + ' required note disclosures</span><span>Run #' + esc(data.meta.runId) + '</span></div>' +
-      (data.meta.canPrepare ? '<a class="norm-button norm-button-small" href="' + esc(data.meta.reportingUrl) + '#policies">Edit policy wording and workflow</a>' : '') + '</header>' + notes + na +
+      (data.meta.canPrepare ? '<a class="norm-button norm-button-small" href="' + esc(data.meta.reportingUrl) + '#policies">Edit policy wording and workflow</a>' : '') + '</header>' +
+      narrativeBlocks("Overview", "OVERVIEW", "Before") + narrativeBlocks("Overview", "OVERVIEW", "After") + notes + na +
       '<footer class="norm-document-foot">Note tables are generated from frozen trial-balance lineage. Policy wording is run-specific working content and must be reviewed for the entity before approval.</footer>';
     Array.prototype.forEach.call(byId("statementDocument").querySelectorAll("button[data-note-asset-row]"), function (button) {
       button.addEventListener("click", function () {

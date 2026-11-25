@@ -229,6 +229,8 @@ namespace CPlatform.NORM
                     "INSERT dbo.tblNORM_NarrativeTemplate (ConfigurationReleaseId,DisclosureCode,NarrativeType,TemplateText,IsDeactivated) " +
                     "SELECT @target,DisclosureCode,NarrativeType,TemplateText,IsDeactivated FROM dbo.tblNORM_NarrativeTemplate WHERE ConfigurationReleaseId=@source",
                     NORMHelper.P("@target", target), NORMHelper.P("@source", source));
+            if (TableExists(c, t, "tblNORM_NarrativeBlock"))
+                NORMNarrativeBlocks.CopySuccessor(c, t, source, target, user);
             if (TableExists(c, t, "tblNORM_SourceFigure"))
                 NORMHelper.Exec(c, t,
                     "INSERT dbo.tblNORM_SourceFigure (ConfigurationReleaseId,FinancialYear,EntityCode,StatementCode,LineCode,FigureType,Amount,SourceReference,SourceUrl,IsDeactivated) " +

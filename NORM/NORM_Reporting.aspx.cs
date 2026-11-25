@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Web;
+using System.Web.Script.Serialization;
 
 namespace CPlatform.NORM
 {
@@ -36,9 +38,26 @@ namespace CPlatform.NORM
         protected int NeedsInputCount;
         protected int NotApplicableCount;
         protected string ReadinessLabel = "Select a completed calculation run";
+        protected bool NarrativeMode { get { return Request.QueryString["narratives"] == "1"; } }
+        protected bool NarrativeCanEdit;
+        protected string NarrativeEditorData = "{}";
+        protected string NarrativeNotice = "";
+        protected string NarrativeToken = "";
+        private NORMNarrativeBlocks.Block postedNarrative;
+
+        protected override void OnInit(EventArgs e)
+        {
+            base.OnInit(e);
+            if (!NarrativeMode) return;
+            const string key = "NORM.NarrativeFormToken";
+            if (Session[key] == null) Session[key] = Guid.NewGuid().ToString("N");
+            NarrativeToken = (string)Session[key];
+            ViewStateUserKey = Session.SessionID + "|" + NORMHelper.CurrentUserId();
+        }
 
         protected void Page_Load(object sender, EventArgs e)
         {
+            if (NarrativeMode) { LoadNarrativeContext(); BuildNarrativeEditor(); return; }
             SelectedRunId = ResolveRunId();
             PlatformInstalled = NORMReportingFramework.IsInstalled();
             if (SelectedRunId <= 0 || !PlatformInstalled) { return; }
@@ -52,6 +71,7 @@ namespace CPlatform.NORM
 
         protected void Save_Click(object sender, EventArgs e)
         {
+            if (NarrativeMode) throw new HttpException(403, "This page is available for narrative preparation only.");
             SelectedRunId = ResolveRunId();
             if (SelectedRunId <= 0) { throw new InvalidOperationException("Choose a completed calculation run first."); }
             LoadContext();
@@ -135,6 +155,105 @@ namespace CPlatform.NORM
             }
             NORMReportingFramework.AuditWorkspaceSave(SelectedRunId, Request.Form["changeReason"], user);
             Response.Redirect("NORM_Reporting.aspx?run=" + SelectedRunId.ToString() + "&saved=1", true);
+        }
+
+        private void LoadNarrativeContext()
+        {
+            string requested = Request.QueryString["run"];
+            int value;
+            if (requested != null)
+            {
+                if (!Int32.TryParse(requested, out value) || value <= 0 || !NORMHelper.CanAccessStatementRun(value))
+                    throw new HttpException(403, "You do not have access to this calculation run.");
+                SelectedRunId = value;
+                SelectedReleaseId = Convert.ToInt32(NORMHelper.Scalar(
+                    "SELECT ConfigurationReleaseId FROM dbo.tblNORM_CalculationRun WHERE CalculationRunId=@run AND IsDeactivated=0",
+                    NORMHelper.P("@run", value)));
+            }
+            else if (Int32.TryParse(Request.QueryString["release"], out value) && value > 0)
+                SelectedReleaseId = value;
+            DataTable releases = NORMHelper.Query(
+                "SELECT EntityCode,FinancialYear,VersionCode,StatusCode FROM dbo.tblNORM_ConfigurationRelease " +
+                "WHERE ConfigurationReleaseId=@release AND IsDeactivated=0 AND StatusCode IN ('Draft','Approved')",
+                NORMHelper.P("@release", SelectedReleaseId));
+            if (releases.Rows.Count != 1 || !NORMHelper.CanPrepareEntity(NORMHelper.Str(releases.Rows[0], "EntityCode")))
+                throw new HttpException(403, "You do not have access to an eligible narrative release.");
+            DataRow release = releases.Rows[0];
+            RunLabel = NORMHelper.Str(release, "EntityCode") + " · FY" + NORMHelper.Int(release, "FinancialYear") +
+                " · " + NORMHelper.Str(release, "VersionCode");
+            PlatformInstalled = NORMReportingFramework.IsInstalled() && NORMNarrativeBlocks.Installed();
+            NarrativeCanEdit = PlatformInstalled && NORMHelper.Str(release, "StatusCode") == "Draft";
+        }
+
+        private void BuildNarrativeEditor()
+        {
+            if (!PlatformInstalled) return;
+            DataTable prior = NarrativeCanEdit ? NORMNarrativeBlocks.PriorReleases(SelectedReleaseId) : new DataTable();
+            var data = new {
+                editable = NarrativeCanEdit,
+                destinations = NORMNarrativeBlocks.Destinations(SelectedReleaseId).Select(item => new { value = item.Value, label = item.Label }),
+                blocks = NORMNarrativeBlocks.Load(SelectedReleaseId),
+                pending = postedNarrative,
+                previous = prior.AsEnumerable().Select(row => new {
+                    id = NORMHelper.Int(row, "ConfigurationReleaseId"),
+                    label = "FY" + NORMHelper.Int(row, "FinancialYear") + " · " + NORMHelper.Str(row, "VersionCode")
+                })
+            };
+            NarrativeEditorData = new JavaScriptSerializer { MaxJsonLength = 50 * 1024 * 1024 }.Serialize(data).Replace("<", "\\u003c");
+        }
+
+        private void RequireNarrativePostback()
+        {
+            if (!NarrativeMode || !NarrativeCanEdit ||
+                !String.Equals(NarrativeToken, Request.Form["narrativeToken"], StringComparison.Ordinal))
+                throw new HttpException(403, "You do not have access to change narrative content in this release.");
+        }
+
+        protected void SaveNarrativeBlock_Click(object sender, EventArgs e)
+        {
+            RequireNarrativePostback();
+            long id;
+            int sequence;
+            string target = Request.Form["blockDestination"] ?? "";
+            string[] parts = target.Split(new[] { '|' }, 2);
+            string html = Request.Form["blockHtml"] ?? "";
+            try
+            {
+                if (!Int64.TryParse(Request.Form["blockId"], out id) || id < 0 ||
+                    !Int32.TryParse(Request.Form["blockSequence"], out sequence))
+                    throw new InvalidOperationException("Choose a narrative block and enter a sequence from 1 to 999.");
+                NORMNarrativeBlocks.Save(SelectedReleaseId, id, Request.Form["blockEditToken"], target,
+                    Request.Form["blockType"], Request.Form["blockPlacement"], sequence, html, Request.Form["blockStatus"]);
+                NarrativeNotice = "Narrative saved.";
+            }
+            catch (InvalidOperationException error)
+            {
+                NarrativeNotice = error.Message;
+                string recoverable;
+                try { recoverable = NORMNarrativeBlocks.Sanitize(html); }
+                catch (InvalidOperationException) { recoverable = ""; }
+                postedNarrative = new NORMNarrativeBlocks.Block {
+                    Id = Request.Form["blockId"], EditToken = Request.Form["blockEditToken"],
+                    Kind = parts[0], Key = parts.Length == 2 ? parts[1] : "", Type = Request.Form["blockType"],
+                    Placement = Request.Form["blockPlacement"], Sequence = Int32.TryParse(Request.Form["blockSequence"], out sequence) ? sequence : 1,
+                    Status = Request.Form["blockStatus"], Html = recoverable
+                };
+            }
+            BuildNarrativeEditor();
+        }
+
+        protected void RollNarrativeBlocks_Click(object sender, EventArgs e)
+        {
+            RequireNarrativePostback();
+            int source;
+            try
+            {
+                if (!Int32.TryParse(Request.Form["narrativeSource"], out source) || source <= 0)
+                    throw new InvalidOperationException("Select a prior-year configuration to carry forward.");
+                NarrativeNotice = NORMNarrativeBlocks.RollForward(SelectedReleaseId, source);
+            }
+            catch (InvalidOperationException error) { NarrativeNotice = error.Message; }
+            BuildNarrativeEditor();
         }
 
         private int ResolveRunId()
