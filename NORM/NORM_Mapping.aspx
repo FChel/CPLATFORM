@@ -15,7 +15,7 @@
     <main class="norm-mapping-shell">
         <section class="norm-mapping-hero">
             <div><span class="norm-kicker">Account mapping</span><h1>Edit mapping workbook</h1><p>Select the agency and financial year, then download the workbook and make your changes in Excel.</p></div>
-            <aside class="norm-unmapped-callout"><strong><%= UnmappedAccountCount %></strong><span><%= UnmappedAccountLabel %></span><small>Based on unique accounts in the latest retained trial balance.</small></aside>
+            <aside class="norm-unmapped-callout"><strong><%= UnmappedAccountCount %></strong><span><%= UnmappedAccountLabel %></span><small>Each G/L account is counted once across the applicable trial balances.</small></aside>
         </section>
         <asp:Panel ID="MessagePanel" runat="server" Visible="false" CssClass="norm-alert"><strong><asp:Literal ID="MessageTitle" runat="server" /></strong><asp:Literal ID="MessageText" runat="server" /></asp:Panel>
         <section class="norm-mapping-card">

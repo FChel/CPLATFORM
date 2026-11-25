@@ -11,6 +11,11 @@ using System.Xml;
 
 public static class NORMNarrativeBlocks
 {
+    public sealed class InputException : InvalidOperationException
+    {
+        public InputException(string message) : base(message) { }
+    }
+
     private static readonly HashSet<string> Formats = new HashSet<string>(StringComparer.Ordinal)
         { "p", "br", "strong", "em", "u", "h3", "h4", "ul", "ol", "li", "sup", "sub" };
     private static readonly HashSet<string> Discard = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -79,7 +84,7 @@ public static class NORMNarrativeBlocks
     public static string Sanitize(string html)
     {
         if (String.IsNullOrWhiteSpace(html) || html.Length > 20000)
-            throw new InvalidOperationException("Enter narrative text of no more than 20,000 characters.");
+            throw new InputException("Enter narrative text of no more than 20,000 characters.");
         // The browser writes HTML void elements and non-breaking spaces. Parse a strict fragment
         // and rebuild it entirely from the allowlist, including when reading stored content.
         html = Regex.Replace(html.Replace("&nbsp;", "&#160;"), @"<br\s*>", "<br/>", RegexOptions.IgnoreCase);
@@ -92,20 +97,20 @@ public static class NORMNarrativeBlocks
         }
         catch (XmlException)
         {
-            throw new InvalidOperationException("The submitted format could not be read. Paste as plain text and reapply formatting.");
+            throw new InputException("The submitted format could not be read. Paste as plain text and reapply formatting.");
         }
         var output = new StringBuilder();
         foreach (XmlNode node in document.DocumentElement.ChildNodes) AppendSafe(node, output, 0);
         if (String.IsNullOrWhiteSpace(document.DocumentElement.InnerText) ||
             String.IsNullOrWhiteSpace(System.Web.HttpUtility.HtmlDecode(Regex.Replace(output.ToString(), "<[^>]*>", ""))) ||
             output.Length > 20000)
-            throw new InvalidOperationException("Enter supported narrative text of no more than 20,000 characters.");
+            throw new InputException("Enter supported narrative text of no more than 20,000 characters.");
         return output.ToString();
     }
 
     private static void AppendSafe(XmlNode node, StringBuilder output, int depth)
     {
-        if (depth > 40) throw new InvalidOperationException("Simplify the nested narrative formatting before saving.");
+        if (depth > 40) throw new InputException("Simplify the nested narrative formatting before saving.");
         if (node.NodeType == XmlNodeType.Text || node.NodeType == XmlNodeType.CDATA ||
             node.NodeType == XmlNodeType.SignificantWhitespace || node.NodeType == XmlNodeType.Whitespace)
         {
@@ -190,7 +195,7 @@ public static class NORMNarrativeBlocks
     {
         if (!Types.Contains(type) || (placement != "Before" && placement != "After") || sequence < 1 || sequence > 999 ||
             (status != "Draft" && status != "Prepared"))
-            throw new InvalidOperationException("Choose a valid content type, placement, sequence from 1 to 999, and preparation status.");
+            throw new InputException("Choose a valid content type, placement, sequence from 1 to 999, and preparation status.");
         html = Sanitize(html);
         string user = NORMHelper.CurrentUserId();
         using (OleDbConnection connection = NORMHelper.OpenConnection())
@@ -198,15 +203,15 @@ public static class NORMNarrativeBlocks
         {
             LockRelease(connection, transaction, releaseId, true);
             Destination selected = Destinations(releaseId, connection, transaction).Find(item => item.Value == destination);
-            if (selected == null) throw new InvalidOperationException("The selected destination is not configured for this release.");
+            if (selected == null) throw new InputException("The selected destination is not configured for this release. Choose a configured destination.");
             var block = new Block { Kind = selected.Kind, Key = selected.Key, Type = type, Placement = placement,
                 Sequence = sequence, Html = html, Status = status };
             if (PositionOccupied(connection, transaction, releaseId, block, id))
-                throw new InvalidOperationException("That position and sequence are already used at this destination.");
+                throw new InputException("That position and sequence are already used at this destination. Choose a different position or sequence.");
             if (id > 0)
             {
                 if (!Regex.IsMatch(editToken ?? "", @"\A[0-9a-fA-F]{16}\z"))
-                    throw new InvalidOperationException("Reload the narrative before editing.");
+                    throw new InputException("Reload the narrative before editing.");
                 int changed = NORMHelper.Exec(connection, transaction,
                     "UPDATE dbo.tblNORM_NarrativeBlock SET DestinationKind=@kind,DestinationKey=@key,ContentType=@type," +
                     "Placement=@placement,SequenceNo=@sequence,ContentHtml=@html,StatusCode=@status,UpdatedBy=@user," +
@@ -216,12 +221,12 @@ public static class NORMNarrativeBlocks
                     NORMHelper.P("@placement", block.Placement), NORMHelper.P("@sequence", block.Sequence), NORMHelper.P("@html", html),
                     NORMHelper.P("@status", status), NORMHelper.P("@user", user), NORMHelper.P("@release", releaseId),
                     NORMHelper.P("@id", id), NORMHelper.P("@revision", editToken));
-                if (changed != 1) throw new InvalidOperationException("This narrative changed since you opened it. Reload it before saving.");
+                if (changed != 1) throw new InputException("This narrative changed since you opened it. Reload it before saving.");
             }
             else InsertBlock(connection, transaction, releaseId, block, null, user);
             Audit(connection, transaction, releaseId, "NARRATIVE_BLOCK_SAVED",
                 selected.Value + ", " + placement + ", sequence " + sequence.ToString(CultureInfo.InvariantCulture), user);
-            transaction.Commit();
+            NORMErrorHandling.CommitNarrativeSave(System.Web.HttpContext.Current, transaction.Commit);
         }
     }
 

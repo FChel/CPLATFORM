@@ -52,6 +52,16 @@
         </section>
 
         <section class="norm-panel" style="margin-top:18px">
+            <div class="norm-panel-head"><h2>Find a diagnostic</h2></div>
+            <asp:Panel runat="server" DefaultButton="FindDiagnosticButton" CssClass="norm-field">
+                <asp:Label runat="server" AssociatedControlID="DiagnosticReference" Text="Diagnostic reference" />
+                <asp:TextBox ID="DiagnosticReference" runat="server" MaxLength="32" />
+                <asp:Button ID="FindDiagnosticButton" runat="server" Text="Find diagnostic" CssClass="norm-button" OnClick="FindDiagnostic_Click" />
+                <p role="status"><asp:Literal ID="DiagnosticResult" runat="server" /></p>
+            </asp:Panel>
+        </section>
+
+        <section class="norm-panel" style="margin-top:18px">
             <div class="norm-panel-head"><div><span class="norm-kicker">Current access</span><h2>NORM users</h2></div></div>
             <div class="norm-table-wrap">
                 <table class="norm-table">

@@ -153,7 +153,8 @@ async function run() {
         !!(table.compareDocumentPosition(blocks[1]) & Node.DOCUMENT_POSITION_FOLLOWING) &&
         !!blocks[1].querySelector('ol') && blocks[2].textContent.includes('comparative working schedule') && note.textContent.includes('Legacy wording') &&
         note.textContent.includes('Needs input') && lease.textContent.includes('maturity profile') &&
-        document.getElementById('publicationView').disabled && document.getElementById('reviewPackLink').hidden;
+        document.getElementById('publicationView').disabled && document.getElementById('reviewPackLink').hidden &&
+        !document.getElementById('CreateBreakButton') && !document.querySelector('.norm-proof-card');
     })()`), "Note placement, legacy content, readiness or draft restrictions changed");
     await evaluate("document.getElementById('note-1-1b').scrollIntoView({block:'center'}); true");
     await capture("Formatted_Statement");

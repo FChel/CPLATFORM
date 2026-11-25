@@ -29,26 +29,6 @@ namespace CPlatform.NORM
             }
         }
 
-        protected void CreateBreak_Click(object sender, EventArgs e)
-        {
-            if (!NORMHelper.HasPrepareAccess()) { throw new InvalidOperationException("Preparer access is required."); }
-            int runId = ResolveRunId();
-            if (!NORMHelper.CanAccessCompletedRun(runId)) throw new InvalidOperationException("Select an approved calculation run for a test break.");
-            DataTable source = NORMHelper.Query(
-                "SELECT r.ImportId,i.IsTestBreak,i.ParentImportId FROM dbo.tblNORM_CalculationRun r " +
-                "INNER JOIN dbo.tblNORM_Import i ON i.ImportId = r.ImportId " +
-                "WHERE r.CalculationRunId = @run AND r.StatusCode = 'Complete' AND r.IsDeactivated = 0",
-                NORMHelper.P("@run", runId));
-            if (source.Rows.Count == 0) { throw new InvalidOperationException("Choose a completed calculation run first."); }
-            int importId = NORMHelper.Int(source.Rows[0], "ImportId");
-            if (Convert.ToBoolean(source.Rows[0]["IsTestBreak"]) && !source.Rows[0].IsNull("ParentImportId"))
-            {
-                importId = NORMHelper.Int(source.Rows[0], "ParentImportId");
-            }
-            NORMImportOutcome outcome = NORMImportService.CreateTestBreak(importId, 48250m, NORMHelper.CurrentUserId());
-            Response.Redirect("NORM_Statements.aspx?run=" + outcome.CalculationRunId.ToString(), true);
-        }
-
         private int ResolveRunId()
         {
             string value = Request.QueryString["run"];

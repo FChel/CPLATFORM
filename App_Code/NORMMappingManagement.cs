@@ -18,6 +18,7 @@ namespace CPlatform.NORM
         public int ChangedCount;
         public bool HierarchyChanged;
         public int UnmappedCount;
+        public readonly Dictionary<int, int> UnmappedCountsByYear = new Dictionary<int, int>();
         public int ErrorCount;
         public List<string> Errors = new List<string>();
         public List<string> Warnings = new List<string>();
@@ -899,30 +900,34 @@ namespace CPlatform.NORM
 
             int year = NORMHelper.Int(release, "FinancialYear");
             int importId = MappingSourceImportId(NORMHelper.Int(release, "ParentConfigurationReleaseId"), release);
-            result.UnmappedCount = ValidateSourceMappings(result, mapped, importId, hierarchy != null, year);
+            var unmappedAccounts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ValidateSourceMappings(result, mapped, unmappedAccounts, importId, hierarchy != null, year);
             if (hierarchy != null)
             {
                 int comparativeImport = 0;
                 try { comparativeImport = NORMImportService.FindAnnualDepartmentalImport(Text(release, "EntityCode"), year, year - 1); }
                 catch (InvalidOperationException error) { result.Errors.Add(error.Message); }
-                ValidateSourceMappings(result, mapped, comparativeImport, true, year - 1);
+                ValidateSourceMappings(result, mapped, unmappedAccounts, comparativeImport, true, year - 1);
             }
+            result.UnmappedCount = unmappedAccounts.Count;
             if (NORMHelper.Str(release, "StatusCode") == "Draft" && result.ChangedCount == 0 && !result.HierarchyChanged)
                 result.Warnings.Add("No mapping changes have been recorded in this draft.");
             result.ErrorCount = result.Errors.Count;
             return result;
         }
 
-        private static int ValidateSourceMappings(NORMMappingValidation result, HashSet<string> mapped, int importId,
-            bool annual, int year)
+        private static void ValidateSourceMappings(NORMMappingValidation result, HashSet<string> mapped,
+            HashSet<string> unmappedAccounts, int importId, bool annual, int year)
         {
-            if (importId <= 0) return 0;
+            if (importId <= 0) return;
             DataTable source = NORMHelper.Query(
                 "SELECT GlAccount,SourceCompanyCode,SourceLedger,ReportingStream,AccumBalance,DebitMovement,CreditMovement" +
                 (annual ? ",SourceDebit,SourceCredit" : "") +
                 " FROM dbo.tblNORM_TrialBalanceRow WHERE ImportId=@import AND IsDeactivated=0", NORMHelper.P("@import", importId));
             var unresolved = NORMStatementEngine.AssessUnmapped(source.AsEnumerable()
                 .Where(row => !mapped.Contains(Text(row, "GlAccount"))), annual);
+            unmappedAccounts.UnionWith(unresolved.Accounts);
+            result.UnmappedCountsByYear[year] = unresolved.Count;
             string period = annual ? "FY" + year + ": " : "";
             if (unresolved.Blocking.Count > 0)
                 result.Errors.Add(period + unresolved.Blocking.Count + " unmapped G/L account(s) have a non-zero balance or net movement. " +
@@ -930,7 +935,6 @@ namespace CPlatform.NORM
             if (unresolved.Offsetting.Count > 0)
                 result.Warnings.Add(period + unresolved.Offsetting.Count + " unmapped G/L account(s) have activity that offsets to zero. Review the activity. " +
                     NORMStatementEngine.MappingAccountList(unresolved.Offsetting));
-            return unresolved.Count;
         }
 
         public static DataTable Impact(int releaseId)

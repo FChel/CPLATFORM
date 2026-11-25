@@ -67,8 +67,6 @@ public static class NORMImportService
         throw new InvalidOperationException("Unexpected comparative fixture scope.");
     }
 
-    public static NORMImportOutcome CreateTestBreak(int importId, decimal delta, string user)
-    { throw new InvalidOperationException("Source edits are outside the pilot."); }
 }
 
 internal static partial class PilotTests
@@ -561,6 +559,7 @@ internal static partial class PilotTests
     public static void Main(string[] args)
     {
         CheckDisclosureCompleteness();
+        CheckComparativeMappingSummary();
         if (args.Length > 1)
         {
             CheckNihracs(args[0], args[1], args.Length > 2 ? args[2] : null);

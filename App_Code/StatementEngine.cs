@@ -441,7 +441,8 @@ public static class NORMStatementEngine
 
     internal sealed class UnmappedSourceReview
     {
-        public int Count;
+        public int Count { get { return Accounts.Count; } }
+        public readonly List<string> Accounts = new List<string>();
         public readonly List<string> Blocking = new List<string>();
         public readonly List<string> Offsetting = new List<string>();
     }
@@ -451,7 +452,7 @@ public static class NORMStatementEngine
         var result = new UnmappedSourceReview();
         foreach (var account in rows.GroupBy(row => NORMHelper.Str(row, "GlAccount"), StringComparer.OrdinalIgnoreCase))
         {
-            result.Count++;
+            result.Accounts.Add(account.Key);
             var populations = account.GroupBy(row => Tuple.Create(NORMHelper.Str(row, "SourceCompanyCode"),
                 NORMHelper.Str(row, "SourceLedger"), NORMHelper.Str(row, "ReportingStream")));
             if (populations.Any(population => population.Sum(row => NORMHelper.Dec(row, "AccumBalance")) != 0m ||

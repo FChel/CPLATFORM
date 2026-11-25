@@ -75,6 +75,10 @@ INSERT dbo.tblNORM_AdminUser (UserId,DisplayName,RoleCode,CreatedBy)
 VALUES ('Narrative tester','Narrative tester','Preparer','fixture');
 DECLARE @preparer int = SCOPE_IDENTITY();
 INSERT dbo.tblNORM_UserEntity (AdminUserId,EntityCode) VALUES (@preparer,'NIHRACS'),(@preparer,'OTHER');
+INSERT dbo.tblNORM_AdminUser (UserId,DisplayName,RoleCode,CreatedBy)
+VALUES ('Narrative administrator','Narrative administrator','Administrator','fixture');
+INSERT dbo.tblNORM_AuditEvent (EventCode,EntityType,EntityId,DetailText,PerformedBy)
+VALUES ('NORM_REQUEST_FAILED','NORMRequest','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','Operation=Request;Outcome=Failed;Method=Fixture confidential','fixture');
 INSERT dbo.tblNORM_Import (ConfigurationReleaseId,FinancialYear,EntityCode,SourceType,SourceFileName,SourceFileHash,DataFingerprint,SourceFileBytes,StatusCode,ImportedBy)
 VALUES (19,2026,'NIHRACS','ERP','Legacy test.xlsx',REPLICATE('1',64),REPLICATE('2',64),0x01,'Imported','fixture');
 DECLARE @import int = SCOPE_IDENTITY();
@@ -113,7 +117,7 @@ WHERE c.Id<>21 OR n.Code<>'LOCAL_ONLY';
         ";Network Library=dbnmpntw;Initial Catalog=$database;Integrated Security=SSPI;OLE DB Services=-2;"
     $exe = Join-Path $output 'NarrativeTests.exe'
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-    $sources = @('NORMHelper','NORMCrypto','StatementEngine','NORMNarrativeBlocks') | ForEach-Object { Join-Path $root "App_Code/$_.cs" }
+    $sources = @('NORMHelper','NORMCrypto','StatementEngine','NORMNarrativeBlocks','NORMErrorHandling') | ForEach-Object { Join-Path $root "App_Code/$_.cs" }
     & $compiler /nologo /target:exe /platform:x64 "/out:$exe" /r:System.Configuration.dll /r:System.Data.dll /r:System.Data.DataSetExtensions.dll /r:System.Web.dll /r:System.Web.Extensions.dll @sources (Join-Path $PSScriptRoot 'Tests.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Narrative LocalDB harness compilation failed.' }
     $escaped = [Security.SecurityElement]::Escape($connection)
@@ -128,6 +132,69 @@ WHERE c.Id<>21 OR n.Code<>'LOCAL_ONLY';
         throw 'Reapplying the migration changed narrative content.'
     }
     'PASS additive SQL migration, repeat application, legacy narratives and protected reporting, source, calculation and access records'
+
+    $hosted = Join-Path $output 'HostedReporting'
+    New-Item -ItemType Directory -Path "$hosted/bin" | Out-Null
+    Copy-Item (Join-Path $root 'App_Code') -Destination $hosted -Recurse
+    Copy-Item (Join-Path $root 'bin/*.dll') -Destination "$hosted/bin"
+    Copy-Item (Join-Path $root 'NORM/NORM_Reporting.aspx*') -Destination $hosted
+    Copy-Item (Join-Path $root 'NORM/NORM_Statements.aspx*') -Destination $hosted
+    Copy-Item (Join-Path $root 'NORM/NORM_AdminUsers.aspx*') -Destination $hosted
+    # Inject failures into the isolated hosted copy only. SQL still commits or rolls back through production code.
+    $storagePath = Join-Path $hosted 'App_Code/NORMNarrativeBlocks.cs'
+    $commit = 'NORMErrorHandling.CommitNarrativeSave(System.Web.HttpContext.Current, transaction.Commit);'
+    $storage = [IO.File]::ReadAllText($storagePath)
+    if (!$storage.Contains($commit)) { throw 'The hosted fixture could not locate the production save commit.' }
+    [IO.File]::WriteAllText($storagePath, $storage.Replace($commit, @'
+var fixtureFault = System.Web.HttpContext.Current.Request.Headers["X-NORM-Fixture-Fault"];
+if (fixtureFault == "before") throw new InvalidOperationException("Fixture confidential before commit.");
+NORMErrorHandling.CommitNarrativeSave(System.Web.HttpContext.Current, delegate {
+    transaction.Commit();
+    if (fixtureFault == "uncertain") throw new InvalidOperationException("Fixture confidential acknowledgement loss.");
+});
+'@))
+    $reportingPath = Join-Path $hosted 'NORM_Reporting.aspx.cs'
+    $reporting = [IO.File]::ReadAllText($reportingPath)
+    $successNotice = 'NarrativeNotice = "Narrative saved.";'
+    if (!$reporting.Contains($successNotice)) { throw 'The hosted fixture could not locate the successful save notice.' }
+    [IO.File]::WriteAllText($reportingPath, $reporting.Replace($successNotice, @'
+if (Request.Headers["X-NORM-Fixture-Fault"] == "after") throw new InvalidOperationException("Fixture confidential response failure.");
+NarrativeNotice = "Narrative saved.";
+'@))
+    $postbackExe = Join-Path $output 'HostedPostback.exe'
+    & $compiler /nologo /target:exe /platform:x64 "/out:$postbackExe" /r:System.Web.dll (Join-Path $PSScriptRoot 'HostedPostback.cs')
+    if ($LASTEXITCODE -ne 0) { throw 'Hosted Reporting harness compilation failed.' }
+    Copy-Item -LiteralPath $postbackExe -Destination "$hosted/bin"
+    [IO.File]::WriteAllText("$hosted/web.config", @"
+<configuration><appSettings><add key="NORM.ConnectionString" value="$escaped"/></appSettings><system.web>
+<compilation targetFramework="4.8"/><httpRuntime targetFramework="4.8" requestValidationMode="4.5"/>
+<sessionState cookieless="UseCookies"/><customErrors mode="Off"/>
+</system.web></configuration>
+"@)
+    [IO.File]::WriteAllText("$hosted/Global.asax", @'
+<%@ Application Language="C#" %>
+<script runat="server">
+void Application_PostAuthenticateRequest(object sender, EventArgs e) {
+    string identity = Context.Request.Headers["X-NORM-Fixture-Admin"] == "1" ? "Narrative administrator" : "Narrative tester";
+    Context.User = new System.Security.Principal.GenericPrincipal(
+        new System.Security.Principal.GenericIdentity(identity, "LocalDB fixture"), new string[0]);
+}
+</script>
+'@)
+    & $postbackExe $hosted
+    if ($LASTEXITCODE -ne 0) {
+        Invoke-FixtureSql $fixture "SELECT TOP 1 DetailText FROM dbo.tblNORM_AuditEvent WHERE EventCode='NORM_REQUEST_FAILED' ORDER BY AuditEventId DESC" -Scalar
+        throw 'Hosted Reporting rich-text postback failed.'
+    }
+    $savedSql = "SELECT COUNT(*) FROM dbo.tblNORM_NarrativeBlock WHERE ConfigurationReleaseId=19 AND SequenceNo=9 AND ContentHtml=N'<p>Hosted <strong>policy</strong> wording.</p>'"
+    if ((Invoke-FixtureSql $fixture $savedSql -Scalar) -ne 1 -or
+        (Invoke-FixtureSql $fixture "SELECT COUNT(*) FROM dbo.tblNORM_NarrativeBlock WHERE ConfigurationReleaseId=19 AND SequenceNo=9" -Scalar) -ne 1) {
+        throw 'Only one sanitised narrative can be persisted by the hosted postback fixture.'
+    }
+    $result = Invoke-FixtureSql $fixture "SELECT STRING_AGG(CONVERT(varchar(3),SequenceNo),',') WITHIN GROUP (ORDER BY SequenceNo) FROM dbo.tblNORM_NarrativeBlock WHERE ConfigurationReleaseId=19 AND DestinationKey='NI_IS_EXP_SUP' AND SequenceNo BETWEEN 6 AND 9" -Scalar
+    if ($result -cne '7,8,9') { throw 'Hosted save persistence disagreed with the injected transaction outcomes.' }
+    Assert-ProtectedRows $fixture $protectedRows
+
     if ($EvidenceDirectory) {
         Copy-Item -LiteralPath (Join-Path $output 'narratives.json') -Destination $EvidenceDirectory
     }

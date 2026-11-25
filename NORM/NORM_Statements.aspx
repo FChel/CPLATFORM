@@ -84,14 +84,6 @@
                 <div><span>Mapped by value</span><strong id="coverageValue">-</strong></div>
                 <div class="norm-meter"><i id="coverageBar"></i></div>
             </div>
-            <% if (CanPrepare && !IsDraftReview) { %>
-            <div class="norm-proof-card">
-                <span class="norm-kicker">Proof control</span>
-                <strong>Run a genuine break test</strong>
-                <p>Creates an immutable child import with a $48,250 imbalance and recalculates every check.</p>
-                <asp:Button ID="CreateBreakButton" runat="server" Text="Create test break" CssClass="norm-button norm-button-dark" OnClick="CreateBreak_Click" />
-            </div>
-            <% } %>
         </aside>
     </main>
 
