@@ -21,7 +21,7 @@ public static class NORMStatementEngine
     internal const string CashFlowReconciliationCheckCode = "CASH_FLOW_RECONCILIATION";
     private const string ComparativeRunCheckCode = "COMPARATIVE_RUN";
     // Link the two immutable runs through the existing assurance record on the reporting-year run.
-    private const string ComparativeRunSql =
+    internal const string ComparativeRunSql =
         "SELECT p.CalculationRunId FROM dbo.tblNORM_ValidationResult link " +
         "JOIN dbo.tblNORM_CalculationRun p ON p.CalculationRunId=link.ActualValue " +
         "JOIN dbo.tblNORM_CalculationRun r ON r.CalculationRunId=link.CalculationRunId " +

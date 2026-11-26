@@ -222,6 +222,8 @@ public static class NORMHelper
         "ON draft.CalculationRunId=r.CalculationRunId AND draft.CheckCode='" + NORMStatementEngine.DraftReviewCheckCode + "' " +
         "WHERE c.ConfigurationReleaseId=r.ConfigurationReleaseId AND c.StatusCode='Draft' AND c.IsDeactivated=0 " +
         "AND draft.DetailText=CONVERT(nvarchar(20)," + NORMStatementEngine.DraftRevisionSql + "))";
+    internal const string AccessibleStatementRunPredicate =
+        "(" + StandardRunPredicate + " OR " + CurrentDraftReviewPredicate + ")";
 
     public static bool CanAccessCompletedRun(int runId)
     {

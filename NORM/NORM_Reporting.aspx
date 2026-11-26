@@ -16,6 +16,7 @@
             <span class="norm-chip norm-env"><%= Server.HtmlEncode(CurrentEnvironment) %></span>
             <a href="../Default.aspx">FinHub</a>
             <a href="NORM_Workspace.aspx">Preparer workspace</a>
+            <a href="NORM_ManualEntry.aspx">Manual Entry</a>
             <a href="NORM_Statements.aspx<%= SelectedRunId > 0 ? "?run=" + SelectedRunId : "" %>">Financial statements</a>
             <% if (NarrativeMode) { %><a href="NORM_Mapping.aspx?release=<%= SelectedReleaseId %>">Mapping release</a><% } %>
             <a href="NORM_Help.aspx">Help</a>

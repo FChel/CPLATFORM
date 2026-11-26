@@ -12,6 +12,7 @@ using OfficeOpenXml;
 
 public static partial class NORMHelper
 {
+    public const string AccessibleStatementRunPredicate = StandardRunPredicate;
     public static Func<Call, object> EmployeeBenefitsTransactionScalar;
     public static bool MappingAdministrator = true;
     public static bool DraftReviewRun;
@@ -615,5 +616,6 @@ internal static partial class PilotTests
             "Legacy flat Employee benefits changed.");
         Console.WriteLine("PASS legacy release retains its original flat calculation");
         CheckDraftWorkflow();
+        CheckLeasePresentationRounding();
     }
 }

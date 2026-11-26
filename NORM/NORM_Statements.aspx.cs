@@ -98,6 +98,7 @@ namespace CPlatform.NORM
             meta["parentImportId"] = context.IsNull("ParentImportId") ? (object)null : NORMHelper.Int(context, "ParentImportId");
             meta["completedUtc"] = Convert.ToString(context["CompletedUtc"]);
             meta["draftReview"] = IsDraftReview;
+            if (Request.QueryString["manual"] == "1") meta["draftReview"] = true;
             meta["canPrepare"] = CanPrepare && !IsDraftReview;
             meta["reportingUrl"] = CanPrepare && !IsDraftReview ? "NORM_Reporting.aspx?run=" + runId.ToString() : "";
             payload["meta"] = meta;
@@ -131,7 +132,9 @@ namespace CPlatform.NORM
             List<NORMReportingFramework.Disclosure> disclosures =
                 NORMReportingFramework.LoadDisclosures(runId, releaseId, profile, out disclosureChecks);
             NORMStatementEnhancements.ApplyManualInputs(runId, disclosures);
-            statements.Add(BuildNotesStatement(disclosures));
+            var notes = BuildNotesStatement(disclosures);
+            if (Convert.ToBoolean(meta["draftReview"])) AddManualSchedules(notes, runId);
+            statements.Add(notes);
             payload["statements"] = statements;
             payload["profile"] = BuildProfilePayload(profile);
             payload["disclosures"] = BuildDisclosurePayload(disclosures);
@@ -306,6 +309,34 @@ namespace CPlatform.NORM
             value["rows"] = new List<object>();
             value["disclosures"] = BuildDisclosurePayload(departmental);
             return value;
+        }
+
+        private static void AddManualSchedules(Dictionary<string, object> notes, int runId)
+        {
+            var destinations = (List<object>)notes["disclosures"];
+            foreach (var schedule in NORMManualEntry.Read(runId))
+            {
+                var layout = schedule.Layout;
+                var destination = destinations.Cast<Dictionary<string, object>>()
+                    .FirstOrDefault(note => String.Equals(Convert.ToString(note["note"]), layout.Note, StringComparison.OrdinalIgnoreCase));
+                if (destination == null)
+                {
+                    destination = new Dictionary<string, object> {
+                        { "code", "MANUAL_" + schedule.Code }, { "note", layout.Note }, { "title", layout.Title },
+                        { "sectionCode", layout.Section }, { "section", layout.SectionTitle }, { "status", "Draft schedule" }
+                    };
+                    destinations.Add(destination);
+                }
+                destination["manualSchedule"] = new {
+                    title = layout.Title, unit = layout.Unit, precision = layout.Precision,
+                    editUrl = "NORM_ManualEntry.aspx?run=" + runId + "&schedule=" + System.Web.HttpUtility.UrlEncode(schedule.Code),
+                    rows = layout.Rows.Select(row => new {
+                        label = row.Label, total = row.Total, current = schedule.Current[row.Key].Presented,
+                        prior = schedule.Prior[row.Key].Presented,
+                        currentIssue = schedule.Current[row.Key].Issue, priorIssue = schedule.Prior[row.Key].Issue
+                    }).ToArray()
+                };
+            }
         }
 
         private void AppendDisclosureValidations(List<object> validations, List<NORMReportingFramework.Disclosure> disclosures,
