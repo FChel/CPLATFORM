@@ -374,6 +374,21 @@
     return { suffix: " closing carrying amount", value: row.closing, sources: row.closingSources || [] };
   }
 
+  function manualScheduleTable(schedule, interactive) {
+    function cell(value, issue) {
+      return '<td>' + esc(value == null ? "—" : decimal(value, schedule.precision)) +
+        (issue ? '<small>' + esc(issue) + '</small>' : '') + '</td>';
+    }
+    var rows = schedule.rows.map(function (row) {
+      return '<tr' + (row.total ? ' class="total"' : '') + '><th scope="row">' + esc(row.label) + '</th>' +
+        cell(row.current, row.currentIssue) + cell(row.prior, row.priorIssue) + '</tr>';
+    }).join("");
+    return '<table class="norm-note-table"><thead><tr><th>' + esc(schedule.title) + '</th><th>' +
+      esc(data.meta.yearCurrent) + '<small>' + esc(schedule.unit) + '</small></th><th>' + esc(data.meta.yearPrior) +
+      '<small>' + esc(schedule.unit) + '</small></th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      (interactive && viewMode === "preparation" ? '<p><a href="' + esc(schedule.editUrl) + '">Prepare schedule in Manual Entry</a></p>' : '');
+  }
+
   function renderNotes(statement) {
     var disclosures = statement.disclosures || data.disclosures || [];
     var required = disclosures.filter(function (item) { return item.required && item.note; });
@@ -382,7 +397,7 @@
     var sectionTitles = Object.create(null);
     disclosures.forEach(function (item) {
       var key = item.sectionCode || item.section;
-      var hasNote = item.note && (item.required || ["Before", "After"].some(function (position) {
+      var hasNote = item.note && (item.required || item.manualSchedule || ["Before", "After"].some(function (position) {
         return narrativeBlocks("Note", item.code, position) || narrativeBlocks("Schedule", item.code, position);
       }));
       var hasSection = narrativeBlocks("Section", key, "Before") || narrativeBlocks("Section", key, "After");
@@ -405,6 +420,7 @@
           var table = item.code === "N3_2A" ? assetMovementNoteTable(true) : (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.note || "") + ': ' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows +
             '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td>' + reportedNumber(item, item.amount) + '</td><td>' + number(priorTotal) + '</td></tr></tbody></table>' :
             '<div class="norm-note-empty"><span>No mapped balance</span><p>The disclosure remains in the set because the entity profile requires it. Add entity narrative or mapping before sign-off.</p></div>');
+          if (item.manualSchedule) table = (rows ? table : '') + manualScheduleTable(item.manualSchedule, true);
           var source = item.demoSeeded ? '<p class="norm-note-source"><strong>Demo reconstruction source</strong>' + esc(item.currentSourceReference || "Published current-year financial statements") + '</p>' : '';
           var narrative = item.narrative ? '<div class="norm-accounting-policy"><span>Written disclosures and accounting policy</span><p>' + esc(item.narrative).replace(/\n/g, "<br>") + '</p></div>' : '';
           return '<article id="' + noteId(item.note || item.code) + '" class="norm-note-card" tabindex="-1"><div class="norm-note-card-head"><div><span>Note ' + esc(item.note || "") + '</span><h3>' + esc(item.title) + '</h3></div><em class="' + statusClass(item.status) + '">' + esc(item.status) + '</em></div>' +
@@ -414,7 +430,7 @@
             narrativeBlocks("Schedule", item.code, "After") + source + narrative + narrativeBlocks("Note", item.code, "After") + '</article>';
         }).join("") + narrativeBlocks("Section", section, "After") + '</section>';
     }).join("");
-    var notApplicable = disclosures.filter(function (item) { return !item.required; });
+    var notApplicable = disclosures.filter(function (item) { return !item.required && !item.manualSchedule; });
     var na = notApplicable.length ? '<details class="norm-na-register"><summary>' + notApplicable.length + ' disclosures assessed as not applicable</summary><div>' +
       notApplicable.map(function (item) { return '<span><b>' + esc(item.note || item.sectionCode) + '</b>' + esc(item.title) + '<small>Trigger: ' + esc(item.trigger) + '</small></span>'; }).join("") + '</div></details>' : '';
     byId("statementDocument").innerHTML = '<header class="norm-document-head norm-notes-head"><span class="norm-kicker">' + esc(data.meta.entity) + '</span><h1>' + esc(statement.title) + '</h1>' +
@@ -505,7 +521,7 @@
   }
 
   function printNotes(statement) {
-    var disclosures = (statement.disclosures || []).filter(function (item) { return item.required && item.note; });
+    var disclosures = (statement.disclosures || []).filter(function (item) { return item.note && (item.required || item.manualSchedule); });
     return disclosures.map(function (item) {
       var lines = noteLines(item.lines);
       var rows = lines.map(function (line) { return noteRow(line, true); }).join("");
@@ -520,7 +536,8 @@
           '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' + assetMovementNoteTable(false) + '</section>' + policyPage;
       }
       return '<section class="norm-print-page norm-print-note">' + printHeader(statement) + '<h2>Note ' + esc(item.note) + ': ' + esc(item.title) + '</h2>' +
-        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td class="norm-print-number">' + reportedNumber(item, item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
+        (rows ? '<table class="norm-note-table"><thead><tr><th>' + esc(item.title) + '</th><th>' + esc(data.meta.yearCurrent) + '<small>$\'000</small></th><th>' + esc(data.meta.yearPrior) + '<small>$\'000</small></th></tr></thead><tbody>' + rows + '<tr class="total"><th>' + esc(noteTotalLabel(item)) + '</th><td class="norm-print-number">' + reportedNumber(item, item.amount) + '</td><td class="norm-print-number">' + number(priorTotal) + '</td></tr></tbody></table>' : item.manualSchedule ? '' : '<p class="norm-print-control">Required disclosure — controlled input or narrative is outstanding.</p>') +
+        (item.manualSchedule ? manualScheduleTable(item.manualSchedule, false) : '') +
         (item.narrative ? '<div class="norm-accounting-policy"><strong>Written disclosures and accounting policy</strong><p>' + esc(item.narrative).replace(/\n/g, '<br>') + '</p></div>' : '') + '</section>';
     }).join("");
   }

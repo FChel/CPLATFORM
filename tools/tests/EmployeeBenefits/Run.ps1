@@ -10,7 +10,7 @@ Copy-Item -LiteralPath $epplus -Destination $output
 $options = @('/nologo', '/target:exe', '/define:EMPLOYEE_BENEFITS_TESTS', "/out:$output/Tests.exe",
     '/r:System.Data.dll', '/r:System.Data.DataSetExtensions.dll', '/r:System.Drawing.dll', '/r:System.Web.dll', '/r:System.Web.Extensions.dll', "/r:$epplus")
 foreach ($name in @('StatementEngine','NORMReportingFramework','NORMStatementEnhancements','NORMAdministeredStatements',
-    'NORMDisclosureCompleteness','NORMNihracsDisclosureCatalogue','NORMReviewPack','NORMNarrativeBlocks',
+    'NORMDisclosureCompleteness','NORMNihracsDisclosureCatalogue','NORMReviewPack','NORMNarrativeBlocks','NORMManualEntry',
     'NORMWordExport','NORMFinancialStatementsExcel','NORMImportModels','NORMCrypto','NORMErrorHandling',
     'NORMMappingManagement','NORMAnnualSourceConfiguration','NihracsTrialBalanceImporter')) {
     $source = [IO.File]::ReadAllText((Join-Path $root "App_Code/$name.cs"))

@@ -197,6 +197,42 @@ internal static partial class PilotTests
         TestHierarchyChanges(source, mappings);
         CheckMappingUpload(source, priorSource, uploadCatalogue, disclosures, consolidatedWorkbook, output, path);
         CheckUnmappedActivity();
+        CheckLeasePresentationRounding();
+    }
+
+    private static void CheckLeasePresentationRounding()
+    {
+        Prepare();
+        templates.Rows.Clear();
+        templates.Rows.Add(1, "SOFP", "Leases", 1, "Formula", DBNull.Value, "line", "Leases", "2.4A", "C", true, "Total liabilities", false);
+        templates.Rows.Add(2, "SOFP", "LEASE_A", 2, "Mapped", DBNull.Value, "hierarchy-detail", "Lease A", DBNull.Value, "C", true, "Leases", false);
+        templates.Rows.Add(3, "SOFP", "LEASE_B", 3, "Mapped", DBNull.Value, "hierarchy-detail", "Lease B", DBNull.Value, "C", true, "Leases", false);
+        templates.Rows.Add(4, "SOFP", "Cash", 4, "Mapped", DBNull.Value, "hierarchy-detail", "Cash", DBNull.Value, "D", true, "Total assets", false);
+        templates.Rows.Add(5, "SOFP", "Total liabilities", 5, "Formula", DBNull.Value, "total", "Total liabilities", DBNull.Value, "C", false, DBNull.Value, false);
+        templates.Rows.Add(6, "SOFP", "Total assets", 6, "Formula", DBNull.Value, "total", "Total assets", DBNull.Value, "D", false, DBNull.Value, false);
+        var source = Table("TbRowId SourceLedger GlAccount GlText DebitMovement CreditMovement AccumBalance SourceCompanyCode ReportingStream SourceDebit SourceCredit",
+            new object[] { 1L, null, "82170", "Lease A", 0m, 0m, -16600m, "NIHRA", "Departmental", 0m, 16600m },
+            new object[] { 2L, null, "82171", "Lease B", 0m, 0m, -16800m, "NIHRA", "Departmental", 0m, 16800m },
+            new object[] { 3L, null, "710", "Cash", 0m, 0m, 33400m, "NIHRA", "Departmental", 33400m, 0m });
+        var mappings = Table("AccountMapId GlCode AccountType StatementLine NoteSubLine CashFlowClass",
+            new object[] { 1, "82170", "Liability", "LEASE_A", null, null },
+            new object[] { 2, "82171", "Liability", "LEASE_B", null, null },
+            new object[] { 3, "710", "Asset", "Cash", null, null });
+        NORMHelper.QueryCallResponse = call =>
+        {
+            if (call.Sql.StartsWith("SELECT i.ImportId,c.ConfigurationReleaseId"))
+                return Table("ImportId ConfigurationReleaseId FinancialYear EntityCode SourceType DataFingerprint VersionCode EntityName",
+                    new object[] { 25, 10, 2026, "NIHRACS", "ERP", "fixture", "fixture", "NIHRACS" });
+            if (call.Sql.StartsWith("SELECT AccountMapId,GlCode")) return mappings;
+            if (call.Sql.StartsWith("SELECT TbRowId,SourceLedger")) return source;
+            return Query(call);
+        };
+        NORMStatementEngine.RunAnnualSource(25, 10, "local-fixture");
+        Check((decimal)Result("LEASE_A")["@computed"] == 16.600m && Reported(Result("LEASE_A")) == 17m &&
+            (decimal)Result("LEASE_B")["@computed"] == 16.800m && Reported(Result("LEASE_B")) == 17m &&
+            (decimal)Result("Leases")["@computed"] == 33.400m && Reported(Result("Leases")) == 34m,
+            "The Approach A lease aggregate did not retain the exact total and sum independently rounded components.");
+        Console.WriteLine("PASS statement engine Approach A: exact lease components 16.600 + 16.800 = 33.400, reported 17 + 17 = 34");
     }
 
     private static void CheckMappingUpload(DataTable source, DataTable priorSource, DataTable catalogue,
