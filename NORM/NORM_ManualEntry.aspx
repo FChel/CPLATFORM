@@ -38,8 +38,9 @@
             <asp:PlaceHolder ID="EditControls" Visible="false" runat="server">
                 <input type="hidden" name="manualToken" value="<%= Enc(FormToken) %>" />
                 <input type="hidden" name="manualContext" value="<%= Enc(ScheduleToken) %>" />
-                <p><label for="manualReason">Change reason for amendments</label><br />
-                    <input id="manualReason" name="manualReason" maxlength="500" size="55" value="<%= Enc(Request.Form["manualReason"]) %>" /></p>
+                <p><label for="manualReason">Change reason</label><br />
+                    <small id="manualReasonHelp">Required when you change or clear a saved entry or add or change a comparative amount or reference, including the first comparative entry.</small><br />
+                    <input id="manualReason" name="manualReason" aria-describedby="manualReasonHelp" maxlength="500" size="55" value="<%= Enc(Request.Form["manualReason"]) %>" /></p>
                 <asp:Button ID="SaveSchedule" runat="server" Text="Save schedule and record evidence" CssClass="norm-button norm-button-dark" OnClick="SaveSchedule_Click" />
             </asp:PlaceHolder>
             <%= EvidenceHtml %>

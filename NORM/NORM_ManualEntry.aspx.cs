@@ -76,17 +76,14 @@ namespace CPlatform.NORM
             try
             {
                 long recorded = NORMManualEntry.Save(selected.Run, selected.Code, Request.Form["manualContext"],
-                    Request.Form["manualReason"], (key, prior) => new NORMManualEntry.Entry {
-                        Amount = Request.Form[Field("amount", key, prior)],
-                        Source = Request.Form[Field("source", key, prior)]
-                    });
+                    Request.Form["manualReason"], PostedEntry);
                 Response.Redirect(Url(selected) + "&saved=" + recorded, false);
                 Context.ApplicationInstance.CompleteRequest();
             }
             catch (NORMManualEntry.InputException error)
             {
                 Notice = "Not saved. " + error.Message;
-                preservePostedValues = Request.Form["manualContext"] == selected.ContextToken;
+                preservePostedValues = true;
             }
         }
 
@@ -110,13 +107,19 @@ namespace CPlatform.NORM
                 if (NORMHelper.Str(row, "EvidenceHash") != selected.ContextToken) history.Append(" \u00b7 Earlier inputs or results");
                 history.Append("</li>");
                 if (evidenceId == 0 && Notice.Length == 0 && Request.HttpMethod == "GET" &&
+                    NORMHelper.Int(row, "CalculationRunId") == selected.Run &&
                     Request.QueryString["saved"] == id.ToString(CultureInfo.InvariantCulture))
-                    Notice = "Schedule saved. Recorded evidence #" + id + ".";
+                {
+                    NORMManualEntry.Schedule saved = NORMManualEntry.Evidence(selected, id);
+                    var outcome = (NORMManualEntry.Outcome)Math.Max(
+                        (int)NORMManualEntry.Result(saved.Current), (int)NORMManualEntry.Result(saved.Prior));
+                    Notice = "Saved \u2014 " + OutcomeLabel(outcome) + ". Recorded evidence #" + id + ".";
+                }
             }
             history.Append("</ul></details>");
             if (evidenceId > 0) history.Append("<p><a href=\"").Append(Enc(Url(selected))).Append("\">Return to current schedule</a></p>");
             EvidenceHtml = history.ToString();
-            ScheduleToken = selected.ContextToken;
+            ScheduleToken = preservePostedValues ? Request.Form["manualContext"] : selected.ContextToken;
             EditControls.Visible = evidenceId == 0;
             ScheduleHtml = RenderSchedule(displayed, EditControls.Visible);
         }
@@ -124,6 +127,8 @@ namespace CPlatform.NORM
         private string RenderSchedule(NORMManualEntry.Schedule schedule, bool editable)
         {
             var layout = schedule.Layout;
+            var current = preservePostedValues ? NORMManualEntry.Preview(schedule, false, PostedEntry) : schedule.Current;
+            var prior = preservePostedValues ? NORMManualEntry.Preview(schedule, true, PostedEntry) : schedule.Prior;
             var html = new StringBuilder("<h2>Note ");
             html.Append(Enc(layout.Note)).Append(" \u00b7 ").Append(Enc(layout.Title)).Append("</h2><p>Entry unit ")
                 .Append(Enc(layout.Unit)).Append(layout.Precision == 0 ? " \u00b7 Whole numbers" : " \u00b7 Up to " + layout.Precision + " decimal places")
@@ -134,29 +139,28 @@ namespace CPlatform.NORM
             {
                 html.Append(row.Total ? "<tr class=\"total\">" : "<tr>").Append("<th scope=\"row\">").Append(Enc(row.Label))
                     .Append("<small>").Append(Enc(row.Kind)).Append("</small></th>");
-                RenderCell(html, schedule, row, false, editable);
-                RenderCell(html, schedule, row, true, editable);
+                RenderCell(html, current[row.Key], schedule.Year, row, false, editable);
+                RenderCell(html, prior[row.Key], schedule.Year - 1, row, true, editable);
                 html.Append("</tr>");
             }
             html.Append("</tbody></table>");
             if (layout.Splits != null && layout.Splits.Length != 0)
             {
                 html.Append("<p><strong>Classification reconciliation</strong> \u00b7 FY").Append(schedule.Year).Append(" ")
-                    .Append(Check(schedule.Current)).Append(" \u00b7 FY").Append(schedule.Year - 1).Append(" ").Append(Check(schedule.Prior))
+                    .Append(ReconciliationLabel(current)).Append(" \u00b7 FY").Append(schedule.Year - 1).Append(" ").Append(ReconciliationLabel(prior))
                     .Append(". Supporting evidence is required for the classification.</p>");
             }
             return html.ToString();
         }
 
-        private void RenderCell(StringBuilder html, NORMManualEntry.Schedule schedule, NORMManualEntry.Row row, bool prior, bool editable)
+        private void RenderCell(StringBuilder html, NORMManualEntry.Cell cell, int year, NORMManualEntry.Row row, bool prior, bool editable)
         {
-            NORMManualEntry.Cell cell = (prior ? schedule.Prior : schedule.Current)[row.Key];
             html.Append("<td>");
             if (row.Kind == "Manual" && editable)
             {
                 string amount = Field("amount", row.Key, prior);
                 string source = Field("source", row.Key, prior);
-                string label = row.Label + " FY" + (schedule.Year - (prior ? 1 : 0));
+                string label = row.Label + " FY" + year;
                 string displayed = cell.Entered.HasValue ? Format(cell.Entered) : "";
                 Input(html, amount, label + " amount", preservePostedValues ? Request.Form[amount] : displayed, 24, "decimal");
                 Input(html, source, label + " supporting reference", preservePostedValues ? Request.Form[source] : cell.Source, 500, null);
@@ -168,7 +172,7 @@ namespace CPlatform.NORM
                 html.Append("<small>").Append(provenance)
                     .Append(cell.Issue == null && cell.Entered.HasValue ? " \u00b7 Prepared" : "")
                     .Append(" \u00b7 Revision #").Append(cell.Revision).Append(" \u00b7 ").Append(Enc(cell.User)).Append(" \u00b7 ").Append(Enc(cell.UpdatedUtc));
-                if (cell.OriginalPriorRevision > 0) html.Append(" \u00b7 Original FY").Append(schedule.Year - 1).Append(" revision #").Append(cell.OriginalPriorRevision);
+                if (cell.OriginalPriorRevision > 0) html.Append(" \u00b7 Original FY").Append(year).Append(" revision #").Append(cell.OriginalPriorRevision);
                 if (!String.IsNullOrEmpty(cell.Reason)) html.Append("<br />Reason: ").Append(Enc(cell.Reason));
                 if (!editable && !String.IsNullOrEmpty(cell.Source)) html.Append("<br />Source: ").Append(Enc(cell.Source));
                 html.Append("</small>");
@@ -178,13 +182,24 @@ namespace CPlatform.NORM
             html.Append("</td>");
         }
 
-        private static string Check(Dictionary<string, NORMManualEntry.Cell> cells)
+        private static string ReconciliationLabel(Dictionary<string, NORMManualEntry.Cell> cells)
         {
-            if (cells.Values.Any(cell => cell.Issue != null && cell.Issue.StartsWith("Invalid classification", StringComparison.Ordinal)))
-                return "failed";
-            return cells.Values.Any(cell => cell.Issue != null) ? "incomplete" : "reconciled";
+            var outcome = NORMManualEntry.Result(cells);
+            return outcome == NORMManualEntry.Outcome.Failed ? "failed" : OutcomeLabel(outcome);
         }
 
+        private static string OutcomeLabel(NORMManualEntry.Outcome outcome)
+        {
+            return outcome == NORMManualEntry.Outcome.Failed ? "validation failed" : outcome.ToString().ToLowerInvariant();
+        }
+
+        private NORMManualEntry.Entry PostedEntry(string key, bool prior)
+        {
+            return new NORMManualEntry.Entry {
+                Amount = Request.Form[Field("amount", key, prior)],
+                Source = Request.Form[Field("source", key, prior)]
+            };
+        }
         private static void Option(StringBuilder html, string url, string label, bool selected)
         {
             html.Append("<option value=\"").Append(Enc(url)).Append(selected ? "\" selected>" : "\">").Append(Enc(label)).Append("</option>");

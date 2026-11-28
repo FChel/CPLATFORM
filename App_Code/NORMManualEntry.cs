@@ -56,6 +56,22 @@ public static class NORMManualEntry
         public string Amount, Source;
     }
 
+    public enum Outcome { Reconciled, Incomplete, Failed }
+
+    private const string InvalidClassification = "Invalid classification.";
+    private const string ChangeReasonRequired = "Record a change reason when changing or clearing a saved entry or entering or changing a comparative amount or reference, including its first entry.";
+
+    public static bool FailedSplit(Cell residual)
+    {
+        return residual.Issue != null && residual.Issue.StartsWith(InvalidClassification, StringComparison.Ordinal);
+    }
+
+    public static Outcome Result(Dictionary<string, Cell> cells)
+    {
+        if (cells.Values.Any(FailedSplit)) return Outcome.Failed;
+        return cells.Values.Any(cell => cell.Issue != null) ? Outcome.Incomplete : Outcome.Reconciled;
+    }
+
     private const string RunScope =
         " FROM dbo.tblNORM_CalculationRun r JOIN dbo.tblNORM_Import i ON i.ImportId=r.ImportId" +
         " JOIN dbo.tblNORM_ManualSchedule s{0} ON s.EntityCode=i.EntityCode AND s.EffectiveYear<=i.FinancialYear" +
@@ -172,8 +188,7 @@ public static class NORMManualEntry
     {
         Definition layout = schedule.Layout;
         int run = prior ? schedule.PriorRun : schedule.Run;
-        var cells = new Dictionary<string, Cell>(StringComparer.Ordinal);
-        foreach (Row row in layout.Rows)
+        return EvaluateRows(layout, row =>
         {
             var cell = new Cell();
             if (row.Kind == "Manual")
@@ -216,10 +231,43 @@ public static class NORMManualEntry
                 }
                 if (!cell.Presented.HasValue) cell.Issue = "Linked reporting balance is missing or cannot be expressed at the configured precision.";
             }
+            return cell;
+        });
+    }
+
+    public static Dictionary<string, Cell> Preview(Schedule schedule, bool prior, Func<string, bool, Entry> readEntry)
+    {
+        var saved = prior ? schedule.Prior : schedule.Current;
+        return EvaluateRows(schedule.Layout, row =>
+        {
+            if (row.Kind == "Linked")
+            {
+                Cell linked = saved[row.Key];
+                return new Cell { Exact = linked.Exact, Presented = linked.Presented, Issue = linked.Issue };
+            }
+            try
+            {
+                string source;
+                decimal? amount = ParseEntry(schedule.Layout, row, readEntry(row.Key, prior), out source);
+                return new Cell {
+                    Entered = amount, Presented = amount, Source = source,
+                    Issue = row.Required && !amount.HasValue ? "Required amount missing." : null
+                };
+            }
+            catch (InputException error) { return new Cell { Issue = error.Message }; }
+        });
+    }
+
+    private static Dictionary<string, Cell> EvaluateRows(Definition layout, Func<Row, Cell> readCell)
+    {
+        var cells = new Dictionary<string, Cell>(StringComparer.Ordinal);
+        foreach (Row row in layout.Rows)
+        {
+            Cell cell;
+            if (row.Kind != "Calculated") cell = readCell(row);
             else if (row.Terms.All(term => cells[term.Key].Presented.HasValue && cells[term.Key].Issue == null))
-                cell.Presented = row.Terms.Sum(term => term.Sign * cells[term.Key].Presented.Value);
-            else
-                cell.Issue = "Calculation awaits its inputs.";
+                cell = new Cell { Presented = row.Terms.Sum(term => term.Sign * cells[term.Key].Presented.Value) };
+            else cell = new Cell { Issue = "Calculation awaits its inputs." };
             cells.Add(row.Key, cell);
         }
         foreach (Split split in layout.Splits ?? new Split[0])
@@ -233,7 +281,7 @@ public static class NORMManualEntry
         if (entered.Presented.Value < 0 || residual.Presented.Value < 0 ||
             entered.Presented.Value + residual.Presented.Value != linked.Presented.Value)
         {
-            residual.Issue = "Invalid classification. The split must be non-negative and reconcile to the applicable liability.";
+            residual.Issue = InvalidClassification + " The split must be non-negative and reconcile to the applicable liability.";
             residual.Presented = null;
         }
         decimal difference = linked.Exact.Value - linked.Presented.Value;
@@ -253,7 +301,7 @@ public static class NORMManualEntry
             NORMHelper.RequireEntityAccess(NORMHelper.Str(definition, "EntityCode"), connection, transaction);
             Schedule before = Read(definition, connection, transaction);
             if (before.ContextToken != expected)
-                throw new InputException("The schedule or its source changed. Review the current values before saving again.");
+                throw new InputException("The schedule or its source changed. Copy your unsaved entries, then reopen the schedule and review the current values before saving again.");
             reason = Limit(reason, 500, "Change reason");
             string user = NORMHelper.CurrentUserId();
             foreach (Row row in before.Layout.Rows.Where(item => item.Kind == "Manual"))
@@ -277,32 +325,38 @@ public static class NORMManualEntry
         }
     }
 
-    private static void SaveEntry(OleDbConnection connection, OleDbTransaction transaction, Schedule schedule,
-        Row row, bool prior, Entry entry, string reason, string user)
+    private static decimal? ParseEntry(Definition layout, Row row, Entry entry, out string source)
     {
         if (entry == null || entry.Amount == null || entry.Source == null)
             throw new InputException("Submit the complete schedule.");
         string text = entry.Amount.Trim();
-        string source = Limit(entry.Source, 500, "Source reference");
-        Cell previous = (prior ? schedule.Prior : schedule.Current)[row.Key];
-        decimal? amount = null;
-        if (text.Length != 0)
+        source = Limit(entry.Source, 500, "Source reference");
+        if (text.Length == 0)
         {
-            int precision = schedule.Layout.Precision;
-            string pattern = precision == 0 ? @"\A[+-]?\d{1,15}\z" : @"\A[+-]?\d{1,15}(\.\d{1," + precision + @"})?\z";
-            decimal parsed;
-            if (!Regex.IsMatch(text, pattern) || !Decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
-                CultureInfo.InvariantCulture, out parsed))
-                throw new InputException(row.Label + " must be entered in " + schedule.Layout.Unit +
-                    (precision == 0 ? " as a whole number." : " with at most " + precision + " decimal places."));
-            if (source == null) throw new InputException("Supply a source reference or explanation for " + row.Label + ".");
-            amount = parsed;
+            source = null;
+            return null;
         }
-        else source = null;
+        int precision = layout.Precision;
+        string pattern = precision == 0 ? @"\A[+-]?\d{1,15}\z" : @"\A[+-]?\d{1,15}(\.\d{1," + precision + @"})?\z";
+        decimal parsed;
+        if (!Regex.IsMatch(text, pattern) || !Decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+            CultureInfo.InvariantCulture, out parsed))
+            throw new InputException(row.Label + " must be entered in " + layout.Unit +
+                (precision == 0 ? " as a whole number." : " with at most " + precision + " decimal places."));
+        if (source == null) throw new InputException("Supply a source reference or explanation for " + row.Label + ".");
+        return parsed;
+    }
+
+    private static void SaveEntry(OleDbConnection connection, OleDbTransaction transaction, Schedule schedule,
+        Row row, bool prior, Entry entry, string reason, string user)
+    {
+        string source;
+        decimal? amount = ParseEntry(schedule.Layout, row, entry, out source);
+        Cell previous = (prior ? schedule.Prior : schedule.Current)[row.Key];
         if (amount == previous.Entered && source == previous.Source &&
             (amount == null || (previous.Unit == schedule.Layout.Unit && previous.Precision == schedule.Layout.Precision))) return;
         if ((prior || previous.Revision != 0) && reason == null)
-            throw new InputException("Record a change reason for amendments to saved or comparative values.");
+            throw new InputException(ChangeReasonRequired);
 
         long original = previous.Amendment ? previous.OriginalPriorRevision : previous.Revision;
         NORMHelper.Exec(connection, transaction,

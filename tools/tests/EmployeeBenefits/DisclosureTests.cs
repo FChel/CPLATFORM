@@ -109,8 +109,12 @@ internal static partial class PilotTests
         var findings = NORMDisclosureCompleteness.Assess(catalogue, notes, evidence, run, prior, true);
         Check(findings.Count == 52 && findings.Count(value => value.Passed) == 4 && findings.Count(value => value.Result == "Fail") == 2 &&
             findings.Count(value => value.Result == "Not Run" && !value.Check.AwaitingDecision) == 40 &&
-            findings.Count(value => value.Check.AwaitingDecision) == 6 && findings.Count(value => value.Check.Unsupported) == 7,
+            findings.Count(value => value.Check.AwaitingDecision) == 6 && findings.Count(value => value.Check.Unsupported) == 5,
             "The accepted fixture dispositions were not reproduced.");
+        var manualSchedules = findings.Where(value => value.Check.Id == "KMP" || value.Check.Id == "MATURITY").ToList();
+        Check(manualSchedules.Count == 2 && manualSchedules.All(value => value.Result == "Not Run" &&
+            !value.Check.Unsupported && value.Detail.Contains("Manual Entry supports preparation")),
+            "Supported Manual Entry preparation must leave both disclosure validations outstanding.");
         Check(employee.CompletionStatus == NORMDisclosureCompleteness.Incomplete &&
             cash.CompletionStatus == NORMDisclosureCompleteness.Incomplete && employee.CompletenessDetail.Contains("EMP-CONTENT") &&
             cash.CompletenessDetail.Contains("CASH-SUPPORT"), "Fixture subtotal passes must not complete either disclosure.");

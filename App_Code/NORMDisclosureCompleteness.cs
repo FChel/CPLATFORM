@@ -116,10 +116,14 @@ public static class NORMDisclosureCompleteness
             item.CompletionStatus = IsComplete(relevant) ? Complete : Incomplete;
             item.CompletenessDetail = relevant.Count == 0
                 ? "No mandatory validation basis is configured for this disclosure."
-                : String.Join(" ", relevant.Where(result => !result.Passed)
-                    .Select(result => result.Check.Id + " " + result.Result + ". " + result.Detail));
+                : String.Join(" ", relevant.Where(result => !result.Passed).Select(OutstandingDetail));
         }
         return results;
+    }
+
+    public static string OutstandingDetail(Finding finding)
+    {
+        return finding.Check.Id + " " + finding.Result + ". " + finding.Detail;
     }
 
     private static bool IsComplete(List<Finding> findings)

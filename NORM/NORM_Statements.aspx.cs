@@ -133,7 +133,7 @@ namespace CPlatform.NORM
                 NORMReportingFramework.LoadDisclosures(runId, releaseId, profile, out disclosureChecks);
             NORMStatementEnhancements.ApplyManualInputs(runId, disclosures);
             var notes = BuildNotesStatement(disclosures);
-            if (Convert.ToBoolean(meta["draftReview"])) AddManualSchedules(notes, runId);
+            if (Convert.ToBoolean(meta["draftReview"])) AddManualSchedules(notes, runId, disclosureChecks);
             statements.Add(notes);
             payload["statements"] = statements;
             payload["profile"] = BuildProfilePayload(profile);
@@ -311,7 +311,8 @@ namespace CPlatform.NORM
             return value;
         }
 
-        private static void AddManualSchedules(Dictionary<string, object> notes, int runId)
+        private static void AddManualSchedules(Dictionary<string, object> notes, int runId,
+            List<NORMDisclosureCompleteness.Finding> disclosureChecks)
         {
             var destinations = (List<object>)notes["disclosures"];
             foreach (var schedule in NORMManualEntry.Read(runId))
@@ -327,16 +328,56 @@ namespace CPlatform.NORM
                     };
                     destinations.Add(destination);
                 }
+                object existingDetail;
+                destination.TryGetValue("completenessDetail", out existingDetail);
+                string detail = Convert.ToString(existingDetail) ?? "";
+                foreach (var finding in disclosureChecks.Where(check => !check.Passed &&
+                    String.Equals(check.Check.Destination, layout.Note, StringComparison.OrdinalIgnoreCase)))
+                {
+                    string outstanding = NORMDisclosureCompleteness.OutstandingDetail(finding);
+                    if (!detail.Contains(outstanding)) detail = (detail + " " + outstanding).Trim();
+                    destination["status"] = NORMDisclosureCompleteness.Incomplete;
+                }
+                if (detail.Length != 0) destination["completenessDetail"] = detail;
+
+                var splits = layout.Splits ?? new NORMManualEntry.Split[0];
+                var rows = layout.Rows.ToList();
+                foreach (var split in splits)
+                {
+                    var group = new[] { split.Residual, split.Entered, split.Linked }
+                        .Select(key => rows.Find(row => row.Key == key)).ToArray();
+                    int first = group.Min(row => rows.IndexOf(row));
+                    foreach (var row in group) rows.Remove(row);
+                    rows.InsertRange(first, group);
+                }
                 destination["manualSchedule"] = new {
                     title = layout.Title, unit = layout.Unit, precision = layout.Precision,
                     editUrl = "NORM_ManualEntry.aspx?run=" + runId + "&schedule=" + System.Web.HttpUtility.UrlEncode(schedule.Code),
-                    rows = layout.Rows.Select(row => new {
-                        label = row.Label, total = row.Total, current = schedule.Current[row.Key].Presented,
-                        prior = schedule.Prior[row.Key].Presented,
+                    rows = rows.Select(row => new {
+                        label = DraftScheduleLabel(row, splits), total = row.Total,
+                        current = DraftScheduleAmount(row, schedule.Current, splits),
+                        prior = DraftScheduleAmount(row, schedule.Prior, splits),
                         currentIssue = schedule.Current[row.Key].Issue, priorIssue = schedule.Prior[row.Key].Issue
                     }).ToArray()
                 };
             }
+        }
+
+        private static string DraftScheduleLabel(NORMManualEntry.Row row, NORMManualEntry.Split[] splits)
+        {
+            const string linkedTotal = " \u2014 linked total";
+            string label = row.Label ?? "";
+            if (!label.EndsWith(linkedTotal, StringComparison.Ordinal) || !splits.Any(split => split.Linked == row.Key))
+                return label;
+            label = label.Substring(0, label.Length - linkedTotal.Length);
+            return "Total " + (label.Length == 0 ? label : Char.ToLowerInvariant(label[0]) + label.Substring(1));
+        }
+
+        private static decimal? DraftScheduleAmount(NORMManualEntry.Row row,
+            Dictionary<string, NORMManualEntry.Cell> cells, NORMManualEntry.Split[] splits)
+        {
+            return splits.Any(split => split.Entered == row.Key && NORMManualEntry.FailedSplit(cells[split.Residual]))
+                ? null : cells[row.Key].Presented;
         }
 
         private void AppendDisclosureValidations(List<object> validations, List<NORMReportingFramework.Disclosure> disclosures,
@@ -1536,8 +1577,9 @@ namespace CPlatform.NORM
                 if (String.Equals(status, "Validated", StringComparison.OrdinalIgnoreCase)) validated++;
                 else incomplete++;
             }
-            AddEnhancementValidation(validations, "MANUAL_INPUT_READINESS", "Manual disclosure inputs are validated", "Warning",
-                incomplete == 0 ? "Pass" : "Warning", validated + " validated; " + incomplete + " require preparation or validation before final publication.");
+            AddEnhancementValidation(validations, "MANUAL_INPUT_READINESS", "Legacy manual input register status", "Warning",
+                incomplete == 0 ? "Pass" : "Warning", validated + " legacy register inputs validated; " + incomplete +
+                " require preparation or validation. Check Manual Entry schedules and their disclosure evidence separately.");
 
             for (int i = 0; i < inputs.Rows.Count; i++)
             {
