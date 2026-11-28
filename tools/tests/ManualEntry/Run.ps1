@@ -29,7 +29,7 @@ function Get-ProtectedEvidence($connection) {
         ConfigurationRelease = 'ConfigurationReleaseId'; Import = 'ImportId'; TrialBalanceRow = 'TbRowId'
         CalculationRun = 'CalculationRunId'; LineResult = 'LineResultId'; ValidationResult = 'ValidationResultId'
         AccountMap = 'AccountMapId'; StatementLine = 'StatementLineId'; Lineage = 'LineageId'
-        DisclosureRule = 'DisclosureRuleId'; ImportFile = 'ImportFileId'
+        DisclosureRule = 'DisclosureRuleId'; ImportFile = 'ImportFileId'; ManualInput = 'ManualInputId'
         AdminUser = 'AdminUserId'; UserEntity = 'AdminUserId,EntityCode'; RunNarrative = 'RunNarrativeId'
     }
     $rows = @{}
@@ -49,12 +49,14 @@ try {
     $fixture = [Data.SqlClient.SqlConnection]::new("Server=(localdb)\MSSQLLocalDB;Database=$database;Integrated Security=true;Connect Timeout=30;Pooling=false")
     $fixture.Open()
     foreach ($file in @("$root/sql/NORM_01_ProofEngine_Schema.sql", "$root/sql/NORM_Stage2B_Reported_Amounts.sql",
-        "$PSScriptRoot/Fixture.sql", "$root/sql/NORM_04_GovernmentReportingPlatform.sql",
+        "$PSScriptRoot/Fixture.sql", "$root/sql/NORM_04_GovernmentReportingPlatform.sql", "$root/sql/NORM_05_StatementDemoEnhancements.sql",
         "$root/sql/NORM_06_PreparationControlCentre.sql")) {
-        foreach ($batch in ((Get-Content -Raw -LiteralPath $file) -split '(?im)^GO\s*$')) {
-            Invoke-FixtureSql $fixture $batch
+        $fixtureSql = (Get-Content -Raw -LiteralPath $file) -replace '(?im)^USE \[CPlatform\];\s*$', ''
+        foreach ($batch in ($fixtureSql -split '(?im)^GO\s*$')) {
+            if (![string]::IsNullOrWhiteSpace($batch)) { Invoke-FixtureSql $fixture $batch }
         }
     }
+    Invoke-FixtureSql $fixture "INSERT dbo.tblNORM_ManualInput(CalculationRunId,InputCode,InputLabel,StatusCode,UpdatedBy) VALUES (2,'LEGACY_FIXTURE','Legacy disclosure fixture','Draft','fixture');"
     $before = Get-ProtectedEvidence $fixture
     $migration = Get-Content -Raw -LiteralPath "$root/sql/NORM_Stage3_I4_ManualEntry.sql"
     Invoke-FixtureSql $fixture $migration

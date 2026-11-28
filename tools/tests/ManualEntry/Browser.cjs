@@ -75,7 +75,7 @@ async function run() {
         await source(key, prior).fill("NIHRACS reference model fixture");
       }
     }
-    async function save(expected = /Schedule saved/) {
+    async function save(expected = /Saved — (incomplete|validation failed|reconciled)/) {
       assert.match(await page.locator("input[name=manualContext]").inputValue(), /^[a-f0-9]{64}$/);
       const submitted = page.waitForResponse(response => response.request().method() === "POST");
       await page.getByRole("button", { name: "Save schedule and record evidence" }).click();
@@ -105,7 +105,7 @@ async function run() {
 
     await open(1, "KMP");
     await fill({ STB: 240, PEB: 27, OTH: 8, NMB: 11 });
-    await save();
+    await save(/Saved — incomplete/);
     await page.getByLabel("Schedule", { exact: true }).selectOption({ value: pagePath(1, "MATURITY").slice(1) });
     await page.waitForURL("**/*schedule=MATURITY");
     await fill({ PRV_NON: 41, LEA_NON: 70 });
@@ -117,11 +117,14 @@ async function run() {
     assert.match(await page.locator("body").innerText(), /A\$'000 · Whole numbers/);
     await amount("STB").fill("268");
     await save(/Supply a source reference/);
+    assert.match(await noteRow("Short-term employee benefits").locator("td").first().innerText(), /Supply a source reference/);
+    assert.doesNotMatch(await noteRow("Short-term employee benefits").locator("td").first().innerText(), /Required amount missing/);
     await amount("STB").fill("268.5");
     await save(/whole number/);
     assert.equal(await amount("STB").inputValue(), "268.5");
+    assert.match(await noteRow("Short-term employee benefits").locator("td").first().innerText(), /whole number/);
     await fill({ STB: 268, PEB: 28, OTH: 12, NMB: 5 });
-    await save();
+    await save(/Saved — reconciled/);
     const kmpEvidence = (await status()).match(/#(\d+)/)[1];
     assert.deepEqual(await rowValues("Total KMP remuneration"), ["313", "286"]);
     assert.equal(await amount("TOTAL").count(), 0);
@@ -135,13 +138,13 @@ async function run() {
     assert.equal(await amount("PRV_CUR").count(), 0);
     assert.match(await page.locator("body").innerText(), /FY2026 incomplete/);
     await fill({ PRV_NON: 0 });
-    await save();
+    await save(/Saved — incomplete/);
     await page.reload();
     assert.equal(await amount("PRV_NON").inputValue(), "0");
     assert.equal(await amount("LEA_NON").inputValue(), "");
     await fill({ PRV_NON: 53, LEA_NON: 34 });
     await page.locator("#manualReason").fill("Replace zero test value with fixture input");
-    await save();
+    await save(/Saved — reconciled/);
     assert.deepEqual(await rowValues("Employee provisions — current"), ["1345", "1194"]);
     assert.deepEqual(await rowValues("Lease liabilities — current"), ["36", "35"]);
     assert.match(await page.locator("body").innerText(), /Exact balance 1398\.426\. Presented at 1398/);
@@ -157,6 +160,24 @@ async function run() {
     assert.match(await page.locator("#note-5-1").innerText(), /1,345/);
     assert.equal(await page.locator("#note-3-2 table").count(), 1);
     assert.match(await page.locator("#note-3-2").innerText(), /313/);
+    assert.deepEqual(await page.locator("#note-5-1 tbody th").allTextContents(), [
+      "Employee provisions — current", "Employee provisions — non-current", "Total employee provisions",
+      "Lease liabilities — current", "Lease liabilities — non-current", "Total lease liabilities"
+    ]);
+    for (const [note, check] of [["3-2", "KMP"], ["5-1", "MATURITY"]]) {
+      const disclosure = page.locator("#note-" + note).getByText("Outstanding disclosure checks", { exact: true });
+      await disclosure.click();
+      const text = await disclosure.locator("..").innerText();
+      assert.match(text, new RegExp(check + " Not Run.*Manual Entry supports preparation"));
+      assert.doesNotMatch(text, /Unsupported in NORM/);
+    }
+    const assurance = await page.evaluate(() => window.NORM_DATA.validations.filter(item =>
+      ["DISCLOSURE_KMP", "DISCLOSURE_MATURITY", "PRIMA_DISCLOSURE_COMPLETENESS", "MANUAL_INPUT_READINESS"].includes(item.code)));
+    assert.equal(assurance.length, 4);
+    assert.match(assurance.find(item => item.code === "PRIMA_DISCLOSURE_COMPLETENESS").detail, /0 of \d+/);
+    const legacy = assurance.find(item => item.code === "MANUAL_INPUT_READINESS");
+    assert.equal(legacy.result, "Warning");
+    assert.match(legacy.detail, /0 legacy register inputs validated; 1 require/);
     assert.equal(await page.evaluate(() => window.NORM_DATA.validations.some(item => item.result === "Fail" &&
       item.code === "FIXTURE_OPEN")), true);
     assert.equal(await page.locator("#excelExportLink").isVisible(), false);
@@ -172,13 +193,14 @@ async function run() {
     assert.deepEqual(await rowValues("Lease liabilities — current"), ["0", "35"]);
     assert.match(await page.locator("body").innerText(), /FY2026 reconciled/);
     pass("lease split 34 non-current, 0 current, Pass; replacement preserves inputs and shows the exact-to-presented difference");
+    let failedEvidence, failedSnapshot;
     for (const [entered, current, result] of [
       ["35", -1, "failed"], ["33", 1, "reconciled"], ["0", 34, "reconciled"],
       ["-1", 35, "failed"], ["", null, "incomplete"]
     ]) {
       await amount("LEA_NON").fill(entered);
       await page.locator("#manualReason").fill("Check the presented lease split");
-      await save();
+      await save(new RegExp("Saved — " + (result === "failed" ? "validation failed" : result)));
       const saved = await amount("LEA_NON").inputValue();
       assert.equal(saved, entered);
       const [total] = await rowValues("Lease liabilities — linked total");
@@ -188,6 +210,24 @@ async function run() {
       if (result === "reconciled") assert.equal(displayed, String(current));
       else assert.match(displayed, result === "failed" ? /^—\s*Invalid classification/ : /^—\s*Calculation awaits its inputs/);
       assert.match(await page.locator("body").innerText(), new RegExp("FY2026 " + result));
+      if (entered === "35") {
+        failedEvidence = (await status()).match(/#(\d+)/)[1];
+        await page.goto(origin + "/NORM_Statements.aspx?run=4&manual=1#note-5-1");
+        const draftRows = page.locator("#note-5-1 tbody tr");
+        assert.match(await draftRows.nth(3).locator("td").first().innerText(), /^—\s*Invalid classification/);
+        assert.equal(await draftRows.nth(4).locator("td").first().innerText(), "—");
+        assert.equal(await draftRows.nth(5).locator("td").first().innerText(), "34");
+        assert.equal(await draftRows.nth(4).locator("td").nth(1).innerText(), "70");
+        await open(4, "MATURITY", "&evidence=" + failedEvidence);
+        failedSnapshot = await page.locator(".norm-manual-table").innerText();
+        await open(4, "MATURITY");
+      }
+      if (entered === "33") {
+        await open(4, "MATURITY", "&evidence=" + failedEvidence);
+        assert.equal(await page.locator(".norm-manual-table").innerText(), failedSnapshot);
+        assert.match(await page.locator("body").innerText(), /FY2026 failed/);
+        await open(4, "MATURITY");
+      }
       console.log("Checked lease split " + (entered || "blank") + " non-current, " +
         (current === null ? "incomplete" : current) + " current, " + result);
     }
@@ -208,12 +248,22 @@ async function run() {
     assert.match(await page.locator("body").innerText(), /Original FY2025 revision/);
     await token.evaluate((input, priorToken) => input.setAttribute("value", priorToken), stale);
     assert.equal(await token.inputValue(), stale);
+    await fill({ STB: 269 });
     await save(/schedule or its source changed/);
+    assert.equal(await amount("STB").inputValue(), "269");
+    assert.equal(await token.inputValue(), stale);
+    assert.deepEqual(await rowValues("Total KMP remuneration"), ["314", "287"]);
     await open(2, "KMP", "&evidence=" + kmpEvidence);
     assert.deepEqual(await rowValues("Total KMP remuneration"), ["313", "286"]);
     assert.equal(await page.getByRole("button", { name: "Save schedule and record evidence" }).count(), 0);
     await open(1, "KMP");
     assert.equal(await amount("STB").inputValue(), "240");
+    assert.match(await page.locator("#manualReasonHelp").innerText(), /first comparative entry/);
+    await fill({ STB: 200 }, true);
+    await save(/Record a change reason/);
+    assert.equal(await amount("STB", true).inputValue(), "200");
+    await page.locator("#manualReason").fill("Initial FY2024 comparative fixture");
+    await save(/Saved — incomplete/);
     await open(5, "KMP");
     assert.equal(await amount("STB", true).inputValue(), "268");
     pass("comparative reasons and immutable evidence preserve the original inputs and reject a stale form");
